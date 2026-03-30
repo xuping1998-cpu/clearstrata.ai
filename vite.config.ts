@@ -8,6 +8,14 @@ export default defineConfig({
     host: true,
     port: 5173,
     strictPort: true,
+    // 本地开发：将 /api/* 转发到已部署站点上的 Vercel Edge Function
+    proxy: {
+      '/api': {
+        target: 'https://clearstrata.ai',
+        changeOrigin: true,
+        secure: true,
+      },
+    },
   },
   plugins: [
     react(),

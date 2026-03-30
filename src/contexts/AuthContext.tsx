@@ -68,11 +68,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
+    const res = await fetch('/api/auth-proxy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
     });
 
+    const data = (await res.json()) as Record<string, unknown>;
+
+    if (!res.ok) {
+      const msg =
+        (typeof data.error_description === 'string' && data.error_description) ||
+        (typeof data.msg === 'string' && data.msg) ||
+        (typeof data.error === 'string' && data.error) ||
+        (typeof data.message === 'string' && data.message) ||
+        `Login failed (${res.status})`;
+      throw new Error(msg);
+    }
+
+    const access_token = data.access_token as string | undefined;
+    const refresh_token = data.refresh_token as string | undefined;
+    if (!access_token || !refresh_token) {
+      const msg =
+        (typeof data.error_description === 'string' && data.error_description) ||
+        (typeof data.msg === 'string' && data.msg) ||
+        'Invalid login response';
+      throw new Error(msg);
+    }
+
+    const { error } = await supabase.auth.setSession({
+      access_token,
+      refresh_token,
+    });
     if (error) throw error;
   };
 
