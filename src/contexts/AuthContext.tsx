@@ -68,39 +68,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signIn = async (email: string, password: string) => {
-    const res = await fetch('/api/auth-proxy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    });
+    try {
+      const response = await fetch(
+        'https://bolt-native-database-64671878.supabase.co/auth/v1/token?grant_type=password',
+        {
+          method: 'POST',
+          headers: {
+            apikey: 'sb_publishable_2x4TkloQxM1TN_LuCjf5pQ_IgSz34jH',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ email, password }),
+        }
+      );
 
-    const data = (await res.json()) as Record<string, unknown>;
+      const data = (await response.json()) as Record<string, unknown>;
 
-    if (!res.ok) {
-      const msg =
-        (typeof data.error_description === 'string' && data.error_description) ||
-        (typeof data.msg === 'string' && data.msg) ||
-        (typeof data.error === 'string' && data.error) ||
-        (typeof data.message === 'string' && data.message) ||
-        `Login failed (${res.status})`;
-      throw new Error(msg);
+      if (!response.ok) {
+        const msg =
+          (typeof data.error === 'string' && data.error) ||
+          (typeof data.error_description === 'string' && data.error_description) ||
+          'Login failed';
+        throw new Error(msg);
+      }
+
+      const access_token = data.access_token as string | undefined;
+      const refresh_token = data.refresh_token as string | undefined;
+      if (!access_token || !refresh_token) {
+        throw new Error('Invalid login response');
+      }
+
+      const { error } = await supabase.auth.setSession({
+        access_token,
+        refresh_token,
+      });
+      if (error) throw error;
+    } catch (err) {
+      console.error('Login error:', err);
+      throw err;
     }
-
-    const access_token = data.access_token as string | undefined;
-    const refresh_token = data.refresh_token as string | undefined;
-    if (!access_token || !refresh_token) {
-      const msg =
-        (typeof data.error_description === 'string' && data.error_description) ||
-        (typeof data.msg === 'string' && data.msg) ||
-        'Invalid login response';
-      throw new Error(msg);
-    }
-
-    const { error } = await supabase.auth.setSession({
-      access_token,
-      refresh_token,
-    });
-    if (error) throw error;
   };
 
   const signUp = async (email: string, password: string, fullNameEn: string, fullNameZh: string, role: string, unitNumber: string) => {

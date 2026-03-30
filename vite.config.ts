@@ -8,12 +8,6 @@ export default defineConfig({
     host: true,
     port: 5173,
     strictPort: true,
-    proxy: {
-      '/api': {
-        target: 'https://www.clearstrata.ai',
-        changeOrigin: true,
-      },
-    },
   },
   plugins: [
     react(),
