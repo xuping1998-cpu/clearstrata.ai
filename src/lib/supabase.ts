@@ -7,20 +7,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: true,
-  },
-  global: {
-    headers: {
-      // 配合你提供的配置：客户端请求携带跨域相关 header。
-      // 注意：真正的 CORS 允许来自域名是由 Supabase 服务端返回的响应头决定的。
-      'Access-Control-Allow-Origin': '*',
-    },
-  },
-});
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export type UserRole = 'owner' | 'caretaker' | 'council' | 'manager' | 'admin';
 
