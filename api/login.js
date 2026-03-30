@@ -55,7 +55,34 @@ export default async function handler(req, res) {
 
     const baseUrl = supabaseUrl.replace(/\/$/, '');
 
-    console.log('Calling Supabase...');
+    // 诊断：Vercel 出站能否访问该 Supabase 主机（与 SUPABASE_URL 对比用）
+    const SUPABASE_CONNECTIVITY_PROBE =
+      'https://bolt-native-database-64671878.supabase.co';
+    console.log('=== Supabase connectivity probe (diagnostic) ===');
+    console.log('Probe URL (fixed):', SUPABASE_CONNECTIVITY_PROBE);
+    console.log('Configured SUPABASE_URL:', supabaseUrl);
+    const probeStarted = Date.now();
+    try {
+      const probeRes = await fetch(SUPABASE_CONNECTIVITY_PROBE, {
+        method: 'GET',
+        redirect: 'manual',
+        signal: AbortSignal.timeout(15000),
+      });
+      const probeMs = Date.now() - probeStarted;
+      console.log('Probe: success (TCP/TLS + HTTP response received)');
+      console.log('Probe status:', probeRes.status, probeRes.statusText);
+      console.log('Probe elapsed ms:', probeMs);
+    } catch (probeErr) {
+      const probeMs = Date.now() - probeStarted;
+      console.error('Probe: FETCH FAILED (Vercel may not reach this host)');
+      console.error('Probe elapsed ms:', probeMs);
+      console.error('Probe error:', probeErr);
+      if (probeErr && typeof probeErr === 'object' && 'cause' in probeErr) {
+        console.error('Probe error.cause:', probeErr.cause);
+      }
+    }
+
+    console.log('Calling Supabase (auth token)...');
     const response = await fetch(`${baseUrl}/auth/v1/token?grant_type=password`, {
       method: 'POST',
       headers: {
