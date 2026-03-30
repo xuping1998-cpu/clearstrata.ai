@@ -42,11 +42,21 @@ export default async function handler(req, res) {
     const { email, password } = body || {};
     console.log('Received email:', email);
 
-    const supabaseUrl = 'https://bolt-native-database-64671878.supabase.co';
-    const supabaseKey = 'sb_publishable_2x4TkloQxM1TN_LuCjf5pQ_IgSz34jH';
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      console.error('Missing SUPABASE_URL or SUPABASE_ANON_KEY');
+      return res.status(500).json({
+        error: 'Server misconfiguration',
+        message: 'SUPABASE_URL and SUPABASE_ANON_KEY must be set',
+      });
+    }
+
+    const baseUrl = supabaseUrl.replace(/\/$/, '');
 
     console.log('Calling Supabase...');
-    const response = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+    const response = await fetch(`${baseUrl}/auth/v1/token?grant_type=password`, {
       method: 'POST',
       headers: {
         apikey: supabaseKey,
