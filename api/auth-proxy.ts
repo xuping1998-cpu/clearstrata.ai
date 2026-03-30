@@ -1,17 +1,22 @@
+import type { RequestHandler } from './$types';
+
 export const config = {
   runtime: 'edge',
 };
 
-export default async (req) => {
+const handler: RequestHandler = async (request) => {
   const supabaseUrl = 'https://bolt-native-database-64671878.supabase.co';
   const supabaseKey = 'sb_publishable_2x4TkloQxM1TN_LuCjf5pQ_IgSz34jH';
 
-  if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });
+  if (request.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
 
   try {
-    const { email, password } = await req.json();
+    const { email, password } = await request.json();
 
     const response = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
       method: 'POST',
@@ -27,8 +32,13 @@ export default async (req) => {
       status: response.status,
       headers: { 'Content-Type': 'application/json' },
     });
-  } catch (err) {
-    console.error(err);
-    return new Response(JSON.stringify({ error: 'Internal Server Error' }), { status: 500 });
+  } catch (error) {
+    console.error('Auth proxy error:', error);
+    return new Response(JSON.stringify({ error: 'Internal Server Error' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
 };
+
+export default handler;
