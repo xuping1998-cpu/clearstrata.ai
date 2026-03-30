@@ -68,33 +68,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signIn = async (email: string, password: string) => {
-    const res = await fetch('/api/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    });
+    try {
+      console.log('=== Attempting login ===');
+      console.log('Email:', email);
 
-    const data = (await res.json()) as Record<string, unknown>;
+      const response = await fetch('/api/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
 
-    if (!res.ok) {
-      const msg =
-        (typeof data.error === 'string' && data.error) ||
-        (typeof data.error_description === 'string' && data.error_description) ||
-        'Login failed';
-      throw new Error(msg);
+      console.log('Response status:', response.status);
+      const data = (await response.json()) as Record<string, unknown>;
+      console.log('Response data:', data);
+
+      if (!response.ok) {
+        throw new Error(
+          (typeof data.error === 'string' && data.error) || 'Login failed'
+        );
+      }
+
+      await supabase.auth.setSession({
+        access_token: data.access_token as string,
+        refresh_token: data.refresh_token as string,
+      });
+
+      console.log('Login successful!');
+    } catch (error) {
+      console.error('Login error:', error);
+      throw error;
     }
-
-    const access_token = data.access_token as string | undefined;
-    const refresh_token = data.refresh_token as string | undefined;
-    if (!access_token || !refresh_token) {
-      throw new Error('Invalid login response');
-    }
-
-    const { error } = await supabase.auth.setSession({
-      access_token,
-      refresh_token,
-    });
-    if (error) throw error;
   };
 
   const signUp = async (email: string, password: string, fullNameEn: string, fullNameZh: string, role: string, unitNumber: string) => {
