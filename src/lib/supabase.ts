@@ -1,24 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables');
-}
+const supabaseUrl = 'https://bolt-native-database-64671878.supabase.co';
+const supabaseAnonKey =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJvbHQtbmF0aXZlLWRhdGFiYXNlLTY0NjcxODc4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDM1MTk0ODcsImV4cCI6MjA1OTA5NTQ4N30.hWqKwXq6JzH6F6mH4k8v7Lk1XqH4k8v7Lk1XqH4k8v7Lk';
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: true,
-  },
-  global: {
-    headers: {
-      // 配合你提供的配置：客户端请求携带跨域相关 header。
-      // 注意：真正的 CORS 允许来自域名是由 Supabase 服务端返回的响应头决定的。
-      'Access-Control-Allow-Origin': '*',
-    },
   },
 });
 
