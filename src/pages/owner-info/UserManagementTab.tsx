@@ -32,6 +32,7 @@ interface ResidentBrief {
   user_id: string;
   status: string;
   unit_no: string;
+  updated_at?: string;
 }
 
 export function UserManagementTab() {
@@ -52,7 +53,7 @@ export function UserManagementTab() {
     const [{ data: profileData }, { data: ownerData }, { data: resData }] = await Promise.all([
       supabase.from('profiles').select('*').order('full_name_en'),
       supabase.from('owner_info').select('user_id, unit_number').order('unit_number'),
-      supabase.from('residents').select('id, user_id, status, unit_no'),
+      supabase.from('residents').select('id, user_id, status, unit_no, updated_at'),
     ]);
     setProfiles(profileData || []);
     setOwnerInfos(ownerData || []);
@@ -63,10 +64,56 @@ export function UserManagementTab() {
         user_id: row.user_id,
         status: row.status,
         unit_no: row.unit_no,
+        updated_at: row.updated_at,
       };
     }
     setResidentByUserId(rmap);
   }, []);
+
+  /** Full list reload then pin the row we just mutated (avoids stale bulk reads right after UPDATE). */
+  const reloadListAndRefreshUser = useCallback(async (residentId: string, profileUserId: string) => {
+    await loadData();
+    const [{ data: resRow, error: resErr }, { data: profRow, error: profErr }] = await Promise.all([
+      supabase
+        .from('residents')
+        .select('id, user_id, status, unit_no, updated_at')
+        .eq('id', residentId)
+        .maybeSingle(),
+      supabase.from('profiles').select('status, updated_at').eq('id', profileUserId).maybeSingle(),
+    ]);
+    if (resErr) console.error('[UserManagementTab] refresh resident after activation:', resErr);
+    if (profErr) console.error('[UserManagementTab] refresh profile after activation:', profErr);
+    if (resRow) {
+      setResidentByUserId((prev) => ({
+        ...prev,
+        [resRow.user_id]: {
+          id: resRow.id,
+          user_id: resRow.user_id,
+          status: resRow.status,
+          unit_no: resRow.unit_no,
+          updated_at: resRow.updated_at,
+        },
+      }));
+    }
+    if (profRow && (profRow.status !== undefined || profRow.updated_at !== undefined)) {
+      setProfiles((prev) =>
+        prev.map((p) =>
+          p.id === profileUserId
+            ? {
+                ...p,
+                ...(profRow.status !== undefined ? { status: profRow.status as ProfileAccountStatus } : {}),
+              }
+            : p,
+        ),
+      );
+    }
+  }, [loadData]);
+
+  const alertAfterPaint = (message: string) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => alert(message));
+    });
+  };
 
   useEffect(() => {
     if (profile) void loadData();
@@ -228,13 +275,13 @@ export function UserManagementTab() {
 
       if (profErr) {
         console.error('[UserManagementTab] approve profiles update:', profErr);
-        alert(`${t('user_mgmt_profile_partial')} ${formatDbError(profErr)}`);
-        await loadData();
+        await reloadListAndRefreshUser(residentId, profileUserId);
+        alertAfterPaint(`${t('user_mgmt_profile_partial')} ${formatDbError(profErr)}`);
         return;
       }
 
-      await loadData();
-      alert(t('user_mgmt_activate_success'));
+      await reloadListAndRefreshUser(residentId, profileUserId);
+      alertAfterPaint(t('user_mgmt_activate_success'));
     } finally {
       setActivationBusy(null);
     }
@@ -282,13 +329,13 @@ export function UserManagementTab() {
 
       if (profErr) {
         console.error('[UserManagementTab] reject profiles update:', profErr);
-        alert(`${t('user_mgmt_profile_partial')} ${formatDbError(profErr)}`);
-        await loadData();
+        await reloadListAndRefreshUser(residentId, profileUserId);
+        alertAfterPaint(`${t('user_mgmt_profile_partial')} ${formatDbError(profErr)}`);
         return;
       }
 
-      await loadData();
-      alert(t('user_mgmt_reject_success'));
+      await reloadListAndRefreshUser(residentId, profileUserId);
+      alertAfterPaint(t('user_mgmt_reject_success'));
     } finally {
       setActivationBusy(null);
     }
