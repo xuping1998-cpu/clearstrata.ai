@@ -66,26 +66,29 @@ export function MonthlySummary() {
     setSnapshot({ income, expenses, balance, pending_review, approved, paid, anomaly });
   }, [selectedMonth, selectedYear]);
 
-  useEffect(() => {
-    void loadSummaries();
-  }, []);
-
-  useEffect(() => {
-    void loadMonthSnapshot();
-  }, [loadMonthSnapshot]);
-
-  const loadSummaries = async () => {
+  const loadSummaries = useCallback(async () => {
     setLoading(true);
     let q = supabase
       .from('monthly_summaries')
       .select('*')
       .order('month', { ascending: false });
-    // Owners/readonly users should only see published summaries
     if (!canManage) q = q.eq('published', true);
     const { data } = await q;
     setSummaries(data || []);
     setLoading(false);
-  };
+  }, [canManage]);
+
+  useEffect(() => {
+    void loadSummaries();
+  }, [loadSummaries, profile?.id]);
+
+  useEffect(() => {
+    if (!canManage) {
+      setSnapshot(null);
+      return;
+    }
+    void loadMonthSnapshot();
+  }, [loadMonthSnapshot, canManage]);
 
   const generateSummary = async () => {
     if (!profile) return;
@@ -234,65 +237,67 @@ export function MonthlySummary() {
 
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                setSelectedSummary(null);
-                setSelectedMonth((m) => {
-                  if (m === 0) {
-                    setSelectedYear((y) => y - 1);
-                    return 11;
-                  }
-                  return m - 1;
-                });
-              }}
-              className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 hover:bg-gray-50"
-            >
-              {l ? 'Prev' : '上一月'}
-            </button>
-            <div className="text-sm font-semibold text-gray-900">
-              {formatMonth(new Date(selectedYear, selectedMonth, 1).toISOString().split('T')[0], language)}
+      {canManage && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setSelectedSummary(null);
+                  setSelectedMonth((m) => {
+                    if (m === 0) {
+                      setSelectedYear((y) => y - 1);
+                      return 11;
+                    }
+                    return m - 1;
+                  });
+                }}
+                className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                {l ? 'Prev' : '上一月'}
+              </button>
+              <div className="text-sm font-semibold text-gray-900">
+                {formatMonth(new Date(selectedYear, selectedMonth, 1).toISOString().split('T')[0], language)}
+              </div>
+              <button
+                onClick={() => {
+                  setSelectedSummary(null);
+                  setSelectedMonth((m) => {
+                    if (m === 11) {
+                      setSelectedYear((y) => y + 1);
+                      return 0;
+                    }
+                    return m + 1;
+                  });
+                }}
+                className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                {l ? 'Next' : '下一月'}
+              </button>
             </div>
-            <button
-              onClick={() => {
-                setSelectedSummary(null);
-                setSelectedMonth((m) => {
-                  if (m === 11) {
-                    setSelectedYear((y) => y + 1);
-                    return 0;
-                  }
-                  return m + 1;
-                });
-              }}
-              className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 hover:bg-gray-50"
-            >
-              {l ? 'Next' : '下一月'}
-            </button>
-          </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500">{l ? 'Year' : '年份'}</span>
-            <select
-              value={selectedYear}
-              onChange={(e) => {
-                setSelectedSummary(null);
-                setSelectedYear(Number(e.target.value));
-              }}
-              className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 bg-white"
-            >
-              {Array.from({ length: 9 }, (_, i) => now.getFullYear() - 5 + i).map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500">{l ? 'Year' : '年份'}</span>
+              <select
+                value={selectedYear}
+                onChange={(e) => {
+                  setSelectedSummary(null);
+                  setSelectedYear(Number(e.target.value));
+                }}
+                className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 bg-white"
+              >
+                {Array.from({ length: 9 }, (_, i) => now.getFullYear() - 5 + i).map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {snapshot && (
+      {canManage && snapshot && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 border-l-4 border-l-green-500">
             <div className="flex items-center gap-2 text-xs text-gray-500 mb-1">
@@ -372,7 +377,13 @@ export function MonthlySummary() {
         <div className="bg-white rounded-xl shadow-sm p-12 text-center">
           <FileText size={48} className="mx-auto mb-4 text-gray-300" />
           <p className="text-gray-500">
-            {l ? 'No financial summaries yet' : '暂无财务摘要'}
+            {canManage
+              ? l
+                ? 'No financial summaries yet'
+                : '暂无财务摘要'
+              : l
+                ? 'No published monthly summaries yet'
+                : '暂无已发布的月度摘要'}
           </p>
           {canManage && (
             <p className="text-sm text-gray-400 mt-2">
