@@ -1,6 +1,6 @@
 import { ReactNode, useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Home, ShoppingCart, Vote, Wrench, DollarSign, Users, MessageSquare, Menu, X, LogOut, CircleUser as UserCircle, Shield } from 'lucide-react';
+import { Home, ShoppingCart, Vote, Wrench, DollarSign, Users, MessageSquare, Menu, X, LogOut, CircleUser as UserCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage, LANGUAGE_USER_STORAGE_KEY } from '../contexts/LanguageContext';
 import { PWAInstallButton } from './PWAInstallButton';
@@ -39,9 +39,6 @@ export function Layout({ children }: LayoutProps) {
     { path: '/finance', icon: DollarSign, label: t('nav_finance') },
     { path: '/owner-info', icon: Users, label: t('nav_owner_info') },
     { path: '/disputes', icon: MessageSquare, label: t('nav_communication') },
-    ...(profile?.role === 'admin' || profile?.role === 'council'
-      ? [{ path: '/admin', icon: Shield, label: t('nav_admin') }]
-      : []),
   ];
 
   const handleLogout = async () => {

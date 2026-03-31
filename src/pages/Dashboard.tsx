@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
-import { ShoppingCart, Vote, DollarSign, Users, Scale, FileText, Shield } from 'lucide-react';
+import { ShoppingCart, Vote, DollarSign, Users, Scale, FileText } from 'lucide-react';
 
 export function Dashboard() {
   const navigate = useNavigate();
@@ -15,23 +15,11 @@ export function Dashboard() {
     { path: '/owner-info', icon: Users, label: t('nav_owner_info'), color: 'bg-cyan-500' },
     { path: '/disputes', icon: Scale, label: t('nav_disputes'), color: 'bg-red-500' },
     { path: '/compliance', icon: FileText, label: t('nav_compliance'), color: 'bg-indigo-500' },
-    ...(profile?.role === 'admin' || profile?.role === 'council'
-      ? [
-          {
-            path: '/admin',
-            icon: Shield,
-            label: t('admin_dashboard_card_title'),
-            color: 'bg-slate-700',
-            desc: t('admin_dashboard_card_desc'),
-          },
-        ]
-      : []),
   ] as Array<{
     path: string;
     icon: typeof ShoppingCart;
     label: string;
     color: string;
-    desc?: string;
   }>;
 
   return (
@@ -58,9 +46,6 @@ export function Dashboard() {
                 <Icon className="text-white" size={24} />
               </div>
               <h3 className="text-lg font-semibold text-gray-900">{module.label}</h3>
-              {'desc' in module && module.desc && (
-                <p className="text-sm text-gray-500 mt-2 text-left line-clamp-3">{module.desc}</p>
-              )}
             </button>
           );
         })}

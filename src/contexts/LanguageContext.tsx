@@ -45,13 +45,6 @@ const translations: Record<string, Record<Language, string>> = {
   nav_disputes: { en: 'Dispute Resolution', zh: '纠纷调解' },
   nav_hiring: { en: 'Property Manager', zh: '物业经理' },
   nav_compliance: { en: 'Compliance & Insurance', zh: '法规保险' },
-  nav_admin: { en: 'Users & roles', zh: '用户与角色' },
-
-  admin_dashboard_card_title: { en: 'User & role management', zh: '用户与角色管理' },
-  admin_dashboard_card_desc: {
-    en: 'View accounts, assign council or property manager, activate sign-ups in Owner Information → User Management.',
-    zh: '查看账号、指定业委会/物业经理；待激活注册在「业主信息 → 用户管理」中处理。',
-  },
   admin_review_residents_cta: { en: 'Open User Management tab', zh: '打开「用户管理」页签' },
   admin_review_residents_hint: {
     en: 'Approve or reject pending accounts under Owner Information → User Management.',
