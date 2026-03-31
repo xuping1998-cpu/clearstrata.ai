@@ -32,9 +32,8 @@ export function Auth() {
       if (isLogin) {
         await signIn(email, password);
       } else {
-        await signUp(email, password, fullNameEn, fullNameZh, role, unitNumber);
+        const user = await signUp(email, password, fullNameEn, fullNameZh, role, unitNumber);
 
-        const { data: { user } } = await supabase.auth.getUser();
         if (user) {
           await supabase.from('profiles').update({ phone }).eq('id', user.id);
 
@@ -97,7 +96,7 @@ export function Auth() {
       </div>
 
       <div className="w-full max-w-md">
-        <div className="bg-white rounded-2xl shadow-xl shadow-gray-200/60 border border-gray-100 overflow-hidden">
+        <div className="bg-white rounded-2xl shadow-xl shadow-gray-200/60 border border-gray-100 overflow-visible">
           <div className="flex border-b border-gray-100">
             <button
               type="button"
@@ -306,8 +305,16 @@ export function Auth() {
                         type="date"
                         value={moveInDate}
                         onChange={(e) => setMoveInDate(e.target.value)}
-                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75]/20 focus:border-[#1D9E75] transition-colors"
+                        min="1900-01-01"
+                        max="2100-12-31"
+                        autoComplete="off"
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75]/20 focus:border-[#1D9E75] transition-colors cursor-pointer bg-white"
                       />
+                      <p className="text-xs text-gray-500 mt-1">
+                        {language === 'en'
+                          ? 'Tap the field to open the calendar and pick any date.'
+                          : '点击输入框打开日历，可自由选择日期。'}
+                      </p>
                     </div>
 
                     <div>

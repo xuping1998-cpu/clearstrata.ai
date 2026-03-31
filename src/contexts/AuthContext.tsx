@@ -8,7 +8,14 @@ interface AuthContextType {
   profile: Profile | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, fullNameEn: string, fullNameZh: string, role: string, unitNumber: string) => Promise<void>;
+  signUp: (
+    email: string,
+    password: string,
+    fullNameEn: string,
+    fullNameZh: string,
+    role: string,
+    unitNumber: string
+  ) => Promise<User | null>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -72,7 +79,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw error;
   };
 
-  const signUp = async (email: string, password: string, fullNameEn: string, fullNameZh: string, role: string, unitNumber: string) => {
+  const signUp = async (
+    email: string,
+    password: string,
+    fullNameEn: string,
+    fullNameZh: string,
+    role: string,
+    unitNumber: string
+  ) => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -80,9 +94,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (error) throw error;
 
-    if (data.user) {
+    const user = data.user;
+    if (user) {
       const { error: profileError } = await supabase.from('profiles').insert({
-        id: data.user.id,
+        id: user.id,
         email,
         full_name_en: fullNameEn,
         full_name_zh: fullNameZh,
@@ -93,6 +108,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (profileError) throw profileError;
     }
+
+    return user;
   };
 
   const signOut = async () => {
