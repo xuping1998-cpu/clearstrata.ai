@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { ShoppingCart, Vote, DollarSign, Users, Scale, FileText } from 'lucide-react';
+import { DashboardNotifications } from '../components/DashboardNotifications';
 
 export function Dashboard() {
   const navigate = useNavigate();
@@ -32,6 +33,8 @@ export function Dashboard() {
           {t('roles')}: {t(profile?.role || 'owner')}
         </p>
       </div>
+
+      <DashboardNotifications />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {modules.map((module) => {

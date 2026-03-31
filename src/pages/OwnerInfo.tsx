@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useLocation } from 'react-router-dom';
-import { User, Receipt, FileText, UserCog } from 'lucide-react';
+import { User, Receipt, FileText, UserCog, Bell } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { BackButton } from '../components/BackButton';
 import { MyProfileTab } from './owner-info/MyProfileTab';
@@ -8,8 +8,9 @@ import { LedgerTab } from './owner-info/LedgerTab';
 import { FormsTab } from './owner-info/FormsTab';
 import { UserManagementTab } from './owner-info/UserManagementTab';
 import { OwnerNotificationsSection } from './owner-info/OwnerNotificationsSection';
+import { NotificationTab } from './owner-info/notifications/NotificationTab';
 
-type TabType = 'profile' | 'ledger' | 'forms' | 'users';
+type TabType = 'profile' | 'ledger' | 'forms' | 'users' | 'notify';
 
 interface TabConfig {
   key: TabType;
@@ -22,6 +23,7 @@ const tabs: TabConfig[] = [
   { key: 'profile', label: '我的资料', icon: <User size={18} /> },
   { key: 'ledger', label: '账务记录', icon: <Receipt size={18} /> },
   { key: 'forms', label: '表单', icon: <FileText size={18} /> },
+  { key: 'notify', label: '通知', icon: <Bell size={18} /> },
   { key: 'users', label: '用户管理', icon: <UserCog size={18} />, councilOnly: true },
 ];
 
@@ -91,6 +93,7 @@ export function OwnerInfo() {
       {activeTab === 'profile' && <MyProfileTab />}
       {activeTab === 'ledger' && <LedgerTab />}
       {activeTab === 'forms' && <FormsTab />}
+      {activeTab === 'notify' && <NotificationTab />}
       {activeTab === 'users' && canManageRestrictedTabs && <UserManagementTab />}
     </div>
   );

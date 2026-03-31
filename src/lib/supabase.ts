@@ -42,6 +42,9 @@ export interface StrataNotification {
   file_name: string | null;
 }
 
+/** Feed table `strata_notifications` (priority / pin / reads). */
+export type StrataNotificationPriority = 'normal' | 'important' | 'urgent';
+
 export interface Database {
   public: {
     Tables: {
@@ -54,6 +57,32 @@ export interface Database {
         Row: StrataNotification;
         Insert: Pick<StrataNotification, 'title' | 'content' | 'file_url' | 'file_name'>;
         Update: Partial<Pick<StrataNotification, 'title' | 'content' | 'file_url' | 'file_name'>>;
+      };
+      strata_notifications: {
+        Row: {
+          id: string;
+          title: string;
+          content: string;
+          priority: StrataNotificationPriority;
+          is_pinned: boolean;
+          created_by: string;
+          created_at: string;
+          strata_id: string;
+        };
+        Insert: {
+          title: string;
+          content: string;
+          priority?: StrataNotificationPriority;
+          is_pinned?: boolean;
+          created_by: string;
+          strata_id: string;
+        };
+        Update: Partial<{ title: string; content: string; priority: StrataNotificationPriority; is_pinned: boolean }>;
+      };
+      notification_reads: {
+        Row: { id: string; notification_id: string; user_id: string; read_at: string };
+        Insert: { notification_id: string; user_id: string; read_at?: string };
+        Update: Partial<{ read_at: string }>;
       };
     };
   };
