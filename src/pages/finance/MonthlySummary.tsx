@@ -76,10 +76,13 @@ export function MonthlySummary() {
 
   const loadSummaries = async () => {
     setLoading(true);
-    const { data } = await supabase
+    let q = supabase
       .from('monthly_summaries')
       .select('*')
       .order('month', { ascending: false });
+    // Owners/readonly users should only see published summaries
+    if (!canManage) q = q.eq('published', true);
+    const { data } = await q;
     setSummaries(data || []);
     setLoading(false);
   };
