@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Building2, Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -12,7 +12,9 @@ export function Auth() {
   const [fullNameZh, setFullNameZh] = useState('');
   const [unitNumber, setUnitNumber] = useState('');
   const [phone, setPhone] = useState('');
-  const [moveInDate, setMoveInDate] = useState('');
+  /** Native <input type="date"> is unreliable as a controlled empty value in some browsers; keep value in a ref. */
+  const moveInDateRef = useRef<HTMLInputElement>(null);
+  const [moveInDateKey, setMoveInDateKey] = useState(0);
   const [languagePref, setLanguagePref] = useState<'en' | 'zh'>('en');
   const [role, setRole] = useState<'owner' | 'caretaker' | 'council'>('owner');
   const [error, setError] = useState('');
@@ -43,6 +45,8 @@ export function Auth() {
             caretaker: 'manager',
           };
 
+          const moveInRaw = moveInDateRef.current?.value?.trim() || '';
+
           await supabase.from('residents').insert({
             user_id: user.id,
             unit_no: unitNumber,
@@ -50,7 +54,7 @@ export function Auth() {
             name_zh: fullNameZh || null,
             email,
             phone,
-            move_in_date: moveInDate || null,
+            move_in_date: moveInRaw || null,
             language_pref: languagePref,
             role: roleMapping[role] || 'owner',
             status: role === 'council' ? 'active' : 'pending',
@@ -72,7 +76,8 @@ export function Auth() {
     setFullNameZh('');
     setUnitNumber('');
     setPhone('');
-    setMoveInDate('');
+    if (moveInDateRef.current) moveInDateRef.current.value = '';
+    setMoveInDateKey((k) => k + 1);
     setLanguagePref('en');
     setRole('owner');
     setStep(1);
@@ -301,10 +306,11 @@ export function Auth() {
                         {language === 'en' ? 'Move-in Date' : '入住日期'}
                       </label>
                       <input
+                        key={`move-in-${moveInDateKey}`}
+                        ref={moveInDateRef}
                         id="move-in"
                         type="date"
-                        value={moveInDate}
-                        onChange={(e) => setMoveInDate(e.target.value)}
+                        name="move_in_date"
                         min="1900-01-01"
                         max="2100-12-31"
                         autoComplete="off"
