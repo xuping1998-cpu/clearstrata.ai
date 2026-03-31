@@ -111,7 +111,7 @@ export function Procurement() {
   const [selectedJob, setSelectedJob] = useState<ProcurementJob | null>(null);
 
   const l = language === 'en';
-  const isCouncil = profile?.role === 'council';
+  const isCouncil = profile?.role === 'council' || profile?.role === 'admin';
 
   const loadJobs = async () => {
     if (!profile) return;

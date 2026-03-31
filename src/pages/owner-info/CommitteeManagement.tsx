@@ -47,7 +47,7 @@ export function CommitteeManagement() {
   const [showFilters, setShowFilters] = useState(false);
   const [approvingId, setApprovingId] = useState<string | null>(null);
 
-  const isCouncil = profile?.role === 'council';
+  const isCouncil = profile?.role === 'council' || profile?.role === 'admin';
 
   useEffect(() => {
     loadResidents();

@@ -42,9 +42,11 @@ export function OwnerInfoTab() {
     move_in_date: '',
   });
 
-  /** 业委会或物业经理可审核、查看全部单元（应用内无单独 admin 角色时与 council 等同） */
-  const canReviewOwnerInfo = profile?.role === 'council' || profile?.role === 'manager';
-  const isCouncil = profile?.role === 'council';
+  /** 业委会、系统管理员或物业经理可审核、查看全部单元 */
+  const canReviewOwnerInfo =
+    profile?.role === 'council' || profile?.role === 'manager' || profile?.role === 'admin';
+  const hidesOwnerSelfServiceForm =
+    profile?.role === 'council' || profile?.role === 'admin';
 
   const loadOwnerInfo = useCallback(async () => {
     if (!profile) return;
@@ -137,7 +139,7 @@ export function OwnerInfoTab() {
             emergency_contact_name: formData.emergency_contact_name,
             emergency_contact_phone: formData.emergency_contact_phone,
             move_in_date: formData.move_in_date || null,
-            pending_approval: profile.role !== 'council',
+            pending_approval: profile.role === 'owner',
             updated_at: new Date().toISOString(),
           })
           .eq('id', existing.id);
@@ -150,7 +152,7 @@ export function OwnerInfoTab() {
           emergency_contact_name: formData.emergency_contact_name,
           emergency_contact_phone: formData.emergency_contact_phone,
           move_in_date: formData.move_in_date || null,
-          pending_approval: profile.role !== 'council',
+          pending_approval: profile.role === 'owner',
         });
       }
       setShowForm(false);
@@ -190,7 +192,7 @@ export function OwnerInfoTab() {
             {language === 'en' ? 'Update My Information' : '更新我的信息'}
           </button>
         ) : (
-          !isCouncil && (
+          !hidesOwnerSelfServiceForm && (
             <button
               onClick={() => {
                 setFormData({ unit_number: '', unit_size_sqft: '', occupancy_status: 'owner_occupied', emergency_contact_name: '', emergency_contact_phone: '', move_in_date: '' });
@@ -323,7 +325,7 @@ export function OwnerInfoTab() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">{language === 'en' ? 'Move-in Date' : '入住日期'}</label>
                 <input type="date" value={formData.move_in_date} onChange={(e) => setFormData({ ...formData, move_in_date: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent" />
               </div>
-              {!isCouncil && (
+              {profile?.role === 'owner' && (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                   <p className="text-sm text-yellow-800">{language === 'en' ? 'Your information will be submitted for council approval.' : '您的信息将提交给理事会审批。'}</p>
                 </div>

@@ -104,7 +104,11 @@ export function Voting() {
         .eq('id', user.id)
         .maybeSingle();
 
-      setIsCouncil(profile?.role === 'council' || profile?.role === 'manager');
+      setIsCouncil(
+        profile?.role === 'council' ||
+          profile?.role === 'manager' ||
+          profile?.role === 'admin',
+      );
 
       const currentYear = new Date().getFullYear();
 

@@ -286,7 +286,7 @@ export function Hiring() {
     }
   }, [profile]);
 
-  const isCouncil = profile?.role === 'council';
+  const isCouncil = profile?.role === 'council' || profile?.role === 'admin';
 
   if (loading) {
     return <div className="text-center py-8">{t('loading')}</div>;

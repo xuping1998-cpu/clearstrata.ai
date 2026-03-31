@@ -19,9 +19,9 @@ const translations: Record<string, Record<Language, string>> = {
 
   roles: { en: 'Roles', zh: '角色' },
   owner: { en: 'Owner', zh: '业主' },
-  caretaker: { en: 'Caretaker', zh: '管家' },
   council: { en: 'Council Member', zh: '业委会成员' },
   manager: { en: 'Property Manager', zh: '物业经理' },
+  admin: { en: 'System Administrator', zh: '系统管理员' },
 
   auth_login: { en: 'Login', zh: '登录' },
   auth_signup: { en: 'Sign Up', zh: '注册' },

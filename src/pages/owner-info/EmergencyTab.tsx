@@ -34,7 +34,7 @@ export function EmergencyTab() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <ContactCard color="red" icon={<Phone size={24} />} title={language === 'en' ? 'Emergency Services' : '紧急服务'} number="911" subtitle={language === 'en' ? 'Police, Fire, Ambulance' : '警察、消防、救护车'} />
         <ContactCard color="blue" icon={<Building2 size={24} />} title={language === 'en' ? 'Strata Manager' : '物业经理'} number="604-555-0100" subtitle="manager@clearstrata.com" detail={language === 'en' ? 'Mon-Fri: 9AM - 5PM' : '周一至周五：9AM - 5PM'} />
-        <ContactCard color="green" icon={<Users size={24} />} title={language === 'en' ? 'Caretaker' : '管理员'} number="604-555-0150" subtitle="caretaker@clearstrata.com" detail={language === 'en' ? '24/7 Emergency Line' : '24/7 紧急热线'} />
+        <ContactCard color="green" icon={<Users size={24} />} title={language === 'en' ? 'Property Manager' : '物业经理'} number="604-555-0150" subtitle="manager@clearstrata.com" detail={language === 'en' ? '24/7 Emergency Line' : '24/7 紧急热线'} />
         <ContactCard color="orange" icon={<Phone size={24} />} title={language === 'en' ? 'Security' : '保安'} number="604-555-0175" subtitle={language === 'en' ? 'Front Desk / Security Office' : '前台 / 保安室'} detail={language === 'en' ? '24/7 Available' : '24/7 服务'} />
       </div>
 

@@ -50,7 +50,7 @@ export function DeregistrationRequest() {
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [reviewNotes, setReviewNotes] = useState('');
 
-  const isCouncil = profile?.role === 'council';
+  const isCouncil = profile?.role === 'council' || profile?.role === 'admin';
 
   useEffect(() => {
     if (profile) loadData();

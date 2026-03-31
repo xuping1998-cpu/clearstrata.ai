@@ -13,11 +13,14 @@ type Body = {
   role?: string;
 };
 
-const META_ROLES = new Set(["user", "council", "admin"]);
+type ProfileRole = "owner" | "council" | "admin" | "manager";
 
-function mapToProfileRole(meta: string): "owner" | "council" | "admin" {
+const META_ROLES = new Set(["user", "council", "admin", "manager"]);
+
+function mapToProfileRole(meta: string): ProfileRole {
   if (meta === "council") return "council";
   if (meta === "admin") return "admin";
+  if (meta === "manager") return "manager";
   return "owner";
 }
 
@@ -66,7 +69,9 @@ Deno.serve(async (req: Request) => {
   const metaRole = body.role?.trim();
   if (!userId || !metaRole || !META_ROLES.has(metaRole)) {
     return new Response(
-      JSON.stringify({ error: "user_id and valid role (user|council|admin) required" }),
+      JSON.stringify({
+        error: "user_id and valid role (user|council|admin|manager) required",
+      }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
@@ -99,6 +104,48 @@ Deno.serve(async (req: Request) => {
   }
 
   if (caller.role !== "council" && caller.role !== "admin") {
+    return new Response(JSON.stringify({ error: "Forbidden" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const { data: targetProfile, error: targetErr } = await adminClient
+    .from("profiles")
+    .select("role")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (targetErr || !targetProfile?.role) {
+    return new Response(JSON.stringify({ error: "User not found" }), {
+      status: 404,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  if (caller.role === "council") {
+    if (metaRole !== "user" && metaRole !== "council") {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (targetProfile.role === "admin" || targetProfile.role === "manager") {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+  }
+
+  if (metaRole === "admin" && caller.role !== "admin") {
+    return new Response(JSON.stringify({ error: "Forbidden" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  if (metaRole === "manager" && caller.role !== "admin") {
     return new Response(JSON.stringify({ error: "Forbidden" }), {
       status: 403,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

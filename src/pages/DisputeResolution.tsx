@@ -151,7 +151,10 @@ export function DisputeResolution() {
         .eq('id', user.id)
         .maybeSingle();
 
-      const isAuthorized = profile?.role === 'council' || profile?.role === 'manager';
+      const isAuthorized =
+        profile?.role === 'council' ||
+        profile?.role === 'manager' ||
+        profile?.role === 'admin';
       setIsCouncilOrManager(isAuthorized);
       setUserRole(profile?.role || '');
 
@@ -958,7 +961,7 @@ export function DisputeResolution() {
                       {language === 'en' ? 'Escalate to Council' : '升级至业委会'}
                     </button>
                   )}
-                  {userRole === 'council' && (
+                  {(userRole === 'council' || userRole === 'admin') && (
                     <button
                       onClick={() => {
                         const resolutionEn = prompt(language === 'en' ? 'Enter resolution (English):' : '输入解决方案（英文）：');

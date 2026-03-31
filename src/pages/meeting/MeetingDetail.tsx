@@ -115,7 +115,11 @@ export function MeetingDetail() {
         supabase.from('meetings').select('*').eq('id', id).maybeSingle(),
       ]);
 
-      setIsCouncil(profile?.role === 'council' || profile?.role === 'manager');
+      setIsCouncil(
+        profile?.role === 'council' ||
+          profile?.role === 'manager' ||
+          profile?.role === 'admin',
+      );
 
       if (meetingData) {
         setMeeting(meetingData);

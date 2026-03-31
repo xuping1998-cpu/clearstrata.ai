@@ -98,15 +98,15 @@ export function Profile() {
                       ? 'Council Member'
                       : profile?.role === 'manager'
                       ? 'Property Manager'
-                      : profile?.role === 'caretaker'
-                      ? 'Caretaker'
+                      : profile?.role === 'admin'
+                      ? 'System Administrator'
                       : 'Owner'
                     : profile?.role === 'council'
                     ? '理事会成员'
                     : profile?.role === 'manager'
                     ? '物业经理'
-                    : profile?.role === 'caretaker'
-                    ? '管家'
+                    : profile?.role === 'admin'
+                    ? '系统管理员'
                     : '业主'}
                 </div>
               </div>

@@ -177,9 +177,9 @@ export function Admin() {
   const admins = profiles.filter((p) => p.role === 'admin');
   const councilMembers = profiles.filter((p) => p.role === 'council');
   const owners = profiles.filter((p) => p.role === 'owner');
-  const caretakers = profiles.filter((p) => p.role === 'caretaker');
+  const managers = profiles.filter((p) => p.role === 'manager');
   const listedIds = new Set(
-    [...admins, ...councilMembers, ...owners, ...caretakers].map((p) => p.id),
+    [...admins, ...councilMembers, ...owners, ...managers].map((p) => p.id),
   );
   const otherRoles = profiles.filter((p) => !listedIds.has(p.id));
 
@@ -323,15 +323,28 @@ export function Admin() {
                 className="bg-gray-50 border-gray-200"
                 actions={
                   canManageRoles ? (
-                    <button
-                      onClick={() => updateRole(owner.id, 'council')}
-                      disabled={updating === owner.id}
-                      className="px-4 py-2 bg-[#1D9E75] text-white rounded-lg hover:bg-[#178a66] transition-colors disabled:opacity-50"
-                    >
-                      {updating === owner.id
-                        ? (language === 'en' ? 'Updating...' : '更新中...')
-                        : (language === 'en' ? 'Promote to Council' : '提升为理事')}
-                    </button>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => updateRole(owner.id, 'council')}
+                        disabled={updating === owner.id}
+                        className="px-4 py-2 bg-[#1D9E75] text-white rounded-lg hover:bg-[#178a66] transition-colors disabled:opacity-50"
+                      >
+                        {updating === owner.id
+                          ? (language === 'en' ? 'Updating...' : '更新中...')
+                          : (language === 'en' ? 'Promote to Council' : '提升为理事')}
+                      </button>
+                      <button
+                        onClick={() => updateRole(owner.id, 'manager')}
+                        disabled={updating === owner.id}
+                        className="px-4 py-2 bg-teal-700 text-white rounded-lg hover:bg-teal-800 transition-colors disabled:opacity-50"
+                      >
+                        {updating === owner.id
+                          ? (language === 'en' ? 'Updating...' : '更新中...')
+                          : (language === 'en'
+                            ? 'Assign as Property Manager'
+                            : '设为物业经理')}
+                      </button>
+                    </div>
                   ) : undefined
                 }
               />
@@ -339,52 +352,52 @@ export function Admin() {
           </div>
         </div>
 
-        {caretakers.length > 0 && (
+        {managers.length > 0 && (
           <div className="bg-white rounded-xl p-6 shadow-sm">
             <div className="flex items-center gap-3 mb-4">
-              <Shield className="text-green-600" size={24} />
+              <Shield className="text-teal-600" size={24} />
               <h2 className="text-xl font-semibold text-gray-900">
-                {language === 'en' ? 'Caretakers' : '管家'}
+                {language === 'en' ? 'Property Managers' : '物业经理'}
               </h2>
-              <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
-                {caretakers.length}
+              <span className="px-2 py-1 bg-teal-100 text-teal-900 rounded-full text-sm font-medium">
+                {managers.length}
               </span>
             </div>
 
             <div className="space-y-3">
-              {caretakers.map((caretaker) => (
+              {managers.map((mgr) => (
                 <UserCard
-                  key={caretaker.id}
-                  user={caretaker}
+                  key={mgr.id}
+                  user={mgr}
                   language={language}
-                  isEditing={editingId === caretaker.id}
+                  isEditing={editingId === mgr.id}
                   editForm={editForm}
-                  updating={updating === caretaker.id}
-                  onStartEdit={() => startEdit(caretaker)}
+                  updating={updating === mgr.id}
+                  onStartEdit={() => startEdit(mgr)}
                   onCancelEdit={cancelEdit}
-                  onSaveEdit={() => saveEdit(caretaker.id)}
+                  onSaveEdit={() => saveEdit(mgr.id)}
                   onFormChange={(field, value) =>
                     setEditForm({ ...editForm, [field]: value })
                   }
-                  className="bg-green-50 border-green-200"
+                  className="bg-teal-50 border-teal-200"
                   actions={
                     canManageRoles ? (
                       <div className="flex gap-2">
                         <button
-                          onClick={() => updateRole(caretaker.id, 'council')}
-                          disabled={updating === caretaker.id}
+                          onClick={() => updateRole(mgr.id, 'council')}
+                          disabled={updating === mgr.id}
                           className="px-4 py-2 bg-[#1D9E75] text-white rounded-lg hover:bg-[#178a66] transition-colors disabled:opacity-50"
                         >
-                          {updating === caretaker.id
+                          {updating === mgr.id
                             ? (language === 'en' ? 'Updating...' : '更新中...')
                             : (language === 'en' ? 'Promote to Council' : '提升为理事')}
                         </button>
                         <button
-                          onClick={() => updateRole(caretaker.id, 'owner')}
-                          disabled={updating === caretaker.id}
+                          onClick={() => updateRole(mgr.id, 'owner')}
+                          disabled={updating === mgr.id}
                           className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50"
                         >
-                          {updating === caretaker.id
+                          {updating === mgr.id
                             ? (language === 'en' ? 'Updating...' : '更新中...')
                             : (language === 'en' ? 'Change to Owner' : '改为业主')}
                         </button>

@@ -90,6 +90,12 @@ export function UserManagementTab() {
 
   const canSetRoles = profile?.role === 'council' || profile?.role === 'admin';
 
+  const canShowRoleSelector = (user: Profile) => {
+    if (!canSetRoles || user.role === 'admin') return false;
+    if (profile?.role === 'council' && user.role === 'manager') return false;
+    return true;
+  };
+
   const updateUserRole = async (userId: string, metaRole: AppMetadataRole) => {
     if (!canSetRoles) return;
     const current = profiles.find((p) => p.id === userId);
@@ -148,11 +154,10 @@ export function UserManagementTab() {
           en: {
             owner: 'Owner',
             council: 'Council',
-            caretaker: 'Caretaker',
             manager: 'Property manager',
             admin: 'Admin',
           },
-          zh: { owner: '业主', council: '理事会', caretaker: '管家', manager: '物业经理', admin: '管理员' },
+          zh: { owner: '业主', council: '理事会', manager: '物业经理', admin: '管理员' },
         };
         return map[language]?.[role] || role;
       };
@@ -266,7 +271,7 @@ export function UserManagementTab() {
             onSaveEdit={() => saveEdit(user.id)}
             onFormChange={updateEditForm}
             roleSelector={
-              canSetRoles ? (
+              canShowRoleSelector(user) ? (
                 <label className="flex items-center gap-2 text-sm text-gray-700">
                   <span className="whitespace-nowrap text-xs font-medium text-gray-500">
                     {language === 'en' ? 'Role' : '角色'}
@@ -280,14 +285,16 @@ export function UserManagementTab() {
                     className="min-w-[140px] px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#1D9E75] disabled:opacity-50"
                   >
                     <option value="user">
-                      {language === 'en' ? 'User' : '普通用户'}
+                      {language === 'en' ? 'Owner' : '业主'}
                     </option>
                     <option value="council">
                       {language === 'en' ? 'Council' : '业委会成员'}
                     </option>
-                    <option value="admin">
-                      {language === 'en' ? 'Admin' : '管理员'}
-                    </option>
+                    {profile?.role === 'admin' && (
+                      <option value="manager">
+                        {language === 'en' ? 'Property Manager' : '物业经理'}
+                      </option>
+                    )}
                   </select>
                 </label>
               ) : undefined

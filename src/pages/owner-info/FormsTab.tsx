@@ -29,7 +29,7 @@ export function FormsTab() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [uploading, setUploading] = useState(false);
 
-  const isCouncil = profile?.role === 'council';
+  const isCouncil = profile?.role === 'council' || profile?.role === 'admin';
 
   useEffect(() => {
     loadDocuments();
