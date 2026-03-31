@@ -16,7 +16,7 @@ import { NotificationList, type PriorityFilter } from './NotificationList';
 
 /**
  * Strata-wide notification feed (table `strata_notifications`).
- * Distinct from the legacy bulletin board table `notifications` on the same page.
+ * Distinct from community bulletins (`community_notifications`) elsewhere on the owner page.
  */
 export function NotificationTab() {
   const { profile } = useAuth();

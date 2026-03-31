@@ -28,7 +28,7 @@ export interface Profile {
   updated_at: string;
 }
 
-/** Building-wide notices on the owner info page (表 `notifications`). */
+/** Legacy building-wide bulletin table (still in DB; owner page uses `community_notifications`). */
 export interface StrataNotification {
   id: string;
   title: string;
@@ -42,8 +42,17 @@ export interface StrataNotification {
   file_name: string | null;
 }
 
-/** Feed table `strata_notifications` (priority / pin / reads). */
+/** Owner info — community bulletin (`community_notifications`) and strata feed share these levels. */
 export type StrataNotificationPriority = 'normal' | 'important' | 'urgent';
+
+export interface CommunityNotification {
+  id: string;
+  title: string;
+  content: string;
+  priority: StrataNotificationPriority;
+  created_at: string;
+  created_by: string;
+}
 
 export interface Database {
   public: {
@@ -57,6 +66,11 @@ export interface Database {
         Row: StrataNotification;
         Insert: Pick<StrataNotification, 'title' | 'content' | 'file_url' | 'file_name'>;
         Update: Partial<Pick<StrataNotification, 'title' | 'content' | 'file_url' | 'file_name'>>;
+      };
+      community_notifications: {
+        Row: CommunityNotification;
+        Insert: Pick<CommunityNotification, 'title' | 'content' | 'priority' | 'created_by'>;
+        Update: Partial<Pick<CommunityNotification, 'title' | 'content' | 'priority'>>;
       };
       strata_notifications: {
         Row: {

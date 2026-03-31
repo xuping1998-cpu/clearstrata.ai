@@ -22,7 +22,7 @@ export function AnnouncementInboxProvider({ children }: { children: ReactNode })
       .from('user_inbox_notifications')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', profile.id)
-      .eq('type', 'owner_announcement')
+      .in('type', ['owner_announcement', 'community_announcement'])
       .eq('read', false);
 
     if (error) {
