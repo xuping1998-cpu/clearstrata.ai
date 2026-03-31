@@ -13,7 +13,6 @@ interface AuthContextType {
     password: string,
     fullNameEn: string,
     fullNameZh: string,
-    role: string,
     unitNumber: string
   ) => Promise<User | null>;
   signOut: () => Promise<void>;
@@ -84,7 +83,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     password: string,
     fullNameEn: string,
     fullNameZh: string,
-    role: string,
     unitNumber: string
   ) => {
     const { data, error } = await supabase.auth.signUp({
@@ -101,7 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email,
         full_name_en: fullNameEn,
         full_name_zh: fullNameZh,
-        role: role as 'owner' | 'caretaker' | 'council',
+        role: 'owner',
         unit_number: unitNumber,
         preferred_language: 'en',
       });

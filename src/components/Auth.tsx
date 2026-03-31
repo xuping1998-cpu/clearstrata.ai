@@ -16,7 +16,6 @@ export function Auth() {
   const moveInDateRef = useRef<HTMLInputElement>(null);
   const [moveInDateKey, setMoveInDateKey] = useState(0);
   const [languagePref, setLanguagePref] = useState<'en' | 'zh'>('en');
-  const [role, setRole] = useState<'owner' | 'caretaker' | 'council'>('owner');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState<1 | 2>(1);
@@ -34,16 +33,10 @@ export function Auth() {
       if (isLogin) {
         await signIn(email, password);
       } else {
-        const user = await signUp(email, password, fullNameEn, fullNameZh, role, unitNumber);
+        const user = await signUp(email, password, fullNameEn, fullNameZh, unitNumber);
 
         if (user) {
           await supabase.from('profiles').update({ phone }).eq('id', user.id);
-
-          const roleMapping: Record<string, string> = {
-            owner: 'owner',
-            council: 'council',
-            caretaker: 'manager',
-          };
 
           const moveInRaw = moveInDateRef.current?.value?.trim() || '';
 
@@ -56,8 +49,8 @@ export function Auth() {
             phone,
             move_in_date: moveInRaw || null,
             language_pref: languagePref,
-            role: roleMapping[role] || 'owner',
-            status: role === 'council' ? 'active' : 'pending',
+            role: 'owner',
+            status: 'pending',
             strata_fee_status: 'current',
           });
         }
@@ -79,7 +72,6 @@ export function Auth() {
     if (moveInDateRef.current) moveInDateRef.current.value = '';
     setMoveInDateKey((k) => k + 1);
     setLanguagePref('en');
-    setRole('owner');
     setStep(1);
     setError('');
     setShowPassword(false);
@@ -365,27 +357,11 @@ export function Auth() {
                       </div>
                     </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5" htmlFor="signup-role">
-                        {t('auth_select_role')}
-                      </label>
-                      <select
-                        id="signup-role"
-                        value={role}
-                        onChange={(e) => setRole(e.target.value as 'owner' | 'caretaker' | 'council')}
-                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75]/20 focus:border-[#1D9E75] transition-colors"
-                      >
-                        <option value="owner">{t('owner')}</option>
-                        <option value="caretaker">{t('caretaker')}</option>
-                        <option value="council">{t('council')}</option>
-                      </select>
-                    </div>
-
                     <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
                       <p className="text-sm text-emerald-800">
                         {language === 'en'
-                          ? 'Your registration will be reviewed by the strata committee before activation.'
-                          : '您的注册将由业委会审核后激活。'}
+                          ? 'You are registering as a property owner. Council roles are assigned by a site administrator after approval. Admin accounts cannot be created here.'
+                          : '您将以业主身份注册。理事会（Council）角色须由管理员在后台审核后指定。系统管理员（Admin）账号不能通过此页面注册。'}
                       </p>
                     </div>
 

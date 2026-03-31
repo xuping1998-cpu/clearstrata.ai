@@ -20,6 +20,7 @@ interface Profile {
 export function Admin() {
   const { language } = useLanguage();
   const { profile } = useAuth();
+  const canManageRoles = profile?.role === 'admin';
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
@@ -89,6 +90,32 @@ export function Admin() {
   };
 
   const updateRole = async (userId: string, newRole: UserRole) => {
+    if (!canManageRoles) {
+      alert(
+        language === 'en'
+          ? 'Only site administrators can change user roles.'
+          : '只有系统管理员可以更改用户角色。'
+      );
+      return;
+    }
+    if (newRole === 'admin') {
+      alert(
+        language === 'en'
+          ? 'Admin accounts can only be set directly in the database.'
+          : '管理员（Admin）账号只能在数据库中直接设置，不能通过网页分配。'
+      );
+      return;
+    }
+    const target = profiles.find((p) => p.id === userId);
+    if (target?.role === 'admin') {
+      alert(
+        language === 'en'
+          ? 'Administrator roles cannot be changed from this page.'
+          : '不能在此页面修改系统管理员角色。'
+      );
+      return;
+    }
+
     setUpdating(userId);
 
     const metaRole = profileRoleToMetadataRole(newRole);
@@ -147,11 +174,12 @@ export function Admin() {
     );
   }
 
+  const admins = profiles.filter((p) => p.role === 'admin');
   const councilMembers = profiles.filter((p) => p.role === 'council');
   const owners = profiles.filter((p) => p.role === 'owner');
   const caretakers = profiles.filter((p) => p.role === 'caretaker');
   const listedIds = new Set(
-    [...councilMembers, ...owners, ...caretakers].map((p) => p.id),
+    [...admins, ...councilMembers, ...owners, ...caretakers].map((p) => p.id),
   );
   const otherRoles = profiles.filter((p) => !listedIds.has(p.id));
 
@@ -165,8 +193,13 @@ export function Admin() {
           </h1>
           <p className="text-gray-600">
             {language === 'en'
-              ? 'Manage roles and permissions for all users'
-              : '管理所有用户的角色和权限'}
+              ? 'View all registered users. Role changes (Owner ↔ Council) are limited to administrators.'
+              : '查看所有注册用户。业主与理事会（Council）角色互调仅可由管理员操作。'}
+          </p>
+          <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3 max-w-2xl">
+            {language === 'en'
+              ? 'New sign-ups are always Owners. Council is assigned here by an admin. Admin accounts are database-only.'
+              : '新注册用户均为业主；理事会成员由管理员在本页提升。管理员（Admin）账号仅能通过数据库设置。'}
           </p>
         </div>
         <button
@@ -179,6 +212,42 @@ export function Admin() {
       </div>
 
       <div className="space-y-6">
+        {admins.length > 0 && (
+          <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+            <div className="flex items-center gap-3 mb-4">
+              <Shield className="text-purple-700" size={24} />
+              <h2 className="text-xl font-semibold text-gray-900">
+                {language === 'en' ? 'System administrators' : '系统管理员'}
+              </h2>
+              <span className="px-2 py-1 bg-purple-100 text-purple-900 rounded-full text-sm font-medium">
+                {admins.length}
+              </span>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              {language === 'en'
+                ? 'Admin roles are not editable from this app.'
+                : '管理员角色不可在本应用中修改。'}
+            </p>
+            <div className="space-y-3">
+              {admins.map((a) => (
+                <UserCard
+                  key={a.id}
+                  user={a}
+                  language={language}
+                  isEditing={editingId === a.id}
+                  editForm={editForm}
+                  updating={updating === a.id}
+                  onStartEdit={() => startEdit(a)}
+                  onCancelEdit={cancelEdit}
+                  onSaveEdit={() => saveEdit(a.id)}
+                  onFormChange={(field, value) => setEditForm({ ...editForm, [field]: value })}
+                  className="bg-purple-50/60 border-purple-200"
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="bg-white rounded-xl p-6 shadow-sm">
           <div className="flex items-center gap-3 mb-4">
             <Crown className="text-yellow-600" size={24} />
@@ -207,7 +276,8 @@ export function Admin() {
                 }
                 className="bg-yellow-50 border-yellow-200"
                 actions={
-                  member.id !== profile.id && (
+                  canManageRoles &&
+                  member.id !== profile?.id && (
                     <button
                       onClick={() => updateRole(member.id, 'owner')}
                       disabled={updating === member.id}
@@ -252,15 +322,17 @@ export function Admin() {
                 }
                 className="bg-gray-50 border-gray-200"
                 actions={
-                  <button
-                    onClick={() => updateRole(owner.id, 'council')}
-                    disabled={updating === owner.id}
-                    className="px-4 py-2 bg-[#1D9E75] text-white rounded-lg hover:bg-[#178a66] transition-colors disabled:opacity-50"
-                  >
-                    {updating === owner.id
-                      ? (language === 'en' ? 'Updating...' : '更新中...')
-                      : (language === 'en' ? 'Promote to Council' : '提升为理事')}
-                  </button>
+                  canManageRoles ? (
+                    <button
+                      onClick={() => updateRole(owner.id, 'council')}
+                      disabled={updating === owner.id}
+                      className="px-4 py-2 bg-[#1D9E75] text-white rounded-lg hover:bg-[#178a66] transition-colors disabled:opacity-50"
+                    >
+                      {updating === owner.id
+                        ? (language === 'en' ? 'Updating...' : '更新中...')
+                        : (language === 'en' ? 'Promote to Council' : '提升为理事')}
+                    </button>
+                  ) : undefined
                 }
               />
             ))}
@@ -296,26 +368,28 @@ export function Admin() {
                   }
                   className="bg-green-50 border-green-200"
                   actions={
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => updateRole(caretaker.id, 'council')}
-                        disabled={updating === caretaker.id}
-                        className="px-4 py-2 bg-[#1D9E75] text-white rounded-lg hover:bg-[#178a66] transition-colors disabled:opacity-50"
-                      >
-                        {updating === caretaker.id
-                          ? (language === 'en' ? 'Updating...' : '更新中...')
-                          : (language === 'en' ? 'Promote to Council' : '提升为理事')}
-                      </button>
-                      <button
-                        onClick={() => updateRole(caretaker.id, 'owner')}
-                        disabled={updating === caretaker.id}
-                        className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50"
-                      >
-                        {updating === caretaker.id
-                          ? (language === 'en' ? 'Updating...' : '更新中...')
-                          : (language === 'en' ? 'Change to Owner' : '改为业主')}
-                      </button>
-                    </div>
+                    canManageRoles ? (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => updateRole(caretaker.id, 'council')}
+                          disabled={updating === caretaker.id}
+                          className="px-4 py-2 bg-[#1D9E75] text-white rounded-lg hover:bg-[#178a66] transition-colors disabled:opacity-50"
+                        >
+                          {updating === caretaker.id
+                            ? (language === 'en' ? 'Updating...' : '更新中...')
+                            : (language === 'en' ? 'Promote to Council' : '提升为理事')}
+                        </button>
+                        <button
+                          onClick={() => updateRole(caretaker.id, 'owner')}
+                          disabled={updating === caretaker.id}
+                          className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50"
+                        >
+                          {updating === caretaker.id
+                            ? (language === 'en' ? 'Updating...' : '更新中...')
+                            : (language === 'en' ? 'Change to Owner' : '改为业主')}
+                        </button>
+                      </div>
+                    ) : undefined
                   }
                 />
               ))}
