@@ -38,6 +38,8 @@ export interface StrataNotification {
   created_at: string;
   /** Publisher profile id; set by DB trigger on insert. */
   created_by: string | null;
+  file_url: string | null;
+  file_name: string | null;
 }
 
 export interface Database {
@@ -50,8 +52,8 @@ export interface Database {
       };
       notifications: {
         Row: StrataNotification;
-        Insert: Pick<StrataNotification, 'title' | 'content'>;
-        Update: Partial<Pick<StrataNotification, 'title' | 'content'>>;
+        Insert: Pick<StrataNotification, 'title' | 'content' | 'file_url' | 'file_name'>;
+        Update: Partial<Pick<StrataNotification, 'title' | 'content' | 'file_url' | 'file_name'>>;
       };
     };
   };
