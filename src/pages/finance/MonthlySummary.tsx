@@ -204,6 +204,23 @@ export function MonthlySummary() {
     }
   };
 
+  const unpublishSummary = async (id: string) => {
+    if (!profile) return;
+    await supabase
+      .from('monthly_summaries')
+      .update({
+        published: false,
+        published_by: null,
+        published_at: null,
+      })
+      .eq('id', id);
+    await loadSummaries();
+    await loadMonthSnapshot();
+    if (selectedSummary?.id === id) {
+      setSelectedSummary(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -394,6 +411,14 @@ export function MonthlySummary() {
                       <Eye size={16} />
                       {l ? 'View' : '查看'}
                     </button>
+                    {canManage && summary.published && (
+                      <button
+                        onClick={() => unpublishSummary(summary.id)}
+                        className="flex items-center gap-2 px-3 py-2 text-sm bg-white/80 text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                      >
+                        {l ? 'Unpublish' : '撤回发布'}
+                      </button>
+                    )}
                     {canManage && !summary.published && (
                       <button
                         onClick={() => publishSummary(summary.id)}
