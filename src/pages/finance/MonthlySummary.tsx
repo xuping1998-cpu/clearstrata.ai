@@ -28,6 +28,10 @@ export function MonthlySummary() {
   const canManage = profile?.role === 'council' || profile?.role === 'admin';
   const l = language === 'en';
 
+  const now = new Date();
+  const [selectedYear, setSelectedYear] = useState<number>(now.getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState<number>(now.getMonth()); // 0-11
+
   const [snapshot, setSnapshot] = useState<{
     income: number;
     expenses: number;
@@ -39,9 +43,8 @@ export function MonthlySummary() {
   } | null>(null);
 
   const loadMonthSnapshot = useCallback(async () => {
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+    const monthStart = new Date(selectedYear, selectedMonth, 1).toISOString().split('T')[0];
+    const monthEnd = new Date(selectedYear, selectedMonth + 1, 0).toISOString().split('T')[0];
     const [{ data: payments }, { data: invs }] = await Promise.all([
       supabase
         .from('ledger_transactions')
@@ -61,7 +64,7 @@ export function MonthlySummary() {
     const paid = list.filter((i) => i.status === 'paid').length;
     const anomaly = list.filter((i) => i.status === 'flagged' || i.status === 'rejected').length;
     setSnapshot({ income, expenses, balance, pending_review, approved, paid, anomaly });
-  }, []);
+  }, [selectedMonth, selectedYear]);
 
   useEffect(() => {
     void loadSummaries();
@@ -86,11 +89,10 @@ export function MonthlySummary() {
     setGenerating(true);
 
     try {
-      const now = new Date();
-      const monthDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+      const monthDate = new Date(selectedYear, selectedMonth, 1).toISOString().split('T')[0];
 
       const monthStart = monthDate;
-      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+      const monthEnd = new Date(selectedYear, selectedMonth + 1, 0).toISOString().split('T')[0];
 
       const [{ data: payments }, { data: invoices }] = await Promise.all([
         supabase
@@ -117,8 +119,9 @@ export function MonthlySummary() {
         expensesByCategory[cat] = (expensesByCategory[cat] || 0) + Number(inv.total_amount || 0);
       });
 
-      const monthName = now.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
-      const monthNameZh = `${now.getFullYear()}年${now.getMonth() + 1}月`;
+      const monthForLabel = new Date(selectedYear, selectedMonth, 1);
+      const monthName = monthForLabel.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+      const monthNameZh = `${selectedYear}年${selectedMonth + 1}月`;
 
       const summaryEn = buildSummaryText(
         'en',
@@ -211,6 +214,64 @@ export function MonthlySummary() {
 
   return (
     <div className="space-y-6">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setSelectedSummary(null);
+                setSelectedMonth((m) => {
+                  if (m === 0) {
+                    setSelectedYear((y) => y - 1);
+                    return 11;
+                  }
+                  return m - 1;
+                });
+              }}
+              className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              {l ? 'Prev' : '上一月'}
+            </button>
+            <div className="text-sm font-semibold text-gray-900">
+              {formatMonth(new Date(selectedYear, selectedMonth, 1).toISOString().split('T')[0], language)}
+            </div>
+            <button
+              onClick={() => {
+                setSelectedSummary(null);
+                setSelectedMonth((m) => {
+                  if (m === 11) {
+                    setSelectedYear((y) => y + 1);
+                    return 0;
+                  }
+                  return m + 1;
+                });
+              }}
+              className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              {l ? 'Next' : '下一月'}
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500">{l ? 'Year' : '年份'}</span>
+            <select
+              value={selectedYear}
+              onChange={(e) => {
+                setSelectedSummary(null);
+                setSelectedYear(Number(e.target.value));
+              }}
+              className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-700 bg-white"
+            >
+              {Array.from({ length: 9 }, (_, i) => now.getFullYear() - 5 + i).map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
       {snapshot && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 border-l-4 border-l-green-500">
@@ -281,7 +342,7 @@ export function MonthlySummary() {
               ) : (
                 <RefreshCw size={18} />
               )}
-              {generating ? (l ? 'Generating...' : '生成中...') : (l ? 'Generate This Month' : '生成本月报告')}
+              {generating ? (l ? 'Generating...' : '生成中...') : (l ? 'Generate Selected Month' : '生成所选月份报告')}
             </button>
           </div>
         </div>
