@@ -28,6 +28,16 @@ export interface Profile {
   updated_at: string;
 }
 
+/** Building-wide notices on the owner info page (表 `notifications`). */
+export interface StrataNotification {
+  id: string;
+  title: string;
+  content: string;
+  author_name: string;
+  author_role: string;
+  created_at: string;
+}
+
 export interface Database {
   public: {
     Tables: {
@@ -35,6 +45,11 @@ export interface Database {
         Row: Profile;
         Insert: Omit<Profile, 'id' | 'created_at' | 'updated_at'>;
         Update: Partial<Omit<Profile, 'id' | 'created_at' | 'updated_at'>>;
+      };
+      notifications: {
+        Row: StrataNotification;
+        Insert: Pick<StrataNotification, 'title' | 'content'>;
+        Update: Partial<Pick<StrataNotification, 'title' | 'content'>>;
       };
     };
   };

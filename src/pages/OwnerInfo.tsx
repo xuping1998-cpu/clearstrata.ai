@@ -7,6 +7,7 @@ import { MyProfileTab } from './owner-info/MyProfileTab';
 import { LedgerTab } from './owner-info/LedgerTab';
 import { FormsTab } from './owner-info/FormsTab';
 import { UserManagementTab } from './owner-info/UserManagementTab';
+import { OwnerNotificationsSection } from './owner-info/OwnerNotificationsSection';
 
 type TabType = 'profile' | 'ledger' | 'forms' | 'users';
 
@@ -56,6 +57,8 @@ export function OwnerInfo() {
         <h1 className="text-3xl font-bold text-gray-900">业主信息</h1>
         <p className="text-gray-600 mt-2">管理您的资料、单元信息和账户详情</p>
       </div>
+
+      <OwnerNotificationsSection />
 
       <div className="mb-6 border-b border-gray-200 overflow-x-auto">
         <nav className="flex gap-1 min-w-max">
