@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Home, Phone, Receipt, FileText, UserCog, Users, UserMinus, User } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { BackButton } from '../components/BackButton';
@@ -33,9 +34,20 @@ const tabs: TabConfig[] = [
 
 export function OwnerInfo() {
   const { profile } = useAuth();
+  const [searchParams] = useSearchParams();
+  const canManageRestrictedTabs = profile?.role === 'council' || profile?.role === 'admin';
+
+  const tabKeys = useMemo(() => tabs.map((x) => x.key), []);
   const [activeTab, setActiveTab] = useState<TabType>('profile');
 
-  const canManageRestrictedTabs = profile?.role === 'council' || profile?.role === 'admin';
+  useEffect(() => {
+    const raw = searchParams.get('tab');
+    if (!raw || !tabKeys.includes(raw as TabType)) return;
+    const next = raw as TabType;
+    const cfg = tabs.find((t) => t.key === next);
+    if (cfg?.councilOnly && !canManageRestrictedTabs) return;
+    setActiveTab(next);
+  }, [searchParams, canManageRestrictedTabs, tabKeys]);
 
   const visibleTabs = tabs.filter((tab) => !tab.councilOnly || canManageRestrictedTabs);
 

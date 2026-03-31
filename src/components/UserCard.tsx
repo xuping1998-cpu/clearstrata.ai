@@ -7,6 +7,8 @@ interface UserCardProps {
     full_name_zh?: string;
     email: string;
     phone?: string;
+    /** e.g. localized profile role; shown under email when set */
+    roleLabel?: string;
   };
   language: 'en' | 'zh';
   isEditing: boolean;
@@ -78,6 +80,9 @@ export function UserCard({
             />
           </div>
           <div className="text-xs text-gray-500">{user.email}</div>
+          {user.roleLabel && (
+            <div className="text-xs font-medium text-[#1D9E75]">{user.roleLabel}</div>
+          )}
           <div className="flex gap-2 pt-2">
             <button
               onClick={onSaveEdit}
@@ -112,6 +117,9 @@ export function UserCard({
             : user.full_name_zh || user.full_name_en}
         </div>
         <div className="text-sm text-gray-600">{user.email}</div>
+        {user.roleLabel && (
+          <div className="text-xs font-medium text-[#1D9E75] mt-0.5">{user.roleLabel}</div>
+        )}
         {user.phone && <div className="text-sm text-gray-500">{user.phone}</div>}
       </div>
       <div className="flex flex-wrap items-center gap-2 justify-end">

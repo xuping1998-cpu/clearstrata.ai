@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Shield, Users, Crown, Printer } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Shield, Users, Crown, Printer, UserCheck } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase, type UserRole } from '../lib/supabase';
@@ -18,14 +19,41 @@ interface Profile {
 }
 
 export function Admin() {
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
+  const navigate = useNavigate();
   const { profile } = useAuth();
   const canManageRoles = profile?.role === 'admin';
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [pendingResidents, setPendingResidents] = useState(0);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<Profile>>({});
+
+  const roleLabel = (role: UserRole) => {
+    const en: Record<UserRole, string> = {
+      owner: 'Owner',
+      council: 'Council member',
+      admin: 'System administrator',
+      manager: 'Property manager',
+    };
+    const zh: Record<UserRole, string> = {
+      owner: '业主',
+      council: '业委会成员',
+      admin: '系统管理员',
+      manager: '物业经理',
+    };
+    return language === 'en' ? en[role] : zh[role];
+  };
+
+  const toCardUser = (p: Profile) => ({
+    id: p.id,
+    full_name_en: p.full_name_en,
+    full_name_zh: p.full_name_zh,
+    email: p.email,
+    phone: p.phone,
+    roleLabel: roleLabel(p.role),
+  });
 
   const loadProfiles = async () => {
     setLoading(true);
@@ -41,6 +69,12 @@ export function Admin() {
       }
 
       setProfiles(data || []);
+
+      const { count } = await supabase
+        .from('residents')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending');
+      if (count != null) setPendingResidents(count);
     } finally {
       setLoading(false);
     }
@@ -193,13 +227,13 @@ export function Admin() {
           </h1>
           <p className="text-gray-600">
             {language === 'en'
-              ? 'View all registered users. Role changes (Owner ↔ Council) are limited to administrators.'
-              : '查看所有注册用户。业主与理事会（Council）角色互调仅可由管理员操作。'}
+              ? 'Accounts, roles, and access: assign council or property manager here (admins only). Use the sidebar for finance, meetings, disputes, and all council tools.'
+              : '账号与权限：在此指定业委会或物业经理（仅管理员可操作角色）。财务、会议、纠纷及业委会功能请使用左侧导航。'}
           </p>
           <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3 max-w-2xl">
             {language === 'en'
-              ? 'New sign-ups are always Owners. Council is assigned here by an admin. Admin accounts are database-only.'
-              : '新注册用户均为业主；理事会成员由管理员在本页提升。管理员（Admin）账号仅能通过数据库设置。'}
+              ? 'New auth sign-ups get profile role Owner. Resident records may be pending until approved under Owner Information → Residents. Admin accounts stay database-only.'
+              : '新注册用户 profiles 角色为业主；居住人记录可能为「待审核」，请在「业主信息 → 居住人」批准。系统管理员（Admin）仅能通过数据库设置。'}
           </p>
         </div>
         <button
@@ -210,6 +244,27 @@ export function Admin() {
           {language === 'en' ? 'Print' : '打印'}
         </button>
       </div>
+
+      {pendingResidents > 0 && (
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-start gap-2 text-amber-950">
+            <UserCheck className="shrink-0 mt-0.5" size={20} />
+            <div>
+              <p className="font-medium">
+                {t('admin_pending_residents_banner').replace('{n}', String(pendingResidents))}
+              </p>
+              <p className="text-sm text-amber-900/90 mt-1">{t('admin_review_residents_hint')}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate('/owner-info?tab=residents')}
+            className="shrink-0 px-4 py-2 rounded-lg bg-amber-800 text-white text-sm font-medium hover:bg-amber-900 transition-colors"
+          >
+            {t('admin_review_residents_cta')}
+          </button>
+        </div>
+      )}
 
       <div className="space-y-6">
         {admins.length > 0 && (
@@ -232,7 +287,7 @@ export function Admin() {
               {admins.map((a) => (
                 <UserCard
                   key={a.id}
-                  user={a}
+                  user={toCardUser(a)}
                   language={language}
                   isEditing={editingId === a.id}
                   editForm={editForm}
@@ -261,9 +316,9 @@ export function Admin() {
 
           <div className="space-y-3">
             {councilMembers.map((member) => (
-              <UserCard
-                key={member.id}
-                user={member}
+                <UserCard
+                  key={member.id}
+                  user={toCardUser(member)}
                 language={language}
                 isEditing={editingId === member.id}
                 editForm={editForm}
@@ -307,9 +362,9 @@ export function Admin() {
 
           <div className="space-y-3">
             {owners.map((owner) => (
-              <UserCard
-                key={owner.id}
-                user={owner}
+                <UserCard
+                  key={owner.id}
+                  user={toCardUser(owner)}
                 language={language}
                 isEditing={editingId === owner.id}
                 editForm={editForm}
@@ -368,7 +423,7 @@ export function Admin() {
               {managers.map((mgr) => (
                 <UserCard
                   key={mgr.id}
-                  user={mgr}
+                  user={toCardUser(mgr)}
                   language={language}
                   isEditing={editingId === mgr.id}
                   editForm={editForm}
@@ -425,7 +480,7 @@ export function Admin() {
               {otherRoles.map((u) => (
                 <UserCard
                   key={u.id}
-                  user={u}
+                  user={toCardUser(u)}
                   language={language}
                   isEditing={editingId === u.id}
                   editForm={editForm}

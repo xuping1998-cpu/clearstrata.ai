@@ -45,6 +45,22 @@ const translations: Record<string, Record<Language, string>> = {
   nav_disputes: { en: 'Dispute Resolution', zh: '纠纷调解' },
   nav_hiring: { en: 'Property Manager', zh: '物业经理' },
   nav_compliance: { en: 'Compliance & Insurance', zh: '法规保险' },
+  nav_admin: { en: 'Users & roles', zh: '用户与角色' },
+
+  admin_dashboard_card_title: { en: 'User & role management', zh: '用户与角色管理' },
+  admin_dashboard_card_desc: {
+    en: 'View accounts, assign council or property manager, review pending resident sign-ups.',
+    zh: '查看账号、指定业委会/物业经理、审核待激活的注册业主。',
+  },
+  admin_review_residents_cta: { en: 'Review pending resident sign-ups', zh: '审核待激活业主（居住人）' },
+  admin_review_residents_hint: {
+    en: 'New registrations create a pending resident record. Approve or reject under Owner Information → Residents.',
+    zh: '新注册用户会生成「待审核」居住人记录，请在「业主信息 → 居住人」中批准或拒绝。',
+  },
+  admin_pending_residents_banner: {
+    en: '{n} pending resident sign-ups to review',
+    zh: '有 {n} 条待审核的居住人注册',
+  },
 
   procurement_title: { en: 'Procurement & Maintenance', zh: '采购维修' },
   procurement_new_job: { en: 'New Job', zh: '新建任务' },

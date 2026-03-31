@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
-import { ShoppingCart, Vote, DollarSign, Users, Scale, FileText } from 'lucide-react';
+import { ShoppingCart, Vote, DollarSign, Users, Scale, FileText, Shield } from 'lucide-react';
 
 export function Dashboard() {
   const navigate = useNavigate();
@@ -15,7 +15,24 @@ export function Dashboard() {
     { path: '/owner-info', icon: Users, label: t('nav_owner_info'), color: 'bg-cyan-500' },
     { path: '/disputes', icon: Scale, label: t('nav_disputes'), color: 'bg-red-500' },
     { path: '/compliance', icon: FileText, label: t('nav_compliance'), color: 'bg-indigo-500' },
-  ];
+    ...(profile?.role === 'admin' || profile?.role === 'council'
+      ? [
+          {
+            path: '/admin',
+            icon: Shield,
+            label: t('admin_dashboard_card_title'),
+            color: 'bg-slate-700',
+            desc: t('admin_dashboard_card_desc'),
+          },
+        ]
+      : []),
+  ] as Array<{
+    path: string;
+    icon: typeof ShoppingCart;
+    label: string;
+    color: string;
+    desc?: string;
+  }>;
 
   return (
     <div>
@@ -34,16 +51,16 @@ export function Dashboard() {
           return (
             <button
               key={module.path}
-              onClick={() => {
-                console.log('Navigating to:', module.path);
-                navigate(module.path);
-              }}
+              onClick={() => navigate(module.path)}
               className="bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition-all transform hover:-translate-y-1 group"
             >
               <div className={`${module.color} w-12 h-12 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
                 <Icon className="text-white" size={24} />
               </div>
               <h3 className="text-lg font-semibold text-gray-900">{module.label}</h3>
+              {'desc' in module && module.desc && (
+                <p className="text-sm text-gray-500 mt-2 text-left line-clamp-3">{module.desc}</p>
+              )}
             </button>
           );
         })}

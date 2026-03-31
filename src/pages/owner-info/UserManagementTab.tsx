@@ -88,16 +88,17 @@ export function UserManagementTab() {
     setEditForm({ ...editForm, [field]: value });
   };
 
-  const canSetRoles = profile?.role === 'council' || profile?.role === 'admin';
+  /** Only admins may change profile roles (council / manager); council can still edit names. */
+  const canSelectRoles = profile?.role === 'admin';
 
   const canShowRoleSelector = (user: Profile) => {
-    if (!canSetRoles || user.role === 'admin') return false;
+    if (!canSelectRoles || user.role === 'admin') return false;
     if (profile?.role === 'council' && user.role === 'manager') return false;
     return true;
   };
 
   const updateUserRole = async (userId: string, metaRole: AppMetadataRole) => {
-    if (!canSetRoles) return;
+    if (!canSelectRoles) return;
     const current = profiles.find((p) => p.id === userId);
     if (current && profileRoleToMetadataRole(current.role) === metaRole) return;
 
