@@ -212,7 +212,9 @@ export function InvoiceManagement() {
 
       setUploadProgress(l ? 'Saving...' : '正在保存记录...');
 
-      const { error: dbError } = await supabase.from('invoices').insert({
+      const { data: insertedInvoice, error: dbError } = await supabase
+        .from('invoices')
+        .insert({
         file_name: file.name,
         document_url: pub.publicUrl,
         vendor_name: extracted.vendor_name || (l ? 'Unknown vendor' : '未知供应商'),
@@ -231,9 +233,30 @@ export function InvoiceManagement() {
         ai_confidence_score: 0.85,
         uploaded_by: profile.id,
         status: 'pending_review',
-      });
+        })
+        .select('id')
+        .single();
 
       if (dbError) throw dbError;
+
+      const invoiceId = (insertedInvoice as { id: string } | null)?.id;
+      if (!invoiceId) {
+        throw new Error(l ? 'Missing invoice id after insert' : '发票保存后缺少invoice_id');
+      }
+
+      // If AI detected anomalies, persist anomaly record AFTER invoice exists (avoids FK violations)
+      if (extracted.has_anomalies) {
+        const anomalyNotes =
+          (typeof extracted.anomaly_notes === 'string' && extracted.anomaly_notes.trim()) ||
+          (typeof extracted.description === 'string' && extracted.description.trim()) ||
+          (l ? 'AI detected anomalies' : 'AI检测到异常');
+
+        const { error: anomalyError } = await supabase.from('financial_anomalies').insert({
+          invoice_id: invoiceId,
+          notes: anomalyNotes,
+        });
+        if (anomalyError) throw anomalyError;
+      }
 
       setUploadProgress(l ? 'Done!' : '识别完成！');
       await loadInvoices();
