@@ -35,6 +35,21 @@ interface ResidentBrief {
   updated_at?: string;
 }
 
+/** Lowercase canonical UUID string, or null if invalid (avoids PostgREST 400 on bad filter values). */
+function normalizeUuid(value: unknown): string | null {
+  if (value == null) return null;
+  const s = String(value).trim().toLowerCase();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(s)) {
+    return null;
+  }
+  return s;
+}
+
+function alertThenReload(message: string) {
+  alert(message);
+  window.location.reload();
+}
+
 export function UserManagementTab() {
   const { language, t } = useLanguage();
   const { profile, refreshProfile } = useAuth();
@@ -69,45 +84,6 @@ export function UserManagementTab() {
     }
     setResidentByUserId(rmap);
   }, []);
-
-  /** Full list reload then pin the row we just mutated (avoids stale bulk reads right after UPDATE). */
-  const reloadListAndRefreshUser = useCallback(async (residentId: string, profileUserId: string) => {
-    await loadData();
-    const [{ data: resRow, error: resErr }, { data: profRow, error: profErr }] = await Promise.all([
-      supabase
-        .from('residents')
-        .select('id, user_id, status, unit_no, updated_at')
-        .eq('id', residentId)
-        .maybeSingle(),
-      supabase.from('profiles').select('status, updated_at').eq('id', profileUserId).maybeSingle(),
-    ]);
-    if (resErr) console.error('[UserManagementTab] refresh resident after activation:', resErr);
-    if (profErr) console.error('[UserManagementTab] refresh profile after activation:', profErr);
-    if (resRow) {
-      setResidentByUserId((prev) => ({
-        ...prev,
-        [resRow.user_id]: {
-          id: resRow.id,
-          user_id: resRow.user_id,
-          status: resRow.status,
-          unit_no: resRow.unit_no,
-          updated_at: resRow.updated_at,
-        },
-      }));
-    }
-    if (profRow && (profRow.status !== undefined || profRow.updated_at !== undefined)) {
-      setProfiles((prev) =>
-        prev.map((p) =>
-          p.id === profileUserId
-            ? {
-                ...p,
-                ...(profRow.status !== undefined ? { status: profRow.status as ProfileAccountStatus } : {}),
-              }
-            : p,
-        ),
-      );
-    }
-  }, [loadData]);
 
   useEffect(() => {
     if (profile) void loadData();
@@ -228,12 +204,23 @@ export function UserManagementTab() {
   };
 
   const approveActivation = async (residentId: string, profileUserId: string) => {
-    setActivationBusy(residentId);
+    const rid = normalizeUuid(residentId);
+    const uid = normalizeUuid(profileUserId);
+    if (!rid || !uid) {
+      alert(
+        language === 'en'
+          ? 'Invalid resident or user id. Please refresh the page and try again.'
+          : '居住人或用户 ID 无效，请刷新页面后重试。',
+      );
+      return;
+    }
+
+    setActivationBusy(rid);
     try {
       const { data: row, error: fetchErr } = await supabase
         .from('residents')
         .select('id, user_id')
-        .eq('id', residentId)
+        .eq('id', rid)
         .maybeSingle();
 
       if (fetchErr) {
@@ -241,7 +228,8 @@ export function UserManagementTab() {
         alert(`${t('user_mgmt_activate_fail')} ${formatDbError(fetchErr)}`);
         return;
       }
-      if (!row || row.user_id !== profileUserId) {
+      const rowUid = row?.user_id != null ? normalizeUuid(row.user_id) : null;
+      if (!row || rowUid !== uid) {
         alert(
           language === 'en'
             ? 'Resident record not found or does not match this user.'
@@ -254,7 +242,7 @@ export function UserManagementTab() {
       const { error: resErr } = await supabase
         .from('residents')
         .update({ status: 'active', updated_at: now })
-        .eq('id', residentId);
+        .eq('id', rid);
 
       if (resErr) {
         console.error('[UserManagementTab] approve residents update:', resErr);
@@ -265,29 +253,38 @@ export function UserManagementTab() {
       const { error: profErr } = await supabase
         .from('profiles')
         .update({ status: 'active', updated_at: now })
-        .eq('id', profileUserId);
+        .eq('id', uid);
 
       if (profErr) {
         console.error('[UserManagementTab] approve profiles update:', profErr);
-        alert(`${t('user_mgmt_profile_partial')} ${formatDbError(profErr)}`);
-        await reloadListAndRefreshUser(residentId, profileUserId);
+        alertThenReload(`${t('user_mgmt_profile_partial')} ${formatDbError(profErr)}`);
         return;
       }
 
-      alert(t('user_mgmt_activate_success'));
-      await reloadListAndRefreshUser(residentId, profileUserId);
+      alertThenReload(t('user_mgmt_activate_success'));
     } finally {
       setActivationBusy(null);
     }
   };
 
   const rejectActivation = async (residentId: string, profileUserId: string) => {
-    setActivationBusy(residentId);
+    const rid = normalizeUuid(residentId);
+    const uid = normalizeUuid(profileUserId);
+    if (!rid || !uid) {
+      alert(
+        language === 'en'
+          ? 'Invalid resident or user id. Please refresh the page and try again.'
+          : '居住人或用户 ID 无效，请刷新页面后重试。',
+      );
+      return;
+    }
+
+    setActivationBusy(rid);
     try {
       const { data: row, error: fetchErr } = await supabase
         .from('residents')
         .select('id, user_id')
-        .eq('id', residentId)
+        .eq('id', rid)
         .maybeSingle();
 
       if (fetchErr) {
@@ -295,7 +292,8 @@ export function UserManagementTab() {
         alert(`${t('user_mgmt_reject_fail')} ${formatDbError(fetchErr)}`);
         return;
       }
-      if (!row || row.user_id !== profileUserId) {
+      const rowUid = row?.user_id != null ? normalizeUuid(row.user_id) : null;
+      if (!row || rowUid !== uid) {
         alert(
           language === 'en'
             ? 'Resident record not found or does not match this user.'
@@ -308,7 +306,7 @@ export function UserManagementTab() {
       const { error: resErr } = await supabase
         .from('residents')
         .update({ status: 'deregistered', updated_at: now })
-        .eq('id', residentId);
+        .eq('id', rid);
 
       if (resErr) {
         console.error('[UserManagementTab] reject residents update:', resErr);
@@ -319,17 +317,15 @@ export function UserManagementTab() {
       const { error: profErr } = await supabase
         .from('profiles')
         .update({ status: 'suspended', updated_at: now })
-        .eq('id', profileUserId);
+        .eq('id', uid);
 
       if (profErr) {
         console.error('[UserManagementTab] reject profiles update:', profErr);
-        alert(`${t('user_mgmt_profile_partial')} ${formatDbError(profErr)}`);
-        await reloadListAndRefreshUser(residentId, profileUserId);
+        alertThenReload(`${t('user_mgmt_profile_partial')} ${formatDbError(profErr)}`);
         return;
       }
 
-      alert(t('user_mgmt_reject_success'));
-      await reloadListAndRefreshUser(residentId, profileUserId);
+      alertThenReload(t('user_mgmt_reject_success'));
     } finally {
       setActivationBusy(null);
     }
@@ -525,6 +521,7 @@ export function UserManagementTab() {
         {sortedProfiles.map((user) => {
           const res = residentByUserId[user.id];
           const pending = res?.status === 'pending';
+          const busyResidentId = res?.id != null ? normalizeUuid(res.id) : null;
 
           return (
             <div
@@ -542,10 +539,10 @@ export function UserManagementTab() {
                       <button
                         type="button"
                         onClick={() => void approveActivation(res.id, user.id)}
-                        disabled={activationBusy === res.id}
+                        disabled={busyResidentId != null && activationBusy === busyResidentId}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
                       >
-                        {activationBusy === res.id ? (
+                        {busyResidentId != null && activationBusy === busyResidentId ? (
                           <Loader2 size={14} className="animate-spin" />
                         ) : (
                           <CheckCircle size={14} />
@@ -555,7 +552,7 @@ export function UserManagementTab() {
                       <button
                         type="button"
                         onClick={() => void rejectActivation(res.id, user.id)}
-                        disabled={activationBusy === res.id}
+                        disabled={busyResidentId != null && activationBusy === busyResidentId}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50"
                       >
                         <XCircle size={14} />
