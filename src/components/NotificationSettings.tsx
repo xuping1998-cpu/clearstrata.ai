@@ -103,7 +103,7 @@ export function NotificationSettings() {
           <p className="text-sm text-gray-600 mb-3">
             {language === 'en'
               ? 'Get notified about votes, maintenance updates, and important announcements'
-              : '接收投票、维护更新和重要公告的通知'}
+              : '接收投票、维护更新等的浏览器推送'}
           </p>
           <button
             onClick={handleEnableNotifications}

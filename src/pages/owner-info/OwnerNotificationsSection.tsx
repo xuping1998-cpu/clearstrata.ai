@@ -1,15 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ChevronDown, ChevronUp, Megaphone, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useAnnouncementInbox } from '../../contexts/AnnouncementInboxContext';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { supabase, type StrataNotificationPriority } from '../../lib/supabase';
+import { supabase, type AnnouncementPriority } from '../../lib/supabase';
 
 export interface CommunityNoticeRow {
   id: string;
   title: string;
   content: string;
-  priority: StrataNotificationPriority;
+  priority: AnnouncementPriority;
   created_at: string;
   created_by: string;
   author_name: string;
@@ -53,7 +52,7 @@ function roleLabel(role: string, en: boolean): string {
   return role;
 }
 
-function priorityLabel(p: StrataNotificationPriority, en: boolean): string {
+function priorityLabel(p: AnnouncementPriority, en: boolean): string {
   switch (p) {
     case 'urgent':
       return en ? 'Urgent' : '紧急';
@@ -74,7 +73,7 @@ type CommunityNoticeDbRow = {
   id: string;
   title: string;
   content: string;
-  priority: StrataNotificationPriority;
+  priority: AnnouncementPriority;
   created_at: string;
   created_by: string;
   creator: CreatorEmbed;
@@ -95,7 +94,6 @@ function mapRows(data: CommunityNoticeDbRow[]): CommunityNoticeRow[] {
 
 export function OwnerNotificationsSection() {
   const { profile } = useAuth();
-  const { refreshAnnouncementInbox } = useAnnouncementInbox();
   const { language } = useLanguage();
   const en = language === 'en';
 
@@ -105,7 +103,7 @@ export function OwnerNotificationsSection() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const [priority, setPriority] = useState<StrataNotificationPriority>('normal');
+  const [priority, setPriority] = useState<AnnouncementPriority>('normal');
   const [saving, setSaving] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
@@ -150,19 +148,6 @@ export function OwnerNotificationsSection() {
   useEffect(() => {
     void load();
   }, [load]);
-
-  useEffect(() => {
-    if (!profile?.id) return;
-    (async () => {
-      await supabase
-        .from('user_inbox_notifications')
-        .update({ read: true })
-        .eq('user_id', profile.id)
-        .in('type', ['owner_announcement', 'community_announcement'])
-        .eq('read', false);
-      await refreshAnnouncementInbox();
-    })();
-  }, [profile?.id, refreshAnnouncementInbox]);
 
   const toggleExpanded = (id: string) => {
     setExpandedIds((prev) => {
@@ -229,7 +214,7 @@ export function OwnerNotificationsSection() {
         });
         const payload = (await res.json().catch(() => ({}))) as { error?: string };
         if (!res.ok) {
-          const msg = payload.error ?? (en ? 'Publish failed.' : '发布失败。');
+          const msg = payload.error ?? (en ? 'Could not publish announcement.' : '发布公告失败。');
           alert(en ? `Publish failed: ${msg}` : `发布失败：${msg}`);
           return;
         }
@@ -254,7 +239,7 @@ export function OwnerNotificationsSection() {
   };
 
   const remove = async (row: CommunityNoticeRow) => {
-    if (!confirm(en ? 'Delete this notice? This cannot be undone.' : '确定删除此通知？此操作不可撤销。')) return;
+    if (!confirm(en ? 'Delete this announcement? This cannot be undone.' : '确定删除此公告？此操作不可撤销。')) return;
     try {
       const { error } = await supabase.from('community_notifications').delete().eq('id', row.id);
       if (error) throw error;
@@ -265,7 +250,7 @@ export function OwnerNotificationsSection() {
     }
   };
 
-  const priorityChipClass = (p: StrataNotificationPriority) => {
+  const priorityChipClass = (p: AnnouncementPriority) => {
     if (p === 'urgent') return 'bg-red-50 text-red-800 ring-red-200';
     if (p === 'important') return 'bg-amber-50 text-amber-900 ring-amber-200';
     return 'bg-gray-100 text-gray-600 ring-gray-200';
@@ -273,8 +258,8 @@ export function OwnerNotificationsSection() {
 
   return (
     <section
-      id="owner-notices"
-      aria-labelledby="owner-notifications-heading"
+      id="owner-announcements"
+      aria-labelledby="owner-announcements-heading"
       className="mb-10 scroll-mt-24 rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden"
     >
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 bg-gradient-to-r from-[#1D9E75]/10 to-transparent px-5 py-4">
@@ -283,11 +268,11 @@ export function OwnerNotificationsSection() {
             <Megaphone size={22} aria-hidden />
           </div>
           <div>
-            <h2 id="owner-notifications-heading" className="text-lg font-bold text-gray-900">
-              {en ? 'Notices & announcements' : '通知公告'}
+            <h2 id="owner-announcements-heading" className="text-lg font-bold text-gray-900">
+              {en ? 'Community announcements' : '社区公告'}
             </h2>
             <p className="text-sm text-gray-500">
-              {en ? 'Community updates from admin, council, and property management' : '管理员、业委会与物业发布的社区公告'}
+              {en ? 'Published by administrators, strata council, and property management.' : '由管理员、业委会与物业发布。'}
             </p>
           </div>
         </div>
@@ -298,7 +283,7 @@ export function OwnerNotificationsSection() {
             className="inline-flex items-center gap-2 rounded-lg bg-[#1D9E75] px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-[#188a66] focus:outline-none focus:ring-2 focus:ring-[#1D9E75] focus:ring-offset-2"
           >
             <Plus size={18} aria-hidden />
-            {en ? 'Post new notice' : '发布新通知'}
+            {en ? 'Publish announcement' : '发布公告'}
           </button>
         )}
       </div>
@@ -308,7 +293,7 @@ export function OwnerNotificationsSection() {
           <p className="text-center text-gray-500 py-8">{en ? 'Loading…' : '加载中…'}</p>
         ) : rows.length === 0 ? (
           <p className="text-center text-gray-500 py-10 rounded-lg bg-gray-50 border border-dashed border-gray-200">
-            {en ? 'No notices yet.' : '暂无通知。'}
+            {en ? 'No announcements yet.' : '暂无公告。'}
           </p>
         ) : (
           <ul className="space-y-4">
@@ -398,7 +383,13 @@ export function OwnerNotificationsSection() {
           <div className="w-full max-w-lg rounded-xl bg-white shadow-xl border border-gray-200 max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3 shrink-0">
               <h3 className="text-lg font-semibold text-gray-900">
-                {modal === 'create' ? (en ? 'Post new notice' : '发布新通知') : en ? 'Edit notice' : '编辑通知'}
+                {modal === 'create'
+                  ? en
+                    ? 'Publish announcement'
+                    : '发布公告'
+                  : en
+                    ? 'Edit announcement'
+                    : '编辑公告'}
               </h3>
               <button
                 type="button"
@@ -424,7 +415,7 @@ export function OwnerNotificationsSection() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">{en ? 'Priority' : '优先级'}</label>
                 <select
                   value={priority}
-                  onChange={(e) => setPriority(e.target.value as StrataNotificationPriority)}
+                  onChange={(e) => setPriority(e.target.value as AnnouncementPriority)}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 focus:border-[#1D9E75] focus:ring-1 focus:ring-[#1D9E75]"
                 >
                   <option value="normal">{priorityLabel('normal', en)}</option>

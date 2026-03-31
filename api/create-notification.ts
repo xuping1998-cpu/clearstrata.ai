@@ -1,7 +1,7 @@
 /**
  * Vercel serverless: POST /api/create-notification
- * Inserts into public.community_notifications (service role bypasses RLS).
- * Caller JWT must be admin, council, or manager.
+ * Creates a row in public.community_notifications (公告). Service role bypasses RLS.
+ * JWT must be admin, council, or manager.
  */
 import { createClient } from '@supabase/supabase-js';
 import type { VercelRequest, VercelResponse } from '@vercel/node';

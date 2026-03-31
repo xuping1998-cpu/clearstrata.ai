@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useLocation } from 'react-router-dom';
-import { User, Receipt, FileText, UserCog, Bell } from 'lucide-react';
+import { User, Receipt, FileText, UserCog, Megaphone } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { BackButton } from '../components/BackButton';
 import { MyProfileTab } from './owner-info/MyProfileTab';
@@ -8,9 +8,8 @@ import { LedgerTab } from './owner-info/LedgerTab';
 import { FormsTab } from './owner-info/FormsTab';
 import { UserManagementTab } from './owner-info/UserManagementTab';
 import { OwnerNotificationsSection } from './owner-info/OwnerNotificationsSection';
-import { NotificationTab } from './owner-info/notifications/NotificationTab';
 
-type TabType = 'profile' | 'ledger' | 'forms' | 'users' | 'notify';
+type TabType = 'profile' | 'ledger' | 'forms' | 'users' | 'announcements';
 
 interface TabConfig {
   key: TabType;
@@ -23,7 +22,7 @@ const tabs: TabConfig[] = [
   { key: 'profile', label: '我的资料', icon: <User size={18} /> },
   { key: 'ledger', label: '账务记录', icon: <Receipt size={18} /> },
   { key: 'forms', label: '表单', icon: <FileText size={18} /> },
-  { key: 'notify', label: '通知', icon: <Bell size={18} /> },
+  { key: 'announcements', label: '公告', icon: <Megaphone size={18} /> },
   { key: 'users', label: '用户管理', icon: <UserCog size={18} />, councilOnly: true },
 ];
 
@@ -44,17 +43,18 @@ export function OwnerInfo() {
       setActiveTab('profile');
       return;
     }
-    if (!tabKeys.includes(raw as TabType)) return;
-    const next = raw as TabType;
+    const normalized = raw === 'notify' ? 'announcements' : raw;
+    if (!tabKeys.includes(normalized as TabType)) return;
+    const next = normalized as TabType;
     const cfg = tabs.find((t) => t.key === next);
     if (cfg?.councilOnly && !canManageRestrictedTabs) return;
     setActiveTab(next);
   }, [searchParams, canManageRestrictedTabs, tabKeys]);
 
   useEffect(() => {
-    if (location.pathname !== '/owner-info' || location.hash !== '#owner-notices') return;
+    if (location.pathname !== '/owner-info' || location.hash !== '#owner-announcements') return;
     const timer = window.setTimeout(() => {
-      document.getElementById('owner-notices')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      document.getElementById('owner-announcements')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 80);
     return () => window.clearTimeout(timer);
   }, [location.pathname, location.hash]);
@@ -68,8 +68,6 @@ export function OwnerInfo() {
         <h1 className="text-3xl font-bold text-gray-900">业主信息</h1>
         <p className="text-gray-600 mt-2">管理您的资料、单元信息和账户详情</p>
       </div>
-
-      <OwnerNotificationsSection />
 
       <div className="mb-6 border-b border-gray-200 overflow-x-auto">
         <nav className="flex gap-1 min-w-max">
@@ -93,7 +91,7 @@ export function OwnerInfo() {
       {activeTab === 'profile' && <MyProfileTab />}
       {activeTab === 'ledger' && <LedgerTab />}
       {activeTab === 'forms' && <FormsTab />}
-      {activeTab === 'notify' && <NotificationTab />}
+      {activeTab === 'announcements' && <OwnerNotificationsSection />}
       {activeTab === 'users' && canManageRestrictedTabs && <UserManagementTab />}
     </div>
   );
