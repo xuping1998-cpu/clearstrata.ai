@@ -2,6 +2,7 @@ import { ReactNode, useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Home, ShoppingCart, Vote, Wrench, DollarSign, Users, MessageSquare, Menu, X, LogOut, CircleUser as UserCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useAnnouncementInbox } from '../contexts/AnnouncementInboxContext';
 import { useLanguage, LANGUAGE_USER_STORAGE_KEY } from '../contexts/LanguageContext';
 import { PWAInstallButton } from './PWAInstallButton';
 
@@ -14,6 +15,7 @@ export function Layout({ children }: LayoutProps) {
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { profile, signOut } = useAuth();
+  const { hasUnreadAnnouncement } = useAnnouncementInbox();
   const { t, language, toggleLanguage, setLanguage } = useLanguage();
 
   useEffect(() => {
@@ -103,6 +105,26 @@ export function Layout({ children }: LayoutProps) {
           </div>
         </div>
       </header>
+
+      {hasUnreadAnnouncement && (
+        <div className="bg-amber-50 border-b border-amber-200">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2">
+            <button
+              type="button"
+              onClick={() => {
+                navigate('/owner-info#owner-notices');
+                setMobileMenuOpen(false);
+              }}
+              className="w-full text-left text-sm font-medium text-amber-900 hover:text-amber-950 flex items-center gap-2 rounded-lg px-2 py-1 -mx-2 hover:bg-amber-100/80 transition-colors"
+            >
+              <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-[#1D9E75]" aria-hidden />
+              {language === 'en'
+                ? 'You have a new building notice — tap to open Owner Information'
+                : '您有新的通知公告 — 点击查看业主信息中的通知公告'}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="flex">
         <aside className={`

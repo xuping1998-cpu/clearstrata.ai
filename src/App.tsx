@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { AnnouncementInboxProvider } from './contexts/AnnouncementInboxContext';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { Auth } from './components/Auth';
 import { Layout } from './components/Layout';
@@ -59,7 +60,9 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <LanguageProvider>
-          <AppContent />
+          <AnnouncementInboxProvider>
+            <AppContent />
+          </AnnouncementInboxProvider>
           <PWAInstallPrompt />
         </LanguageProvider>
       </AuthProvider>

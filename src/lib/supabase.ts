@@ -36,6 +36,8 @@ export interface StrataNotification {
   author_name: string;
   author_role: string;
   created_at: string;
+  /** Publisher profile id; set by DB trigger on insert. */
+  created_by: string | null;
 }
 
 export interface Database {
