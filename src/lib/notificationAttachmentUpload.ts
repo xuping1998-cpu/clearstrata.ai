@@ -2,21 +2,14 @@ import { supabase } from './supabase';
 
 const MAX_BYTES = 10 * 1024 * 1024;
 
-const ALLOWED_MIME = new Set([
-  'application/pdf',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'image/jpeg',
-  'image/png',
-  'image/gif',
-  'image/webp',
-]);
+/** Allowed extensions: pdf, word, excel, jpg/png only (per product spec). */
+const EXT_OK = /\.(pdf|doc|docx|xls|xlsx|jpe?g|png)$/i;
 
 function extensionFromFileName(name: string) {
   const i = name.lastIndexOf('.');
   if (i < 0) return '';
   const ext = name.slice(i).toLowerCase();
-  if (ext.length > 12 || !/^\.[a-z0-9.]+$/i.test(ext)) return '';
+  if (ext.length > 15 || !/^\.[a-z0-9]+$/i.test(ext)) return '';
   return ext;
 }
 
@@ -42,16 +35,9 @@ export function publicUrlToStoragePath(publicUrl: string): string | null {
   }
 }
 
-const EXT_OK = /\.(pdf|doc|docx|jpe?g|png|gif|webp)$/i;
-
 export function validateNoticeAttachmentFile(file: File): string | null {
-  if (file.size > MAX_BYTES) {
-    return 'FILE_TOO_LARGE';
-  }
-  const mimeOk = !file.type || ALLOWED_MIME.has(file.type);
-  if (!mimeOk && !EXT_OK.test(file.name)) {
-    return 'FILE_TYPE';
-  }
+  if (file.size > MAX_BYTES) return 'FILE_TOO_LARGE';
+  if (!EXT_OK.test(file.name)) return 'FILE_TYPE';
   return null;
 }
 

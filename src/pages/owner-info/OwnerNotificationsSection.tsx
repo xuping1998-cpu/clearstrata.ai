@@ -58,8 +58,8 @@ function errMsg(code: string, en: boolean): string {
       return en ? 'File is too large (max 10 MB).' : '文件过大（最大 10MB）。';
     case 'FILE_TYPE':
       return en
-        ? 'Unsupported type. Use PDF, Word (.doc/.docx), or common images.'
-        : '不支持该格式，请使用 PDF、Word 或常见图片。';
+        ? 'Unsupported type. Use PDF, Word, Excel (.xls/.xlsx), or .jpg / .png.'
+        : '不支持该格式，请使用 PDF、Word、Excel（.xls/.xlsx）或 .jpg / .png。';
     case 'NOT_SIGNED_IN':
       return en ? 'Please sign in again.' : '请重新登录。';
     case 'NETWORK_ERROR':
@@ -67,6 +67,12 @@ function errMsg(code: string, en: boolean): string {
     default:
       return code;
   }
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
 export function OwnerNotificationsSection() {
@@ -86,6 +92,9 @@ export function OwnerNotificationsSection() {
 
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [attachedFileSize, setAttachedFileSize] = useState<number | null>(null);
+  const [pendingUploadMeta, setPendingUploadMeta] = useState<{ name: string; size: number } | null>(null);
+  const [dragActive, setDragActive] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -105,6 +114,9 @@ export function OwnerNotificationsSection() {
   const resetAttachmentState = () => {
     setFileUrl(null);
     setFileName(null);
+    setAttachedFileSize(null);
+    setPendingUploadMeta(null);
+    setDragActive(false);
     setUploadProgress(null);
     setUploadError(null);
     previousStoragePathRef.current = null;
@@ -167,9 +179,11 @@ export function OwnerNotificationsSection() {
     setContent(row.content);
     setFileUrl(row.file_url);
     setFileName(row.file_name);
+    setAttachedFileSize(null);
     previousStoragePathRef.current = row.file_url ? publicUrlToStoragePath(row.file_url) : null;
     setUploadProgress(null);
     setUploadError(null);
+    setPendingUploadMeta(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
     setModal('edit');
   };
@@ -182,32 +196,27 @@ export function OwnerNotificationsSection() {
     resetAttachmentState();
   };
 
-  const clearAttachment = () => {
-    setFileUrl(null);
-    setFileName(null);
-    setUploadError(null);
-    setUploadProgress(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const onAttachmentFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !profile?.id) return;
+  const processAttachmentFile = async (file: File) => {
+    if (!profile?.id) return;
 
     if (!canUseStorage) {
       setUploadError(en ? 'Only council or property manager can upload files.' : '仅业委会或物业经理可上传附件。');
-      e.target.value = '';
       return;
     }
 
     const v = validateNoticeAttachmentFile(file);
     if (v) {
       setUploadError(errMsg(v, en));
-      e.target.value = '';
       return;
     }
 
+    if (modal === 'create' && fileUrl) {
+      const oldPath = publicUrlToStoragePath(fileUrl);
+      if (oldPath) await removeNotificationStorageObjects([oldPath]);
+    }
+
     setUploadError(null);
+    setPendingUploadMeta({ name: file.name, size: file.size });
     setUploadProgress(0);
     const path = buildAnnouncementStoragePath(profile.id, file.name);
 
@@ -216,14 +225,83 @@ export function OwnerNotificationsSection() {
       const publicUrl = getNotificationAttachmentPublicUrl(path);
       setFileUrl(publicUrl);
       setFileName(file.name);
+      setAttachedFileSize(file.size);
       setUploadProgress(null);
     } catch (err: unknown) {
       const raw = err instanceof Error ? err.message : String(err);
       setUploadError(raw === 'NETWORK_ERROR' ? errMsg('NETWORK_ERROR', en) : raw);
       setUploadProgress(null);
     } finally {
-      e.target.value = '';
+      setPendingUploadMeta(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
+  };
+
+  const onAttachmentFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    void processAttachmentFile(file);
+  };
+
+  const onDropFiles = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    if (!canUseStorage || uploadProgress !== null) return;
+    const { files } = e.dataTransfer;
+    if (files.length > 1) {
+      alert(en ? 'Please drop only one file.' : '仅支持单个文件。');
+      return;
+    }
+    const file = files[0];
+    if (file) void processAttachmentFile(file);
+  };
+
+  const handleRemoveAttachment = async () => {
+    if (!fileUrl && !fileName) return;
+
+    if (!canUseStorage) {
+      if (profile?.role === 'admin' && modal === 'edit' && editingId) {
+        const { error } = await supabase
+          .from('notifications')
+          .update({ file_url: null, file_name: null })
+          .eq('id', editingId);
+        if (error) {
+          alert(en ? `Failed to remove attachment: ${error.message}` : `移除附件失败：${error.message}`);
+          return;
+        }
+        previousStoragePathRef.current = null;
+        await load();
+      }
+      setFileUrl(null);
+      setFileName(null);
+      setAttachedFileSize(null);
+      setUploadError(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    const path = fileUrl ? publicUrlToStoragePath(fileUrl) : null;
+    if (path) await removeNotificationStorageObjects([path]);
+
+    if (modal === 'edit' && editingId) {
+      const { error } = await supabase
+        .from('notifications')
+        .update({ file_url: null, file_name: null })
+        .eq('id', editingId);
+      if (error) {
+        alert(en ? `Failed to remove attachment: ${error.message}` : `移除附件失败：${error.message}`);
+        return;
+      }
+      previousStoragePathRef.current = null;
+      await load();
+    }
+
+    setFileUrl(null);
+    setFileName(null);
+    setAttachedFileSize(null);
+    setUploadError(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const submit = async () => {
@@ -454,50 +532,144 @@ export function OwnerNotificationsSection() {
                 />
               </div>
 
-              <div className="rounded-lg border border-gray-200 bg-gray-50/80 p-3 space-y-2">
-                <div className="text-sm font-medium text-gray-700">{en ? 'Attachment (optional)' : '附件（可选）'}</div>
-                <p className="text-xs text-gray-500">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{en ? 'Attachment' : '附件'}</label>
+                <p className="text-xs text-gray-500 mb-3">
                   {en
-                    ? 'PDF, Word, or images — one file, up to 10 MB.'
-                    : '支持 PDF、Word、图片等，单个文件，最大 10MB。'}
+                    ? 'One file only, max 10 MB: .pdf, .doc, .docx, .xls, .xlsx, .jpg, .png'
+                    : '仅 1 个文件，最大 10MB：.pdf、.doc、.docx、.xls、.xlsx、.jpg、.png'}
                 </p>
+
+                {modal === 'edit' &&
+                  fileUrl &&
+                  fileName &&
+                  pendingUploadMeta === null &&
+                  uploadProgress === null && (
+                    <div className="mb-3 rounded-lg border border-gray-200 bg-white p-3 space-y-2">
+                      <div className="text-sm font-semibold text-gray-900 break-all">{fileName}</div>
+                      {attachedFileSize !== null && (
+                        <div className="text-xs text-gray-500">{formatFileSize(attachedFileSize)}</div>
+                      )}
+                      <a
+                        href={fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex text-sm font-medium text-[#1D9E75] hover:text-[#188a66] underline"
+                      >
+                        {en ? 'Download current file' : '下载当前附件'}
+                      </a>
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        {canUseStorage && (
+                          <button
+                            type="button"
+                            disabled={uploadProgress !== null}
+                            onClick={() => fileInputRef.current?.click()}
+                            className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                          >
+                            {en ? 'Replace attachment' : '替换附件'}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          disabled={uploadProgress !== null}
+                          onClick={() => void handleRemoveAttachment()}
+                          className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+                        >
+                          {en ? 'Remove attachment' : '移除附件'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                 {!canUseStorage && modal === 'edit' && profile?.role === 'admin' && (
-                  <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded px-2 py-1.5">
+                  <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded px-2 py-1.5 mb-3">
                     {en
-                      ? 'Only council or property manager can upload or replace files. You can remove the attachment from this notice below.'
-                      : '仅业委会或物业经理可上传/替换文件。您可在此移除已有附件。'}
+                      ? 'Only council or property manager can upload or replace files in storage.'
+                      : '仅业委会或物业经理可上传或替换存储中的文件。'}
                   </p>
                 )}
-                <div className="flex flex-wrap items-center gap-2">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".pdf,.doc,.docx,image/jpeg,image/png,image/gif,image/webp"
-                    className="hidden"
-                    onChange={(ev) => void onAttachmentFile(ev)}
-                    disabled={!canUseStorage || uploadProgress !== null}
-                  />
-                  <button
-                    type="button"
-                    disabled={!canUseStorage || uploadProgress !== null}
-                    onClick={() => fileInputRef.current?.click()}
-                    className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,image/jpeg,image/png"
+                  className="hidden"
+                  onChange={onAttachmentFileInput}
+                  disabled={!canUseStorage || uploadProgress !== null}
+                />
+
+                {canUseStorage && (
+                  <div
+                    role="presentation"
+                    onDragEnter={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (uploadProgress === null) setDragActive(true);
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    onDragLeave={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setDragActive(false);
+                    }}
+                    onDrop={onDropFiles}
+                    className={`rounded-lg border-2 border-dashed px-4 py-6 text-center transition-colors ${
+                      dragActive
+                        ? 'border-[#1D9E75] bg-[#1D9E75]/5'
+                        : 'border-gray-300 bg-gray-50/80'
+                    } ${uploadProgress !== null ? 'opacity-50 pointer-events-none' : ''}`}
                   >
-                    <Upload size={16} aria-hidden />
-                    {en ? 'Upload attachment' : '附件上传'}
-                  </button>
-                  {(fileUrl || fileName) && (
+                    <Upload className="mx-auto mb-2 text-gray-400" size={28} aria-hidden />
+                    <p className="text-sm text-gray-600 mb-3">
+                      {modal === 'edit' && fileUrl && fileName
+                        ? en
+                          ? 'Drag a new file here to replace the attachment, or'
+                          : '拖拽新文件到此处替换附件，或'
+                        : en
+                          ? 'Drag a file here, or'
+                          : '拖拽文件到此处，或'}
+                    </p>
                     <button
                       type="button"
-                      onClick={clearAttachment}
-                      className="text-sm text-red-600 hover:text-red-700 font-medium"
+                      disabled={uploadProgress !== null}
+                      onClick={() => fileInputRef.current?.click()}
+                      className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {en ? 'Remove attachment' : '移除附件'}
+                      {en ? 'Choose file' : '选择文件'}
                     </button>
-                  )}
-                </div>
+                  </div>
+                )}
+
+                {modal === 'create' && fileName && fileUrl && pendingUploadMeta === null && uploadProgress === null && (
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-white p-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-gray-900 break-all">{fileName}</div>
+                      {attachedFileSize !== null && (
+                        <div className="text-xs text-gray-500 mt-0.5">{formatFileSize(attachedFileSize)}</div>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleRemoveAttachment()}
+                      className="shrink-0 text-sm font-medium text-red-600 hover:text-red-700"
+                    >
+                      {en ? 'Remove' : '移除附件'}
+                    </button>
+                  </div>
+                )}
+
+                {pendingUploadMeta && (
+                  <div className="mt-3 space-y-2 rounded-lg border border-gray-200 bg-white p-3">
+                    <div className="text-sm font-medium text-gray-900 break-all">{pendingUploadMeta.name}</div>
+                    <div className="text-xs text-gray-500">{formatFileSize(pendingUploadMeta.size)}</div>
+                  </div>
+                )}
+
                 {uploadProgress !== null && (
-                  <div className="space-y-1">
+                  <div className="mt-3 space-y-1">
                     <div className="h-2 w-full rounded-full bg-gray-200 overflow-hidden">
                       <div
                         className="h-full rounded-full bg-[#1D9E75] transition-all duration-150"
@@ -509,13 +681,7 @@ export function OwnerNotificationsSection() {
                     </p>
                   </div>
                 )}
-                {uploadError && <p className="text-sm text-red-600">{uploadError}</p>}
-                {fileName && fileUrl && uploadProgress === null && !uploadError && (
-                  <p className="text-sm text-gray-700 break-all">
-                    <span className="text-gray-500">{en ? 'Selected: ' : '已选文件：'}</span>
-                    {fileName}
-                  </p>
-                )}
+                {uploadError && <p className="mt-2 text-sm text-red-600">{uploadError}</p>}
               </div>
             </div>
             <div className="flex justify-end gap-2 border-t border-gray-100 px-5 py-3 bg-gray-50 rounded-b-xl shrink-0">
