@@ -1,18 +1,14 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Home, Phone, Receipt, FileText, UserCog, Users, UserMinus, User } from 'lucide-react';
+import { User, Receipt, FileText, UserCog } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { BackButton } from '../components/BackButton';
-import { OwnerInfoTab } from './owner-info/OwnerInfoTab';
-import { EmergencyTab } from './owner-info/EmergencyTab';
+import { MyProfileTab } from './owner-info/MyProfileTab';
 import { LedgerTab } from './owner-info/LedgerTab';
 import { FormsTab } from './owner-info/FormsTab';
 import { UserManagementTab } from './owner-info/UserManagementTab';
-import { ResidentProfile } from './owner-info/ResidentProfile';
-import { CommitteeManagement } from './owner-info/CommitteeManagement';
-import { DeregistrationRequest } from './owner-info/DeregistrationRequest';
 
-type TabType = 'profile' | 'owners' | 'emergency' | 'ledger' | 'forms' | 'users' | 'residents' | 'deregister';
+type TabType = 'profile' | 'ledger' | 'forms' | 'users';
 
 interface TabConfig {
   key: TabType;
@@ -23,12 +19,8 @@ interface TabConfig {
 
 const tabs: TabConfig[] = [
   { key: 'profile', label: '我的资料', icon: <User size={18} /> },
-  { key: 'owners', label: '单元信息', icon: <Home size={18} /> },
-  { key: 'emergency', label: '紧急联系', icon: <Phone size={18} /> },
   { key: 'ledger', label: '账务记录', icon: <Receipt size={18} /> },
   { key: 'forms', label: '表单', icon: <FileText size={18} /> },
-  { key: 'residents', label: '居住人', icon: <Users size={18} />, councilOnly: true },
-  { key: 'deregister', label: '注销', icon: <UserMinus size={18} /> },
   { key: 'users', label: '用户管理', icon: <UserCog size={18} />, councilOnly: true },
 ];
 
@@ -42,7 +34,13 @@ export function OwnerInfo() {
 
   useEffect(() => {
     const raw = searchParams.get('tab');
-    if (!raw || !tabKeys.includes(raw as TabType)) return;
+    if (!raw) return;
+    const legacyToProfile = ['owners', 'emergency', 'residents', 'deregister'];
+    if (legacyToProfile.includes(raw)) {
+      setActiveTab('profile');
+      return;
+    }
+    if (!tabKeys.includes(raw as TabType)) return;
     const next = raw as TabType;
     const cfg = tabs.find((t) => t.key === next);
     if (cfg?.councilOnly && !canManageRestrictedTabs) return;
@@ -78,13 +76,9 @@ export function OwnerInfo() {
         </nav>
       </div>
 
-      {activeTab === 'profile' && <ResidentProfile />}
-      {activeTab === 'owners' && <OwnerInfoTab />}
-      {activeTab === 'emergency' && <EmergencyTab />}
+      {activeTab === 'profile' && <MyProfileTab />}
       {activeTab === 'ledger' && <LedgerTab />}
       {activeTab === 'forms' && <FormsTab />}
-      {activeTab === 'residents' && canManageRestrictedTabs && <CommitteeManagement />}
-      {activeTab === 'deregister' && <DeregistrationRequest />}
       {activeTab === 'users' && canManageRestrictedTabs && <UserManagementTab />}
     </div>
   );

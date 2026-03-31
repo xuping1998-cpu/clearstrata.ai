@@ -4,7 +4,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 
-export function EmergencyTab() {
+export function EmergencyTab({ embedded = false }: { embedded?: boolean }) {
   const { language } = useLanguage();
   const { profile } = useAuth();
   const [ownerInfo, setOwnerInfo] = useState<{ emergency_contact_name?: string; emergency_contact_phone?: string } | null>(null);
@@ -20,16 +20,22 @@ export function EmergencyTab() {
     }
   }, [profile]);
 
+  const shellClass = embedded ? 'space-y-6' : 'bg-white rounded-xl shadow-sm p-8';
+
   return (
-    <div className="bg-white rounded-xl shadow-sm p-8">
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">
-          {language === 'en' ? 'Emergency Contacts' : '紧急联系人'}
-        </h2>
-        <p className="text-gray-600">
-          {language === 'en' ? 'Important contacts for emergencies and building management' : '紧急情况和楼宇管理的重要联系方式'}
-        </p>
-      </div>
+    <div className={shellClass}>
+      {!embedded && (
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            {language === 'en' ? 'Emergency Contacts' : '紧急联系人'}
+          </h2>
+          <p className="text-gray-600">
+            {language === 'en'
+              ? 'Important contacts for emergencies and building management'
+              : '紧急情况和楼宇管理的重要联系方式'}
+          </p>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <ContactCard color="red" icon={<Phone size={24} />} title={language === 'en' ? 'Emergency Services' : '紧急服务'} number="911" subtitle={language === 'en' ? 'Police, Fire, Ambulance' : '警察、消防、救护车'} />
