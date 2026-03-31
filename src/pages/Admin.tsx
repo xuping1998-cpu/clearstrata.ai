@@ -232,8 +232,8 @@ export function Admin() {
           </p>
           <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3 max-w-2xl">
             {language === 'en'
-              ? 'New auth sign-ups get profile role Owner. Resident records may be pending until approved under Owner Information → Residents. Admin accounts stay database-only.'
-              : '新注册用户 profiles 角色为业主；居住人记录可能为「待审核」，请在「业主信息 → 居住人」批准。系统管理员（Admin）仅能通过数据库设置。'}
+              ? 'New sign-ups get profile role Owner with a pending resident record until activated under Owner Information → User Management. Admin accounts stay database-only.'
+              : '新注册用户为业主并带有「待激活」居住人档案，请在「业主信息 → 用户管理」中批准。系统管理员（Admin）仅能通过数据库设置。'}
           </p>
         </div>
         <button
@@ -258,7 +258,7 @@ export function Admin() {
           </div>
           <button
             type="button"
-            onClick={() => navigate('/owner-info?tab=residents')}
+            onClick={() => navigate('/owner-info?tab=users')}
             className="shrink-0 px-4 py-2 rounded-lg bg-amber-800 text-white text-sm font-medium hover:bg-amber-900 transition-colors"
           >
             {t('admin_review_residents_cta')}

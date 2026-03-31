@@ -1,16 +1,6 @@
 import { useState, useEffect } from 'react';
-import {
-  Search,
-  Filter,
-  Download,
-  CheckCircle,
-  XCircle,
-  Clock,
-  Users,
-  ChevronDown,
-  Loader2,
-} from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
+import { Search, Filter, Download, Users, ChevronDown, Loader2 } from 'lucide-react';
+import { useLanguage } from '../../contexts/LanguageContext';
 import { supabase } from '../../lib/supabase';
 
 interface Resident {
@@ -37,17 +27,15 @@ type FilterRole = 'all' | 'owner' | 'council' | 'manager';
 type FilterFee = 'all' | 'current' | 'overdue' | 'prepaid';
 
 export function CommitteeManagement() {
-  const { profile } = useAuth();
+  const { t, language } = useLanguage();
   const [residents, setResidents] = useState<Resident[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
+  /** Default: in-directory active residents only; account activation is on User Management tab. */
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>('active');
   const [filterRole, setFilterRole] = useState<FilterRole>('all');
   const [filterFee, setFilterFee] = useState<FilterFee>('all');
   const [showFilters, setShowFilters] = useState(false);
-  const [approvingId, setApprovingId] = useState<string | null>(null);
-
-  const isCouncil = profile?.role === 'council' || profile?.role === 'admin';
 
   useEffect(() => {
     loadResidents();
@@ -65,28 +53,6 @@ export function CommitteeManagement() {
       setResidents(data || []);
     }
     setLoading(false);
-  };
-
-  const approveResident = async (id: string) => {
-    setApprovingId(id);
-    const { error } = await supabase
-      .from('residents')
-      .update({ status: 'active' })
-      .eq('id', id);
-
-    if (!error) await loadResidents();
-    setApprovingId(null);
-  };
-
-  const rejectResident = async (id: string) => {
-    setApprovingId(id);
-    const { error } = await supabase
-      .from('residents')
-      .update({ status: 'deregistered' })
-      .eq('id', id);
-
-    if (!error) await loadResidents();
-    setApprovingId(null);
   };
 
   const exportCSV = () => {
@@ -131,41 +97,47 @@ export function CommitteeManagement() {
     return matchesSearch && matchesStatus && matchesRole && matchesFee;
   });
 
-  const pendingCount = residents.filter((r) => r.status === 'pending').length;
-
   const roleName = (role: string) => {
-    const map: Record<string, string> = {
-      owner: '业主',
-      council: '业委会',
-      manager: '经理',
+    const map: Record<string, { en: string; zh: string }> = {
+      owner: { en: 'Owner', zh: '业主' },
+      council: { en: 'Council', zh: '业委会' },
+      manager: { en: 'Manager', zh: '经理' },
     };
-    return map[role] || role;
+    const m = map[role];
+    return m ? (language === 'en' ? m.en : m.zh) : role;
   };
 
   const statusBadge = (status: string) => {
-    const map: Record<string, { bg: string; text: string; label: string }> = {
-      active: { bg: 'bg-green-100', text: 'text-green-800', label: '活跃' },
-      pending: { bg: 'bg-yellow-100', text: 'text-yellow-800', label: '待审核' },
-      deregistered: { bg: 'bg-gray-100', text: 'text-gray-600', label: '已注销' },
+    const map: Record<string, { bg: string; text: string; labelEn: string; labelZh: string }> = {
+      active: { bg: 'bg-green-100', text: 'text-green-800', labelEn: 'Active', labelZh: '活跃' },
+      pending: { bg: 'bg-yellow-100', text: 'text-yellow-800', labelEn: 'Pending', labelZh: '待激活' },
+      deregistered: {
+        bg: 'bg-gray-100',
+        text: 'text-gray-600',
+        labelEn: 'Deregistered',
+        labelZh: '已注销',
+      },
     };
     const s = map[status] || map.pending;
+    const label = language === 'en' ? s.labelEn : s.labelZh;
     return (
       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.bg} ${s.text}`}>
-        {s.label}
+        {label}
       </span>
     );
   };
 
   const feeBadge = (status: string) => {
-    const map: Record<string, { bg: string; text: string; label: string }> = {
-      current: { bg: 'bg-green-100', text: 'text-green-800', label: '正常' },
-      overdue: { bg: 'bg-red-100', text: 'text-red-800', label: '逾期' },
-      prepaid: { bg: 'bg-blue-100', text: 'text-blue-800', label: '预付' },
+    const map: Record<string, { bg: string; text: string; labelEn: string; labelZh: string }> = {
+      current: { bg: 'bg-green-100', text: 'text-green-800', labelEn: 'Current', labelZh: '正常' },
+      overdue: { bg: 'bg-red-100', text: 'text-red-800', labelEn: 'Overdue', labelZh: '逾期' },
+      prepaid: { bg: 'bg-blue-100', text: 'text-blue-800', labelEn: 'Prepaid', labelZh: '预付' },
     };
     const s = map[status] || map.current;
+    const label = language === 'en' ? s.labelEn : s.labelZh;
     return (
       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.bg} ${s.text}`}>
-        {s.label}
+        {label}
       </span>
     );
   };
@@ -180,70 +152,21 @@ export function CommitteeManagement() {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <SummaryCard label="总业主数" value={residents.length} color="text-gray-900" />
+      <p className="text-sm text-gray-600 max-w-3xl">{t('residents_tab_subtitle')}</p>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <SummaryCard label={t('residents_summary_total')} value={residents.length} color="text-gray-900" />
         <SummaryCard
-          label="活跃"
+          label={t('residents_summary_active')}
           value={residents.filter((r) => r.status === 'active').length}
           color="text-green-600"
         />
-        <SummaryCard label="待审核" value={pendingCount} color="text-yellow-600" />
         <SummaryCard
-          label="欠费"
+          label={t('residents_summary_overdue')}
           value={residents.filter((r) => r.strata_fee_status === 'overdue').length}
           color="text-red-600"
         />
       </div>
-
-      {isCouncil && pendingCount > 0 && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
-          <h3 className="font-semibold text-yellow-900 mb-3 flex items-center gap-2">
-            <Clock size={18} />
-            {pendingCount} 个待审核申请
-          </h3>
-          <div className="space-y-2">
-            {residents
-              .filter((r) => r.status === 'pending')
-              .map((r) => (
-                <div
-                  key={r.id}
-                  className="bg-white rounded-lg p-3 flex items-center justify-between gap-4"
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-gray-900 truncate">
-                      {r.name_zh || r.name_en}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      单元 {r.unit_no} | {r.email}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <button
-                      onClick={() => approveResident(r.id)}
-                      disabled={approvingId === r.id}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 transition-colors disabled:opacity-50"
-                    >
-                      {approvingId === r.id ? (
-                        <Loader2 size={14} className="animate-spin" />
-                      ) : (
-                        <CheckCircle size={14} />
-                      )}
-                      批准
-                    </button>
-                    <button
-                      onClick={() => rejectResident(r.id)}
-                      disabled={approvingId === r.id}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700 transition-colors disabled:opacity-50"
-                    >
-                      <XCircle size={14} />
-                      拒绝
-                    </button>
-                  </div>
-                </div>
-              ))}
-          </div>
-        </div>
-      )}
 
       <div className="bg-white rounded-xl shadow-sm p-4">
         <div className="flex flex-col sm:flex-row gap-3">

@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Printer } from 'lucide-react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { Printer, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase, type UserRole } from '../../lib/supabase';
@@ -26,27 +26,86 @@ interface UserWithDetails extends Profile {
   balance?: number;
 }
 
+interface ResidentBrief {
+  id: string;
+  user_id: string;
+  status: string;
+  unit_no: string;
+}
+
 export function UserManagementTab() {
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
   const { profile, refreshProfile } = useAuth();
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [residentByUserId, setResidentByUserId] = useState<Record<string, ResidentBrief>>({});
   const [ownerInfos, setOwnerInfos] = useState<OwnerInfoRecord[]>([]);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<Profile>>({});
   const [updating, setUpdating] = useState<string | null>(null);
+  const [activationBusy, setActivationBusy] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (profile) loadData();
-  }, [profile]);
+  const canSelectRoles = profile?.role === 'admin';
+  const canModerateActivation = profile?.role === 'admin';
 
-  const loadData = async () => {
-    const [{ data: profileData }, { data: ownerData }] = await Promise.all([
+  const loadData = useCallback(async () => {
+    const [{ data: profileData }, { data: ownerData }, { data: resData }] = await Promise.all([
       supabase.from('profiles').select('*').order('full_name_en'),
       supabase.from('owner_info').select('user_id, unit_number').order('unit_number'),
+      supabase.from('residents').select('id, user_id, status, unit_no'),
     ]);
     setProfiles(profileData || []);
     setOwnerInfos(ownerData || []);
-  };
+    const rmap: Record<string, ResidentBrief> = {};
+    for (const row of resData || []) {
+      rmap[row.user_id] = {
+        id: row.id,
+        user_id: row.user_id,
+        status: row.status,
+        unit_no: row.unit_no,
+      };
+    }
+    setResidentByUserId(rmap);
+  }, []);
+
+  useEffect(() => {
+    if (profile) void loadData();
+  }, [profile, loadData]);
+
+  const activationText = useCallback(
+    (userId: string) => {
+      const r = residentByUserId[userId];
+      if (!r) return t('user_mgmt_activation_none');
+      if (r.status === 'pending') return t('user_mgmt_activation_pending');
+      if (r.status === 'active') return t('user_mgmt_activation_active');
+      if (r.status === 'deregistered') return t('user_mgmt_activation_deregistered');
+      return r.status;
+    },
+    [residentByUserId, t],
+  );
+
+  const cardRoleLabel = useCallback(
+    (p: Profile) => {
+      const roleName = t(p.role);
+      const act = activationText(p.id);
+      const r = residentByUserId[p.id];
+      const unit = r?.unit_no ? ` · ${t('user_mgmt_unit')} ${r.unit_no}` : '';
+      return `${roleName} · ${act}${unit}`;
+    },
+    [activationText, residentByUserId, t],
+  );
+
+  const sortedProfiles = useMemo(() => {
+    const copy = [...profiles];
+    copy.sort((a, b) => {
+      const sa = residentByUserId[a.id]?.status;
+      const sb = residentByUserId[b.id]?.status;
+      const pa = sa === 'pending' ? 0 : 1;
+      const pb = sb === 'pending' ? 0 : 1;
+      if (pa !== pb) return pa - pb;
+      return a.full_name_en.localeCompare(b.full_name_en);
+    });
+    return copy;
+  }, [profiles, residentByUserId]);
 
   const startEdit = (user: Profile) => {
     setEditingUserId(user.id);
@@ -88,14 +147,7 @@ export function UserManagementTab() {
     setEditForm({ ...editForm, [field]: value });
   };
 
-  /** Only admins may change profile roles (council / manager); council can still edit names. */
-  const canSelectRoles = profile?.role === 'admin';
-
-  const canShowRoleSelector = (user: Profile) => {
-    if (!canSelectRoles || user.role === 'admin') return false;
-    if (profile?.role === 'council' && user.role === 'manager') return false;
-    return true;
-  };
+  const canShowRoleSelector = (user: Profile) => canSelectRoles && user.role !== 'admin';
 
   const updateUserRole = async (userId: string, metaRole: AppMetadataRole) => {
     if (!canSelectRoles) return;
@@ -128,6 +180,31 @@ export function UserManagementTab() {
     setUpdating(null);
   };
 
+  const approveActivation = async (residentId: string) => {
+    setActivationBusy(residentId);
+    const { error } = await supabase.from('residents').update({ status: 'active' }).eq('id', residentId);
+    if (error) {
+      alert(language === 'en' ? 'Could not activate account.' : '激活失败，请重试。');
+    } else {
+      await loadData();
+    }
+    setActivationBusy(null);
+  };
+
+  const rejectActivation = async (residentId: string) => {
+    setActivationBusy(residentId);
+    const { error } = await supabase
+      .from('residents')
+      .update({ status: 'deregistered' })
+      .eq('id', residentId);
+    if (error) {
+      alert(language === 'en' ? 'Could not reject registration.' : '操作失败，请重试。');
+    } else {
+      await loadData();
+    }
+    setActivationBusy(null);
+  };
+
   const printUserList = async () => {
     try {
       const usersWithDetails: UserWithDetails[] = await Promise.all(
@@ -147,7 +224,7 @@ export function UserManagementTab() {
           }
 
           return { ...user, unit_number: ownerInfo?.unit_number, balance };
-        })
+        }),
       );
 
       const roleTranslation = (role: string) => {
@@ -189,25 +266,50 @@ export function UserManagementTab() {
         email: l ? 'Email' : '电子邮箱',
         phone: l ? 'Phone' : '电话',
         role: l ? 'Role' : '角色',
+        activation: l ? t('user_mgmt_col_activation') : t('user_mgmt_col_activation'),
         unit: l ? 'Unit #' : '房间号',
         balance: l ? 'Balance' : '物业费余额',
       };
 
-      const tableRows = usersWithDetails.map(
-        (user) =>
-          '<tr>' +
-          '<td>' + escapeHtml(user.full_name_en) + '</td>' +
-          '<td>' + escapeHtml(user.full_name_zh || '-') + '</td>' +
-          '<td>' + escapeHtml(user.email) + '</td>' +
-          '<td>' + escapeHtml(user.phone || '-') + '</td>' +
-          '<td>' + escapeHtml(roleTranslation(user.role)) + '</td>' +
-          '<td>' + escapeHtml(user.unit_number || '-') + '</td>' +
-          '<td class="' + getBalanceClass(user.balance) + '">' + formatBalance(user.balance) + '</td>' +
-          '</tr>'
-      ).join('');
+      const tableRows = usersWithDetails
+        .sort((a, b) => a.full_name_en.localeCompare(b.full_name_en))
+        .map(
+          (user) =>
+            '<tr>' +
+            '<td>' +
+            escapeHtml(user.full_name_en) +
+            '</td>' +
+            '<td>' +
+            escapeHtml(user.full_name_zh || '-') +
+            '</td>' +
+            '<td>' +
+            escapeHtml(user.email) +
+            '</td>' +
+            '<td>' +
+            escapeHtml(user.phone || '-') +
+            '</td>' +
+            '<td>' +
+            escapeHtml(roleTranslation(user.role)) +
+            '</td>' +
+            '<td>' +
+            escapeHtml(activationText(user.id)) +
+            '</td>' +
+            '<td>' +
+            escapeHtml(user.unit_number || '-') +
+            '</td>' +
+            '<td class="' +
+            getBalanceClass(user.balance) +
+            '">' +
+            formatBalance(user.balance) +
+            '</td>' +
+            '</tr>',
+        )
+        .join('');
 
       const html =
-        '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' + labels.title + '</title>' +
+        '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' +
+        labels.title +
+        '</title>' +
         '<style>' +
         'body{font-family:Arial,sans-serif;padding:20px;max-width:1400px;margin:0 auto}' +
         'h1{color:#1D9E75;text-align:center;margin-bottom:10px}' +
@@ -220,15 +322,43 @@ export function UserManagementTab() {
         '.balance-negative{color:#DC2626;font-weight:bold}' +
         '@media print{body{padding:0}}' +
         '</style></head><body>' +
-        '<h1>' + labels.title + '</h1>' +
-        '<div class="meta"><p><strong>' + labels.total + ':</strong> ' + usersWithDetails.length + '</p>' +
-        '<p><strong>' + labels.date + ':</strong> ' + new Date().toLocaleDateString(l ? 'en-CA' : 'zh-CN') + '</p></div>' +
+        '<h1>' +
+        labels.title +
+        '</h1>' +
+        '<div class="meta"><p><strong>' +
+        labels.total +
+        ':</strong> ' +
+        usersWithDetails.length +
+        '</p>' +
+        '<p><strong>' +
+        labels.date +
+        ':</strong> ' +
+        new Date().toLocaleDateString(l ? 'en-CA' : 'zh-CN') +
+        '</p></div>' +
         '<table><thead><tr>' +
-        '<th>' + labels.nameEn + '</th><th>' + labels.nameZh + '</th>' +
-        '<th>' + labels.email + '</th><th>' + labels.phone + '</th>' +
-        '<th>' + labels.role + '</th><th>' + labels.unit + '</th>' +
-        '<th>' + labels.balance + '</th>' +
-        '</tr></thead><tbody>' + tableRows + '</tbody></table></body></html>';
+        '<th>' +
+        labels.nameEn +
+        '</th><th>' +
+        labels.nameZh +
+        '</th>' +
+        '<th>' +
+        labels.email +
+        '</th><th>' +
+        labels.phone +
+        '</th>' +
+        '<th>' +
+        labels.role +
+        '</th><th>' +
+        labels.activation +
+        '</th><th>' +
+        labels.unit +
+        '</th>' +
+        '<th>' +
+        labels.balance +
+        '</th>' +
+        '</tr></thead><tbody>' +
+        tableRows +
+        '</tbody></table></body></html>';
 
       const printWindow = window.open('', '_blank');
       if (!printWindow) {
@@ -246,62 +376,120 @@ export function UserManagementTab() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-900">
-          {language === 'en' ? 'User Management' : '用户管理'}
-        </h2>
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">
+            {language === 'en' ? 'User Management' : '用户管理'}
+          </h2>
+          <p className="text-gray-600 text-sm mt-1 max-w-2xl">{t('user_mgmt_subtitle')}</p>
+        </div>
         <button
           onClick={printUserList}
-          className="flex items-center gap-2 px-4 py-2 bg-[#1D9E75] text-white rounded-lg hover:bg-[#178a66] transition-colors"
+          className="flex items-center gap-2 px-4 py-2 bg-[#1D9E75] text-white rounded-lg hover:bg-[#178a66] transition-colors shrink-0"
         >
           <Printer size={20} />
           {language === 'en' ? 'Print User List' : '打印用户列表'}
         </button>
       </div>
       <div className="space-y-4">
-        {profiles.map((user) => (
-          <UserCard
-            key={user.id}
-            user={user}
-            language={language}
-            isEditing={editingUserId === user.id}
-            editForm={editForm}
-            updating={updating === user.id}
-            onStartEdit={() => startEdit(user)}
-            onCancelEdit={cancelEdit}
-            onSaveEdit={() => saveEdit(user.id)}
-            onFormChange={updateEditForm}
-            roleSelector={
-              canShowRoleSelector(user) ? (
-                <label className="flex items-center gap-2 text-sm text-gray-700">
-                  <span className="whitespace-nowrap text-xs font-medium text-gray-500">
-                    {language === 'en' ? 'Role' : '角色'}
+        {sortedProfiles.map((user) => {
+          const res = residentByUserId[user.id];
+          const pending = res?.status === 'pending';
+
+          return (
+            <div
+              key={user.id}
+              className="rounded-xl border border-gray-200 overflow-hidden bg-white shadow-sm"
+            >
+              {pending && (
+                <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-amber-50 border-b border-amber-100">
+                  <span className="text-sm font-medium text-amber-900">
+                    {t('user_mgmt_activation_pending')}
+                    {res?.unit_no ? ` · ${t('user_mgmt_unit')} ${res.unit_no}` : ''}
                   </span>
-                  <select
-                    value={profileRoleToMetadataRole(user.role)}
-                    onChange={(e) =>
-                      updateUserRole(user.id, e.target.value as AppMetadataRole)
-                    }
-                    disabled={updating === user.id}
-                    className="min-w-[140px] px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#1D9E75] disabled:opacity-50"
-                  >
-                    <option value="user">
-                      {language === 'en' ? 'Owner' : '业主'}
-                    </option>
-                    <option value="council">
-                      {language === 'en' ? 'Council' : '业委会成员'}
-                    </option>
-                    {profile?.role === 'admin' && (
-                      <option value="manager">
-                        {language === 'en' ? 'Property Manager' : '物业经理'}
-                      </option>
-                    )}
-                  </select>
-                </label>
-              ) : undefined
-            }
-          />
-        ))}
+                  {canModerateActivation && res && (
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => approveActivation(res.id)}
+                        disabled={activationBusy === res.id}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+                      >
+                        {activationBusy === res.id ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                          <CheckCircle size={14} />
+                        )}
+                        {t('user_mgmt_approve')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => rejectActivation(res.id)}
+                        disabled={activationBusy === res.id}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50"
+                      >
+                        <XCircle size={14} />
+                        {t('user_mgmt_reject')}
+                      </button>
+                    </div>
+                  )}
+                  {!canModerateActivation && pending && (
+                    <span className="text-xs text-amber-800">
+                      {language === 'en' ? 'Awaiting admin activation' : '待管理员激活'}
+                    </span>
+                  )}
+                </div>
+              )}
+              <UserCard
+                user={{
+                  id: user.id,
+                  full_name_en: user.full_name_en,
+                  full_name_zh: user.full_name_zh,
+                  email: user.email,
+                  phone: user.phone,
+                  roleLabel: cardRoleLabel(user),
+                }}
+                language={language}
+                isEditing={editingUserId === user.id}
+                editForm={editForm}
+                updating={updating === user.id}
+                onStartEdit={() => startEdit(user)}
+                onCancelEdit={cancelEdit}
+                onSaveEdit={() => saveEdit(user.id)}
+                onFormChange={updateEditForm}
+                roleSelector={
+                  canShowRoleSelector(user) ? (
+                    <label className="flex items-center gap-2 text-sm text-gray-700">
+                      <span className="whitespace-nowrap text-xs font-medium text-gray-500">
+                        {language === 'en' ? 'Role' : '角色'}
+                      </span>
+                      <select
+                        value={profileRoleToMetadataRole(user.role)}
+                        onChange={(e) =>
+                          updateUserRole(user.id, e.target.value as AppMetadataRole)
+                        }
+                        disabled={updating === user.id}
+                        className="min-w-[140px] px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#1D9E75] disabled:opacity-50"
+                      >
+                        <option value="user">
+                          {language === 'en' ? 'Owner' : '业主'}
+                        </option>
+                        <option value="council">
+                          {language === 'en' ? 'Council' : '业委会成员'}
+                        </option>
+                        {profile?.role === 'admin' && (
+                          <option value="manager">
+                            {language === 'en' ? 'Property Manager' : '物业经理'}
+                          </option>
+                        )}
+                      </select>
+                    </label>
+                  ) : undefined
+                }
+              />
+            </div>
+          );
+        })}
       </div>
     </div>
   );

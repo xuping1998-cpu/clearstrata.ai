@@ -49,18 +49,39 @@ const translations: Record<string, Record<Language, string>> = {
 
   admin_dashboard_card_title: { en: 'User & role management', zh: '用户与角色管理' },
   admin_dashboard_card_desc: {
-    en: 'View accounts, assign council or property manager, review pending resident sign-ups.',
-    zh: '查看账号、指定业委会/物业经理、审核待激活的注册业主。',
+    en: 'View accounts, assign council or property manager, activate sign-ups in Owner Information → User Management.',
+    zh: '查看账号、指定业委会/物业经理；待激活注册在「业主信息 → 用户管理」中处理。',
   },
-  admin_review_residents_cta: { en: 'Review pending resident sign-ups', zh: '审核待激活业主（居住人）' },
+  admin_review_residents_cta: { en: 'Open User Management tab', zh: '打开「用户管理」页签' },
   admin_review_residents_hint: {
-    en: 'New registrations create a pending resident record. Approve or reject under Owner Information → Residents.',
-    zh: '新注册用户会生成「待审核」居住人记录，请在「业主信息 → 居住人」中批准或拒绝。',
+    en: 'Approve or reject pending accounts under Owner Information → User Management.',
+    zh: '请在「业主信息 → 用户管理」中批准或拒绝待激活账号。',
   },
   admin_pending_residents_banner: {
-    en: '{n} pending resident sign-ups to review',
-    zh: '有 {n} 条待审核的居住人注册',
+    en: '{n} pending account activations',
+    zh: '有 {n} 个账号待激活',
   },
+
+  user_mgmt_subtitle: {
+    en: 'All registered accounts with activation status. Admins can activate sign-ups and assign roles.',
+    zh: '全部注册账号及激活状态；管理员可在此审核激活并调整角色。',
+  },
+  user_mgmt_activation_none: { en: 'No resident record', zh: '无居住人登记' },
+  user_mgmt_activation_pending: { en: 'Pending activation', zh: '待审核激活' },
+  user_mgmt_activation_active: { en: 'Activated', zh: '已激活' },
+  user_mgmt_activation_deregistered: { en: 'Deregistered', zh: '已注销' },
+  user_mgmt_unit: { en: 'Unit', zh: '单元' },
+  user_mgmt_approve: { en: 'Activate', zh: '批准激活' },
+  user_mgmt_reject: { en: 'Reject', zh: '拒绝' },
+  user_mgmt_col_activation: { en: 'Activation', zh: '激活状态' },
+
+  residents_tab_subtitle: {
+    en: 'Residents by unit (activated records). Account activation is handled under User Management.',
+    zh: '按单元查看在册居住人档案；新账号激活请在「用户管理」中处理。',
+  },
+  residents_summary_total: { en: 'Total records', zh: '档案总数' },
+  residents_summary_active: { en: 'Active', zh: '在册活跃' },
+  residents_summary_overdue: { en: 'Fee overdue', zh: '欠费' },
 
   procurement_title: { en: 'Procurement & Maintenance', zh: '采购维修' },
   procurement_new_job: { en: 'New Job', zh: '新建任务' },
