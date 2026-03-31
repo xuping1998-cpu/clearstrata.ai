@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useAnnouncementInbox } from '../../contexts/AnnouncementInboxContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { supabase } from '../../lib/supabase';
+import { createOwnerNotificationViaApi } from '../../lib/createOwnerNotificationApi';
 import {
   buildAnnouncementStoragePath,
   getNotificationAttachmentPublicUrl,
@@ -328,10 +329,12 @@ export function OwnerNotificationsSection() {
       }
 
       if (modal === 'create') {
-        const { error } = await supabase
-          .from('notifications')
-          .insert({ title: t, content: body, file_url: nextUrl, file_name: nextName });
-        if (error) throw error;
+        await createOwnerNotificationViaApi({
+          title: t,
+          content: body,
+          file_url: nextUrl,
+          file_name: nextName,
+        });
       } else if (modal === 'edit' && editingId) {
         const { error } = await supabase
           .from('notifications')
