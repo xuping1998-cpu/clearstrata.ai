@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Printer, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { supabase, type UserRole } from '../../lib/supabase';
+import { supabase, type UserRole, type ProfileAccountStatus } from '../../lib/supabase';
 import { invokeUpdateUserRole } from '../../lib/invokeUpdateUserRole';
 import { type AppMetadataRole, profileRoleToMetadataRole } from '../../lib/userRoleMetadata';
 import { UserCard } from '../../components/UserCard';
@@ -14,6 +14,7 @@ interface Profile {
   email: string;
   phone?: string;
   role: UserRole;
+  status?: ProfileAccountStatus;
 }
 
 interface OwnerInfoRecord {
@@ -180,29 +181,117 @@ export function UserManagementTab() {
     setUpdating(null);
   };
 
-  const approveActivation = async (residentId: string) => {
-    setActivationBusy(residentId);
-    const { error } = await supabase.from('residents').update({ status: 'active' }).eq('id', residentId);
-    if (error) {
-      alert(language === 'en' ? 'Could not activate account.' : '激活失败，请重试。');
-    } else {
-      await loadData();
-    }
-    setActivationBusy(null);
+  const formatDbError = (err: { message: string; hint?: string | null }) => {
+    const hint = err.hint ? ` ${err.hint}` : '';
+    return `${err.message}${hint}`;
   };
 
-  const rejectActivation = async (residentId: string) => {
+  const approveActivation = async (residentId: string, profileUserId: string) => {
     setActivationBusy(residentId);
-    const { error } = await supabase
-      .from('residents')
-      .update({ status: 'deregistered' })
-      .eq('id', residentId);
-    if (error) {
-      alert(language === 'en' ? 'Could not reject registration.' : '操作失败，请重试。');
-    } else {
+    try {
+      const { data: row, error: fetchErr } = await supabase
+        .from('residents')
+        .select('id, user_id')
+        .eq('id', residentId)
+        .maybeSingle();
+
+      if (fetchErr) {
+        console.error('[UserManagementTab] approve fetch resident:', fetchErr);
+        alert(`${t('user_mgmt_activate_fail')} ${formatDbError(fetchErr)}`);
+        return;
+      }
+      if (!row || row.user_id !== profileUserId) {
+        alert(
+          language === 'en'
+            ? 'Resident record not found or does not match this user.'
+            : '未找到居住人记录或与该用户不匹配。',
+        );
+        return;
+      }
+
+      const now = new Date().toISOString();
+      const { error: resErr } = await supabase
+        .from('residents')
+        .update({ status: 'active', updated_at: now })
+        .eq('id', residentId);
+
+      if (resErr) {
+        console.error('[UserManagementTab] approve residents update:', resErr);
+        alert(`${t('user_mgmt_activate_fail')} ${formatDbError(resErr)}`);
+        return;
+      }
+
+      const { error: profErr } = await supabase
+        .from('profiles')
+        .update({ status: 'active', updated_at: now })
+        .eq('id', profileUserId);
+
+      if (profErr) {
+        console.error('[UserManagementTab] approve profiles update:', profErr);
+        alert(`${t('user_mgmt_profile_partial')} ${formatDbError(profErr)}`);
+        await loadData();
+        return;
+      }
+
       await loadData();
+      alert(t('user_mgmt_activate_success'));
+    } finally {
+      setActivationBusy(null);
     }
-    setActivationBusy(null);
+  };
+
+  const rejectActivation = async (residentId: string, profileUserId: string) => {
+    setActivationBusy(residentId);
+    try {
+      const { data: row, error: fetchErr } = await supabase
+        .from('residents')
+        .select('id, user_id')
+        .eq('id', residentId)
+        .maybeSingle();
+
+      if (fetchErr) {
+        console.error('[UserManagementTab] reject fetch resident:', fetchErr);
+        alert(`${t('user_mgmt_reject_fail')} ${formatDbError(fetchErr)}`);
+        return;
+      }
+      if (!row || row.user_id !== profileUserId) {
+        alert(
+          language === 'en'
+            ? 'Resident record not found or does not match this user.'
+            : '未找到居住人记录或与该用户不匹配。',
+        );
+        return;
+      }
+
+      const now = new Date().toISOString();
+      const { error: resErr } = await supabase
+        .from('residents')
+        .update({ status: 'deregistered', updated_at: now })
+        .eq('id', residentId);
+
+      if (resErr) {
+        console.error('[UserManagementTab] reject residents update:', resErr);
+        alert(`${t('user_mgmt_reject_fail')} ${formatDbError(resErr)}`);
+        return;
+      }
+
+      const { error: profErr } = await supabase
+        .from('profiles')
+        .update({ status: 'suspended', updated_at: now })
+        .eq('id', profileUserId);
+
+      if (profErr) {
+        console.error('[UserManagementTab] reject profiles update:', profErr);
+        alert(`${t('user_mgmt_profile_partial')} ${formatDbError(profErr)}`);
+        await loadData();
+        return;
+      }
+
+      await loadData();
+      alert(t('user_mgmt_reject_success'));
+    } finally {
+      setActivationBusy(null);
+    }
   };
 
   const printUserList = async () => {
@@ -411,7 +500,7 @@ export function UserManagementTab() {
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
-                        onClick={() => approveActivation(res.id)}
+                        onClick={() => void approveActivation(res.id, user.id)}
                         disabled={activationBusy === res.id}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
                       >
@@ -424,7 +513,7 @@ export function UserManagementTab() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => rejectActivation(res.id)}
+                        onClick={() => void rejectActivation(res.id, user.id)}
                         disabled={activationBusy === res.id}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50"
                       >

@@ -100,6 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         full_name_en: fullNameEn,
         full_name_zh: fullNameZh,
         role: 'owner',
+        status: 'pending',
         unit_number: unitNumber,
         preferred_language: 'en',
       });

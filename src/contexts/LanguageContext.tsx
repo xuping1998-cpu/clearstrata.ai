@@ -74,6 +74,14 @@ const translations: Record<string, Record<Language, string>> = {
   user_mgmt_approve: { en: 'Activate', zh: '批准激活' },
   user_mgmt_reject: { en: 'Reject', zh: '拒绝' },
   user_mgmt_col_activation: { en: 'Activation', zh: '激活状态' },
+  user_mgmt_activate_success: { en: 'Account activated successfully.', zh: '已批准激活。' },
+  user_mgmt_activate_fail: { en: 'Activation failed.', zh: '激活失败。' },
+  user_mgmt_reject_success: { en: 'Registration rejected.', zh: '已拒绝该注册。' },
+  user_mgmt_reject_fail: { en: 'Could not reject registration.', zh: '拒绝操作失败。' },
+  user_mgmt_profile_partial: {
+    en: 'Resident record was updated, but updating the profile failed.',
+    zh: '居住人记录已更新，但用户资料未能同步更新。',
+  },
 
   residents_tab_subtitle: {
     en: 'Residents by unit (activated records). Account activation is handled under User Management.',
