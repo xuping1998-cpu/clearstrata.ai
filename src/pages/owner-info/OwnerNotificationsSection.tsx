@@ -332,7 +332,8 @@ export function OwnerNotificationsSection() {
           data: { session },
         } = await supabase.auth.getSession();
         if (!session?.access_token) {
-          throw new Error(en ? 'Session expired. Please sign in again.' : '登录已过期，请重新登录。');
+          alert(en ? 'Please sign in again.' : '请重新登录。');
+          return;
         }
         const res = await fetch('/api/create-notification', {
           method: 'POST',
@@ -347,9 +348,11 @@ export function OwnerNotificationsSection() {
             fileName: nextName,
           }),
         });
-        const json = (await res.json().catch(() => ({}))) as { error?: string };
+        const payload = (await res.json().catch(() => ({}))) as { error?: string };
         if (!res.ok) {
-          throw new Error(json.error || `HTTP ${res.status}`);
+          const msg = payload.error ?? (en ? 'Publish failed.' : '发布失败。');
+          alert(en ? `Publish failed: ${msg}` : `发布失败：${msg}`);
+          return;
         }
       } else if (modal === 'edit' && editingId) {
         const { error } = await supabase
