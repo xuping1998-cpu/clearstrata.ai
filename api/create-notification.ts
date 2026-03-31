@@ -77,14 +77,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   const title = typeof body?.title === 'string' ? body.title.trim() : '';
   const content = typeof body?.content === 'string' ? body.content.trim() : '';
+
+  const rawUrl = body.fileUrl ?? body.file_url;
+  const rawName = body.fileName ?? body.file_name;
   const file_url =
-    body?.file_url === null || body?.file_url === undefined || body?.file_url === ''
-      ? null
-      : String(body.file_url).trim() || null;
+    rawUrl === null || rawUrl === undefined || rawUrl === '' ? null : String(rawUrl).trim() || null;
   const file_name =
-    body?.file_name === null || body?.file_name === undefined || body?.file_name === ''
-      ? null
-      : String(body.file_name).trim() || null;
+    rawName === null || rawName === undefined || rawName === '' ? null : String(rawName).trim() || null;
 
   if (!title || !content) {
     return res.status(400).json({ error: 'title and content are required' });

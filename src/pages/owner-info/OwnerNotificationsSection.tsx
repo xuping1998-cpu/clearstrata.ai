@@ -4,7 +4,6 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useAnnouncementInbox } from '../../contexts/AnnouncementInboxContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { supabase } from '../../lib/supabase';
-import { createOwnerNotificationViaApi } from '../../lib/createOwnerNotificationApi';
 import {
   buildAnnouncementStoragePath,
   getNotificationAttachmentPublicUrl,
@@ -329,12 +328,29 @@ export function OwnerNotificationsSection() {
       }
 
       if (modal === 'create') {
-        await createOwnerNotificationViaApi({
-          title: t,
-          content: body,
-          file_url: nextUrl,
-          file_name: nextName,
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (!session?.access_token) {
+          throw new Error(en ? 'Session expired. Please sign in again.' : '登录已过期，请重新登录。');
+        }
+        const res = await fetch('/api/create-notification', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            title: t,
+            content: body,
+            fileUrl: nextUrl,
+            fileName: nextName,
+          }),
         });
+        const json = (await res.json().catch(() => ({}))) as { error?: string };
+        if (!res.ok) {
+          throw new Error(json.error || `HTTP ${res.status}`);
+        }
       } else if (modal === 'edit' && editingId) {
         const { error } = await supabase
           .from('notifications')
