@@ -228,9 +228,7 @@ export function InvoiceManagement() {
         currency: extracted.currency || 'CAD',
         category: extracted.category || 'general',
         notes: extracted.description || null,
-        // NOTE: Temporarily force false to avoid any DB-side anomaly writes that may be violating FK.
-        // The raw AI anomaly signal remains in ai_extracted_data.
-        has_anomalies: false,
+        has_anomalies: Boolean(extracted.has_anomalies),
         ai_extracted_data: extracted,
         ai_confidence_score: 0.85,
         uploaded_by: profile.id,
@@ -244,6 +242,27 @@ export function InvoiceManagement() {
       const invoiceId = (insertedInvoice as { id: string } | null)?.id;
       if (!invoiceId) {
         throw new Error(l ? 'Missing invoice id after insert' : '发票保存后缺少invoice_id');
+      }
+
+      // 如果 AI 检测到异常：先拿到 invoiceId，再写 financial_anomalies。
+      // financial_anomalies 写入失败不影响 invoices（不回滚），只记录日志。
+      if (extracted.has_anomalies) {
+        const anomalyNotes =
+          (typeof extracted.anomaly_notes === 'string' && extracted.anomaly_notes.trim()) ||
+          (typeof extracted.description === 'string' && extracted.description.trim()) ||
+          (l ? 'AI detected anomalies' : 'AI检测到异常');
+
+        try {
+          const { error: anomalyError } = await supabase.from('financial_anomalies').insert({
+            invoice_id: invoiceId,
+            notes: anomalyNotes,
+          });
+          if (anomalyError) {
+            console.error('financial_anomalies insert failed:', anomalyError);
+          }
+        } catch (anomalyErr) {
+          console.error('financial_anomalies insert threw:', anomalyErr);
+        }
       }
 
       setUploadProgress(l ? 'Done!' : '识别完成！');
