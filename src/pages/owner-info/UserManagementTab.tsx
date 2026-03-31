@@ -109,12 +109,6 @@ export function UserManagementTab() {
     }
   }, [loadData]);
 
-  const alertAfterPaint = (message: string) => {
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => alert(message));
-    });
-  };
-
   useEffect(() => {
     if (profile) void loadData();
   }, [profile, loadData]);
@@ -275,13 +269,13 @@ export function UserManagementTab() {
 
       if (profErr) {
         console.error('[UserManagementTab] approve profiles update:', profErr);
+        alert(`${t('user_mgmt_profile_partial')} ${formatDbError(profErr)}`);
         await reloadListAndRefreshUser(residentId, profileUserId);
-        alertAfterPaint(`${t('user_mgmt_profile_partial')} ${formatDbError(profErr)}`);
         return;
       }
 
+      alert(t('user_mgmt_activate_success'));
       await reloadListAndRefreshUser(residentId, profileUserId);
-      alertAfterPaint(t('user_mgmt_activate_success'));
     } finally {
       setActivationBusy(null);
     }
@@ -329,13 +323,13 @@ export function UserManagementTab() {
 
       if (profErr) {
         console.error('[UserManagementTab] reject profiles update:', profErr);
+        alert(`${t('user_mgmt_profile_partial')} ${formatDbError(profErr)}`);
         await reloadListAndRefreshUser(residentId, profileUserId);
-        alertAfterPaint(`${t('user_mgmt_profile_partial')} ${formatDbError(profErr)}`);
         return;
       }
 
+      alert(t('user_mgmt_reject_success'));
       await reloadListAndRefreshUser(residentId, profileUserId);
-      alertAfterPaint(t('user_mgmt_reject_success'));
     } finally {
       setActivationBusy(null);
     }
