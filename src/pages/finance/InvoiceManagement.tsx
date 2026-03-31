@@ -239,7 +239,16 @@ export function InvoiceManagement() {
       await loadInvoices();
       setTimeout(() => setUploadProgress(''), 2000);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg =
+        err instanceof Error
+          ? err.message
+          : (() => {
+              try {
+                return typeof err === 'string' ? err : JSON.stringify(err);
+              } catch {
+                return String(err);
+              }
+            })();
       alert((l ? 'Upload failed: ' : '上传失败：') + msg);
       setUploadProgress('');
     } finally {

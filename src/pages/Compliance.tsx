@@ -341,7 +341,16 @@ export function Compliance() {
       alert(language === 'zh' ? '上传成功！' : 'Upload successful!');
     } catch (error: unknown) {
       console.error('Error uploading document:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : (() => {
+              try {
+                return typeof error === 'string' ? error : JSON.stringify(error);
+              } catch {
+                return String(error);
+              }
+            })();
       alert(`${language === 'zh' ? '上传失败：' : 'Upload failed: '}${errorMessage}`);
     } finally {
       setUploading(false);
