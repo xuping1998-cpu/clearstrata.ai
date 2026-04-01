@@ -53,6 +53,27 @@ async function readFunctionErrorBody(err: FunctionsHttpError): Promise<Record<st
   }
 }
 
+/** 用户可见的补充说明（如 Resend 测试模式限制） */
+function pickInviteFailureHint(body: Record<string, unknown>, en: boolean): string | undefined {
+  if (body.code === 'RESEND_TESTING_RESTRICTION') {
+    const zh = typeof body.message_zh === 'string' ? body.message_zh : '';
+    const eng = typeof body.message_en === 'string' ? body.message_en : '';
+    return en ? eng || zh : zh || eng;
+  }
+  const details = body.details;
+  if (details && typeof details === 'object' && details !== null) {
+    const d = details as Record<string, unknown>;
+    const name = typeof d.name === 'string' ? d.name : '';
+    const msg = typeof d.message === 'string' ? d.message : '';
+    if (name === 'validation_error' && /testing email|only send|verify a domain|can only send/i.test(msg)) {
+      return en
+        ? 'Email sending is restricted. Verify your domain in Resend and enable production sending, or use an allowed test recipient until then.'
+        : '当前邮箱发送受限，请先完成邮件服务正式发送权限开通';
+    }
+  }
+  return undefined;
+}
+
 export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
   const { user, session } = useAuth();
   const { language, t } = useLanguage();
@@ -75,6 +96,8 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
    * 未出现在 Record 中的 userId 视为 idle。
    */
   const [emailStatus, setEmailStatus] = useState<Record<string, 'idle' | 'sending' | 'sent' | 'error'>>({});
+  /** 发送失败时的补充说明（如邮件服务未开通正式发送） */
+  const [inviteFailureHints, setInviteFailureHints] = useState<Record<string, string | undefined>>({});
 
   /** 【新增】取某用户的当前邮件状态（缺省为 idle） */
   const getEmailUiState = (userId: string) => emailStatus[userId] ?? 'idle';
@@ -96,6 +119,11 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
     );
 
     setEmailStatus((prev) => ({ ...prev, [userId]: 'sending' }));
+    setInviteFailureHints((prev) => {
+      const next = { ...prev };
+      delete next[userId];
+      return next;
+    });
 
     try {
       const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
@@ -126,22 +154,37 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
 
       if (error) {
         console.error('[MeetingInvite] invoke 返回 error:', error);
+        let errBody: Record<string, unknown> = {};
         if (error instanceof FunctionsHttpError) {
-          const body = await readFunctionErrorBody(error);
-          console.error('[MeetingInvite] HTTP', error.context.status, error.context.statusText, body);
+          errBody = await readFunctionErrorBody(error);
+          console.error('[MeetingInvite] HTTP', error.context.status, error.context.statusText, errBody);
         }
         setEmailStatus((prev) => ({ ...prev, [userId]: 'error' }));
+        setInviteFailureHints((prev) => ({
+          ...prev,
+          [userId]: pickInviteFailureHint(errBody, l),
+        }));
         return;
       }
 
       if (data && typeof data === 'object' && data !== null && 'error' in data) {
         console.error('[MeetingInvite] 响应体含 error:', data);
+        const errBody = data as Record<string, unknown>;
         setEmailStatus((prev) => ({ ...prev, [userId]: 'error' }));
+        setInviteFailureHints((prev) => ({
+          ...prev,
+          [userId]: pickInviteFailureHint(errBody, l),
+        }));
         return;
       }
 
       console.log('[MeetingInvite] 发送成功:', data);
       setEmailStatus((prev) => ({ ...prev, [userId]: 'sent' }));
+      setInviteFailureHints((prev) => {
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
     } catch (e) {
       console.error('[MeetingInvite] 未捕获异常:', e);
       setEmailStatus((prev) => ({ ...prev, [userId]: 'error' }));
@@ -394,6 +437,7 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
             /** 邮件发送失败时不与「已邀请」出席状态徽章同时展示 */
             const showAttendanceStatusBadge =
               !(mailState === 'error' && attendee.attendance_status === 'invited');
+            const failureHint = inviteFailureHints[attendee.user_id];
 
             return (
               <div key={attendee.id} className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg">
@@ -412,52 +456,61 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
                   </p>
                   <p className="text-xs text-gray-500">{attendee.profile?.email}</p>
                 </div>
-                <div className="flex items-center gap-2">
-                  {/* 【新增】按 emailStatus 显示发送进度文案（与原有样式一致） */}
-                  {mailState === 'sending' && (
-                    <span className="text-xs text-blue-500 flex items-center gap-1">
-                      <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                      {l ? 'Sending…' : '发送中'}
-                    </span>
-                  )}
-                  {mailState === 'sent' && (
-                    <span className="text-xs text-green-600 flex items-center gap-1">
-                      <CheckCircle size={12} />
-                      {l ? 'Sent' : '已发送'}
-                    </span>
-                  )}
-                  {mailState === 'error' && (
-                    <span className="text-xs text-red-600 font-medium flex items-center gap-1">
-                      <AlertCircle size={12} aria-hidden />
-                      {l ? 'Send failed' : '发送失败'}
-                    </span>
-                  )}
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <div className="flex items-center gap-2 flex-wrap justify-end">
+                    {mailState === 'sending' && (
+                      <span className="text-xs text-blue-500 flex items-center gap-1">
+                        <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                        {l ? 'Sending…' : '发送中'}
+                      </span>
+                    )}
+                    {mailState === 'sent' && (
+                      <span className="text-xs text-green-600 flex items-center gap-1">
+                        <CheckCircle size={12} aria-hidden />
+                        {l ? 'Sent' : '已发送'}
+                      </span>
+                    )}
+                    {mailState === 'error' && (
+                      <span className="text-xs text-red-600 font-medium flex items-center gap-1">
+                        <AlertCircle size={12} aria-hidden />
+                        {l ? 'Send failed' : '发送失败'}
+                      </span>
+                    )}
 
-                  {showInviteBtn && (
-                    <button
-                      type="button"
-                      onClick={() => handleSendInvite(attendee)}
-                      className="text-xs text-[#1D9E75] hover:text-[#178a66] flex items-center gap-1 transition-colors font-medium"
-                      title={l ? 'Send invitation email' : '发送邀请邮件'}
-                    >
-                      <Mail size={13} aria-hidden />
-                      {mailState === 'error' ? (l ? 'Retry send' : '重试发送') : (l ? 'Send invite' : '发送邀请')}
-                    </button>
-                  )}
+                    {showInviteBtn && (
+                      <button
+                        type="button"
+                        onClick={() => handleSendInvite(attendee)}
+                        className="text-xs text-[#1D9E75] hover:text-[#178a66] flex items-center gap-1 transition-colors font-medium"
+                        title={l ? 'Send invitation email' : '发送邀请邮件'}
+                      >
+                        <Mail size={13} aria-hidden />
+                        {mailState === 'error' ? (l ? 'Retry send' : '重试发送') : (l ? 'Send invite' : '发送邀请')}
+                      </button>
+                    )}
 
-                  {showAttendanceStatusBadge && (
-                    <span
-                      className={`text-xs px-2 py-1 rounded-full font-medium ${statusColors[attendee.attendance_status] || 'bg-gray-100 text-gray-700'}`}
-                    >
-                      {statusLabels[attendee.attendance_status]?.[language] || attendee.attendance_status}
-                    </span>
-                  )}
-                  {attendee.signed_in_at && (
-                    <span className="text-xs text-gray-400 flex items-center gap-1">
-                      <Clock size={12} />
-                      {new Date(attendee.signed_in_at).toLocaleTimeString(l ? 'en-US' : 'zh-CN', { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  )}
+                    {showAttendanceStatusBadge && (
+                      <span
+                        className={`text-xs px-2 py-1 rounded-full font-medium ${statusColors[attendee.attendance_status] || 'bg-gray-100 text-gray-700'}`}
+                      >
+                        {statusLabels[attendee.attendance_status]?.[language] || attendee.attendance_status}
+                      </span>
+                    )}
+                    {attendee.signed_in_at && (
+                      <span className="text-xs text-gray-400 flex items-center gap-1">
+                        <Clock size={12} aria-hidden />
+                        {new Date(attendee.signed_in_at).toLocaleTimeString(l ? 'en-US' : 'zh-CN', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                    )}
+                  </div>
+                  {mailState === 'error' && failureHint ? (
+                    <p className="text-[11px] text-red-600/90 text-right leading-snug max-w-[280px]">
+                      {failureHint}
+                    </p>
+                  ) : null}
                 </div>
               </div>
             );

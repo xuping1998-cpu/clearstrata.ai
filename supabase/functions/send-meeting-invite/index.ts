@@ -5,6 +5,9 @@
  * - RESEND_API_KEY (required)
  * - RESEND_FROM_EMAIL or RESEND_FROM or RESEND_SENDER_DOMAIN (optional; else onboarding@resend.dev)
  * Redeploy after changing secrets: `supabase functions deploy send-meeting-invite`
+ *
+ * Product: until Resend production access is enabled, use only Resend-approved test recipients
+ * to verify the flow; external addresses will get RESEND_TESTING_RESTRICTION until domain is verified.
  */
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -346,11 +349,41 @@ Deno.serve(async (req: Request) => {
     }
 
     if (!resendRes.ok) {
+      const resendName =
+        typeof resendData.name === "string" ? resendData.name : "";
       const resendMessage =
         typeof resendData.message === "string"
           ? resendData.message
           : JSON.stringify(resendData);
+
+      const msgLower =
+        typeof resendData.message === "string"
+          ? resendData.message.toLowerCase()
+          : "";
+      /** Resend test mode: validation_error + typical “only testing emails” copy (HTTP may be 403 or 422). */
+      const isTestingRecipientRestriction =
+        resendName === "validation_error" &&
+        /testing email|only send|verify a domain|can only send/i.test(msgLower);
+
       console.error("send-meeting-invite: Resend error", resendRes.status, resendData);
+
+      if (isTestingRecipientRestriction) {
+        return jsonResponse(
+          {
+            error:
+              "Resend is in test mode: only allowed recipients can receive mail until production access is enabled.",
+            code: "RESEND_TESTING_RESTRICTION",
+            message_zh:
+              "当前邮箱发送受限，请先完成邮件服务正式发送权限开通",
+            message_en:
+              "Email sending is restricted. Verify your domain in Resend and enable production sending, or use an allowed test recipient until then.",
+            status: resendRes.status,
+            details: resendData,
+          },
+          502,
+        );
+      }
+
       return jsonResponse(
         {
           error: `Resend rejected the request: ${resendMessage}`,
