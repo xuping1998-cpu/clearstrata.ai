@@ -131,21 +131,12 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
           console.error('[MeetingInvite] HTTP', error.context.status, error.context.statusText, body);
         }
         setEmailStatus((prev) => ({ ...prev, [userId]: 'error' }));
-        const hint = l
-          ? 'Failed to send invitation email. See console for details.'
-          : '会议邀请邮件发送失败，详情见浏览器控制台。';
-        alert(hint);
         return;
       }
 
       if (data && typeof data === 'object' && data !== null && 'error' in data) {
         console.error('[MeetingInvite] 响应体含 error:', data);
         setEmailStatus((prev) => ({ ...prev, [userId]: 'error' }));
-        alert(
-          l
-            ? `Send failed: ${String((data as { error?: string }).error)}`
-            : `发送失败：${String((data as { error?: string }).error)}`,
-        );
         return;
       }
 
@@ -154,7 +145,6 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
     } catch (e) {
       console.error('[MeetingInvite] 未捕获异常:', e);
       setEmailStatus((prev) => ({ ...prev, [userId]: 'error' }));
-      alert(l ? 'Failed to send invitation email.' : '发送邀请时发生错误，请查看控制台。');
     }
   };
 
@@ -401,6 +391,9 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
               attendee.attendance_status === 'invited' &&
               mailState !== 'sending' &&
               mailState !== 'sent';
+            /** 邮件发送失败时不与「已邀请」出席状态徽章同时展示 */
+            const showAttendanceStatusBadge =
+              !(mailState === 'error' && attendee.attendance_status === 'invited');
 
             return (
               <div key={attendee.id} className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg">
@@ -434,9 +427,9 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
                     </span>
                   )}
                   {mailState === 'error' && (
-                    <span className="text-xs text-red-500 flex items-center gap-1">
-                      <AlertCircle size={12} />
-                      {l ? 'Failed' : '发送失败'}
+                    <span className="text-xs text-red-600 font-medium flex items-center gap-1">
+                      <AlertCircle size={12} aria-hidden />
+                      {l ? 'Send failed' : '发送失败'}
                     </span>
                   )}
 
@@ -444,17 +437,21 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
                     <button
                       type="button"
                       onClick={() => handleSendInvite(attendee)}
-                      className="text-xs text-[#1D9E75] hover:text-[#178a66] flex items-center gap-1 transition-colors"
+                      className="text-xs text-[#1D9E75] hover:text-[#178a66] flex items-center gap-1 transition-colors font-medium"
                       title={l ? 'Send invitation email' : '发送邀请邮件'}
                     >
-                      <Mail size={13} />
-                      {mailState === 'error' ? (l ? 'Retry' : '重试发送') : (l ? 'Send invite' : '发送邀请')}
+                      <Mail size={13} aria-hidden />
+                      {mailState === 'error' ? (l ? 'Retry send' : '重试发送') : (l ? 'Send invite' : '发送邀请')}
                     </button>
                   )}
 
-                  <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusColors[attendee.attendance_status] || 'bg-gray-100 text-gray-700'}`}>
-                    {statusLabels[attendee.attendance_status]?.[language] || attendee.attendance_status}
-                  </span>
+                  {showAttendanceStatusBadge && (
+                    <span
+                      className={`text-xs px-2 py-1 rounded-full font-medium ${statusColors[attendee.attendance_status] || 'bg-gray-100 text-gray-700'}`}
+                    >
+                      {statusLabels[attendee.attendance_status]?.[language] || attendee.attendance_status}
+                    </span>
+                  )}
                   {attendee.signed_in_at && (
                     <span className="text-xs text-gray-400 flex items-center gap-1">
                       <Clock size={12} />

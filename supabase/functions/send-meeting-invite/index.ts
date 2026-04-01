@@ -1,3 +1,11 @@
+/**
+ * Meeting invitation emails via Resend.
+ *
+ * Secrets (Supabase Dashboard → Project Settings → Edge Functions → Secrets):
+ * - RESEND_API_KEY (required)
+ * - RESEND_FROM_EMAIL or RESEND_FROM or RESEND_SENDER_DOMAIN (optional; else onboarding@resend.dev)
+ * Redeploy after changing secrets: `supabase functions deploy send-meeting-invite`
+ */
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -157,15 +165,59 @@ function buildEmailHtml(
 </html>`;
 }
 
-function resolveFromHeader(): string {
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Resolves the Resend "from" header.
+ * Supports: RESEND_FROM (full "Name <email>"), RESEND_FROM_EMAIL (email only), RESEND_SENDER_DOMAIN (email),
+ * else Resend onboarding sender for dev.
+ */
+function resolveFromHeader(): string | { error: string; code: string } {
+  const fromEmailRaw = Deno.env.get("RESEND_FROM_EMAIL");
+  if (fromEmailRaw !== undefined) {
+    const fromEmail = fromEmailRaw.trim();
+    if (fromEmail === "") {
+      return {
+        error:
+          "RESEND_FROM_EMAIL is set but empty. Remove it or set a valid sender email in Supabase secrets.",
+        code: "INVALID_RESEND_FROM_EMAIL",
+      };
+    }
+    if (!EMAIL_RE.test(fromEmail)) {
+      return {
+        error: `RESEND_FROM_EMAIL must be a valid email address (got invalid value).`,
+        code: "INVALID_RESEND_FROM_EMAIL",
+      };
+    }
+    return `ClearStrata <${fromEmail}>`;
+  }
+
   const full = Deno.env.get("RESEND_FROM")?.trim();
   if (full) return full;
+
   const domain = Deno.env.get("RESEND_SENDER_DOMAIN")?.trim();
-  if (domain && domain.includes("@")) {
+  if (domain) {
+    if (!domain.includes("@") || !EMAIL_RE.test(domain)) {
+      return {
+        error:
+          "RESEND_SENDER_DOMAIN must be a full email address (e.g. noreply@yourdomain.com).",
+        code: "INVALID_RESEND_SENDER_DOMAIN",
+      };
+    }
     return `ClearStrata <${domain}>`;
   }
-  // Resend test sender (verify in Resend dashboard for your account)
+
   return "ClearStrata <onboarding@resend.dev>";
+}
+
+function jsonResponse(
+  body: Record<string, unknown>,
+  status: number,
+): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
 }
 
 Deno.serve(async (req: Request) => {
@@ -174,11 +226,23 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const resendApiKey = Deno.env.get("RESEND_API_KEY");
+    const resendApiKey = Deno.env.get("RESEND_API_KEY")?.trim();
     if (!resendApiKey) {
-      return new Response(
-        JSON.stringify({ error: "RESEND_API_KEY not configured" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      return jsonResponse(
+        {
+          error:
+            "Email is not configured: RESEND_API_KEY is missing. Add it under Project Settings → Edge Functions → Secrets, then redeploy send-meeting-invite.",
+          code: "MISSING_RESEND_API_KEY",
+        },
+        503,
+      );
+    }
+
+    const fromResolved = resolveFromHeader();
+    if (typeof fromResolved !== "string") {
+      return jsonResponse(
+        { error: fromResolved.error, code: fromResolved.code },
+        503,
       );
     }
 
@@ -241,37 +305,73 @@ Deno.serve(async (req: Request) => {
       ? `Meeting invitation: ${titleForSubject}`
       : `会议邀请：${titleForSubject}`;
 
-    const resendRes = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${resendApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: resolveFromHeader(),
-        to: [profile.email],
-        subject,
-        html: emailHtml,
-      }),
-    });
-
-    const resendData = await resendRes.json();
-
-    if (!resendRes.ok) {
-      return new Response(
-        JSON.stringify({ error: "Failed to send email", details: resendData }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    let resendRes: Response;
+    let resendData: Record<string, unknown>;
+    try {
+      resendRes = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${resendApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: fromResolved,
+          to: [profile.email],
+          subject,
+          html: emailHtml,
+        }),
+      });
+    } catch (networkErr) {
+      console.error("send-meeting-invite: Resend fetch failed", networkErr);
+      return jsonResponse(
+        {
+          error: `Could not reach Resend API: ${String(networkErr)}`,
+          code: "RESEND_NETWORK_ERROR",
+        },
+        502,
       );
     }
 
-    return new Response(
-      JSON.stringify({ success: true, email_id: resendData.id }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    try {
+      resendData = (await resendRes.json()) as Record<string, unknown>;
+    } catch (parseErr) {
+      console.error("send-meeting-invite: invalid Resend JSON", parseErr);
+      return jsonResponse(
+        {
+          error: `Resend returned non-JSON response (HTTP ${resendRes.status})`,
+          code: "RESEND_INVALID_RESPONSE",
+        },
+        502,
+      );
+    }
+
+    if (!resendRes.ok) {
+      const resendMessage =
+        typeof resendData.message === "string"
+          ? resendData.message
+          : JSON.stringify(resendData);
+      console.error("send-meeting-invite: Resend error", resendRes.status, resendData);
+      return jsonResponse(
+        {
+          error: `Resend rejected the request: ${resendMessage}`,
+          code: "RESEND_API_ERROR",
+          status: resendRes.status,
+          details: resendData,
+        },
+        502,
+      );
+    }
+
+    return jsonResponse({ success: true, email_id: resendData.id }, 200);
   } catch (err) {
-    return new Response(
-      JSON.stringify({ error: "Internal server error", message: String(err) }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    console.error("send-meeting-invite: unhandled", err);
+    return jsonResponse(
+      {
+        error: "Unexpected error while sending invitation",
+        code: "INTERNAL_ERROR",
+        message: String(err),
+      },
+      500,
     );
   }
 });
