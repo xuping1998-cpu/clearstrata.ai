@@ -1,0 +1,53 @@
+预算系统（首页「预算概览」）生产部署说明
+============================================
+
+一、推荐方式（本地已 link 生产项目时）
+------------------------------------
+在项目根目录执行：
+
+  supabase link --project-ref <生产 project ref>
+  supabase db push
+
+将按 migration 文件名时间顺序应用所有未执行迁移。请确保仓库已包含：
+
+  - 20260707130000_ensure_user_property_ids_and_staff_for_budget.sql
+    （补齐 user_property_ids / user_property_staff_ids，须在 dashboard_budget RPC 之前）
+
+二、若只能手工在 SQL Editor 执行（按时间顺序）
+------------------------------------
+必须按下列顺序整文件执行（同一文件勿拆行执行）：
+
+  1) 多物业与成员（提供 user_property_ids / user_property_staff_ids）
+     supabase/migrations/20260405120000_multi_tenant_properties.sql
+     supabase/migrations/20260405120100_multi_tenant_rls.sql
+     supabase/migrations/20260410120000_property_members_saas.sql
+
+  2) 预算基础（budget_categories、annual_budgets、resolve_invoice_budget_category_id、初版 dashboard RPC）
+     supabase/migrations/20260610120000_budget_control_foundation.sql
+
+  3) 预算包 + 财年 + active_budget_package_id、resolve_quote_budget_category_id、替换 dashboard RPC
+     supabase/migrations/20260611120000_budget_package_fiscal_year_rpc.sql
+
+  4) 发票/报价锁定与 dashboard_budget_alerts 更新
+     supabase/migrations/20260612120000_invoice_budget_lock_category_anomaly.sql
+
+  5) 若生产已仅手工执行过「dashboard RPC 补齐」而缺少成员函数，再执行：
+     supabase/migrations/20260707130000_ensure_user_property_ids_and_staff_for_budget.sql
+
+  6) 生产曾单独执行的 dashboard RPC 部署（与 111+121 等价，可重复执行）：
+     supabase/migrations/20260708120000_dashboard_budget_rpc_deploy.sql
+
+说明：若 1)～4) 已在生产完整应用，仅需解决「function user_property_ids does not exist」时，
+     优先执行 20260707130000（并确认 property_members、member_status 已存在）。
+
+三、依赖表 / 列（由上述 migration 创建或变更）
+------------------------------------
+  - budget_package
+  - annual_budgets（含后续 package_id 等，见 111）
+  - budget_categories
+  - procurement_jobs / procurement_quotes（含 fiscal_year 等，见 111）
+  - invoices.fiscal_year
+
+四、验证
+------------------------------------
+执行 scripts/verify_budget_dependencies.sql，确认函数与关键表存在。
