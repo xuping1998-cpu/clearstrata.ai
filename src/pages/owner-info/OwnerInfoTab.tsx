@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { CreditCard as Edit, Check, Users, Trash2, Building2 } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useProperty } from '../../contexts/PropertyContext';
 import { supabase } from '../../lib/supabase';
 
 interface OwnerInfoRecord {
@@ -27,6 +28,7 @@ interface OwnerInfoRecord {
 export function OwnerInfoTab() {
   const { t, language } = useLanguage();
   const { profile } = useAuth();
+  const { currentPropertyId, currentRole } = useProperty();
   const [ownerInfos, setOwnerInfos] = useState<OwnerInfoRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingOwner, setEditingOwner] = useState<OwnerInfoRecord | null>(null);
@@ -42,19 +44,23 @@ export function OwnerInfoTab() {
     move_in_date: '',
   });
 
-  /** 业委会、系统管理员或物业经理可审核、查看全部单元 */
+  /** 业委会、物业管理员、系统管理员或物业经理可审核、查看全部单元 */
   const canReviewOwnerInfo =
-    profile?.role === 'council' || profile?.role === 'manager' || profile?.role === 'admin';
+    currentRole === 'council' ||
+    currentRole === 'manager' ||
+    currentRole === 'admin' ||
+    currentRole === 'property_admin';
   const hidesOwnerSelfServiceForm =
-    profile?.role === 'council' || profile?.role === 'admin';
+    currentRole === 'council' || currentRole === 'admin' || currentRole === 'property_admin';
 
   const loadOwnerInfo = useCallback(async () => {
-    if (!profile) return;
+    if (!profile || !currentPropertyId) return;
     setLoading(true);
 
     let query = supabase
       .from('owner_info')
       .select(`*, owner:profiles!user_id(full_name_en, full_name_zh, email, phone)`)
+      .eq('property_id', currentPropertyId)
       .order('unit_number');
 
     if (!canReviewOwnerInfo) {
@@ -64,7 +70,7 @@ export function OwnerInfoTab() {
     const { data } = await query;
     setOwnerInfos(data || []);
     setLoading(false);
-  }, [profile, canReviewOwnerInfo]);
+  }, [profile, currentPropertyId, canReviewOwnerInfo]);
 
   useEffect(() => {
     void loadOwnerInfo();
@@ -124,10 +130,11 @@ export function OwnerInfoTab() {
 
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!profile) return;
+    if (!profile || !currentPropertyId) return;
     setSubmitting(true);
 
     try {
+      const needsApproval = currentRole === 'owner' || currentRole === 'tenant';
       const existing = ownerInfos.find((info) => info.user_id === profile.id);
       if (existing) {
         await supabase
@@ -139,12 +146,13 @@ export function OwnerInfoTab() {
             emergency_contact_name: formData.emergency_contact_name,
             emergency_contact_phone: formData.emergency_contact_phone,
             move_in_date: formData.move_in_date || null,
-            pending_approval: profile.role === 'owner',
+            pending_approval: needsApproval,
             updated_at: new Date().toISOString(),
           })
           .eq('id', existing.id);
       } else {
         await supabase.from('owner_info').insert({
+          property_id: currentPropertyId,
           user_id: profile.id,
           unit_number: formData.unit_number,
           unit_size_sqft: parseFloat(formData.unit_size_sqft),
@@ -152,7 +160,7 @@ export function OwnerInfoTab() {
           emergency_contact_name: formData.emergency_contact_name,
           emergency_contact_phone: formData.emergency_contact_phone,
           move_in_date: formData.move_in_date || null,
-          pending_approval: profile.role === 'owner',
+          pending_approval: needsApproval,
         });
       }
       setShowForm(false);
@@ -325,7 +333,7 @@ export function OwnerInfoTab() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">{language === 'en' ? 'Move-in Date' : '入住日期'}</label>
                 <input type="date" value={formData.move_in_date} onChange={(e) => setFormData({ ...formData, move_in_date: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent" />
               </div>
-              {profile?.role === 'owner' && (
+              {(currentRole === 'owner' || currentRole === 'tenant') && (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                   <p className="text-sm text-yellow-800">{language === 'en' ? 'Your information will be submitted for council approval.' : '您的信息将提交给理事会审批。'}</p>
                 </div>

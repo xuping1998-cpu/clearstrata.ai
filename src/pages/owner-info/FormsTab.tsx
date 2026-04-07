@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { FileText, Upload, Download, Trash2 } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useProperty } from '../../contexts/PropertyContext';
 import { supabase } from '../../lib/supabase';
 
 interface Document {
@@ -26,26 +27,30 @@ function formatFileSize(bytes: number) {
 export function FormsTab() {
   const { language } = useLanguage();
   const { profile } = useAuth();
+  const { currentRole, currentPropertyId } = useProperty();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [uploading, setUploading] = useState(false);
 
-  const isCouncil = profile?.role === 'council' || profile?.role === 'admin';
+  const isCouncil =
+    currentRole === 'council' || currentRole === 'admin' || currentRole === 'property_admin';
 
   useEffect(() => {
-    loadDocuments();
-  }, []);
+    void loadDocuments();
+  }, [currentPropertyId]);
 
   const loadDocuments = async () => {
+    if (!currentPropertyId) return;
     const { data } = await supabase
       .from('owner_documents')
       .select(`*, uploader:profiles!owner_documents_uploaded_by_fkey(full_name_en)`)
+      .eq('property_id', currentPropertyId)
       .order('created_at', { ascending: false });
     setDocuments(data || []);
   };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file || !profile) return;
+    if (!file || !profile || !currentPropertyId) return;
 
     setUploading(true);
     try {
@@ -62,6 +67,7 @@ export function FormsTab() {
       const { error: dbError } = await supabase
         .from('owner_documents')
         .insert({
+          property_id: currentPropertyId,
           name: file.name,
           description: '',
           file_path: filePath,

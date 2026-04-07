@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { FileText, Eye, Send, Loader2, RefreshCw, CheckCircle, Clock, DollarSign, Scale } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useProperty } from '../../contexts/PropertyContext';
 import { supabase } from '../../lib/supabase';
 
 interface Summary {
@@ -20,12 +21,14 @@ interface Summary {
 export function MonthlySummary() {
   const { language } = useLanguage();
   const { profile } = useAuth();
+  const { currentRole, currentPropertyId } = useProperty();
   const [summaries, setSummaries] = useState<Summary[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [selectedSummary, setSelectedSummary] = useState<Summary | null>(null);
 
-  const canManage = profile?.role === 'council' || profile?.role === 'admin';
+  const canManage =
+    currentRole === 'council' || currentRole === 'admin' || currentRole === 'property_admin';
   const l = language === 'en';
 
   const now = new Date();
@@ -45,14 +48,21 @@ export function MonthlySummary() {
   const loadMonthSnapshot = useCallback(async () => {
     const monthStart = new Date(selectedYear, selectedMonth, 1).toISOString().split('T')[0];
     const monthEnd = new Date(selectedYear, selectedMonth + 1, 0).toISOString().split('T')[0];
-    const [{ data: payments }, { data: invs }] = await Promise.all([
-      supabase
-        .from('ledger_transactions')
-        .select('payment_amount')
-        .gte('transaction_date', monthStart)
-        .lte('transaction_date', monthEnd),
-      supabase.from('invoices').select('total_amount, status').gte('invoice_date', monthStart).lte('invoice_date', monthEnd),
-    ]);
+    let payQ = supabase
+      .from('ledger_transactions')
+      .select('payment_amount')
+      .gte('transaction_date', monthStart)
+      .lte('transaction_date', monthEnd);
+    let invQ = supabase
+      .from('invoices')
+      .select('total_amount, status')
+      .gte('invoice_date', monthStart)
+      .lte('invoice_date', monthEnd);
+    if (currentPropertyId) {
+      payQ = payQ.eq('property_id', currentPropertyId);
+      invQ = invQ.eq('property_id', currentPropertyId);
+    }
+    const [{ data: payments }, { data: invs }] = await Promise.all([payQ, invQ]);
     const income = (payments || []).reduce((s, t) => s + Number(t.payment_amount || 0), 0);
     const list = invs || [];
     const expenses = list
@@ -64,23 +74,29 @@ export function MonthlySummary() {
     const paid = list.filter((i) => i.status === 'paid').length;
     const anomaly = list.filter((i) => i.status === 'flagged' || i.status === 'rejected').length;
     setSnapshot({ income, expenses, balance, pending_review, approved, paid, anomaly });
-  }, [selectedMonth, selectedYear]);
+  }, [selectedMonth, selectedYear, currentPropertyId]);
 
   const loadSummaries = useCallback(async () => {
     setLoading(true);
+    if (!currentPropertyId) {
+      setSummaries([]);
+      setLoading(false);
+      return;
+    }
     let q = supabase
       .from('monthly_summaries')
       .select('*')
+      .eq('property_id', currentPropertyId)
       .order('month', { ascending: false });
     if (!canManage) q = q.eq('published', true);
     const { data } = await q;
     setSummaries(data || []);
     setLoading(false);
-  }, [canManage]);
+  }, [canManage, currentPropertyId]);
 
   useEffect(() => {
     void loadSummaries();
-  }, [loadSummaries, profile?.id]);
+  }, [loadSummaries]);
 
   useEffect(() => {
     if (!canManage) {
@@ -91,7 +107,7 @@ export function MonthlySummary() {
   }, [loadMonthSnapshot, canManage]);
 
   const generateSummary = async () => {
-    if (!profile) return;
+    if (!profile || !currentPropertyId) return;
     setGenerating(true);
 
     try {
@@ -104,11 +120,13 @@ export function MonthlySummary() {
         supabase
           .from('ledger_transactions')
           .select('payment_amount, charge_amount')
+          .eq('property_id', currentPropertyId)
           .gte('transaction_date', monthStart)
           .lte('transaction_date', monthEnd),
         supabase
           .from('invoices')
           .select('total_amount, vendor_name, category, status')
+          .eq('property_id', currentPropertyId)
           .gte('invoice_date', monthStart)
           .lte('invoice_date', monthEnd)
           .in('status', ['approved', 'paid']),
@@ -156,6 +174,7 @@ export function MonthlySummary() {
       const { data: existing } = await supabase
         .from('monthly_summaries')
         .select('id')
+        .eq('property_id', currentPropertyId)
         .eq('month', monthDate)
         .maybeSingle();
 
@@ -173,6 +192,7 @@ export function MonthlySummary() {
           .eq('id', existing.id);
       } else {
         await supabase.from('monthly_summaries').insert({
+          property_id: currentPropertyId,
           month: monthDate,
           total_income: totalIncome,
           total_expenses: totalExpenses,

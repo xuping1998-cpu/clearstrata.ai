@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { FileText, Bot, TrendingUp, BarChart3 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { useAuth } from '../contexts/AuthContext';
+import { useProperty } from '../contexts/PropertyContext';
 import { BackButton } from '../components/BackButton';
 import { InvoiceManagement } from './finance/InvoiceManagement';
-import { InvoiceInterpreter } from './finance/InvoiceInterpreter';
+import InvoiceInterpreter from './finance/InvoiceInterpreter';
 import { RevenueDashboard } from './finance/RevenueDashboard';
 import { MonthlySummary } from './finance/MonthlySummary';
 
@@ -26,8 +27,13 @@ const allTabs: TabConfig[] = [
 
 export function Finance() {
   const { language } = useLanguage();
-  const { profile } = useAuth();
-  const financeFullAccess = profile?.role === 'council' || profile?.role === 'admin';
+  const { currentRole } = useProperty();
+  const [searchParams] = useSearchParams();
+  const financeFullAccess =
+    currentRole === 'council' ||
+    currentRole === 'admin' ||
+    currentRole === 'property_admin' ||
+    currentRole === 'manager';
 
   const visibleTabs = useMemo(
     () => (financeFullAccess ? allTabs : allTabs.filter((t) => t.key === 'summary')),
@@ -35,10 +41,22 @@ export function Finance() {
   );
 
   const [activeTab, setActiveTab] = useState<FinanceTab>('summary');
+  const invoiceHighlightId = searchParams.get('invoice');
+  const filterDanger = searchParams.get('filter') === 'danger';
+  const filterAudit = searchParams.get('filter') === 'audit';
 
   useEffect(() => {
-    setActiveTab(financeFullAccess ? 'invoices' : 'summary');
-  }, [financeFullAccess]);
+    const tab = searchParams.get('tab') as FinanceTab | null;
+    if ((filterDanger || filterAudit) && financeFullAccess) {
+      setActiveTab('invoices');
+      return;
+    }
+    if (tab && ['invoices', 'interpreter', 'revenue', 'summary'].includes(tab) && financeFullAccess) {
+      setActiveTab(tab);
+    } else {
+      setActiveTab(financeFullAccess ? 'invoices' : 'summary');
+    }
+  }, [financeFullAccess, searchParams, filterDanger, filterAudit]);
 
   const l = language === 'en';
 
@@ -52,8 +70,8 @@ export function Finance() {
         <p className="text-gray-600 mt-2">
           {financeFullAccess
             ? l
-              ? 'Manage invoices, track revenue, and review financial summaries'
-              : '管理发票、追踪收入、查看财务摘要'
+              ? 'Official invoices, approval workflow, and reports. Create tasks and quotes in other modules; link them here via task / quote fields.'
+              : '正式发票、审批与统计。任务与报价在「物业经理任务」「采购维修」中创建，通过来源任务与 quote 字段在此闭环。'
             : l
               ? 'Published monthly financial summaries for owners'
               : '业主可查看已发布的月度财务摘要'}
@@ -81,7 +99,13 @@ export function Finance() {
         </div>
       )}
 
-      {financeFullAccess && activeTab === 'invoices' && <InvoiceManagement />}
+      {financeFullAccess && activeTab === 'invoices' && (
+        <InvoiceManagement
+          highlightInvoiceId={invoiceHighlightId}
+          dangerFilterOnly={filterDanger}
+          auditFilterOnly={filterAudit}
+        />
+      )}
       {financeFullAccess && activeTab === 'interpreter' && <InvoiceInterpreter />}
       {financeFullAccess && activeTab === 'revenue' && <RevenueDashboard />}
       {(activeTab === 'summary' || !financeFullAccess) && <MonthlySummary />}

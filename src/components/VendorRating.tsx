@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Star, ThumbsUp } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useProperty } from '../contexts/PropertyContext';
 
 interface VendorRatingProps {
   jobId: string;
@@ -11,6 +12,7 @@ interface VendorRatingProps {
 }
 
 export function VendorRating({ jobId, vendorName, vendorContact, onRatingSubmitted }: VendorRatingProps) {
+  const { currentPropertyId } = useProperty();
   const { language } = useLanguage();
   const [rating, setRating] = useState({
     quality_score: 0,
@@ -32,8 +34,10 @@ export function VendorRating({ jobId, vendorName, vendorContact, onRatingSubmitt
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
+      if (!currentPropertyId) throw new Error('No property selected');
 
       const { error } = await supabase.from('vendor_ratings').insert({
+        property_id: currentPropertyId,
         job_id: jobId,
         vendor_name: vendorName,
         vendor_contact: vendorContact,

@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Plus, AlertCircle, Camera, Send, Mail, Phone, CheckCircle, XCircle, Image as ImageIcon, Search, Globe, Loader2, ExternalLink } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { useProperty } from '../../contexts/PropertyContext';
 import { PhotoUpload } from '../../components/PhotoUpload';
 import { InvoiceUpload } from '../../components/InvoiceUpload';
 import { VendorRating } from '../../components/VendorRating';
@@ -20,6 +21,8 @@ interface ProcurementJob {
   priority?: string;
   category?: string;
   unit_number?: string;
+  /** 关联 manager_tasks */
+  task_id?: string | null;
   selected_quote_id?: string;
   assigned_manager_id?: string;
   pm_completion_notes?: string;
@@ -72,6 +75,7 @@ export function NewJobModal({
   onClose: () => void;
   onCreated: () => void;
 }) {
+  const { currentPropertyId } = useProperty();
   const l = language === 'en';
   const [error, setError] = useState('');
   const [_requestPhotos, setRequestPhotos] = useState<string[]>([]);
@@ -85,15 +89,38 @@ export function NewJobModal({
     estimated_budget: '', job_type: 'procurement' as 'maintenance' | 'procurement',
     priority: 'medium', category: '', unit_number: '',
   });
+  const [linkedTaskId, setLinkedTaskId] = useState('');
+  const [managerTasks, setManagerTasks] = useState<{ id: string; title: string }[]>([]);
+
+  useEffect(() => {
+    if (!currentPropertyId) {
+      setManagerTasks([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase
+        .from('manager_tasks')
+        .select('id, title')
+        .eq('property_id', currentPropertyId)
+        .order('created_at', { ascending: false })
+        .limit(80);
+      if (!cancelled) setManagerTasks((data ?? []).map((r) => ({ id: r.id, title: r.title || '—' })));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentPropertyId]);
 
   const createJobAndSearch = async () => {
-    if (!profile) return;
+    if (!profile || !currentPropertyId) return;
     setError('');
     if (!newJob.title_en && !newJob.title_zh) { setError(l ? 'Please enter a title' : '请输入标题'); return; }
     if (!newJob.description_en && !newJob.description_zh) { setError(l ? 'Please enter a description' : '请输入描述'); return; }
 
     try {
       const { data, error: insertError } = await supabase.from('procurement_jobs').insert({
+        property_id: currentPropertyId,
         posted_by: profile.id,
         title_en: newJob.title_en || newJob.title_zh,
         title_zh: newJob.title_zh || newJob.title_en,
@@ -105,6 +132,7 @@ export function NewJobModal({
         priority: newJob.priority,
         category: newJob.category,
         unit_number: newJob.unit_number,
+        task_id: linkedTaskId.trim() || null,
       }).select().single();
 
       if (insertError) { setError(l ? `Error: ${insertError.message}` : `错误：${insertError.message}`); return; }
@@ -142,13 +170,15 @@ export function NewJobModal({
   };
 
   const sendInvitations = async () => {
-    if (!createdJobId || !profile) return;
+    if (!createdJobId || !profile || !currentPropertyId) return;
     setStep('sending');
     try {
       const selectedVendors = Array.from(selectedVendorIdxs).map(idx => searchedVendors[idx]).filter(Boolean);
       for (const v of selectedVendors) {
         await supabase.from('procurement_quotes').insert({
+          property_id: currentPropertyId,
           job_id: createdJobId,
+          task_id: linkedTaskId.trim() || null,
           vendor_name: v.company_name,
           vendor_contact: v.phone || v.website || '',
           quoted_amount: 0,
@@ -386,6 +416,29 @@ export function NewJobModal({
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent" />
           </div>
 
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              {l ? 'Link to manager task (optional)' : '关联物业经理任务（可选）'}
+            </label>
+            <select
+              value={linkedTaskId}
+              onChange={(e) => setLinkedTaskId(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent"
+            >
+              <option value="">{l ? '— None —' : '— 不关联 —'}</option>
+              {managerTasks.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.title}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-gray-500">
+              {l
+                ? 'Connects this quote workflow to a task (why we are doing this work).'
+                : '将本采购/维修报价流程与任务关联，便于形成「任务 → 报价 → 发票」链路。'}
+            </p>
+          </div>
+
           <div className="border-t border-gray-200 pt-4">
             <div className="flex items-center gap-2 mb-3">
               <Camera className="text-gray-600" size={20} />
@@ -495,14 +548,21 @@ export function AddQuoteModal({
 }: {
   language: string; profile: any; selectedJob: ProcurementJob; onClose: () => void; onAdded: () => void;
 }) {
+  const { currentPropertyId } = useProperty();
   const l = language === 'en';
   const [q, setQ] = useState({ vendor_name: '', vendor_contact: '', quoted_amount: '', description_en: '', description_zh: '' });
 
   const addQuote = async () => {
-    if (!profile || !selectedJob) return;
+    if (!profile || !selectedJob || !currentPropertyId) return;
     const { error } = await supabase.from('procurement_quotes').insert({
-      job_id: selectedJob.id, vendor_name: q.vendor_name, vendor_contact: q.vendor_contact,
-      quoted_amount: parseFloat(q.quoted_amount), description_en: q.description_en, description_zh: q.description_zh,
+      property_id: currentPropertyId,
+      job_id: selectedJob.id,
+      task_id: selectedJob.task_id ?? null,
+      vendor_name: q.vendor_name,
+      vendor_contact: q.vendor_contact,
+      quoted_amount: parseFloat(q.quoted_amount),
+      description_en: q.description_en,
+      description_zh: q.description_zh,
       submitted_by: profile.id,
     });
     if (error) { console.error('Error adding quote:', error); return; }
@@ -559,6 +619,7 @@ export function ApproveQuoteModal({
   propertyManagers: PropertyManager[]; onClose: () => void; onApproved: () => void;
   onAddManager?: () => void;
 }) {
+  const { currentPropertyId } = useProperty();
   const l = language === 'en';
   const [selectedQuoteId, setSelectedQuoteId] = useState<string>('');
   const [selectedManagerId, setSelectedManagerId] = useState<string>('');
@@ -570,7 +631,7 @@ export function ApproveQuoteModal({
   const canSubmit = !missingQuote && !missingManager && !submitting;
 
   const handleApprove = async () => {
-    if (!canSubmit || !profile) return;
+    if (!canSubmit || !profile || !currentPropertyId) return;
     setSubmitting(true);
     try {
       const selectedQuote = selectedJob.quotes?.find(q => q.id === selectedQuoteId);
@@ -585,7 +646,15 @@ export function ApproveQuoteModal({
 
       if (error) throw error;
 
+      if (selectedJob.task_id) {
+        await supabase
+          .from('procurement_quotes')
+          .update({ task_id: selectedJob.task_id })
+          .eq('job_id', selectedJob.id);
+      }
+
       await supabase.from('procurement_quote_notifications').insert({
+        property_id: currentPropertyId,
         job_id: selectedJob.id,
         sent_to_manager_id: selectedManagerId,
         sent_by: profile.id,
@@ -817,22 +886,33 @@ export function InspectionModal({
 }: {
   language: string; profile: any; selectedJob: ProcurementJob; onClose: () => void; onInspected: () => void;
 }) {
+  const { currentPropertyId } = useProperty();
   const l = language === 'en';
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [photos, setPhotos] = useState<{ id: string; photo_url: string }[]>([]);
   const [loadingPhotos, setLoadingPhotos] = useState(true);
 
-  useState(() => {
+  useEffect(() => {
+    let cancelled = false;
     (async () => {
+      if (!currentPropertyId) {
+        setPhotos([]);
+        setLoadingPhotos(false);
+        return;
+      }
       const { data } = await supabase.from('procurement_photos')
         .select('id, photo_url')
+        .eq('property_id', currentPropertyId)
         .eq('job_id', selectedJob.id)
         .eq('photo_type', 'completion');
-      setPhotos(data || []);
-      setLoadingPhotos(false);
+      if (!cancelled) {
+        setPhotos(data || []);
+        setLoadingPhotos(false);
+      }
     })();
-  });
+    return () => { cancelled = true; };
+  }, [currentPropertyId, selectedJob.id]);
 
   const handleInspection = async (result: 'passed' | 'failed') => {
     if (!profile) return;
@@ -974,11 +1054,13 @@ export function AddManagerModal({
 }: {
   language: string; onClose: () => void; onAdded: () => void;
 }) {
+  const { currentPropertyId } = useProperty();
   const l = language === 'en';
   const [m, setM] = useState({ full_name_en: '', full_name_zh: '', email: '', phone: '' });
 
   const add = async () => {
-    const { error } = await supabase.from('property_managers').insert({ ...m, status: 'active' });
+    if (!currentPropertyId) return;
+    const { error } = await supabase.from('property_managers').insert({ ...m, status: 'active', property_id: currentPropertyId });
     if (error) { alert(l ? 'Failed to add' : '添加失败'); return; }
     onClose();
     onAdded();

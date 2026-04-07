@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { FileText, Upload, AlertCircle, ExternalLink, Trash2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useProperty } from '../../contexts/PropertyContext';
 import { supabase } from '../../lib/supabase';
 
 interface MeetingDocument {
@@ -31,6 +32,7 @@ const docTypeLabels: Record<string, Record<'en' | 'zh', string>> = {
 };
 
 export function MeetingDocumentsSection({ meetingId, isCouncil }: Props) {
+  const { currentPropertyId } = useProperty();
   const { user } = useAuth();
   const { language, t } = useLanguage();
   const l = language === 'en';
@@ -73,7 +75,7 @@ export function MeetingDocumentsSection({ meetingId, isCouncil }: Props) {
   }, [loadDocuments]);
 
   const uploadDocument = async () => {
-    if (!user || !selectedFile || !newDoc.title_en) {
+    if (!user || !currentPropertyId || !selectedFile || !newDoc.title_en) {
       setUploadError(t('doc_fill_title_file'));
       return;
     }
@@ -142,6 +144,7 @@ export function MeetingDocumentsSection({ meetingId, isCouncil }: Props) {
   };
 
   const deleteDocument = async (doc: MeetingDocument) => {
+    if (!currentPropertyId) return;
     setDeletingId(doc.id);
     try {
       const urlParts = doc.document_url.split('/documents/');
@@ -153,7 +156,8 @@ export function MeetingDocumentsSection({ meetingId, isCouncil }: Props) {
       const { error } = await supabase
         .from('meeting_documents')
         .delete()
-        .eq('id', doc.id);
+        .eq('id', doc.id)
+        .eq('property_id', currentPropertyId);
 
       if (error) throw error;
       setDocuments(prev => prev.filter(d => d.id !== doc.id));

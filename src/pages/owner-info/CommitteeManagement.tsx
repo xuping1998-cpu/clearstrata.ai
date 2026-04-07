@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Search, Filter, Download, Users, ChevronDown, Loader2 } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useProperty } from '../../contexts/PropertyContext';
 import { supabase } from '../../lib/supabase';
 
 interface Resident {
@@ -38,13 +39,15 @@ export function CommitteeManagement() {
   const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
-    loadResidents();
-  }, []);
+    if (currentPropertyId) void loadResidents();
+  }, [currentPropertyId]);
 
   const loadResidents = async () => {
+    if (!currentPropertyId) return;
     const { data, error } = await supabase
       .from('residents')
       .select('*')
+      .eq('property_id', currentPropertyId)
       .order('unit_no');
 
     if (error) {

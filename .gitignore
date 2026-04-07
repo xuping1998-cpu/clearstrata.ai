@@ -46,3 +46,4 @@ tmp
 # Optional local Supabase
 supabase/.branches
 supabase/.temp
+supabase.exe

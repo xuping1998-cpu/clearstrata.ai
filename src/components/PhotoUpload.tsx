@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Upload, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useProperty } from '../contexts/PropertyContext';
 
 interface PhotoUploadProps {
   jobId?: string;
@@ -11,6 +12,7 @@ interface PhotoUploadProps {
 }
 
 export function PhotoUpload({ jobId, photoType, onPhotosUploaded, maxPhotos = 5 }: PhotoUploadProps) {
+  const { currentPropertyId } = useProperty();
   const { language } = useLanguage();
   const [uploading, setUploading] = useState(false);
   const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([]);
@@ -49,10 +51,11 @@ export function PhotoUpload({ jobId, photoType, onPhotosUploaded, maxPhotos = 5 
 
         urls.push(publicUrl);
 
-        if (jobId) {
+        if (jobId && currentPropertyId) {
           const { data: { user } } = await supabase.auth.getUser();
           if (user) {
             await supabase.from('procurement_photos').insert({
+              property_id: currentPropertyId,
               job_id: jobId,
               photo_url: publicUrl,
               photo_type: photoType,

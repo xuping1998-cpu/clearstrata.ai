@@ -56,21 +56,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(401).json({ error: 'Invalid or expired session' });
   }
 
-  const { data: profile, error: profileErr } = await admin
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .maybeSingle();
-
-  if (profileErr || !profile) {
-    return res.status(403).json({ error: 'Profile not found' });
-  }
-
-  const role = typeof profile.role === 'string' ? profile.role : '';
-  if (role !== 'council' && role !== 'manager' && role !== 'admin') {
-    return res.status(403).json({ error: 'Only admin, council, or property manager can publish' });
-  }
-
   let body: Record<string, unknown> = {};
   try {
     const raw = req.body;
@@ -85,13 +70,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const rawPriority = typeof body.priority === 'string' ? body.priority.trim() : 'normal';
   const priority = PRIORITIES.has(rawPriority) ? rawPriority : 'normal';
 
+  const propertyId = typeof body.property_id === 'string' ? body.property_id.trim() : '';
+  if (!propertyId) {
+    return res.status(400).json({ error: 'property_id is required' });
+  }
+
   if (!title || !content) {
     return res.status(400).json({ error: 'title and content are required' });
+  }
+
+  const { data: pu, error: puErr } = await admin
+    .from('property_members')
+    .select('role')
+    .eq('user_id', user.id)
+    .eq('property_id', propertyId)
+    .eq('status', 'active')
+    .maybeSingle();
+
+  if (puErr || !pu) {
+    return res.status(403).json({ error: 'No access to this property' });
+  }
+
+  const pr = typeof pu.role === 'string' ? pu.role : '';
+  if (
+    pr !== 'council' &&
+    pr !== 'manager' &&
+    pr !== 'admin' &&
+    pr !== 'property_admin'
+  ) {
+    return res.status(403).json({ error: 'Only admin, council, or property manager can publish' });
   }
 
   const { data: inserted, error: insertErr } = await admin
     .from('community_notifications')
     .insert({
+      property_id: propertyId,
       title,
       content,
       priority,

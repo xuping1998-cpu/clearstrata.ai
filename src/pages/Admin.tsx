@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Shield, Users, Crown, Printer, UserCheck } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useProperty } from '../contexts/PropertyContext';
 import { supabase, type UserRole } from '../lib/supabase';
 import { invokeUpdateUserRole } from '../lib/invokeUpdateUserRole';
 import { profileRoleToMetadataRole } from '../lib/userRoleMetadata';
@@ -22,7 +23,9 @@ export function Admin() {
   const { language, t } = useLanguage();
   const navigate = useNavigate();
   const { profile } = useAuth();
-  const canManageRoles = profile?.role === 'admin';
+  const { currentPropertyId, currentRole } = useProperty();
+  const canManageRoles =
+    profile?.role === 'admin' || currentRole === 'admin' || currentRole === 'property_admin';
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [pendingResidents, setPendingResidents] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -33,15 +36,21 @@ export function Admin() {
   const roleLabel = (role: UserRole) => {
     const en: Record<UserRole, string> = {
       owner: 'Owner',
+      tenant: 'Tenant',
+      viewer: 'Viewer',
       council: 'Council member',
       admin: 'System administrator',
       manager: 'Property manager',
+      property_admin: 'Property administrator',
     };
     const zh: Record<UserRole, string> = {
       owner: '业主',
+      tenant: '租户',
+      viewer: '访客',
       council: '业委会成员',
       admin: '系统管理员',
       manager: '物业经理',
+      property_admin: '物业管理员',
     };
     return language === 'en' ? en[role] : zh[role];
   };
@@ -70,11 +79,16 @@ export function Admin() {
 
       setProfiles(data || []);
 
-      const { count } = await supabase
-        .from('residents')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'pending');
-      if (count != null) setPendingResidents(count);
+      if (currentPropertyId) {
+        const { count } = await supabase
+          .from('residents')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'pending')
+          .eq('property_id', currentPropertyId);
+        if (count != null) setPendingResidents(count);
+      } else {
+        setPendingResidents(0);
+      }
     } finally {
       setLoading(false);
     }
@@ -178,13 +192,21 @@ export function Admin() {
     window.print();
   };
 
-  useEffect(() => {
-    if (profile?.role === 'council' || profile?.role === 'admin') {
-      loadProfiles();
-    }
-  }, [profile]);
+  const canAccessAdminPage =
+    currentRole === 'council' || currentRole === 'admin' || currentRole === 'property_admin';
 
-  if (profile?.role !== 'council' && profile?.role !== 'admin') {
+  useEffect(() => {
+    if (!canAccessAdminPage) return;
+    if (!currentPropertyId) {
+      setProfiles([]);
+      setPendingResidents(0);
+      setLoading(false);
+      return;
+    }
+    void loadProfiles();
+  }, [canAccessAdminPage, currentPropertyId]);
+
+  if (!canAccessAdminPage) {
     return (
       <div className="text-center py-12">
         <Shield className="mx-auto h-16 w-16 text-gray-400 mb-4" />
@@ -193,8 +215,8 @@ export function Admin() {
         </p>
         <p className="text-gray-500 mt-2">
           {language === 'en'
-            ? 'Only council members or admins can access this page.'
-            : '只有理事会成员或管理员才能访问此页面。'}
+            ? 'Only council members or property administrators can access this page.'
+            : '只有理事会成员或物业管理员才能访问此页面。'}
         </p>
       </div>
     );

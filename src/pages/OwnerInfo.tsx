@@ -1,13 +1,14 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useLocation } from 'react-router-dom';
 import { User, Receipt, FileText, UserCog, Megaphone } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
+import { useProperty } from '../contexts/PropertyContext';
 import { BackButton } from '../components/BackButton';
 import { MyProfileTab } from './owner-info/MyProfileTab';
 import { LedgerTab } from './owner-info/LedgerTab';
 import { FormsTab } from './owner-info/FormsTab';
 import { UserManagementTab } from './owner-info/UserManagementTab';
 import { OwnerNotificationsSection } from './owner-info/OwnerNotificationsSection';
+import { AnnouncementList } from '../components/AnnouncementList';
 
 type TabType = 'profile' | 'ledger' | 'forms' | 'users' | 'announcements';
 
@@ -27,10 +28,14 @@ const tabs: TabConfig[] = [
 ];
 
 export function OwnerInfo() {
-  const { profile } = useAuth();
+  const { currentRole } = useProperty();
   const [searchParams] = useSearchParams();
   const location = useLocation();
-  const canManageRestrictedTabs = profile?.role === 'council' || profile?.role === 'admin';
+  const canManageRestrictedTabs =
+    currentRole === 'council' ||
+    currentRole === 'admin' ||
+    currentRole === 'property_admin' ||
+    currentRole === 'manager';
 
   const tabKeys = useMemo(() => tabs.map((x) => x.key), []);
   const [activeTab, setActiveTab] = useState<TabType>('profile');
@@ -64,6 +69,8 @@ export function OwnerInfo() {
   return (
     <div>
       <BackButton />
+      <AnnouncementList />
+
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-gray-900">业主信息</h1>
         <p className="text-gray-600 mt-2">管理您的资料、单元信息和账户详情</p>

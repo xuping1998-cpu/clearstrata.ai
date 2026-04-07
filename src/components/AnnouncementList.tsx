@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Megaphone } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useProperty } from '../contexts/PropertyContext';
 import { supabase, type AnnouncementPriority } from '../lib/supabase';
 
 function priorityLabel(p: AnnouncementPriority, en: boolean) {
@@ -16,36 +17,49 @@ function priorityClass(p: AnnouncementPriority) {
   return 'bg-gray-100 text-gray-700';
 }
 
-export function DashboardAnnouncements() {
+type Row = {
+  id: string;
+  title: string;
+  priority: AnnouncementPriority;
+  created_at: string;
+};
+
+export interface AnnouncementListProps {
+  /** Max items to show; default 3 to match former dashboard. */
+  limit?: number;
+}
+
+export function AnnouncementList({ limit = 3 }: AnnouncementListProps) {
   const navigate = useNavigate();
   const { language } = useLanguage();
+  const { currentPropertyId } = useProperty();
   const en = language === 'en';
-  const [rows, setRows] = useState<{ id: string; title: string; priority: AnnouncementPriority; created_at: string }[]>(
-    [],
-  );
+  const [rows, setRows] = useState<Row[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!currentPropertyId) return;
     (async () => {
       const { data, error: qErr } = await supabase
         .from('community_notifications')
         .select('id, title, priority, created_at')
+        .eq('property_id', currentPropertyId)
         .order('created_at', { ascending: false })
-        .limit(3);
+        .limit(limit);
 
       if (qErr) {
         setError(qErr.message);
         setRows([]);
         return;
       }
-      setRows((data as typeof rows) || []);
+      setRows((data as Row[]) || []);
       setError(null);
     })();
-  }, []);
+  }, [limit, currentPropertyId]);
 
   if (error) {
     return (
-      <div className="mb-8 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+      <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
         {en ? 'Could not load announcements.' : '无法加载公告。'}
       </div>
     );
@@ -56,7 +70,7 @@ export function DashboardAnnouncements() {
   }
 
   return (
-    <div className="mb-8 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+    <div className="mb-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
       <div className="flex items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-2">
           <Megaphone className="text-[#1D9E75]" size={22} aria-hidden />

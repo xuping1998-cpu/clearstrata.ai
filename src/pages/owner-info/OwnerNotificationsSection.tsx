@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ChevronDown, ChevronUp, Megaphone, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useProperty } from '../../contexts/PropertyContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { supabase, type AnnouncementPriority } from '../../lib/supabase';
 
@@ -94,6 +95,7 @@ function mapRows(data: CommunityNoticeDbRow[]): CommunityNoticeRow[] {
 
 export function OwnerNotificationsSection() {
   const { profile } = useAuth();
+  const { currentPropertyId, roleInProperty } = useProperty();
   const { language } = useLanguage();
   const en = language === 'en';
 
@@ -108,7 +110,10 @@ export function OwnerNotificationsSection() {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
   const canPublish =
-    profile?.role === 'council' || profile?.role === 'manager' || profile?.role === 'admin';
+    roleInProperty === 'council' ||
+    roleInProperty === 'manager' ||
+    roleInProperty === 'property_admin' ||
+    roleInProperty === 'admin';
 
   const canModifyRow = (row: CommunityNoticeRow) => {
     if (!profile?.id) return false;
@@ -116,6 +121,11 @@ export function OwnerNotificationsSection() {
   };
 
   const load = useCallback(async () => {
+    if (!currentPropertyId) {
+      setRows([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     const { data, error } = await supabase
       .from('community_notifications')
@@ -134,6 +144,7 @@ export function OwnerNotificationsSection() {
         )
       `,
       )
+      .eq('property_id', currentPropertyId)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -143,7 +154,7 @@ export function OwnerNotificationsSection() {
       setRows(mapRows((data as CommunityNoticeDbRow[]) || []));
     }
     setLoading(false);
-  }, []);
+  }, [currentPropertyId]);
 
   useEffect(() => {
     void load();
@@ -193,6 +204,10 @@ export function OwnerNotificationsSection() {
     setSaving(true);
     try {
       if (modal === 'create') {
+        if (!currentPropertyId) {
+          alert(en ? 'No property selected.' : '未选择物业。');
+          return;
+        }
         const {
           data: { session },
         } = await supabase.auth.getSession();
@@ -207,6 +222,7 @@ export function OwnerNotificationsSection() {
             Authorization: `Bearer ${session.access_token}`,
           },
           body: JSON.stringify({
+            property_id: currentPropertyId,
             title: t,
             content: body,
             priority,

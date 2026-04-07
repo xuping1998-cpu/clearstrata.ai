@@ -2,14 +2,40 @@ import { useState, useEffect } from 'react';
 import { User, Save, Loader2 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useProperty } from '../contexts/PropertyContext';
 import { supabase } from '../lib/supabase';
+import type { UserRole } from '../lib/supabase';
 import { BackButton } from '../components/BackButton';
 import { NotificationSettings } from '../components/NotificationSettings';
 import { PWAInstructions } from '../components/PWAInstructions';
 
+function propertyRoleLabel(role: UserRole | null, language: string): string {
+  const en: Record<UserRole, string> = {
+    owner: 'Owner',
+    tenant: 'Tenant',
+    viewer: 'Viewer',
+    council: 'Council Member',
+    admin: 'Administrator',
+    manager: 'Property Manager',
+    property_admin: 'Property Administrator',
+  };
+  const zh: Record<UserRole, string> = {
+    owner: '业主',
+    tenant: '租户',
+    viewer: '访客',
+    council: '理事会成员',
+    admin: '系统管理员',
+    manager: '物业经理',
+    property_admin: '物业管理员',
+  };
+  if (!role) return language === 'en' ? '—' : '—';
+  return language === 'en' ? en[role] : zh[role];
+}
+
 export function Profile() {
   const { language, setLanguage } = useLanguage();
   const { profile, refreshProfile } = useAuth();
+  const { currentRole } = useProperty();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
@@ -92,22 +118,8 @@ export function Profile() {
               <div>
                 <div className="font-semibold text-gray-900">{profile?.email}</div>
                 <div className="text-sm text-gray-500">
-                  {language === 'en' ? 'Role' : '角色'}:{' '}
-                  {language === 'en'
-                    ? profile?.role === 'council'
-                      ? 'Council Member'
-                      : profile?.role === 'manager'
-                      ? 'Property Manager'
-                      : profile?.role === 'admin'
-                      ? 'System Administrator'
-                      : 'Owner'
-                    : profile?.role === 'council'
-                    ? '理事会成员'
-                    : profile?.role === 'manager'
-                    ? '物业经理'
-                    : profile?.role === 'admin'
-                    ? '系统管理员'
-                    : '业主'}
+                  {language === 'en' ? 'Role in this property' : '本物业角色'}:{' '}
+                  {propertyRoleLabel(currentRole, language)}
                 </div>
               </div>
             </div>

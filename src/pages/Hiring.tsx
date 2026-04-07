@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Plus, X, UserPlus, Briefcase, Mail, Phone } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useProperty } from '../contexts/PropertyContext';
 import { supabase } from '../lib/supabase';
 import { BackButton } from '../components/BackButton';
 
@@ -77,13 +78,14 @@ export function Hiring() {
   });
 
   const loadJobs = async () => {
-    if (!profile) return;
+    if (!profile || !currentPropertyId) return;
 
     setLoading(true);
     try {
       const { data: jobsData, error: jobsError } = await supabase
         .from('hiring_jobs')
         .select('*')
+        .eq('property_id', currentPropertyId)
         .order('created_at', { ascending: false });
 
       if (jobsError) {
@@ -169,9 +171,10 @@ export function Hiring() {
   };
 
   const createJob = async () => {
-    if (!profile) return;
+    if (!profile || !currentPropertyId) return;
 
     const { data, error } = await supabase.from('hiring_jobs').insert({
+      property_id: currentPropertyId,
       posted_by: profile.id,
       title_en: newJob.title_en,
       title_zh: newJob.title_zh,
@@ -244,9 +247,11 @@ export function Hiring() {
   };
 
   const loadPropertyManagers = async () => {
+    if (!currentPropertyId) return;
     const { data, error } = await supabase
       .from('property_managers')
       .select('*')
+      .eq('property_id', currentPropertyId)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -258,9 +263,10 @@ export function Hiring() {
   };
 
   const addPropertyManager = async () => {
-    if (!profile) return;
+    if (!profile || !currentPropertyId) return;
 
     const { error } = await supabase.from('property_managers').insert({
+      property_id: currentPropertyId,
       full_name_en: newManager.full_name_en,
       full_name_zh: newManager.full_name_zh,
       email: newManager.email,
@@ -280,13 +286,14 @@ export function Hiring() {
   };
 
   useEffect(() => {
-    if (profile) {
+    if (profile && currentPropertyId) {
       loadJobs();
-      loadPropertyManagers();
+      void loadPropertyManagers();
     }
-  }, [profile]);
+  }, [profile, currentPropertyId]);
 
-  const isCouncil = profile?.role === 'council' || profile?.role === 'admin';
+  const isCouncil =
+    currentRole === 'council' || currentRole === 'admin' || currentRole === 'property_admin';
 
   if (loading) {
     return <div className="text-center py-8">{t('loading')}</div>;

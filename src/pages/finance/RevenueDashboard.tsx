@@ -15,6 +15,7 @@ import {
 } from 'recharts';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useProperty } from '../../contexts/PropertyContext';
 import { supabase } from '../../lib/supabase';
 
 interface SpecialLevy {
@@ -40,7 +41,7 @@ interface ArrearsOwner {
 
 export function RevenueDashboard() {
   const { language } = useLanguage();
-  const { profile } = useAuth();
+  const { currentRole, currentPropertyId } = useProperty();
   const [loading, setLoading] = useState(true);
   const [levies, setLevies] = useState<SpecialLevy[]>([]);
   const [arrears, setArrears] = useState<ArrearsOwner[]>([]);
@@ -49,7 +50,8 @@ export function RevenueDashboard() {
   const [totalOutstanding, setTotalOutstanding] = useState(0);
   const [showLevyForm, setShowLevyForm] = useState(false);
 
-  const isCouncil = profile?.role === 'council' || profile?.role === 'admin';
+  const isCouncil =
+    currentRole === 'council' || currentRole === 'admin' || currentRole === 'property_admin';
   const l = language === 'en';
 
   const [invoiceRows, setInvoiceRows] = useState<
@@ -62,10 +64,19 @@ export function RevenueDashboard() {
     start.setMonth(start.getMonth() - 11);
     start.setDate(1);
     const from = start.toISOString().split('T')[0];
-    const [{ data: inv }, { data: led }] = await Promise.all([
-      supabase.from('invoices').select('invoice_date, total_amount, status, category').gte('invoice_date', from),
-      supabase.from('ledger_transactions').select('transaction_date, payment_amount').gte('transaction_date', from),
-    ]);
+    let invQ = supabase
+      .from('invoices')
+      .select('invoice_date, total_amount, status, category')
+      .gte('invoice_date', from);
+    let ledQ = supabase
+      .from('ledger_transactions')
+      .select('transaction_date, payment_amount')
+      .gte('transaction_date', from);
+    if (currentPropertyId) {
+      invQ = invQ.eq('property_id', currentPropertyId);
+      ledQ = ledQ.eq('property_id', currentPropertyId);
+    }
+    const [{ data: inv }, { data: led }] = await Promise.all([invQ, ledQ]);
     setInvoiceRows(inv || []);
     setLedgerRows(led || []);
   };
@@ -145,21 +156,25 @@ export function RevenueDashboard() {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
 
-    const { data: payments } = await supabase
+    let payQ = supabase
       .from('ledger_transactions')
       .select('payment_amount, charge_amount, balance, user_id')
       .gte('transaction_date', monthStart)
       .lte('transaction_date', monthEnd);
+    if (currentPropertyId) payQ = payQ.eq('property_id', currentPropertyId);
+    const { data: payments } = await payQ;
 
     if (payments) {
       const income = payments.reduce((sum, t) => sum + Number(t.payment_amount || 0), 0);
       setMonthlyIncome(income);
     }
 
-    const { data: allLatest } = await supabase
+    let latestQ = supabase
       .from('ledger_transactions')
       .select('user_id, balance, transaction_date')
       .order('transaction_date', { ascending: false });
+    if (currentPropertyId) latestQ = latestQ.eq('property_id', currentPropertyId);
+    const { data: allLatest } = await latestQ;
 
     if (allLatest) {
       const latestByUser = new Map<string, number>();
@@ -185,16 +200,22 @@ export function RevenueDashboard() {
       setTotalCollected(collected);
       setTotalOutstanding(outstanding);
 
-      if (arrearsUsers.length > 0 && (profile?.role === 'council' || profile?.role === 'admin')) {
+      const canSeeArrearsDetail =
+        currentRole === 'council' ||
+        currentRole === 'admin' ||
+        currentRole === 'property_admin';
+      if (arrearsUsers.length > 0 && canSeeArrearsDetail) {
         const { data: profiles } = await supabase
           .from('profiles')
           .select('id, full_name_en, full_name_zh')
           .in('id', arrearsUsers);
 
-        const { data: ownerInfos } = await supabase
+        let oiQ = supabase
           .from('owner_info')
           .select('user_id, unit_number')
           .in('user_id', arrearsUsers);
+        if (currentPropertyId) oiQ = oiQ.eq('property_id', currentPropertyId);
+        const { data: ownerInfos } = await oiQ;
 
         const arrearsData: ArrearsOwner[] = arrearsUsers.map((uid) => {
           const p = profiles?.find((pr) => pr.id === uid);
@@ -214,10 +235,9 @@ export function RevenueDashboard() {
   };
 
   const loadLevies = async () => {
-    const { data } = await supabase
-      .from('special_levies')
-      .select('*')
-      .order('created_at', { ascending: false });
+    let q = supabase.from('special_levies').select('*').order('created_at', { ascending: false });
+    if (currentPropertyId) q = q.eq('property_id', currentPropertyId);
+    const { data } = await q;
     setLevies(data || []);
   };
 
@@ -229,8 +249,8 @@ export function RevenueDashboard() {
 
   useEffect(() => {
     void loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- refresh all slices together on mount
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when tenant changes
+  }, [currentPropertyId]);
 
   if (loading) {
     return (
@@ -519,6 +539,7 @@ function LevyFormModal({
 }) {
   const l = language === 'en';
   const { profile } = useAuth();
+  const { currentPropertyId } = useProperty();
   const [form, setForm] = useState({
     title_en: '',
     title_zh: '',
@@ -534,7 +555,13 @@ function LevyFormModal({
     if (!profile) return;
     setSubmitting(true);
 
+    if (!currentPropertyId) {
+      alert(l ? 'No property selected.' : '未选择物业。');
+      setSubmitting(false);
+      return;
+    }
     const { error } = await supabase.from('special_levies').insert({
+      property_id: currentPropertyId,
       title_en: form.title_en,
       title_zh: form.title_zh || null,
       description_en: form.description_en || null,

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Printer, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useProperty } from '../../contexts/PropertyContext';
 import { supabase, type UserRole, type ProfileAccountStatus } from '../../lib/supabase';
 import { invokeUpdateUserRole } from '../../lib/invokeUpdateUserRole';
 import { type AppMetadataRole, profileRoleToMetadataRole } from '../../lib/userRoleMetadata';
@@ -61,14 +62,29 @@ export function UserManagementTab() {
   const [updating, setUpdating] = useState<string | null>(null);
   const [activationBusy, setActivationBusy] = useState<string | null>(null);
 
-  const canSelectRoles = profile?.role === 'admin';
+  const canSelectRoles = profile?.role === 'admin' || currentRole === 'property_admin';
   const canModerateActivation = profile?.role === 'admin';
 
   const loadData = useCallback(async () => {
+    if (!currentPropertyId) return;
+
+    const { data: pm } = await supabase
+      .from('property_members')
+      .select('user_id')
+      .eq('property_id', currentPropertyId)
+      .eq('status', 'active');
+    const userIds = [...new Set((pm ?? []).map((p) => p.user_id as string))];
+    if (userIds.length === 0) {
+      setProfiles([]);
+      setOwnerInfos([]);
+      setResidentByUserId({});
+      return;
+    }
+
     const [{ data: profileData }, { data: ownerData }, { data: resData }] = await Promise.all([
-      supabase.from('profiles').select('*').order('full_name_en'),
-      supabase.from('owner_info').select('user_id, unit_number').order('unit_number'),
-      supabase.from('residents').select('id, user_id, status, unit_no, updated_at'),
+      supabase.from('profiles').select('*').in('id', userIds).order('full_name_en'),
+      supabase.from('owner_info').select('user_id, unit_number').eq('property_id', currentPropertyId).order('unit_number'),
+      supabase.from('residents').select('id, user_id, status, unit_no, updated_at').eq('property_id', currentPropertyId),
     ]);
     setProfiles(profileData || []);
     setOwnerInfos(ownerData || []);
@@ -83,11 +99,11 @@ export function UserManagementTab() {
       };
     }
     setResidentByUserId(rmap);
-  }, []);
+  }, [currentPropertyId]);
 
   useEffect(() => {
-    if (profile) void loadData();
-  }, [profile, loadData]);
+    if (profile && currentPropertyId) void loadData();
+  }, [profile, currentPropertyId, loadData]);
 
   const activationText = useCallback(
     (userId: string) => {

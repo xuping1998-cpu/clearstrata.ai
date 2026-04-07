@@ -1,8 +1,11 @@
 import { useState, useRef } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Building2, Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { supabase } from '../lib/supabase';
+import { getAuthErrorMessage } from '../lib/authErrorMessages';
+import { DEFAULT_PROPERTY_ID } from '../lib/defaultProperty';
 
 export function Auth() {
   const [isLogin, setIsLogin] = useState(true);
@@ -17,21 +20,74 @@ export function Auth() {
   const [moveInDateKey, setMoveInDateKey] = useState(0);
   const [languagePref, setLanguagePref] = useState<'en' | 'zh'>('en');
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  /** Form submit in flight — not AuthContext session loading (avoids mistaken disabled button). */
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [forgotMode, setForgotMode] = useState(false);
+  const [resetSending, setResetSending] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState('');
   const [step, setStep] = useState<1 | 2>(1);
   const [showPassword, setShowPassword] = useState(false);
 
   const { signIn, signUp } = useAuth();
   const { t, language, toggleLanguage } = useLanguage();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const passwordUpdated = searchParams.get('passwordUpdated') === '1';
+
+  const safeRedirectAfterAuth = (): boolean => {
+    const raw = searchParams.get('redirect');
+    if (!raw) return false;
+    try {
+      const path = decodeURIComponent(raw);
+      if (path.startsWith('/') && !path.startsWith('//') && !path.includes('://')) {
+        navigate(path, { replace: true });
+        return true;
+      }
+    } catch {
+      /* ignore malformed redirect */
+    }
+    return false;
+  };
+
+  const handleSendResetEmail = async () => {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail) {
+      setError(t('auth_enter_email_required'));
+      return;
+    }
+    setResetSending(true);
+    setError('');
+    setResetSuccess('');
+    try {
+      const { error: resetErr } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      if (resetErr) throw resetErr;
+      setResetSuccess(t('auth_reset_email_sent'));
+    } catch (err) {
+      setError(getAuthErrorMessage(err, language === 'zh' ? 'zh' : 'en'));
+    } finally {
+      setResetSending(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setLoading(true);
+    setResetSuccess('');
+
+    if (isLogin && forgotMode) {
+      await handleSendResetEmail();
+      return;
+    }
+
+    setIsSubmitting(true);
 
     try {
       if (isLogin) {
-        await signIn(email, password);
+        const cleanEmail = email.trim().toLowerCase();
+        await signIn(cleanEmail, password);
+        if (safeRedirectAfterAuth()) return;
       } else {
         const user = await signUp(email, password, fullNameEn, fullNameZh, unitNumber);
 
@@ -41,6 +97,7 @@ export function Auth() {
           const moveInRaw = moveInDateRef.current?.value?.trim() || '';
 
           await supabase.from('residents').insert({
+            property_id: DEFAULT_PROPERTY_ID,
             user_id: user.id,
             unit_no: unitNumber,
             name_en: fullNameEn,
@@ -53,16 +110,19 @@ export function Auth() {
             status: 'pending',
             strata_fee_status: 'current',
           });
+          if (safeRedirectAfterAuth()) return;
         }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(getAuthErrorMessage(err, language === 'zh' ? 'zh' : 'en'));
     } finally {
-      setLoading(false);
+      setIsSubmitting(false);
     }
   };
 
   const resetForm = () => {
+    setForgotMode(false);
+    setResetSuccess('');
     setEmail('');
     setPassword('');
     setFullNameEn('');
@@ -80,6 +140,10 @@ export function Auth() {
   const passwordInputClass =
     'w-full pr-10 pl-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75]/20 focus:border-[#1D9E75] transition-colors';
 
+  const loginCanSubmit =
+    Boolean(email.trim()) && Boolean(password) && !isSubmitting && !forgotMode;
+  const forgotCanSubmit = Boolean(email.trim()) && !resetSending;
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-emerald-50/80 via-white to-gray-50 p-4">
       <div className="mb-8 text-center">
@@ -90,6 +154,14 @@ export function Auth() {
         <p className="text-gray-500 text-sm mt-1">
           {language === 'en' ? 'Strata management, simplified' : '物业管理，更简单'}
         </p>
+        <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-sm">
+          <Link to="/pricing" className="font-medium text-[#1D9E75] hover:underline">
+            {t('nav_pricing')}
+          </Link>
+          <Link to="/contact" className="font-medium text-[#1D9E75] hover:underline">
+            {t('nav_contact')}
+          </Link>
+        </div>
       </div>
 
       <div className="w-full max-w-md">
@@ -127,6 +199,23 @@ export function Auth() {
           </div>
 
           <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            {passwordUpdated && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-900 text-sm flex justify-between gap-2 items-start">
+                <span>{t('auth_password_updated_banner')}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = new URLSearchParams(searchParams);
+                    next.delete('passwordUpdated');
+                    setSearchParams(next, { replace: true });
+                  }}
+                  className="shrink-0 text-emerald-700 hover:text-emerald-900 text-lg leading-none"
+                  aria-label="Dismiss"
+                >
+                  ×
+                </button>
+              </div>
+            )}
             {isLogin ? (
               <>
                 <div>
@@ -136,39 +225,44 @@ export function Auth() {
                   <input
                     id="login-email"
                     type="email"
+                    name="email"
+                    autoComplete="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    required
+                    required={!forgotMode}
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75]/20 focus:border-[#1D9E75] transition-colors"
                     placeholder="name@example.com"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5" htmlFor="login-password">
-                    {t('auth_password')}
-                  </label>
-                  <div className="relative">
-                    <input
-                      id="login-password"
-                      type={showPassword ? 'text' : 'password'}
-                      placeholder={t('auth_password_placeholder')}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className={passwordInputClass}
-                      required
-                      minLength={6}
-                      autoComplete="current-password"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                      aria-label={showPassword ? 'Hide password' : 'Show password'}
-                    >
-                      {showPassword ? '🙈' : '👁️'}
-                    </button>
+                {!forgotMode && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5" htmlFor="login-password">
+                      {t('auth_password')}
+                    </label>
+                    <div className="relative">
+                      <input
+                        id="login-password"
+                        name="password"
+                        type={showPassword ? 'text' : 'password'}
+                        placeholder={t('auth_password_placeholder')}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className={passwordInputClass}
+                        required
+                        minLength={6}
+                        autoComplete="current-password"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                        aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      >
+                        {showPassword ? '🙈' : '👁️'}
+                      </button>
+                    </div>
                   </div>
-                </div>
+                )}
               </>
             ) : (
               <>
@@ -375,10 +469,10 @@ export function Auth() {
                       </button>
                       <button
                         type="submit"
-                        disabled={loading}
+                        disabled={isSubmitting}
                         className="flex-1 bg-[#1D9E75] text-white py-3 rounded-lg font-semibold hover:bg-[#178a66] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                       >
-                        {loading ? (
+                        {isSubmitting ? (
                           <>
                             <Loader2 size={18} className="animate-spin" />
                             {t('loading')}
@@ -393,21 +487,70 @@ export function Auth() {
               </>
             )}
 
-            {isLogin && (
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-[#1D9E75] text-white py-3 rounded-lg font-semibold hover:bg-[#178a66] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 size={18} className="animate-spin" />
-                    {t('loading')}
-                  </>
-                ) : (
-                  t('auth_login')
-                )}
-              </button>
+            {isLogin && forgotMode && (
+              <>
+                <button
+                  type="submit"
+                  disabled={!forgotCanSubmit}
+                  className="w-full bg-[#1D9E75] text-white py-3 rounded-lg font-semibold hover:bg-[#178a66] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {resetSending ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin" />
+                      {t('loading')}
+                    </>
+                  ) : (
+                    t('auth_send_reset_email')
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setForgotMode(false);
+                    setError('');
+                    setResetSuccess('');
+                  }}
+                  className="w-full text-[#1D9E75] py-2 text-sm font-medium hover:underline"
+                >
+                  {t('auth_back_to_login')}
+                </button>
+              </>
+            )}
+
+            {isLogin && !forgotMode && (
+              <>
+                <button
+                  type="submit"
+                  disabled={!loginCanSubmit}
+                  className="w-full bg-[#1D9E75] text-white py-3 rounded-lg font-semibold hover:bg-[#178a66] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin" />
+                      {t('loading')}
+                    </>
+                  ) : (
+                    t('auth_login')
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setForgotMode(true);
+                    setError('');
+                    setResetSuccess('');
+                  }}
+                  className="w-full text-center text-sm font-medium text-[#1D9E75] hover:underline py-1"
+                >
+                  {t('auth_forgot_password')}
+                </button>
+              </>
+            )}
+
+            {resetSuccess && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-800 text-sm">
+                {resetSuccess}
+              </div>
             )}
 
             {error && (

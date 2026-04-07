@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { FileText, AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useProperty } from '../contexts/PropertyContext';
 
 interface InvoiceUploadProps {
   jobId: string;
@@ -10,6 +11,7 @@ interface InvoiceUploadProps {
 }
 
 export function InvoiceUpload({ jobId, quotedAmount, onInvoiceUploaded }: InvoiceUploadProps) {
+  const { currentPropertyId } = useProperty();
   const { language } = useLanguage();
   const [uploading, setUploading] = useState(false);
   const [invoiceData, setInvoiceData] = useState({
@@ -43,12 +45,14 @@ export function InvoiceUpload({ jobId, quotedAmount, onInvoiceUploaded }: Invoic
 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
+      if (!currentPropertyId) throw new Error('No property selected');
 
       const variancePercent = quotedAmount
         ? ((parseFloat(invoiceData.invoice_amount) - quotedAmount) / quotedAmount) * 100
         : 0;
 
       const { error } = await supabase.from('procurement_invoices').insert({
+        property_id: currentPropertyId,
         job_id: jobId,
         invoice_url: publicUrl,
         invoice_number: invoiceData.invoice_number,

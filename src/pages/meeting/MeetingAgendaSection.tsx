@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Plus, ThumbsUp, ThumbsDown, CheckCircle, AlertCircle, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useProperty } from '../../contexts/PropertyContext';
 import { supabase } from '../../lib/supabase';
 
 interface AgendaItem {
@@ -27,6 +28,7 @@ interface Props {
 }
 
 export function MeetingAgendaSection({ meetingId, meetingStatus, isCouncil }: Props) {
+  const { currentPropertyId } = useProperty();
   const { user } = useAuth();
   const { language, t } = useLanguage();
   const l = language === 'en';
@@ -48,11 +50,12 @@ export function MeetingAgendaSection({ meetingId, meetingStatus, isCouncil }: Pr
   });
 
   const loadItems = useCallback(async () => {
-    if (!user) return;
+    if (!user || !currentPropertyId) return;
     try {
       const { data } = await supabase
         .from('meeting_agenda_items')
         .select('*')
+        .eq('property_id', currentPropertyId)
         .eq('meeting_id', meetingId)
         .order('item_number', { ascending: true });
 
@@ -62,6 +65,7 @@ export function MeetingAgendaSection({ meetingId, meetingStatus, isCouncil }: Pr
             const { data: userVote } = await supabase
               .from('meeting_votes')
               .select('vote_decision')
+              .eq('property_id', currentPropertyId)
               .eq('agenda_item_id', item.id)
               .eq('voter_id', user.id)
               .maybeSingle();
@@ -79,7 +83,7 @@ export function MeetingAgendaSection({ meetingId, meetingStatus, isCouncil }: Pr
     } finally {
       setLoading(false);
     }
-  }, [meetingId, user]);
+  }, [meetingId, user, currentPropertyId]);
 
   useEffect(() => {
     loadItems();
@@ -90,6 +94,7 @@ export function MeetingAgendaSection({ meetingId, meetingStatus, isCouncil }: Pr
       setAddError(t('agenda_title_required'));
       return;
     }
+    if (!currentPropertyId) return;
 
     setSaving(true);
     setAddError(null);
@@ -100,6 +105,7 @@ export function MeetingAgendaSection({ meetingId, meetingStatus, isCouncil }: Pr
       const { data, error } = await supabase
         .from('meeting_agenda_items')
         .insert({
+          property_id: currentPropertyId,
           meeting_id: meetingId,
           item_number: nextNumber,
           title_en: newItem.title_en,
@@ -134,9 +140,10 @@ export function MeetingAgendaSection({ meetingId, meetingStatus, isCouncil }: Pr
   };
 
   const castVote = async (agendaItemId: string, decision: 'for' | 'against' | 'abstain') => {
-    if (!user) return;
+    if (!user || !currentPropertyId) return;
     try {
       const { error } = await supabase.from('meeting_votes').insert({
+        property_id: currentPropertyId,
         agenda_item_id: agendaItemId,
         voter_id: user.id,
         vote_decision: decision,

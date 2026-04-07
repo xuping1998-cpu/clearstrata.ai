@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useProperty } from '../../contexts/PropertyContext';
 import { supabase } from '../../lib/supabase';
 
 interface Resident {
@@ -39,6 +40,7 @@ interface DeregRequest {
 export function DeregistrationRequest() {
   const { language } = useLanguage();
   const { profile } = useAuth();
+  const { currentRole, currentPropertyId } = useProperty();
   const [resident, setResident] = useState<Resident | null>(null);
   const [requests, setRequests] = useState<DeregRequest[]>([]);
   const [allRequests, setAllRequests] = useState<DeregRequest[]>([]);
@@ -50,19 +52,21 @@ export function DeregistrationRequest() {
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [reviewNotes, setReviewNotes] = useState('');
 
-  const isCouncil = profile?.role === 'council' || profile?.role === 'admin';
+  const isCouncil =
+    currentRole === 'council' || currentRole === 'admin' || currentRole === 'property_admin';
 
   useEffect(() => {
-    if (profile) loadData();
-  }, [profile]);
+    if (profile && currentPropertyId) void loadData();
+  }, [profile, currentPropertyId]);
 
   const loadData = async () => {
-    if (!profile) return;
+    if (!profile || !currentPropertyId) return;
 
     const { data: residentData } = await supabase
       .from('residents')
       .select('*')
       .eq('user_id', profile.id)
+      .eq('property_id', currentPropertyId)
       .maybeSingle();
 
     setResident(residentData);
@@ -85,6 +89,7 @@ export function DeregistrationRequest() {
           resident:residents!resident_id(id, user_id, name_en, name_zh, unit_no, status),
           reviewer:profiles!deregistration_requests_reviewed_by_fkey(full_name_en)
         `)
+        .eq('property_id', currentPropertyId)
         .order('created_at', { ascending: false });
 
       setAllRequests(allReqs || []);
@@ -98,6 +103,7 @@ export function DeregistrationRequest() {
 
     setSubmitting(true);
     const { error } = await supabase.from('deregistration_requests').insert({
+      property_id: currentPropertyId,
       resident_id: resident.id,
       reason: reason.trim(),
       effective_date: effectiveDate || null,

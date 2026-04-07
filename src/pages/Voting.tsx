@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, X, ThumbsUp, ThumbsDown, AlertCircle, CheckCircle, Users, Calendar, ArrowLeft, Clock, DollarSign, ChevronRight } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useProperty } from '../contexts/PropertyContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { supabase } from '../lib/supabase';
 import { localDateTimeToIso } from '../utils/meetingDateTime';
@@ -27,6 +28,7 @@ interface Meeting {
   overtime_fee?: number;
   fiscal_year: number;
   created_at: string;
+  property_id: string;
   agenda_items?: AgendaItem[];
 }
 
@@ -63,6 +65,7 @@ interface MeetingQuota {
 
 export function Voting() {
   const { user } = useAuth();
+  const { currentPropertyId, roleInProperty } = useProperty();
   const { language, t } = useLanguage();
   const navigate = useNavigate();
   const l = language === 'en';
@@ -92,22 +95,17 @@ export function Voting() {
 
   useEffect(() => {
     loadData();
-  }, [user]);
+  }, [user, currentPropertyId]);
 
   const loadData = async () => {
-    if (!user) return;
+    if (!user || !currentPropertyId) return;
 
     try {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .maybeSingle();
-
       setIsCouncil(
-        profile?.role === 'council' ||
-          profile?.role === 'manager' ||
-          profile?.role === 'admin',
+        roleInProperty === 'council' ||
+          roleInProperty === 'manager' ||
+          roleInProperty === 'property_admin' ||
+          roleInProperty === 'admin',
       );
 
       const currentYear = new Date().getFullYear();
@@ -118,6 +116,7 @@ export function Voting() {
           *,
           agenda_items:meeting_agenda_items(*)
         `)
+        .eq('property_id', currentPropertyId)
         .order('scheduled_date', { ascending: false });
 
       if (meetingsData) {
@@ -151,6 +150,7 @@ export function Voting() {
       const { data: quotaData } = await supabase
         .from('meeting_quota_tracker')
         .select('*')
+        .eq('property_id', currentPropertyId)
         .eq('fiscal_year', currentYear)
         .maybeSingle();
 
@@ -227,6 +227,7 @@ export function Voting() {
       const overtimeFee = isOvertime ? (newMeeting.duration_minutes / 60) * 100 : 0;
 
       const { data: inserted, error } = await supabase.from('meetings').insert({
+        property_id: currentPropertyId,
         meeting_type: newMeeting.meeting_type,
         title_en: newMeeting.title_en,
         title_zh: newMeeting.title_zh || null,
@@ -292,11 +293,16 @@ export function Voting() {
     }
   };
 
-  const castVote = async (agendaItemId: string, decision: 'for' | 'against' | 'abstain') => {
+  const castVote = async (
+    agendaItemId: string,
+    decision: 'for' | 'against' | 'abstain',
+    propertyId: string,
+  ) => {
     if (!user) return;
 
     try {
       const { error } = await supabase.from('meeting_votes').insert({
+        property_id: propertyId,
         agenda_item_id: agendaItemId,
         voter_id: user.id,
         vote_decision: decision,
@@ -576,21 +582,21 @@ export function Voting() {
                                     {!item.user_voted && meeting.status === 'in_progress' && (
                                       <div className="flex gap-2">
                                         <button
-                                          onClick={(e) => { e.stopPropagation(); castVote(item.id, 'for'); }}
+                                          onClick={(e) => { e.stopPropagation(); castVote(item.id, 'for', meeting.property_id); }}
                                           className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
                                         >
                                           <ThumbsUp size={16} />
                                           {l ? 'For' : '赞成'}
                                         </button>
                                         <button
-                                          onClick={(e) => { e.stopPropagation(); castVote(item.id, 'against'); }}
+                                          onClick={(e) => { e.stopPropagation(); castVote(item.id, 'against', meeting.property_id); }}
                                           className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
                                         >
                                           <ThumbsDown size={16} />
                                           {l ? 'Against' : '反对'}
                                         </button>
                                         <button
-                                          onClick={(e) => { e.stopPropagation(); castVote(item.id, 'abstain'); }}
+                                          onClick={(e) => { e.stopPropagation(); castVote(item.id, 'abstain', meeting.property_id); }}
                                           className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
                                         >
                                           {l ? 'Abstain' : '弃权'}

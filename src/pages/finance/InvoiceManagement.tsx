@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Upload,
   FileText,
@@ -14,11 +15,19 @@ import {
   Download,
   Calendar,
   FileSpreadsheet,
+  FileDown,
+  ShieldAlert,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useProperty } from '../../contexts/PropertyContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { supabase } from '../../lib/supabase';
 import { canManageInvoiceWorkflow, canDeleteInvoice } from '../../lib/financePermissions';
+import { fetchTaskTitleByInvoiceIds, fetchTasksForInvoice, type LinkedTask } from '../../lib/invoiceTaskLinks';
+import { computeQuoteInvoiceVariance, isRedAlertVariance, type QuoteVarianceResult } from '../../lib/quoteInvoiceVariance';
+import { exportInvoiceApprovalPdf } from '../../lib/pdf/exportInvoiceApprovalPdf';
+import { exportMonthlyAbnormalInvoicesMeetingPackPdf } from '../../lib/pdf/exportMonthlyAbnormalInvoicesMeetingPackPdf';
+import { QuoteVariancePanel } from '../../components/finance/QuoteVariancePanel';
 
 interface Invoice {
   id: string;
@@ -36,6 +45,9 @@ interface Invoice {
   category: string | null;
   notes: string | null;
   has_anomalies: boolean;
+  /** 规则审计引擎（与 has_anomalies 独立） */
+  is_abnormal?: boolean;
+  audit_summary?: Record<string, unknown> | null;
   ai_extracted_data: Record<string, unknown> | null;
   ai_confidence_score: number | null;
   uploaded_by: string;
@@ -46,6 +58,14 @@ interface Invoice {
   paid_at?: string | null;
   paid_by?: string | null;
   review_notes?: string | null;
+  /** 审批通过时填写的备注（danger 时必填） */
+  approval_note?: string | null;
+  /** 审批人（verified_by join） */
+  verifier?: { full_name_en: string; full_name_zh?: string };
+  /** 直接指向 manager_tasks（与 task_invoices 互补） */
+  related_task_id?: string | null;
+  /** 对应已批准报价，用于与实际金额对比 */
+  quote_id?: string | null;
   uploader?: { full_name_en: string; full_name_zh?: string };
 }
 
@@ -74,6 +94,29 @@ const CATEGORIES = [
   { value: 'electrical', labelZh: '电气', labelEn: 'Electrical' },
 ];
 
+function quoteVarianceBadgeClass(v: QuoteVarianceResult): string {
+  switch (v.warningLevel) {
+    case 'danger':
+      return 'bg-red-100 text-red-800 ring-1 ring-red-200';
+    case 'warning':
+      return 'bg-amber-100 text-amber-900';
+    default:
+      return 'bg-emerald-50 text-emerald-800';
+  }
+}
+
+function quoteVarianceShortLabel(v: QuoteVarianceResult, l: boolean): string {
+  if (v.belowQuote) return l ? 'Below quote' : '低于报价';
+  switch (v.warningLevel) {
+    case 'danger':
+      return l ? 'High Δ' : '明显偏高';
+    case 'warning':
+      return l ? 'Check' : '偏高';
+    default:
+      return l ? 'OK' : '正常';
+  }
+}
+
 function statusStyle(status: string): { labelZh: string; labelEn: string; className: string } {
   const map: Record<string, { labelZh: string; labelEn: string; className: string }> = {
     pending_upload: { labelZh: '上传中', labelEn: 'Uploading', className: 'bg-gray-100 text-gray-700' },
@@ -88,8 +131,19 @@ function statusStyle(status: string): { labelZh: string; labelEn: string; classN
   return map[status] || map.pending_review;
 }
 
-export function InvoiceManagement() {
+export function InvoiceManagement({
+  highlightInvoiceId,
+  dangerFilterOnly = false,
+  auditFilterOnly = false,
+}: {
+  highlightInvoiceId?: string | null;
+  /** 仅显示「明显高于报价」的红色预警发票（首页「查看全部」） */
+  dangerFilterOnly?: boolean;
+  /** 仅显示审计规则标记异常的发票（首页审计卡片） */
+  auditFilterOnly?: boolean;
+} = {}) {
   const { profile } = useAuth();
+  const { currentPropertyId, memberships, roleInProperty } = useProperty();
   const { language } = useLanguage();
   const l = language === 'en';
 
@@ -107,26 +161,43 @@ export function InvoiceManagement() {
   const [rejectTarget, setRejectTarget] = useState<Invoice | null>(null);
   const [rejectNote, setRejectNote] = useState('');
   const [rejectSubmitting, setRejectSubmitting] = useState(false);
+  const [invoiceTaskSource, setInvoiceTaskSource] = useState<
+    Record<string, { taskId: string; title: string }>
+  >({});
+  const [quoteVarianceByInvoiceId, setQuoteVarianceByInvoiceId] = useState<Record<string, QuoteVarianceResult>>({});
+  const [exportingMeetingPack, setExportingMeetingPack] = useState(false);
 
-  const canAudit = canManageInvoiceWorkflow(profile);
+  const canAudit = canManageInvoiceWorkflow(roleInProperty);
 
   const loadInvoices = useCallback(async () => {
+    if (!currentPropertyId) {
+      setInvoices([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     const { data } = await supabase
       .from('invoices')
-      .select('*, uploader:profiles!invoices_uploaded_by_fkey(full_name_en, full_name_zh)')
+      .select(
+        '*, is_abnormal, audit_summary, uploader:profiles!invoices_uploaded_by_fkey(full_name_en, full_name_zh), verifier:profiles!invoices_verified_by_fkey(full_name_en, full_name_zh)',
+      )
+      .eq('property_id', currentPropertyId)
       .order('created_at', { ascending: false });
     setInvoices((data as Invoice[]) || []);
     setLoading(false);
-  }, []);
+  }, [currentPropertyId]);
 
   const loadInvoicesQuiet = useCallback(async () => {
+    if (!currentPropertyId) return;
     const { data } = await supabase
       .from('invoices')
-      .select('*, uploader:profiles!invoices_uploaded_by_fkey(full_name_en, full_name_zh)')
+      .select(
+        '*, is_abnormal, audit_summary, uploader:profiles!invoices_uploaded_by_fkey(full_name_en, full_name_zh), verifier:profiles!invoices_verified_by_fkey(full_name_en, full_name_zh)',
+      )
+      .eq('property_id', currentPropertyId)
       .order('created_at', { ascending: false });
     if (data) setInvoices(data as Invoice[]);
-  }, []);
+  }, [currentPropertyId]);
 
   useEffect(() => {
     void loadInvoices();
@@ -141,13 +212,78 @@ export function InvoiceManagement() {
     };
   }, [loadInvoices, loadInvoicesQuiet]);
 
+  useEffect(() => {
+    if (!currentPropertyId || invoices.length === 0) {
+      setInvoiceTaskSource({});
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const map = await fetchTaskTitleByInvoiceIds(
+          currentPropertyId,
+          invoices.map((i) => i.id),
+        );
+        if (cancelled) return;
+        const obj: Record<string, { taskId: string; title: string }> = {};
+        map.forEach((v, k) => {
+          obj[k] = v;
+        });
+        setInvoiceTaskSource(obj);
+      } catch (e) {
+        console.error('fetchTaskTitleByInvoiceIds', e);
+        if (!cancelled) setInvoiceTaskSource({});
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentPropertyId, invoices]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!currentPropertyId || invoices.length === 0) {
+      setQuoteVarianceByInvoiceId({});
+      return;
+    }
+    const withQuote = invoices.filter((i) => i.quote_id);
+    if (withQuote.length === 0) {
+      setQuoteVarianceByInvoiceId({});
+      return;
+    }
+    void (async () => {
+      const qids = [...new Set(withQuote.map((i) => i.quote_id).filter(Boolean))] as string[];
+      const { data: quotes } = await supabase.from('procurement_quotes').select('id, quoted_amount').in('id', qids);
+      if (cancelled) return;
+      const qm = new Map((quotes ?? []).map((q) => [q.id, Number(q.quoted_amount)]));
+      const out: Record<string, QuoteVarianceResult> = {};
+      for (const inv of withQuote) {
+        if (!inv.quote_id) continue;
+        const qa = qm.get(inv.quote_id);
+        const v = computeQuoteInvoiceVariance(qa, inv.total_amount);
+        if (v) out[inv.id] = v;
+      }
+      setQuoteVarianceByInvoiceId(out);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentPropertyId, invoices]);
+
+  useEffect(() => {
+    if (!highlightInvoiceId || invoices.length === 0) return;
+    const inv = invoices.find((i) => i.id === highlightInvoiceId);
+    if (inv) setSelectedInvoice(inv);
+  }, [highlightInvoiceId, invoices]);
+
   const logAudit = async (
     invoiceId: string,
     action: string,
     opts?: { notes?: string; oldStatus?: string; newStatus?: string }
   ) => {
-    if (!profile || !canAudit) return;
+    if (!profile || !canAudit || !currentPropertyId) return;
     await supabase.from('invoice_audit_log').insert({
+      property_id: currentPropertyId,
       invoice_id: invoiceId,
       actor_id: profile.id,
       action,
@@ -171,7 +307,7 @@ export function InvoiceManagement() {
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !profile) return;
+    if (!file || !profile || !currentPropertyId) return;
 
     setUploading(true);
     setUploadProgress(l ? 'Reading file...' : '正在读取文件...');
@@ -195,10 +331,104 @@ export function InvoiceManagement() {
 
       const data = await response.json();
       if (!data.success || !data.extracted) {
-        throw new Error(data.error || (l ? 'AI extraction failed' : 'AI识别失败'));
+        const err = data as {
+          message?: string;
+          message_zh?: string;
+          error?: string;
+        };
+        const msgEn = typeof err.message === 'string' ? err.message.trim() : '';
+        const msgZh = typeof err.message_zh === 'string' ? err.message_zh.trim() : '';
+
+        let hint = '';
+        if (l) {
+          if (msgEn) hint = msgEn;
+          else if (msgZh) hint = msgZh;
+        } else {
+          if (msgZh) hint = msgZh;
+          else if (msgEn) hint = msgEn;
+        }
+
+        if (!hint) {
+          if (err.error === 'PDF_OCR_UNAVAILABLE') {
+            hint = l
+              ? 'PDF OCR is not enabled yet. Please upload an image instead.'
+              : '当前暂不支持直接识别 PDF，请先上传 JPG 或 PNG 图片。';
+          } else if (err.error === 'AI_QUOTA_EXCEEDED') {
+            hint = l
+              ? 'AI recognition is temporarily unavailable. Please check service quota and try again.'
+              : 'AI 识别暂时不可用，请检查服务额度后再试。';
+          } else if (err.error === 'AI_OCR_FAILED') {
+            hint = l
+              ? 'AI recognition is temporarily unavailable. Please try again later.'
+              : 'AI 识别暂时不可用，请稍后再试。';
+          } else {
+            hint = l ? 'Could not process this file.' : '无法处理该文件。';
+          }
+        }
+        throw new Error(hint);
       }
 
-      const extracted = data.extracted;
+      const ex = data.extracted as {
+        vendor?: string;
+        invoice_number?: string;
+        invoice_date?: string;
+        total_amount?: string;
+        tax_amount?: string;
+        currency?: string;
+        summary?: string;
+        raw_text?: string;
+        items?: Array<{ description?: string; amount?: string }>;
+      };
+
+      const structured = data.structured as
+        | {
+            vendor?: string;
+            amount?: string;
+            date?: string;
+            items?: Array<{ description?: string; amount?: string }>;
+          }
+        | undefined;
+
+      const parseAmount = (s: unknown): number => {
+        if (typeof s === 'number' && Number.isFinite(s)) return s;
+        if (typeof s !== 'string') return 0;
+        const cleaned = s.replace(/[^\d.-]/g, '');
+        const n = parseFloat(cleaned);
+        return Number.isFinite(n) ? n : 0;
+      };
+
+      const total = parseAmount(ex.total_amount);
+      const tax = parseAmount(ex.tax_amount);
+      const subtotal = Math.max(0, total - tax);
+
+      const line_items: { description: string; amount: number }[] = Array.isArray(ex.items)
+        ? ex.items.map((it) => ({
+            description: String(it?.description ?? ''),
+            amount: parseAmount(it?.amount),
+          }))
+        : [];
+
+      const extracted = {
+        vendor_name: ex.vendor || (l ? 'Unknown vendor' : '未知供应商'),
+        invoice_number: ex.invoice_number || null,
+        invoice_date: ex.invoice_date || new Date().toISOString().split('T')[0],
+        due_date: null as string | null,
+        subtotal,
+        tax_amount: tax,
+        total_amount: total,
+        hst_number: null as string | null,
+        currency: ex.currency || 'CAD',
+        category: 'general',
+        description: ex.summary || null,
+        line_items,
+        has_anomalies: false,
+        anomaly_notes: '',
+        raw_text: ex.raw_text || '',
+      };
+
+      const invDateStr = extracted.invoice_date || new Date().toISOString().split('T')[0];
+      const fiscalYear =
+        parseInt(String(invDateStr).slice(0, 4), 10) || new Date().getFullYear();
       setUploadProgress(l ? 'Uploading file...' : '正在上传文件...');
 
       const fileExt = file.name.split('.').pop();
@@ -215,6 +445,7 @@ export function InvoiceManagement() {
       const { data: insertedInvoice, error: dbError } = await supabase
         .from('invoices')
         .insert({
+        property_id: currentPropertyId,
         file_name: file.name,
         document_url: pub.publicUrl,
         vendor_name: extracted.vendor_name || (l ? 'Unknown vendor' : '未知供应商'),
@@ -233,6 +464,7 @@ export function InvoiceManagement() {
         ai_confidence_score: 0.85,
         uploaded_by: profile.id,
         status: 'pending_review',
+        fiscal_year: fiscalYear,
         })
         .select('id')
         .single();
@@ -254,6 +486,7 @@ export function InvoiceManagement() {
 
         try {
           const { error: anomalyError } = await supabase.from('financial_anomalies').insert({
+            property_id: currentPropertyId,
             invoice_id: invoiceId,
             notes: anomalyNotes,
           });
@@ -263,6 +496,25 @@ export function InvoiceManagement() {
         } catch (anomalyErr) {
           console.error('financial_anomalies insert threw:', anomalyErr);
         }
+      }
+
+      try {
+        const structuredPayload = structured ?? {
+          vendor: extracted.vendor_name,
+          amount: extracted.total_amount,
+          date: extracted.invoice_date,
+          items: line_items.map((x) => ({ description: x.description, amount: x.amount })),
+        };
+        const { error: ocrRawErr } = await supabase.from('invoice_ocr_raw').insert({
+          invoice_id: invoiceId,
+          property_id: currentPropertyId,
+          structured_json: structuredPayload,
+          raw_text: typeof ex.raw_text === 'string' ? ex.raw_text : null,
+          ocr_model: 'claude-sonnet-4-20250514',
+        });
+        if (ocrRawErr) console.error('invoice_ocr_raw insert failed:', ocrRawErr);
+      } catch (e) {
+        console.error('invoice_ocr_raw insert threw:', e);
       }
 
       setUploadProgress(l ? 'Done!' : '识别完成！');
@@ -310,20 +562,62 @@ export function InvoiceManagement() {
     );
   };
 
-  const approveInvoice = async (id: string) => {
+  const approveInvoice = async (id: string, approvalNotes?: string) => {
     const inv = invoices.find((i) => i.id === id);
     if (!inv || !profile) return;
+    let variance: QuoteVarianceResult | null = quoteVarianceByInvoiceId[inv.id] ?? null;
+    if (inv.quote_id && variance == null) {
+      const { data: q } = await supabase
+        .from('procurement_quotes')
+        .select('quoted_amount')
+        .eq('id', inv.quote_id)
+        .maybeSingle();
+      variance = computeQuoteInvoiceVariance(q != null ? Number(q.quoted_amount) : null, inv.total_amount);
+    }
+    const trimmed = approvalNotes?.trim();
+    if (variance?.warningLevel === 'danger' && !trimmed) {
+      alert(
+        l
+          ? 'This invoice has a critical variance. Please add an approval reason before approving.'
+          : '该发票存在异常，请填写审批理由后再通过',
+      );
+      return;
+    }
     await applyInvoiceUpdate(
       id,
       {
         status: 'approved',
         verified_by: profile.id,
         verified_at: new Date().toISOString(),
+        approval_note: trimmed || null,
         review_notes: null,
         updated_at: new Date().toISOString(),
       },
-      { action: 'approve', oldStatus: inv.status, newStatus: 'approved' }
+      { action: 'approve', notes: trimmed || undefined, oldStatus: inv.status, newStatus: 'approved' }
     );
+  };
+
+  /** 列表快捷通过：红色预警必须先打开详情填写理由 */
+  const approveInvoiceFromList = async (inv: Invoice) => {
+    let v: QuoteVarianceResult | null = quoteVarianceByInvoiceId[inv.id] ?? null;
+    if (inv.quote_id && v == null) {
+      const { data: q } = await supabase
+        .from('procurement_quotes')
+        .select('quoted_amount')
+        .eq('id', inv.quote_id)
+        .maybeSingle();
+      v = computeQuoteInvoiceVariance(q != null ? Number(q.quoted_amount) : null, inv.total_amount);
+    }
+    if (v?.warningLevel === 'danger') {
+      alert(
+        l
+          ? 'This invoice has a critical variance. Open details and enter an approval reason before approving.'
+          : '该发票存在异常，请填写审批理由后再通过',
+      );
+      setSelectedInvoice(inv);
+      return;
+    }
+    void approveInvoice(inv.id);
   };
 
   const submitReject = async () => {
@@ -386,6 +680,11 @@ export function InvoiceManagement() {
 
   const filtered = useMemo(() => {
     return invoices.filter((inv) => {
+      if (dangerFilterOnly) {
+        const v = quoteVarianceByInvoiceId[inv.id];
+        if (!isRedAlertVariance(v)) return false;
+      }
+      if (auditFilterOnly && !inv.is_abnormal) return false;
       const q = searchTerm.trim().toLowerCase();
       const matchSearch =
         !q ||
@@ -398,7 +697,16 @@ export function InvoiceManagement() {
       const matchTo = !dateTo || d <= dateTo;
       return matchSearch && matchStatus && matchFrom && matchTo;
     });
-  }, [invoices, searchTerm, statusFilter, dateFrom, dateTo]);
+  }, [
+    invoices,
+    searchTerm,
+    statusFilter,
+    dateFrom,
+    dateTo,
+    dangerFilterOnly,
+    auditFilterOnly,
+    quoteVarianceByInvoiceId,
+  ]);
 
   const statusCounts = useMemo(() => {
     return invoices.reduce(
@@ -455,6 +763,29 @@ export function InvoiceManagement() {
     return l ? c.labelEn : c.labelZh;
   };
 
+  const handleExportMeetingPackPdf = async () => {
+    if (!currentPropertyId) return;
+    setExportingMeetingPack(true);
+    try {
+      const propertyName =
+        memberships.find((m) => m.propertyId === currentPropertyId)?.name ?? (l ? 'Property' : '物业');
+      await exportMonthlyAbnormalInvoicesMeetingPackPdf({
+        zh: !l,
+        propertyId: currentPropertyId,
+        propertyName,
+      });
+    } catch (e) {
+      if (e instanceof Error && e.message === 'NO_ABNORMAL_IN_MONTH') {
+        alert(l ? 'No abnormal invoices to export for this month.' : '当前月份暂无异常发票可导出');
+        return;
+      }
+      console.error('exportMonthlyAbnormalInvoicesMeetingPackPdf', e);
+      alert(l ? 'Export failed.' : '导出失败');
+    } finally {
+      setExportingMeetingPack(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -465,6 +796,30 @@ export function InvoiceManagement() {
 
   return (
     <div className="space-y-6">
+      {dangerFilterOnly && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 flex flex-wrap items-center gap-2 justify-between">
+          <span>
+            {l
+              ? 'Filtered: red-alert invoices only (≥20% above approved quote).'
+              : '当前筛选：红色预警发票（发票金额较批复报价高出 ≥20%）。'}
+          </span>
+          <Link to="/finance?tab=invoices" className="font-semibold text-[#1D9E75] hover:underline shrink-0">
+            {l ? 'Show all invoices' : '查看全部发票'}
+          </Link>
+        </div>
+      )}
+      {auditFilterOnly && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 flex flex-wrap items-center gap-2 justify-between">
+          <span>
+            {l
+              ? 'Filtered: audit-flagged invoices only (automatic rules).'
+              : '当前筛选：审计规则标记的异常发票。'}
+          </span>
+          <Link to="/finance?tab=invoices" className="font-semibold text-[#1D9E75] hover:underline shrink-0">
+            {l ? 'Show all invoices' : '查看全部发票'}
+          </Link>
+        </div>
+      )}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
         <SummaryCard
           label={l ? 'Pending review' : '待审核'}
@@ -486,6 +841,22 @@ export function InvoiceManagement() {
           value={(statusCounts['flagged'] || 0) + (statusCounts['rejected'] || 0)}
           className="border-l-4 border-red-500 bg-red-50/80"
         />
+      </div>
+
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => void handleExportMeetingPackPdf()}
+          disabled={exportingMeetingPack || !currentPropertyId}
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {exportingMeetingPack ? (
+            <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+          ) : (
+            <FileDown className="h-4 w-4 shrink-0" />
+          )}
+          <span>{l ? 'Export monthly meeting pack (PDF)' : '导出本月异常发票会议包 PDF'}</span>
+        </button>
       </div>
 
       {uploadProgress && (
@@ -603,7 +974,7 @@ export function InvoiceManagement() {
         ) : (
           <>
             <div className="hidden md:block overflow-x-auto">
-              <table className="w-full min-w-[900px]">
+              <table className="w-full min-w-[1020px]">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
@@ -618,8 +989,14 @@ export function InvoiceManagement() {
                     <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
                       {l ? 'Total' : '总计'}
                     </th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase max-w-[120px]">
+                      {l ? 'Quote Δ' : '报价对比'}
+                    </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                       {l ? 'Category' : '分类'}
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      {l ? 'Source' : '来源'}
                     </th>
                     <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">
                       {l ? 'Status' : '状态'}
@@ -632,10 +1009,13 @@ export function InvoiceManagement() {
                 <tbody className="divide-y divide-gray-200">
                   {filtered.map((inv) => {
                     const st = statusStyle(inv.status);
+                    const qv = quoteVarianceByInvoiceId[inv.id];
                     return (
                       <tr
                         key={inv.id}
-                        className={`hover:bg-gray-50 cursor-pointer ${inv.has_anomalies ? 'bg-red-50/30' : ''}`}
+                        className={`hover:bg-gray-50 cursor-pointer ${
+                          inv.has_anomalies || inv.is_abnormal ? 'bg-red-50/30' : ''
+                        }`}
                         onClick={() => setSelectedInvoice(inv)}
                       >
                         <td className="px-4 py-3 text-sm">
@@ -651,12 +1031,38 @@ export function InvoiceManagement() {
                         <td className="px-4 py-3 text-sm text-right font-semibold text-gray-900">
                           ${Number(inv.total_amount).toFixed(2)}
                         </td>
+                        <td className="px-4 py-3 text-center text-xs">
+                          {qv ? (
+                            <span
+                              className={`inline-flex px-2 py-0.5 rounded-full font-medium ${quoteVarianceBadgeClass(qv)}`}
+                              title={l ? qv.messageEn : qv.message}
+                            >
+                              {quoteVarianceShortLabel(qv, l)}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-sm text-gray-700">{catLabel(inv.category)}</td>
+                        <td className="px-4 py-3 text-sm max-w-[180px]" onClick={(e) => e.stopPropagation()}>
+                          {invoiceTaskSource[inv.id] ? (
+                            <Link
+                              to={`/property-admin/tasks/${invoiceTaskSource[inv.id].taskId}`}
+                              className="font-medium text-[#1D9E75] hover:underline line-clamp-2"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {invoiceTaskSource[inv.id].title}
+                            </Link>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
                           <span
                             className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${st.className}`}
                           >
-                            {inv.has_anomalies && <AlertTriangle size={12} />}
+                            {inv.has_anomalies && <AlertTriangle size={12} aria-hidden />}
+                            {inv.is_abnormal && <ShieldAlert size={12} className="text-amber-700" aria-hidden />}
                             {l ? st.labelEn : st.labelZh}
                           </span>
                         </td>
@@ -670,7 +1076,7 @@ export function InvoiceManagement() {
                             >
                               <Eye size={16} />
                             </button>
-                            {canDeleteInvoice(profile, inv.uploaded_by) && (
+                            {canDeleteInvoice(roleInProperty, profile?.id, inv.uploaded_by) && (
                               <button
                                 type="button"
                                 onClick={() => setDeleteConfirm(inv)}
@@ -684,7 +1090,7 @@ export function InvoiceManagement() {
                               <>
                                 <button
                                   type="button"
-                                  onClick={() => void approveInvoice(inv.id)}
+                                  onClick={() => void approveInvoiceFromList(inv)}
                                   className="px-2 py-1 text-xs font-medium rounded-lg bg-[#1D9E75] text-white hover:bg-[#178a66]"
                                 >
                                   {l ? 'Approve' : '审核通过'}
@@ -722,6 +1128,7 @@ export function InvoiceManagement() {
             <div className="md:hidden p-4 space-y-3">
               {filtered.map((inv) => {
                 const st = statusStyle(inv.status);
+                const qv = quoteVarianceByInvoiceId[inv.id];
                 return (
                   <button
                     type="button"
@@ -740,12 +1147,31 @@ export function InvoiceManagement() {
                         {inv.invoice_number || '—'} · {new Date(inv.invoice_date).toLocaleDateString(l ? 'en-CA' : 'zh-CN')}
                       </div>
                       <div className="font-bold text-gray-900">${Number(inv.total_amount).toFixed(2)}</div>
+                      {qv ? (
+                        <div className="flex items-center gap-2 pt-1">
+                          <span className="text-gray-500">{l ? 'Quote Δ' : '报价对比'}:</span>
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${quoteVarianceBadgeClass(qv)}`}>
+                            {quoteVarianceShortLabel(qv, l)}
+                          </span>
+                        </div>
+                      ) : null}
+                      {invoiceTaskSource[inv.id] ? (
+                        <div className="pt-1" onClick={(e) => e.stopPropagation()}>
+                          <span className="text-gray-500">{l ? 'Source: ' : '来源：'}</span>
+                          <Link
+                            to={`/property-admin/tasks/${invoiceTaskSource[inv.id].taskId}`}
+                            className="text-[#1D9E75] font-medium hover:underline"
+                          >
+                            {invoiceTaskSource[inv.id].title}
+                          </Link>
+                        </div>
+                      ) : null}
                     </div>
                     {canAudit && inv.status === 'pending_review' && (
                       <div className="flex gap-2 mt-3" onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
-                          onClick={() => void approveInvoice(inv.id)}
+                          onClick={() => void approveInvoiceFromList(inv)}
                           className="flex-1 py-2 text-xs font-medium rounded-lg bg-[#1D9E75] text-white"
                         >
                           {l ? 'Approve' : '审核通过'}
@@ -792,7 +1218,7 @@ export function InvoiceManagement() {
           onRefresh={loadInvoicesQuiet}
           canAudit={canAudit}
           profile={profile}
-          onApprove={(id) => void approveInvoice(id)}
+          onApprove={(id, notes) => void approveInvoice(id, notes)}
           onReject={(inv) => {
             setRejectTarget(inv);
             setRejectNote('');
@@ -900,12 +1326,13 @@ function InvoiceDetailModal({
   onRefresh: () => Promise<void>;
   canAudit: boolean;
   profile: { id: string } | null;
-  onApprove: (id: string) => void;
+  onApprove: (id: string, approvalNotes?: string) => void;
   onReject: (inv: Invoice) => void;
   onMarkPaid: (id: string) => void;
   catLabel: (v: string | null | undefined) => string;
 }) {
   const { language } = useLanguage();
+  const { currentPropertyId, memberships } = useProperty();
   const l = language === 'en';
   const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
   const [loadingAudit, setLoadingAudit] = useState(true);
@@ -913,6 +1340,11 @@ function InvoiceDetailModal({
   const [editCategory, setEditCategory] = useState(invoice.category || 'general');
   const [editNotes, setEditNotes] = useState(invoice.notes || '');
   const [saving, setSaving] = useState(false);
+  const [linkedTasks, setLinkedTasks] = useState<LinkedTask[]>([]);
+  const [quoteVarianceResult, setQuoteVarianceResult] = useState<QuoteVarianceResult | null>(null);
+  const [approvalNote, setApprovalNote] = useState('');
+  const [relatedTaskTitleFallback, setRelatedTaskTitleFallback] = useState<string | null>(null);
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   const st = statusStyle(invoice.status);
   const aiData = invoice.ai_extracted_data as Record<string, unknown> | null;
@@ -920,17 +1352,16 @@ function InvoiceDetailModal({
   useEffect(() => {
     setEditCategory(invoice.category || 'general');
     setEditNotes(invoice.notes || '');
+    setApprovalNote('');
   }, [invoice]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoadingAudit(true);
-      const { data, error } = await supabase
-        .from('invoice_audit_log')
-        .select('*')
-        .eq('invoice_id', invoice.id)
-        .order('created_at', { ascending: false });
+      let q = supabase.from('invoice_audit_log').select('*').eq('invoice_id', invoice.id);
+      if (currentPropertyId) q = q.eq('property_id', currentPropertyId);
+      const { data, error } = await q.order('created_at', { ascending: false });
       if (cancelled) return;
       if (error || !data) {
         setAuditLog([]);
@@ -954,10 +1385,81 @@ function InvoiceDetailModal({
     return () => {
       cancelled = true;
     };
-  }, [invoice.id]);
+  }, [invoice.id, currentPropertyId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!currentPropertyId) return;
+      try {
+        const rows = await fetchTasksForInvoice(invoice.id, currentPropertyId);
+        if (!cancelled) setLinkedTasks(rows);
+      } catch (e) {
+        console.error('fetchTasksForInvoice', e);
+        if (!cancelled) setLinkedTasks([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [invoice.id, currentPropertyId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!invoice.quote_id) {
+      setQuoteVarianceResult(null);
+      return;
+    }
+    void (async () => {
+      const { data } = await supabase
+        .from('procurement_quotes')
+        .select('quoted_amount')
+        .eq('id', invoice.quote_id)
+        .maybeSingle();
+      if (cancelled) return;
+      if (data != null && data.quoted_amount != null) {
+        setQuoteVarianceResult(computeQuoteInvoiceVariance(Number(data.quoted_amount), invoice.total_amount));
+      } else {
+        setQuoteVarianceResult(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [invoice.quote_id, invoice.total_amount]);
+
+  useEffect(() => {
+    if (!invoice.related_task_id || !currentPropertyId) {
+      setRelatedTaskTitleFallback(null);
+      return;
+    }
+    const fromLinked = linkedTasks.find((t) => t.taskId === invoice.related_task_id)?.title;
+    if (fromLinked) {
+      setRelatedTaskTitleFallback(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase
+        .from('manager_tasks')
+        .select('title')
+        .eq('id', invoice.related_task_id)
+        .eq('property_id', currentPropertyId)
+        .maybeSingle();
+      if (!cancelled) setRelatedTaskTitleFallback(data?.title ?? null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [invoice.related_task_id, currentPropertyId, linkedTasks]);
+
+  const relatedSourceTaskTitle =
+    invoice.related_task_id != null
+      ? linkedTasks.find((t) => t.taskId === invoice.related_task_id)?.title ?? relatedTaskTitleFallback
+      : null;
 
   const saveEdits = async () => {
-    if (!profile || !canAudit) return;
+    if (!profile || !canAudit || !currentPropertyId) return;
     setSaving(true);
     try {
       const { error } = await supabase
@@ -973,6 +1475,7 @@ function InvoiceDetailModal({
         return;
       }
       await supabase.from('invoice_audit_log').insert({
+        property_id: currentPropertyId,
         invoice_id: invoice.id,
         actor_id: profile.id,
         action: 'edit_details',
@@ -984,6 +1487,33 @@ function InvoiceDetailModal({
       setEditing(false);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleExportApprovalPdf = async () => {
+    setExportingPdf(true);
+    try {
+      const propertyName =
+        memberships.find((m) => m.propertyId === currentPropertyId)?.name ?? (l ? 'Property' : '物业');
+      const approverName = invoice.verifier
+        ? l
+          ? invoice.verifier.full_name_en
+          : invoice.verifier.full_name_zh || invoice.verifier.full_name_en
+        : null;
+      await exportInvoiceApprovalPdf({
+        zh: !l,
+        propertyName,
+        propertyId: currentPropertyId ?? null,
+        invoice,
+        quoteVariance: quoteVarianceResult,
+        sourceTaskTitle: relatedSourceTaskTitle,
+        approverDisplayName: approverName,
+      });
+    } catch (e) {
+      console.error('exportInvoiceApprovalPdf', e);
+      alert(l ? 'Failed to export PDF.' : '导出 PDF 失败');
+    } finally {
+      setExportingPdf(false);
     }
   };
 
@@ -1024,47 +1554,254 @@ function InvoiceDetailModal({
               {invoice.file_name || invoice.invoice_number || invoice.id.slice(0, 8)}
             </p>
           </div>
-          <button type="button" onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg shrink-0">
-            <X size={20} />
-          </button>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => void handleExportApprovalPdf()}
+              disabled={exportingPdf}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              title={l ? 'Export approval record PDF' : '导出审批记录 PDF'}
+            >
+              {exportingPdf ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <FileDown className="h-4 w-4" />
+              )}
+              <span className="hidden sm:inline">{l ? 'Export PDF' : '导出审批记录 PDF'}</span>
+            </button>
+            <button type="button" onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">
+              <X size={20} />
+            </button>
+          </div>
         </div>
 
         <div className="p-4 sm:p-6 space-y-6">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={`px-3 py-1 rounded-full text-sm font-medium ${st.className}`}>
-              {invoice.has_anomalies && <AlertTriangle size={14} className="inline mr-1" />}
-              {l ? st.labelEn : st.labelZh}
-            </span>
-            {invoice.ai_confidence_score != null && (
-              <span className="text-xs text-gray-500">
-                AI {(invoice.ai_confidence_score * 100).toFixed(0)}%
+          {/* 1. 发票基本信息 */}
+          <section aria-labelledby="inv-basic-heading">
+            <h3 id="inv-basic-heading" className="text-sm font-semibold text-gray-900 mb-3">
+              {l ? 'Invoice details' : '发票基本信息'}
+            </h3>
+            <div className="flex flex-wrap items-center gap-2 mb-4">
+              <span className={`px-3 py-1 rounded-full text-sm font-medium ${st.className}`}>
+                {invoice.has_anomalies && <AlertTriangle size={14} className="inline mr-1" aria-hidden />}
+                {invoice.is_abnormal && <ShieldAlert size={14} className="inline mr-1 text-amber-700" aria-hidden />}
+                {l ? st.labelEn : st.labelZh}
               </span>
-            )}
-          </div>
+              {invoice.ai_confidence_score != null && (
+                <span className="text-xs text-gray-500">
+                  AI {(invoice.ai_confidence_score * 100).toFixed(0)}%
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <InfoField label={l ? 'Supplier' : '供应商'} value={invoice.vendor_name || '—'} />
+              <InfoField
+                label={l ? 'Invoice date' : '开票日期'}
+                value={new Date(invoice.invoice_date).toLocaleDateString(l ? 'en-CA' : 'zh-CN')}
+              />
+              <InfoField
+                label={l ? 'Total amount' : '金额（含税）'}
+                value={`$${Number(invoice.total_amount).toFixed(2)}`}
+                highlight
+              />
+              <InfoField label={l ? 'Category' : '分类'} value={catLabel(invoice.category)} />
+            </div>
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-gray-100">
+              <InfoField label={l ? 'Invoice #' : '发票号'} value={invoice.invoice_number || '-'} />
+              <InfoField label={l ? 'Subtotal' : '税前'} value={`$${Number(invoice.subtotal).toFixed(2)}`} />
+              <InfoField label={l ? 'Tax' : '税额'} value={`$${Number(invoice.tax_amount || 0).toFixed(2)}`} />
+              <InfoField label={l ? 'Currency' : '币种'} value={invoice.currency || 'CAD'} />
+              <InfoField label="HST" value={invoice.hst_number || '-'} />
+              <InfoField
+                label={l ? 'Uploaded by' : '上传人'}
+                value={
+                  invoice.uploader
+                    ? l
+                      ? invoice.uploader.full_name_en
+                      : invoice.uploader.full_name_zh || invoice.uploader.full_name_en
+                    : '—'
+                }
+              />
+            </div>
+          </section>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <InfoField label={l ? 'Invoice #' : '发票号'} value={invoice.invoice_number || '-'} />
-            <InfoField
-              label={l ? 'Date' : '日期'}
-              value={new Date(invoice.invoice_date).toLocaleDateString(l ? 'en-CA' : 'zh-CN')}
-            />
-            <InfoField label={l ? 'Subtotal' : '税前'} value={`$${Number(invoice.subtotal).toFixed(2)}`} />
-            <InfoField label={l ? 'Tax' : '税额'} value={`$${Number(invoice.tax_amount || 0).toFixed(2)}`} />
-            <InfoField label={l ? 'Total' : '总计'} value={`$${Number(invoice.total_amount).toFixed(2)}`} highlight />
-            <InfoField label={l ? 'Currency' : '币种'} value={invoice.currency || 'CAD'} />
-            <InfoField label="HST" value={invoice.hst_number || '-'} />
-            <InfoField
-              label={l ? 'Uploaded by' : '上传人'}
-              value={
-                invoice.uploader
-                  ? l
-                    ? invoice.uploader.full_name_en
-                    : invoice.uploader.full_name_zh || invoice.uploader.full_name_en
-                  : '—'
-              }
-            />
-          </div>
+          {/* 2. 费用异常提醒（红色预警） */}
+          {quoteVarianceResult && isRedAlertVariance(quoteVarianceResult) ? (
+            <section
+              className="rounded-xl border-2 border-red-400 bg-red-50 p-4 shadow-sm"
+              aria-labelledby="inv-anomaly-heading"
+            >
+              <h3 id="inv-anomaly-heading" className="text-base font-bold text-red-950">
+                {l ? 'Cost anomaly alert' : '费用异常提醒'}
+              </h3>
+              <p className="mt-2 text-sm text-red-900">
+                {l ? (
+                  <>
+                    {quoteVarianceResult.variancePercent * 100 >= 0 ? 'Above quote by ' : 'Below quote: '}
+                    <span className="font-semibold">
+                      {Math.abs(quoteVarianceResult.variancePercent * 100).toFixed(1)}%
+                    </span>
+                    . Review the reason before approving.
+                  </>
+                ) : (
+                  <>
+                    高于报价{' '}
+                    <span className="font-semibold">
+                      {(quoteVarianceResult.variancePercent * 100).toFixed(1)}%
+                    </span>
+                    ，建议复核原因后再审批。
+                  </>
+                )}
+              </p>
+            </section>
+          ) : null}
 
+          {/* 3. 报价对比 */}
+          {invoice.quote_id && quoteVarianceResult ? (
+            <QuoteVariancePanel result={quoteVarianceResult} en={l} />
+          ) : null}
+
+          {/* 4. 来源任务（related_task_id） */}
+          {invoice.related_task_id ? (
+            <section className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
+              <h3 className="text-sm font-semibold text-gray-900 mb-2">{l ? 'Source task' : '来源任务'}</h3>
+              <p className="text-sm text-gray-800">
+                <Link
+                  to={`/property-admin/tasks/${invoice.related_task_id}`}
+                  className="font-medium text-[#1D9E75] hover:underline"
+                >
+                  {relatedSourceTaskTitle || (l ? 'View task' : '查看任务')}
+                </Link>
+              </p>
+              <p className="mt-3 text-xs text-gray-600">
+                <Link
+                  to={`/property-admin/tasks/${invoice.related_task_id}`}
+                  className="text-[#1D9E75] font-medium hover:underline"
+                >
+                  {l
+                    ? 'View execution trail (logs / photos / before–after)'
+                    : '查看执行过程（日志 / 图片 / 前后对比）'}
+                </Link>
+              </p>
+            </section>
+          ) : null}
+
+          {/* 5. 审批区 */}
+          {canAudit && invoice.status === 'pending_review' ? (
+            <section className="rounded-xl border border-gray-200 bg-gray-50/80 p-4">
+              <h3 className="text-sm font-semibold text-gray-900 mb-3">{l ? 'Approval' : '审批'}</h3>
+              {(() => {
+                const requiresApprovalReason = quoteVarianceResult?.warningLevel === 'danger';
+                const warnSuggest = quoteVarianceResult?.warningLevel === 'warning';
+                const missingDangerNote = requiresApprovalReason && !approvalNote.trim();
+                const handleApproveClick = () => {
+                  if (requiresApprovalReason && !approvalNote.trim()) {
+                    alert(
+                      l
+                        ? 'This invoice has a critical variance. Please add an approval reason before approving.'
+                        : '该发票存在异常，请填写审批理由后再通过',
+                    );
+                    return;
+                  }
+                  onApprove(invoice.id, approvalNote);
+                };
+                return (
+                  <>
+                    <label
+                      className={`block text-xs font-medium mb-1.5 ${requiresApprovalReason ? 'text-red-800' : 'text-gray-600'}`}
+                      htmlFor="invoice-approval-note"
+                    >
+                      {l ? 'Approval note' : '审批备注'}
+                      {requiresApprovalReason ? (
+                        <span className="text-red-600 font-semibold"> *</span>
+                      ) : null}
+                    </label>
+                    {requiresApprovalReason ? (
+                      <p className="text-xs text-red-700 mb-2">{l ? 'Required before approve.' : '请填写审批理由后再通过'}</p>
+                    ) : warnSuggest ? (
+                      <p className="text-xs text-amber-800 mb-2">
+                        {l ? 'Variance is elevated — adding a note is recommended.' : '报价偏差偏高，建议填写审批备注。'}
+                      </p>
+                    ) : null}
+                    <textarea
+                      id="invoice-approval-note"
+                      value={approvalNote}
+                      onChange={(e) => setApprovalNote(e.target.value)}
+                      rows={3}
+                      className={`w-full px-3 py-2 rounded-lg text-sm mb-4 focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent ${
+                        missingDangerNote
+                          ? 'border-2 border-red-500 bg-red-50/50'
+                          : 'border border-gray-300'
+                      }`}
+                      placeholder={
+                        l
+                          ? 'Notes are saved to the invoice and audit trail.'
+                          : '填写后将保存至发票与操作记录。'
+                      }
+                      aria-invalid={missingDangerNote}
+                      aria-required={requiresApprovalReason}
+                    />
+                    <div className="flex flex-col sm:flex-row flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={handleApproveClick}
+                        className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-[#1D9E75] text-white rounded-lg text-sm font-medium hover:bg-[#178a66]"
+                      >
+                        <Check size={16} />
+                        {l ? 'Approve' : '审核通过'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onReject(invoice)}
+                        className="px-4 py-2.5 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700"
+                      >
+                        {l ? 'Reject' : '拒绝'}
+                      </button>
+                    </div>
+                  </>
+                );
+              })()}
+            </section>
+          ) : null}
+
+          {/* 审批记录（已通过） */}
+          {invoice.status === 'approved' && invoice.verified_at ? (
+            <section className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
+              <h3 className="text-sm font-semibold text-gray-900 mb-3">{l ? 'Approval record' : '审批记录'}</h3>
+              <dl className="space-y-2 text-sm">
+                <div>
+                  <dt className="text-xs text-gray-500">{l ? 'Approved by' : '审批人'}</dt>
+                  <dd className="font-medium text-gray-900">
+                    {invoice.verifier
+                      ? l
+                        ? invoice.verifier.full_name_en
+                        : invoice.verifier.full_name_zh || invoice.verifier.full_name_en
+                      : '—'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-gray-500">{l ? 'Approved at' : '审批时间'}</dt>
+                  <dd className="font-medium text-gray-900">
+                    {new Date(invoice.verified_at).toLocaleString(l ? 'en-CA' : 'zh-CN')}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-gray-500">{l ? 'Approval note' : '审批备注'}</dt>
+                  <dd className="text-gray-800 whitespace-pre-wrap">
+                    {invoice.approval_note?.trim() ||
+                      (invoice.review_notes?.trim() ? invoice.review_notes : null) ||
+                      (l ? '—' : '—')}
+                  </dd>
+                </div>
+              </dl>
+            </section>
+          ) : null}
+
+          {/* 6. 其它信息 */}
+          <section className="space-y-6 pt-2 border-t border-dashed border-gray-200" aria-labelledby="inv-more-heading">
+            <h3 id="inv-more-heading" className="text-sm font-semibold text-gray-900">
+              {l ? 'More' : '其它信息'}
+            </h3>
           {editing && canAudit ? (
             <div className="space-y-3 border border-gray-200 rounded-xl p-4">
               <div>
@@ -1110,20 +1847,16 @@ function InvoiceDetailModal({
             </div>
           ) : (
             <>
-              <div>
-                <div className="text-sm font-medium text-gray-500 mb-1">{l ? 'Category' : '分类'}</div>
-                <div className="text-sm text-gray-900">{catLabel(invoice.category)}</div>
-              </div>
               {invoice.notes && (
                 <div>
                   <div className="text-sm font-medium text-gray-500 mb-1">{l ? 'Notes' : '备注'}</div>
                   <p className="text-sm text-gray-700 bg-gray-50 rounded-lg p-3">{invoice.notes}</p>
                 </div>
               )}
-              {invoice.review_notes && (
+              {['flagged', 'rejected'].includes(invoice.status) && invoice.review_notes && (
                 <div>
                   <div className="text-sm font-medium text-red-700 mb-1">
-                    {l ? 'Rejection / exception note' : '驳回/异常备注'}
+                    {l ? 'Rejection / exception note' : '驳回说明'}
                   </div>
                   <p className="text-sm text-red-900 bg-red-50 rounded-lg p-3 border border-red-100">
                     {invoice.review_notes}
@@ -1222,25 +1955,6 @@ function InvoiceDetailModal({
                 {l ? 'Edit' : '编辑'}
               </button>
             )}
-            {canAudit && invoice.status === 'pending_review' && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => onApprove(invoice.id)}
-                  className="px-4 py-2.5 bg-[#1D9E75] text-white rounded-lg text-sm font-medium hover:bg-[#178a66]"
-                >
-                  <Check size={16} className="inline mr-1" />
-                  {l ? 'Approve' : '审核通过'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onReject(invoice)}
-                  className="px-4 py-2.5 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700"
-                >
-                  {l ? 'Reject' : '驳回'}
-                </button>
-              </>
-            )}
             {canAudit && invoice.status === 'approved' && (
               <button
                 type="button"
@@ -1251,6 +1965,7 @@ function InvoiceDetailModal({
               </button>
             )}
           </div>
+          </section>
         </div>
       </div>
     </div>

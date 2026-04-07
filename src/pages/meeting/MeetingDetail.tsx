@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Calendar, Clock, MapPin, Video, Users, FileText, AlertCircle, Upload, UserCheck, X, Pencil } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useProperty } from '../../contexts/PropertyContext';
 import { supabase } from '../../lib/supabase';
 import { localDateTimeToIso } from '../../utils/meetingDateTime';
 import { MeetingAgendaSection } from './MeetingAgendaSection';
@@ -77,6 +78,7 @@ const statusColors: Record<string, string> = {
 export function MeetingDetail() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
+  const { currentPropertyId, roleInProperty, ready: propertyReady } = useProperty();
   const { language, t } = useLanguage();
   const navigate = useNavigate();
   const l = language === 'en';
@@ -107,29 +109,43 @@ export function MeetingDetail() {
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const loadMeeting = useCallback(async () => {
-    if (!id || !user) return;
+    if (!id || !user) {
+      setLoading(false);
+      return;
+    }
+    if (!propertyReady) return;
+    if (!currentPropertyId) {
+      setMeeting(null);
+      setLoading(false);
+      return;
+    }
 
     try {
-      const [{ data: profile }, { data: meetingData }] = await Promise.all([
-        supabase.from('profiles').select('role').eq('id', user.id).maybeSingle(),
-        supabase.from('meetings').select('*').eq('id', id).maybeSingle(),
-      ]);
-
       setIsCouncil(
-        profile?.role === 'council' ||
-          profile?.role === 'manager' ||
-          profile?.role === 'admin',
+        roleInProperty === 'council' ||
+          roleInProperty === 'manager' ||
+          roleInProperty === 'property_admin' ||
+          roleInProperty === 'admin',
       );
+
+      const { data: meetingData } = await supabase
+        .from('meetings')
+        .select('*')
+        .eq('id', id)
+        .eq('property_id', currentPropertyId)
+        .maybeSingle();
 
       if (meetingData) {
         setMeeting(meetingData);
+      } else {
+        setMeeting(null);
       }
     } catch (error) {
       console.error('Error loading meeting:', error);
     } finally {
       setLoading(false);
     }
-  }, [id, user]);
+  }, [id, user, currentPropertyId, roleInProperty, propertyReady]);
 
   useEffect(() => {
     loadMeeting();
@@ -160,7 +176,7 @@ export function MeetingDetail() {
   };
 
   const saveMeeting = async () => {
-    if (!meeting || !editForm.title_en || !editForm.scheduled_date) return;
+    if (!meeting || !currentPropertyId || !editForm.title_en || !editForm.scheduled_date) return;
     setSaving(true);
     setSaveError(null);
     try {
@@ -179,7 +195,8 @@ export function MeetingDetail() {
           is_virtual: editForm.is_virtual,
           meeting_link: editForm.is_virtual ? (editForm.meeting_link || null) : null,
         })
-        .eq('id', meeting.id);
+        .eq('id', meeting.id)
+        .eq('property_id', currentPropertyId);
 
       if (error) throw error;
       setShowEditModal(false);

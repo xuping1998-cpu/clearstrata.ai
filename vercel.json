@@ -3,6 +3,12 @@
   "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
+  "functions": {
+    "api/reports/invoice-audit.ts": {
+      "memory": 1024,
+      "maxDuration": 60
+    }
+  },
   "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }],
   "headers": [
     {

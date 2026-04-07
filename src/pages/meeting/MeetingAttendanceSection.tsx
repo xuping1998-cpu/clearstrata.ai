@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { UserCheck, UserX, Clock, AlertCircle, Users, Plus, X, Mail, CheckCircle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useProperty } from '../../contexts/PropertyContext';
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
 
@@ -75,6 +76,7 @@ function pickInviteFailureHint(body: Record<string, unknown>, en: boolean): stri
 }
 
 export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
+  const { currentPropertyId } = useProperty();
   const { user, session } = useAuth();
   const { language, t } = useLanguage();
   const l = language === 'en';
@@ -193,10 +195,15 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
 
   /** 【保持原有】加载参会列表与 profile */
   const loadAttendees = useCallback(async () => {
+    if (!currentPropertyId) {
+      setLoading(false);
+      return;
+    }
     try {
       const { data } = await supabase
         .from('meeting_attendees')
         .select('*')
+        .eq('property_id', currentPropertyId)
         .eq('meeting_id', meetingId)
         .order('created_at', { ascending: true });
 
@@ -225,8 +232,23 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
   }, [loadAttendees]);
 
   const openAddForm = async () => {
+    if (!currentPropertyId) return;
     setShowAddForm(true);
-    const { data } = await supabase.from('profiles').select('id, full_name_en, full_name_zh, email').order('full_name_en');
+    const { data: members } = await supabase
+      .from('property_members')
+      .select('user_id')
+      .eq('property_id', currentPropertyId)
+      .eq('status', 'active');
+    const ids = [...new Set((members ?? []).map((m) => m.user_id as string))];
+    if (ids.length === 0) {
+      setAllUsers([]);
+      return;
+    }
+    const { data } = await supabase
+      .from('profiles')
+      .select('id, full_name_en, full_name_zh, email')
+      .in('id', ids)
+      .order('full_name_en');
     if (data) {
       const existingIds = new Set(attendees.map(a => a.user_id));
       setAllUsers(data.filter(u => !existingIds.has(u.id)));
@@ -246,6 +268,7 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
       const { data, error } = await supabase
         .from('meeting_attendees')
         .insert({
+          property_id: currentPropertyId,
           meeting_id: meetingId,
           user_id: selectedUserId,
           attendance_status: 'invited',
@@ -297,7 +320,7 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
   };
 
   const signIn = async () => {
-    if (!user) return;
+    if (!user || !currentPropertyId) return;
 
     const existingAttendee = attendees.find(a => a.user_id === user.id);
     if (!existingAttendee) return;
@@ -309,7 +332,8 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
           attendance_status: 'attended',
           signed_in_at: new Date().toISOString(),
         })
-        .eq('id', existingAttendee.id);
+        .eq('id', existingAttendee.id)
+        .eq('property_id', currentPropertyId);
 
       if (error) throw error;
       loadAttendees();

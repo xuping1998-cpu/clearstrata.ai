@@ -11,16 +11,26 @@
     "typecheck": "tsc --noEmit -p tsconfig.app.json"
   },
   "dependencies": {
+    "@sparticuz/chromium": "^131.0.1",
     "@supabase/supabase-js": "^2.57.4",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
     "lucide-react": "^0.344.0",
+    "puppeteer-core": "^23.11.1",
+    "nodemailer": "^6.9.16",
+    "qrcode": "^1.5.4",
+    "resend": "^4.0.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^10.1.0",
+    "react-qr-code": "^2.0.18",
     "react-router-dom": "^7.13.1",
     "recharts": "^3.8.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.1",
+    "@types/nodemailer": "^6.4.17",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
     "@vercel/node": "^5.6.22",

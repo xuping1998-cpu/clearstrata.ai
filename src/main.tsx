@@ -19,10 +19,6 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-document.addEventListener('click', (e) => {
-  console.log('Global click detected:', e.target);
-}, true);
-
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />

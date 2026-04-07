@@ -9,7 +9,14 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-export type UserRole = 'owner' | 'council' | 'admin' | 'manager';
+export type UserRole =
+  | 'owner'
+  | 'tenant'
+  | 'viewer'
+  | 'council'
+  | 'admin'
+  | 'manager'
+  | 'property_admin';
 
 /** Mirrors profiles.status — pending until admin activates resident signup. */
 export type ProfileAccountStatus = 'pending' | 'active' | 'suspended';
@@ -40,9 +47,25 @@ export interface CommunityNotification {
   created_by: string;
 }
 
+export interface Lead {
+  id: string;
+  name: string;
+  email: string;
+  building: string | null;
+  units: string | null;
+  message: string | null;
+  created_at: string;
+}
+
 export interface Database {
   public: {
     Tables: {
+      leads: {
+        Row: Lead;
+        Insert: Pick<Lead, 'name' | 'email'> &
+          Partial<Pick<Lead, 'building' | 'units' | 'message'>>;
+        Update: never;
+      };
       profiles: {
         Row: Profile;
         Insert: Omit<Profile, 'id' | 'created_at' | 'updated_at'>;

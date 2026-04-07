@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Plus, Clock, Eye, ArrowLeft, ShoppingCart, Briefcase, CheckCircle, AlertCircle, Wrench, Camera, FileText, Star, XCircle, Send, Loader2, Trash2 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useProperty } from '../contexts/PropertyContext';
 import { supabase } from '../lib/supabase';
 import {
   NewJobModal, AddQuoteModal, ApproveQuoteModal, PMCompleteModal,
-  InspectionModal, ManagerListModal, AddManagerModal, InvoiceModal, RatingModal,
+  InspectionModal, ManagerListModal, AddManagerModal, RatingModal,
 } from './procurement/ProcurementModals';
 import { AiPricingPanel, getTrafficLight, TrafficLightBadge } from './procurement/AiPricingPanel';
 import { VendorSearchPanel } from './procurement/VendorSearchPanel';
@@ -25,6 +26,10 @@ interface ProcurementJob {
   priority?: string;
   category?: string;
   unit_number?: string;
+  /** manager_tasks.id */
+  task_id?: string | null;
+  /** 展示用 */
+  linkedTaskTitle?: string;
   selected_quote_id?: string;
   assigned_manager_id?: string;
   pm_completion_notes?: string;
@@ -103,6 +108,7 @@ export function Procurement() {
   const navigate = useNavigate();
   const { language } = useLanguage();
   const { profile } = useAuth();
+  const { currentPropertyId, roleInProperty } = useProperty();
   const [jobs, setJobs] = useState<ProcurementJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [propertyManagers, setPropertyManagers] = useState<PropertyManager[]>([]);
@@ -111,15 +117,19 @@ export function Procurement() {
   const [selectedJob, setSelectedJob] = useState<ProcurementJob | null>(null);
 
   const l = language === 'en';
-  const isCouncil = profile?.role === 'council' || profile?.role === 'admin';
+  const isCouncil =
+    roleInProperty === 'council' ||
+    roleInProperty === 'property_admin' ||
+    roleInProperty === 'admin';
 
   const loadJobs = async () => {
-    if (!profile) return;
+    if (!profile || !currentPropertyId) return;
     setLoading(true);
     try {
       const { data: jobsData } = await supabase
         .from('procurement_jobs')
         .select('*, manager:property_managers!procurement_jobs_assigned_manager_id_fkey(full_name_en, full_name_zh)')
+        .eq('property_id', currentPropertyId)
         .order('created_at', { ascending: false });
 
       const jobsWithQuotes = await Promise.all(
@@ -132,14 +142,38 @@ export function Procurement() {
           return { ...job, quotes: quotesData || [] };
         })
       );
-      setJobs(jobsWithQuotes);
+      const taskIds = [
+        ...new Set(
+          jobsWithQuotes.map((j) => j.task_id).filter((x): x is string => Boolean(x))
+        ),
+      ];
+      const taskTitleMap = new Map<string, string>();
+      if (taskIds.length > 0) {
+        const { data: mt } = await supabase.from('manager_tasks').select('id, title').in('id', taskIds);
+        for (const t of mt ?? []) taskTitleMap.set(t.id, t.title || '—');
+      }
+      setJobs(
+        jobsWithQuotes.map((j) => ({
+          ...j,
+          linkedTaskTitle: j.task_id ? taskTitleMap.get(j.task_id) : undefined,
+        }))
+      );
     } finally {
       setLoading(false);
     }
   };
 
   const loadPropertyManagers = async () => {
-    const { data } = await supabase.from('property_managers').select('*').eq('status', 'active').order('full_name_en');
+    if (!currentPropertyId) {
+      setPropertyManagers([]);
+      return;
+    }
+    const { data } = await supabase
+      .from('property_managers')
+      .select('*')
+      .eq('property_id', currentPropertyId)
+      .eq('status', 'active')
+      .order('full_name_en');
     setPropertyManagers(data || []);
   };
 
@@ -152,6 +186,7 @@ export function Procurement() {
       const selectedQuote = job.quotes?.find(q => q.id === job.selected_quote_id);
       if (selectedQuote) {
         await supabase.from('price_history').insert({
+          property_id: currentPropertyId!,
           job_id: jobId,
           job_type: job.job_type,
           category: job.category || '',
@@ -170,7 +205,12 @@ export function Procurement() {
   const deleteJob = async (jobId: string) => {
     const { error: auditError } = await supabase
       .from('procurement_audit_log')
-      .insert({ job_id: jobId, action: 'DELETE', performed_by: profile?.id });
+      .insert({
+        property_id: currentPropertyId!,
+        job_id: jobId,
+        action: 'DELETE',
+        performed_by: profile?.id,
+      });
     if (auditError) {
       alert(l ? `Failed to write audit log: ${auditError.message}` : `写入审计日志失败：${auditError.message}`);
       return;
@@ -198,8 +238,11 @@ export function Procurement() {
   };
 
   useEffect(() => {
-    if (profile) { loadJobs(); loadPropertyManagers(); }
-  }, [profile]);
+    if (profile && currentPropertyId) {
+      void loadJobs();
+      void loadPropertyManagers();
+    }
+  }, [profile, currentPropertyId]);
 
   const openModal = (name: string, job?: ProcurementJob) => {
     if (job) setSelectedJob(job);
@@ -225,7 +268,11 @@ export function Procurement() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">{l ? 'Procurement & Maintenance' : '采购维修'}</h1>
-            <p className="text-gray-600 mt-2">{l ? 'Council approves quotes and inspects completion. Property Manager handles execution.' : '业委会批价格、验收。物业经理负责执行。'}</p>
+            <p className="text-gray-600 mt-2">
+              {l
+                ? 'Quotes & vendor selection live here. Upload the final invoice and run approval in Financial Reports → Invoice Management.'
+                : '报价录入、比价、业委会批准在本页完成；正式发票请至「财务报表 → 发票管理」上传与审批。'}
+            </p>
           </div>
           {isCouncil && (
             <div className="flex gap-3 flex-wrap">
@@ -284,9 +331,6 @@ export function Procurement() {
       {modal === 'addManager' && (
         <AddManagerModal language={language} onClose={closeModal} onAdded={() => { loadPropertyManagers(); closeModal(); }} />
       )}
-      {modal === 'invoice' && selectedJob && (
-        <InvoiceModal language={language} selectedJob={selectedJob} onClose={closeModal} onDone={loadJobs} />
-      )}
       {modal === 'rating' && selectedJob && (
         <RatingModal language={language} selectedJob={selectedJob} onClose={closeModal} onDone={loadJobs} />
       )}
@@ -297,7 +341,9 @@ export function Procurement() {
 function JobCard({
   job, language, isCouncil, onOpenModal, onMarkCompleted, onResendToPM, onDelete,
 }: {
-  job: ProcurementJob; language: string; isCouncil: boolean;
+  job: ProcurementJob;
+  language: string;
+  isCouncil: boolean;
   onOpenModal: (name: string, job?: ProcurementJob) => void;
   onMarkCompleted: (id: string) => void;
   onResendToPM: (id: string) => void;
@@ -327,6 +373,17 @@ function JobCard({
                 {l ? job.title_en : job.title_zh || job.title_en}
               </h3>
             </div>
+            {job.task_id && job.linkedTaskTitle ? (
+              <div className="mb-2 text-sm">
+                <span className="text-gray-500">{l ? 'Linked task: ' : '关联任务：'}</span>
+                <Link
+                  to={`/property-admin/tasks/${job.task_id}`}
+                  className="font-medium text-[#1D9E75] hover:underline"
+                >
+                  {job.linkedTaskTitle}
+                </Link>
+              </div>
+            ) : null}
             <p className="text-gray-600 text-sm mb-3">{l ? job.description_en : job.description_zh || job.description_en}</p>
             <div className="flex items-center gap-4 text-sm flex-wrap">
               <span className="text-gray-700">
@@ -456,11 +513,13 @@ function JobCard({
 
         {job.status === 'inspection_passed' && (
           <>
-            <button onClick={() => onOpenModal('invoice', job)}
-              className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors">
+            <Link
+              to="/finance?tab=invoices"
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+            >
               <FileText size={16} />
-              {l ? 'Upload Invoice' : '上传发票'}
-            </button>
+              {l ? 'Open Finance → Invoices' : '财务报表 · 上传/审批发票'}
+            </Link>
             {isCouncil && (
               <button onClick={() => onMarkCompleted(job.id)}
                 className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors">
