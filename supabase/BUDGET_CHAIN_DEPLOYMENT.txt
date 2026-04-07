@@ -1,53 +1,77 @@
-预算系统（首页「预算概览」）生产部署说明
-============================================
+预算系统整批部署（生产 Supabase）— 禁止零散手工补函数
+======================================================
 
-一、推荐方式（本地已 link 生产项目时）
-------------------------------------
-在项目根目录执行：
+问题现象：仅缺 dashboard_budget_* 或仅缺 user_property_ids，往往是「预算链」从未按序执行。
+解决方式：按本文件所列 **整份 migration 文件** 顺序部署（整文件复制到 SQL Editor 执行，或 supabase db push），
+不要从聊天/文档里单独粘贴零散 CREATE FUNCTION。
 
-  supabase link --project-ref <生产 project ref>
+------------------------------------------------------------
+一、推荐（与代码仓库一致、顺序由时间戳保证）
+------------------------------------------------------------
+  cd <本仓库根目录>
+  supabase link --project-ref <生产 Project Ref>
   supabase db push
 
-将按 migration 文件名时间顺序应用所有未执行迁移。请确保仓库已包含：
+未执行的 migration 会按文件名时间顺序应用。若生产长期未跟仓库，请先备份再在维护窗口执行。
 
-  - 20260707130000_ensure_user_property_ids_and_staff_for_budget.sql
-    （补齐 user_property_ids / user_property_staff_ids，须在 dashboard_budget RPC 之前）
+------------------------------------------------------------
+二、手工整批（仅预算链，共 6 个文件 — 必须严格按序）
+------------------------------------------------------------
+依次打开下列文件，**全文**粘贴到 Supabase Dashboard → SQL → Run（每文件一次，成功后再执行下一个）。
 
-二、若只能手工在 SQL Editor 执行（按时间顺序）
-------------------------------------
-必须按下列顺序整文件执行（同一文件勿拆行执行）：
+  1. 多物业 + property_users，首版 user_property_ids
+     migrations/20260405120000_multi_tenant_properties.sql
 
-  1) 多物业与成员（提供 user_property_ids / user_property_staff_ids）
-     supabase/migrations/20260405120000_multi_tenant_properties.sql
-     supabase/migrations/20260405120100_multi_tenant_rls.sql
-     supabase/migrations/20260410120000_property_members_saas.sql
+  2. 多物业 RLS
+     migrations/20260405120100_multi_tenant_rls.sql
 
-  2) 预算基础（budget_categories、annual_budgets、resolve_invoice_budget_category_id、初版 dashboard RPC）
-     supabase/migrations/20260610120000_budget_control_foundation.sql
+  3. property_members（SaaS）、**替换** user_property_ids / user_property_staff_ids
+     migrations/20260410120000_property_members_saas.sql
 
-  3) 预算包 + 财年 + active_budget_package_id、resolve_quote_budget_category_id、替换 dashboard RPC
-     supabase/migrations/20260611120000_budget_package_fiscal_year_rpc.sql
+  4. budget_categories、annual_budgets、resolve_invoice_budget_category_id、初版 dashboard RPC
+     migrations/20260610120000_budget_control_foundation.sql
 
-  4) 发票/报价锁定与 dashboard_budget_alerts 更新
-     supabase/migrations/20260612120000_invoice_budget_lock_category_anomaly.sql
+  5. budget_package、财年列、active_budget_package_id、resolve_quote_budget_category_id、
+     替换四组 dashboard_budget_*（与 active package 一致）
+     migrations/20260611120000_budget_package_fiscal_year_rpc.sql
 
-  5) 若生产已仅手工执行过「dashboard RPC 补齐」而缺少成员函数，再执行：
-     supabase/migrations/20260707130000_ensure_user_property_ids_and_staff_for_budget.sql
+  6. 发票/报价锁定与 dashboard_budget_alerts 最新逻辑
+     migrations/20260612120000_invoice_budget_lock_category_anomaly.sql
 
-  6) 生产曾单独执行的 dashboard RPC 部署（与 111+121 等价，可重复执行）：
-     supabase/migrations/20260708120000_dashboard_budget_rpc_deploy.sql
+以上 1～6 覆盖你要求的四类对象：
+  (1) user_property_ids 相关 migration
+  (2) budget_package / annual_budgets / budget_categories 及相关表结构
+  (3) resolve_invoice_budget_category_id、resolve_quote_budget_category_id
+  (4) dashboard_budget_summary / categories / trend / alerts
 
-说明：若 1)～4) 已在生产完整应用，仅需解决「function user_property_ids does not exist」时，
-     优先执行 20260707130000（并确认 property_members、member_status 已存在）。
+清单副本（仅路径）：scripts/budget_system_migration_order.txt
 
-三、依赖表 / 列（由上述 migration 创建或变更）
-------------------------------------
-  - budget_package
-  - annual_budgets（含后续 package_id 等，见 111）
-  - budget_categories
-  - procurement_jobs / procurement_quotes（含 fiscal_year 等，见 111）
-  - invoices.fiscal_year
+------------------------------------------------------------
+三、可选（仅修复「曾手工只部署过部分」的生产库）
+------------------------------------------------------------
+  - migrations/20260707130000_ensure_user_property_ids_and_staff_for_budget.sql
+    当 1～3 未完整执行、但已有 property_members 时可用于补成员函数（仍建议优先补跑完整 1～3）。
 
-四、验证
-------------------------------------
-执行 scripts/verify_budget_dependencies.sql，确认函数与关键表存在。
+  - migrations/20260708120000_dashboard_budget_rpc_deploy.sql
+    与 5+6 中四组 RPC 等价、可重复执行（CREATE OR REPLACE）；仅当确认 5、6 未跑过时再依赖此文件。
+
+------------------------------------------------------------
+四、前置条件（606101 依赖已有业务表）
+------------------------------------------------------------
+  606101 会对 public.procurement_quotes、public.invoices 做 ALTER。
+  若生产库无这些表，说明基线 schema 未齐，应使用「全量 db push」或先部署更早的 strata/procurement 相关 migration，
+  而非单独执行 606101。
+
+------------------------------------------------------------
+五、部署后验证
+------------------------------------------------------------
+  在 SQL Editor 执行：scripts/verify_budget_dependencies.sql
+
+  期望：
+  - user_property_ids、user_property_staff_ids：2 行
+  - active_budget_package_id、resolve_invoice_budget_category_id、resolve_quote_budget_category_id：3 行
+  - dashboard_budget_summary、categories、trend、alerts：4 行
+  - 表 budget_package、annual_budgets、budget_categories、procurement_jobs、procurement_quotes：均有
+  - invoices.fiscal_year 列存在
+
+  然后在应用首页确认「预算概览」无 RPC 报错。

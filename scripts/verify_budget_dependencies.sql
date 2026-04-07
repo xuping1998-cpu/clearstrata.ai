@@ -1,4 +1,5 @@
 -- 生产 Supabase SQL Editor：验证预算 Dashboard 依赖是否齐全
+-- 期望行数（函数段）：成员 2 行；解析 3 行；dashboard 4 行。若少于该数，说明对应 migration 未部署完整。
 
 -- 1) 成员辅助函数
 SELECT

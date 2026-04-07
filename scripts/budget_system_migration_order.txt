@@ -1,0 +1,14 @@
+# 预算系统整批 migration（按行号顺序执行；勿拆文件、勿单独从文档复制零散 CREATE FUNCTION）
+# 路径相对于仓库根目录。推荐：supabase db push（自动按时间序应用未执行项）
+#
+# === 必填链（6 个文件，依次整文件执行）===
+supabase/migrations/20260405120000_multi_tenant_properties.sql
+supabase/migrations/20260405120100_multi_tenant_rls.sql
+supabase/migrations/20260410120000_property_members_saas.sql
+supabase/migrations/20260610120000_budget_control_foundation.sql
+supabase/migrations/20260611120000_budget_package_fiscal_year_rpc.sql
+supabase/migrations/20260612120000_invoice_budget_lock_category_anomaly.sql
+#
+# === 可选修复（仅当上面已执行但仍缺函数，或曾手工只打过部分 SQL）===
+# supabase/migrations/20260707130000_ensure_user_property_ids_and_staff_for_budget.sql
+# supabase/migrations/20260708120000_dashboard_budget_rpc_deploy.sql
