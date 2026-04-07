@@ -7,7 +7,7 @@
     dashboard_budget_trend(p_property_id uuid, p_year int)
     dashboard_budget_alerts(p_property_id uuid, p_year int)
 
-  依赖（须已存在）：public.user_property_ids()、public.active_budget_package_id(uuid,int)、
+  依赖（须已存在）：public.user_property_ids()（见 20260707130000 或 20260410120000）、public.active_budget_package_id(uuid,int)、
     public.resolve_invoice_budget_category_id(invoices)、public.resolve_quote_budget_category_id(uuid)、
     budget_package / annual_budgets / budget_categories / procurement_* / invoices 等（见 202606101/111/121）。
 
