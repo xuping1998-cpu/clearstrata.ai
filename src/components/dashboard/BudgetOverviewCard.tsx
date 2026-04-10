@@ -23,7 +23,7 @@ export function BudgetOverviewCard({ summary, language }: BudgetOverviewCardProp
     : '当前支出已超过年度预算，请尽快处理';
 
   return (
-    <div className="flex min-h-[360px] flex-col rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+    <div className="flex min-h-[320px] flex-col rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold text-gray-900">{t('budget_home_title')}</h2>
         <span
@@ -36,29 +36,29 @@ export function BudgetOverviewCard({ summary, language }: BudgetOverviewCardProp
       </div>
       <p className="mt-1 text-sm text-gray-500">{t('budget_home_subtitle')}</p>
 
-      <div className="mt-5 grid grid-cols-2 gap-3">
-        <div className="flex min-h-[4.5rem] flex-col justify-center rounded-xl border border-gray-100 bg-gray-50 px-3 py-3">
+      <div className="mt-4 grid grid-cols-2 gap-2.5">
+        <div className="flex min-h-[4rem] flex-col justify-center rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5">
           <div className="text-xs font-medium text-gray-500">{t('budget_home_total_budget')}</div>
-          <div className="mt-1 text-base font-bold tabular-nums tracking-tight text-gray-900 sm:text-lg">
+          <div className="mt-0.5 text-lg font-bold tabular-nums tracking-tight text-gray-900 sm:text-xl">
             {formatCurrency(summary.total_budget, language)}
           </div>
         </div>
-        <div className="flex min-h-[4.5rem] flex-col justify-center rounded-xl border border-gray-100 bg-gray-50 px-3 py-3">
+        <div className="flex min-h-[4rem] flex-col justify-center rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5">
           <div className="text-xs font-medium text-gray-500">{t('budget_home_committed')}</div>
-          <div className="mt-1 text-base font-bold tabular-nums tracking-tight text-gray-900 sm:text-lg">
+          <div className="mt-0.5 text-lg font-bold tabular-nums tracking-tight text-gray-900 sm:text-xl">
             {formatCurrency(summary.committed, language)}
           </div>
         </div>
-        <div className="flex min-h-[4.5rem] flex-col justify-center rounded-xl border border-gray-100 bg-gray-50 px-3 py-3">
+        <div className="flex min-h-[4rem] flex-col justify-center rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5">
           <div className="text-xs font-medium text-gray-500">{t('budget_home_actual')}</div>
-          <div className="mt-1 text-base font-bold tabular-nums tracking-tight text-gray-900 sm:text-lg">
+          <div className="mt-0.5 text-lg font-bold tabular-nums tracking-tight text-gray-900 sm:text-xl">
             {formatCurrency(summary.actual, language)}
           </div>
         </div>
-        <div className="flex min-h-[4.5rem] flex-col justify-center rounded-xl border border-gray-100 bg-gray-50 px-3 py-3">
+        <div className="flex min-h-[4rem] flex-col justify-center rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5">
           <div className="text-xs font-medium text-gray-500">{t('budget_home_remaining')}</div>
           <div
-            className={`mt-1 text-base font-bold tabular-nums tracking-tight sm:text-lg ${
+            className={`mt-0.5 text-lg font-bold tabular-nums tracking-tight sm:text-xl ${
               overBudget ? 'text-red-700' : 'text-emerald-800'
             }`}
           >
@@ -86,8 +86,8 @@ export function BudgetOverviewCard({ summary, language }: BudgetOverviewCardProp
         </p>
       </div>
 
-      <div className="mt-auto pt-6">
-        <div className="rounded-xl bg-gray-50 p-4 text-sm text-gray-600">{overBudget ? footerOver : footerStable}</div>
+      <div className="mt-5 rounded-xl bg-gray-50 px-4 py-3 text-sm text-gray-600">
+        {overBudget ? footerOver : footerStable}
       </div>
     </div>
   );

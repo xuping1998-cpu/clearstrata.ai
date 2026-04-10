@@ -286,35 +286,37 @@ export function Layout({ children }: LayoutProps) {
         </div>
       </header>
 
-      <div className="flex lg:items-start">
+      <div className="flex min-w-0 lg:items-start">
         <aside
           className={`
           ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
           lg:translate-x-0
           fixed lg:sticky top-16 left-0 h-[calc(100vh-4rem)]
-          w-64 border-r border-gray-200 bg-white
+          w-56 shrink-0 border-r border-gray-200 bg-white
           transition-transform duration-200 ease-in-out
           z-30 overflow-y-auto
         `}
         >
-          <div className="flex h-full flex-col pb-6 pt-6">
-            <div className="mb-6 px-4">
+          <div
+            className={`flex h-full flex-col pb-4 ${isDashboardHome ? 'pt-4' : 'pt-5'} lg:pb-6`}
+          >
+            <div className={`px-3 sm:px-3.5 ${isDashboardHome ? 'mb-3' : 'mb-4'}`}>
               <button
                 type="button"
                 onClick={() => {
                   navigate('/');
                   setMobileMenuOpen(false);
                 }}
-                className={`flex w-full items-center gap-3 rounded-xl px-4 py-4 text-left transition-colors ${
+                className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-left transition-colors sm:gap-3 sm:px-3.5 ${
                   homeActive ? 'bg-[#1D9E75] text-white shadow-md' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
                 }`}
               >
                 <Home className="h-5 w-5 shrink-0" size={20} />
-                <span className="text-lg font-semibold">{t('nav_dashboard')}</span>
+                <span className="text-base font-semibold sm:text-lg">{t('nav_dashboard')}</span>
               </button>
             </div>
 
-            <div className="mt-20 flex-1 overflow-y-auto px-4">
+            <div className="mt-6 flex-1 overflow-y-auto px-3 sm:px-3.5">
               <div className="space-y-3">
                 {quickModules.map((m) => renderModuleCard(m.path, m.icon, m.label, m.iconBg))}
                 {showJoinRequestReviewCoreNav && (
@@ -370,8 +372,10 @@ export function Layout({ children }: LayoutProps) {
         )}
 
         <main
-          className={`mx-auto w-full max-w-7xl flex-1 px-4 sm:px-6 lg:px-8 ${
-            isDashboardHome ? 'pt-6 pb-6 sm:pb-8 lg:pt-6 lg:pb-10' : 'p-4 sm:p-6 lg:p-8'
+          className={`min-w-0 w-full max-w-7xl flex-1 px-3 sm:px-5 lg:px-6 ${
+            isDashboardHome
+              ? 'pt-4 pb-6 sm:pb-8 lg:pt-4 lg:pb-10'
+              : 'py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8'
           }`}
         >
           <UserNotificationToast />

@@ -7,7 +7,11 @@ import {
   fetchDashboardBudgetSummary,
   type BudgetAlert,
 } from '../../lib/budget/dashboardApi';
-import { fetchDashboardKpis, fetchRecentAbnormalInvoices } from '../../lib/dashboard';
+import {
+  buildDashboardKpisFromState,
+  fetchDashboardKpis,
+  fetchRecentAbnormalInvoices,
+} from '../../lib/dashboard';
 import type { AbnormalInvoiceItem, DashboardKpi } from '../../types/dashboard';
 import { BudgetAlertsCard, type AlertFilter } from './BudgetAlertsCard';
 import { BudgetOverviewCard } from './BudgetOverviewCard';
@@ -44,6 +48,11 @@ export function HomeBudgetPanel() {
   const abnormalInvoicesSectionRef = useRef<HTMLDivElement | null>(null);
 
   const years = useMemo(() => yearOptions(anchorYear), [anchorYear]);
+
+  const displayKpis = useMemo((): DashboardKpi[] => {
+    if (kpis.length >= 4) return kpis;
+    return buildDashboardKpisFromState(fiscalYear, language, summary, alerts, abnormalInvoices);
+  }, [kpis, fiscalYear, language, summary, alerts, abnormalInvoices]);
 
   const headerTitle = en ? 'Finance & risk overview' : '财务与风险概览';
   const headerSubtitle = en
@@ -151,7 +160,7 @@ export function HomeBudgetPanel() {
   return (
     <section className="mb-4" aria-labelledby="dashboard-page-h1">
       <div className="space-y-6">
-        <div className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white px-6 py-5 shadow-sm md:flex-row md:items-center md:justify-between">
           <div>
             <h1 id="dashboard-page-h1" className="text-2xl font-bold text-gray-900">
               {headerTitle}
@@ -163,7 +172,7 @@ export function HomeBudgetPanel() {
             <select
               value={fiscalYear}
               onChange={(e) => setFiscalYear(Number(e.target.value))}
-              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 shadow-sm"
+              className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
             >
               {years.map((y) => (
                 <option key={y} value={y}>
@@ -175,38 +184,51 @@ export function HomeBudgetPanel() {
         </div>
 
         {loading && (
-          <div className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-500 shadow-sm">
+          <div className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-white px-5 py-4 text-sm text-gray-500 shadow-sm">
             <Loader2 className="size-5 shrink-0 animate-spin text-gray-400" aria-hidden />
             <span>{loadingMsg}</span>
           </div>
         )}
 
-        {!loading && loadError && (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm">
-            {errorMsg}
-          </div>
-        )}
-
-        {!loading && !loadError && summary && (
+        {!loading && (
           <>
-            {summary.budget_scope === 'package' && summary.active_package_id == null && (
+            <DashboardKpiBar
+              items={displayKpis}
+              viewLabel={en ? 'View' : '查看'}
+              onKpiClick={handleKpiClick}
+            />
+
+            {loadError && (
+              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm">
+                {errorMsg}
+              </div>
+            )}
+
+            {summary && summary.budget_scope === 'package' && summary.active_package_id == null && (
               <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 shadow-sm">
                 <AlertTriangle className="mt-0.5 size-5 shrink-0" aria-hidden />
                 <span>{t('budget_home_no_active_package')}</span>
               </div>
             )}
 
-            {kpis.length > 0 && (
-              <DashboardKpiBar
-                items={kpis}
-                viewLabel={en ? 'View' : '查看'}
-                onKpiClick={handleKpiClick}
-              />
-            )}
-
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
               <div className="xl:col-span-4">
-                <BudgetOverviewCard summary={summary} language={language} />
+                {summary ? (
+                  <BudgetOverviewCard summary={summary} language={language} />
+                ) : (
+                  <div className="flex min-h-[320px] flex-col rounded-2xl border border-dashed border-gray-200 bg-gray-50/90 p-5 shadow-sm">
+                    <h2 className="text-lg font-semibold text-gray-900">{t('budget_home_title')}</h2>
+                    <p className="mt-3 text-sm leading-relaxed text-gray-600">
+                      {loadError
+                        ? en
+                          ? 'Budget summary could not be loaded. Other sections below may still update after the issue is resolved.'
+                          : '预算汇总暂无法加载。问题解决后，下方区块可能会自动恢复。'
+                        : en
+                          ? 'No budget summary is available for this fiscal year yet.'
+                          : '当前财年暂无预算汇总数据。'}
+                    </p>
+                  </div>
+                )}
               </div>
               <div ref={alertsSectionRef} className="scroll-mt-28 xl:col-span-8">
                 <BudgetAlertsCard
@@ -218,19 +240,17 @@ export function HomeBudgetPanel() {
                 />
               </div>
             </div>
-          </>
-        )}
 
-        {!loading && (
-          <div ref={abnormalInvoicesSectionRef} className="scroll-mt-28">
-            <RecentAbnormalInvoicesCard
-              items={abnormalInvoices}
-              loadError={abnormalLoadError}
-              filter={invoiceFilter}
-              onFilterChange={setInvoiceFilter}
-              emphasize={invoiceEmphasize}
-            />
-          </div>
+            <div ref={abnormalInvoicesSectionRef} className="scroll-mt-28">
+              <RecentAbnormalInvoicesCard
+                items={abnormalInvoices}
+                loadError={abnormalLoadError}
+                filter={invoiceFilter}
+                onFilterChange={setInvoiceFilter}
+                emphasize={invoiceEmphasize}
+              />
+            </div>
+          </>
         )}
       </div>
     </section>

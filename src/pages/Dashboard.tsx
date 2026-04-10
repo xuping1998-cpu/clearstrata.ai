@@ -35,11 +35,11 @@ export function Dashboard() {
   }, [showJoinRequestBadge, currentPropertyId]);
 
   return (
-    <div className="mx-auto w-full max-w-7xl pt-0">
+    <div className="w-full min-w-0 pt-0">
       {showJoinRequestBadge && pendingJoinCount != null && pendingJoinCount > 0 && (
         <Link
           to="/admin/join-requests"
-          className="mb-2 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-amber-950 shadow-sm hover:bg-amber-100/80 transition-colors"
+          className="mb-4 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-amber-950 shadow-sm transition-colors hover:bg-amber-100/80"
         >
           <ClipboardList className="shrink-0 text-amber-800" size={22} aria-hidden />
           <span className="text-sm font-medium">

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertCircle, ChevronRight, Inbox } from 'lucide-react';
+import { AlertCircle, CheckCircle2, ChevronRight } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import type { AbnormalInvoiceItem } from '../../types/dashboard';
 
@@ -150,6 +150,9 @@ export function RecentAbnormalInvoicesCard({
   const emptyAll = en ? 'No abnormal invoices right now.' : '当前没有异常发票';
   const emptyHigh = en ? 'No high-risk abnormal invoices.' : '当前没有高风险异常发票';
   const emptyMonth = en ? 'No new abnormal invoices this month.' : '本月暂无新增异常发票';
+  const emptyAllSubtitle = en
+    ? 'Books look healthy — nothing urgent to action here.'
+    : '当前账务状态正常，暂无需要优先处理的异常单据';
 
   const emptyMessage =
     currentFilter === 'high_risk'
@@ -183,7 +186,7 @@ export function RecentAbnormalInvoicesCard({
         emphasize ? 'ring-2 ring-amber-300/90 ring-offset-2 ring-offset-gray-50' : ''
       }`}
     >
-      <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
           <p className="mt-1 text-sm text-gray-500">{subtitle}</p>
@@ -229,18 +232,27 @@ export function RecentAbnormalInvoicesCard({
           <span>{loadErrText}</span>
         </div>
       ) : filteredItems.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-emerald-200/80 bg-emerald-50/80 px-4 py-10 text-center text-sm text-emerald-900">
-          <Inbox className="size-8 text-emerald-700/70" aria-hidden />
-          <span>{emptyMessage}</span>
-        </div>
+        items.length === 0 ? (
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-6 py-10 text-center">
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-white text-emerald-600 shadow-sm">
+              <CheckCircle2 className="size-6" aria-hidden />
+            </div>
+            <div className="text-lg font-medium text-emerald-800">{emptyAll}</div>
+            <div className="mt-2 text-sm text-emerald-700">{emptyAllSubtitle}</div>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-center text-sm text-gray-600">
+            {emptyMessage}
+          </div>
+        )
       ) : (
         <>
-          <ul className="space-y-3">
+          <ul className="space-y-2.5">
             {filteredItems.map((item) => (
               <li key={item.id}>
                 <Link
                   to={`/finance?tab=invoices&invoice=${encodeURIComponent(item.id)}`}
-                  className="block rounded-xl border border-gray-200 bg-gray-50/50 p-4 transition-all hover:border-red-300 hover:bg-red-50/50 hover:shadow-md"
+                  className="block rounded-xl border border-gray-200 bg-gray-50/50 p-3 transition-all hover:border-red-300 hover:bg-red-50/50 hover:shadow-md"
                 >
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                     <div className="min-w-0 flex-1">
@@ -272,7 +284,7 @@ export function RecentAbnormalInvoicesCard({
               </li>
             ))}
           </ul>
-          <div className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{footerTip}</div>
+          <div className="mt-3 rounded-xl bg-red-50 px-3 py-2.5 text-sm text-red-700">{footerTip}</div>
         </>
       )}
     </div>

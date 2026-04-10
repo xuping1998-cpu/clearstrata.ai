@@ -82,8 +82,10 @@ export function BudgetAlertsCard({
     if (currentFilter === 'quote') {
       list = list.filter((item) => isQuoteAlert(item.type));
     }
-    return list.slice(0, 6);
+    return list;
   }, [sortedAlerts, currentFilter]);
+
+  const displayedAlerts = useMemo(() => filteredAlerts.slice(0, 5), [filteredAlerts]);
 
   const highCount = sortedAlerts.filter((a) => a.severity === 'high').length;
   const mediumCount = sortedAlerts.filter((a) => a.severity === 'medium').length;
@@ -123,11 +125,11 @@ export function BudgetAlertsCard({
 
   return (
     <div
-      className={`flex min-h-[360px] flex-col rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-[box-shadow,ring] duration-300 ${
+      className={`flex min-h-[320px] flex-col rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-[box-shadow,ring] duration-300 ${
         emphasize ? 'ring-2 ring-amber-300/90 ring-offset-2 ring-offset-gray-50' : ''
       }`}
     >
-      <div className="mb-5 flex flex-col gap-4">
+      <div className="mb-4 flex flex-col gap-3">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div className="flex min-w-0 items-start gap-2">
             <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-500 text-white">
@@ -180,22 +182,22 @@ export function BudgetAlertsCard({
 
       <div className="flex min-h-0 flex-1 flex-col">
         {filteredAlerts.length === 0 ? (
-          <div className="flex flex-1 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-10 text-center text-sm text-emerald-800">
+          <div className="flex flex-1 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-6 text-center text-sm text-emerald-800">
             {emptyMessage}
           </div>
         ) : (
-          <ul className="space-y-3">
-            {filteredAlerts.map((a, i) => (
+          <ul className="space-y-2.5">
+            {displayedAlerts.map((a, i) => (
               <li key={`${a.type}-${a.quote_id ?? a.invoice_id ?? a.code ?? i}`}>
                 <Link
                   to={a.link_hint ?? '/finance'}
-                  className="block rounded-xl border border-gray-100 bg-gray-50/90 p-4 transition-all hover:border-amber-200/80 hover:bg-amber-50/40 hover:shadow-md"
+                  className="block rounded-xl border border-gray-100 bg-gray-50/90 p-3 transition-all hover:border-amber-200/80 hover:bg-amber-50/40 hover:shadow-md"
                 >
                   <p className="text-base font-semibold leading-snug text-gray-900">{alertTitle(a, en)}</p>
                   {alertMessage(a, en) && (
-                    <p className="mt-2 text-sm leading-relaxed text-gray-600">{alertMessage(a, en)}</p>
+                    <p className="mt-1.5 text-sm leading-relaxed text-gray-600">{alertMessage(a, en)}</p>
                   )}
-                  <div className="mt-4 flex justify-end border-t border-gray-100/80 pt-3">
+                  <div className="mt-3 flex justify-end border-t border-gray-100/80 pt-2">
                     <span className="inline-flex items-center gap-0.5 text-sm font-medium text-blue-600">
                       {viewDetail}
                       <ChevronRight className="size-4" aria-hidden />
