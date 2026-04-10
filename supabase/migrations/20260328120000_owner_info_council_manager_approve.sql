@@ -37,3 +37,7 @@ CREATE POLICY "Council or manager can approve owner info updates"
       AND profiles.role IN ('council', 'manager')
     )
   );
+
+
+
+

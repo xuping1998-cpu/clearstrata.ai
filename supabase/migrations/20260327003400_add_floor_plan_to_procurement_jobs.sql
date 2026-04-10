@@ -36,3 +36,7 @@ BEGIN
     ALTER TABLE procurement_jobs ADD COLUMN ai_material_calc text;
   END IF;
 END $$;
+
+
+
+

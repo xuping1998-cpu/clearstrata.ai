@@ -11,7 +11,7 @@
 
   2. Migration Strategy
     - Small maintenance (<$500): Simple approval workflow
-    - Large maintenance/procurement (≥$500): Three-vendor + 7-day public notice
+    - Large maintenance/procurement (?500): Three-vendor + 7-day public notice
     
   3. Security
     - All existing RLS policies remain unchanged
@@ -125,3 +125,7 @@ WHERE NOT EXISTS (
 CREATE INDEX IF NOT EXISTS idx_procurement_jobs_job_type ON procurement_jobs(job_type);
 CREATE INDEX IF NOT EXISTS idx_procurement_jobs_status ON procurement_jobs(status);
 CREATE INDEX IF NOT EXISTS idx_procurement_jobs_created_at ON procurement_jobs(created_at DESC);
+
+
+
+

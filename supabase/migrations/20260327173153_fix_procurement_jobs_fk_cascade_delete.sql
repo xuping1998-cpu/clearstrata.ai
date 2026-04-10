@@ -79,3 +79,7 @@ BEGIN
     ADD CONSTRAINT price_history_job_id_fkey
     FOREIGN KEY (job_id) REFERENCES procurement_jobs(id) ON DELETE SET NULL;
 END $$;
+
+
+
+

@@ -122,3 +122,7 @@ GRANT ALL ON public.notification_reads TO service_role;
 -- Realtime (Supabase)
 -- ---------------------------------------------------------------------------
 ALTER PUBLICATION supabase_realtime ADD TABLE public.strata_notifications;
+
+
+
+

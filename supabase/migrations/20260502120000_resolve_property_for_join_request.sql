@@ -53,3 +53,7 @@ $$;
 
 REVOKE ALL ON FUNCTION public.resolve_property_for_join_request(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.resolve_property_for_join_request(text) TO authenticated;
+
+
+
+

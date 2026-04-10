@@ -28,3 +28,7 @@ CREATE POLICY "Council or admin can update user roles"
       AND role IN ('council', 'admin')
     )
   );
+
+
+
+

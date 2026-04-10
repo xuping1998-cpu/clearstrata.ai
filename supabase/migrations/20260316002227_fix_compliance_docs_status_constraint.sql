@@ -30,3 +30,7 @@ BEGIN
     ADD CONSTRAINT compliance_docs_status_check 
     CHECK (status IN ('valid', 'expired', 'expiring'));
 END $$;
+
+
+
+

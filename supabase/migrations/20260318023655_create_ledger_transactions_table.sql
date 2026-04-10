@@ -89,3 +89,6 @@ CREATE POLICY "Managers can update ledger transactions"
 
 CREATE INDEX IF NOT EXISTS idx_ledger_user_id ON ledger_transactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_ledger_transaction_date ON ledger_transactions(transaction_date DESC);
+
+
+

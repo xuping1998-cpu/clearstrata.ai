@@ -21,3 +21,6 @@ CREATE POLICY "Authenticated users can upload documents"
   FOR INSERT
   TO authenticated
   WITH CHECK (bucket_id = 'documents');
+
+
+

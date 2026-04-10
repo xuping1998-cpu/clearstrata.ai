@@ -12,7 +12,7 @@ CREATE POLICY "pic_delete_property"
       SELECT 1 FROM public.property_members pm
       WHERE pm.user_id = (SELECT auth.uid())
         AND pm.property_id = property_invite_codes.property_id
-        AND pm.status = 'active'::member_status
+        AND pm.status = 'active'
         AND pm.role IN ('property_admin', 'admin', 'council', 'manager')
     )
   );
@@ -26,7 +26,7 @@ CREATE POLICY "pdi_delete_property"
       SELECT 1 FROM public.property_members pm
       WHERE pm.user_id = (SELECT auth.uid())
         AND pm.property_id = property_direct_invites.property_id
-        AND pm.status = 'active'::member_status
+        AND pm.status = 'active'
         AND pm.role IN ('property_admin', 'admin', 'council', 'manager')
     )
   );
@@ -87,3 +87,7 @@ REVOKE ALL ON FUNCTION public.resolve_public_invite_code(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.resolve_public_invite_code(text) TO anon, authenticated;
 
 NOTIFY pgrst, 'reload schema';
+
+
+
+

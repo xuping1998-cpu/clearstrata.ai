@@ -1,6 +1,6 @@
 -- Approve / reject join requests via explicit RPCs (membership table: public.property_members).
 -- p_reviewer_id must match auth.uid() (caller cannot spoof another reviewer).
-
+DROP FUNCTION IF EXISTS public.approve_join_request(uuid, uuid, text);
 CREATE OR REPLACE FUNCTION public.approve_join_request(
   p_join_request_id uuid,
   p_reviewer_id uuid,
@@ -38,7 +38,7 @@ BEGIN
     SELECT 1 FROM public.property_members pm
     WHERE pm.user_id = v_actor
       AND pm.property_id = r.property_id
-      AND pm.status = 'active'::member_status
+      AND pm.status = 'active'
       AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
   ) THEN
     RETURN jsonb_build_object('success', false, 'error', 'forbidden');
@@ -67,14 +67,14 @@ BEGIN
     r.property_id,
     r.user_id,
     r.requested_role,
-    'active'::member_status,
+    'active',
     v_unit,
     p_reviewer_id,
     now()
   )
   ON CONFLICT (property_id, user_id) DO UPDATE SET
     role = EXCLUDED.role,
-    status = 'active'::member_status,
+    status = 'active',
     unit_number = COALESCE(EXCLUDED.unit_number, public.property_members.unit_number),
     approved_by = EXCLUDED.approved_by,
     approved_at = EXCLUDED.approved_at;
@@ -95,7 +95,7 @@ BEGIN
   RETURN jsonb_build_object('success', true, 'membership_created', true);
 END;
 $fn$;
-
+DROP FUNCTION IF EXISTS public.reject_join_request(uuid, uuid, text);
 CREATE OR REPLACE FUNCTION public.reject_join_request(
   p_join_request_id uuid,
   p_reviewer_id uuid,
@@ -131,7 +131,7 @@ BEGIN
     SELECT 1 FROM public.property_members pm
     WHERE pm.user_id = v_actor
       AND pm.property_id = r.property_id
-      AND pm.status = 'active'::member_status
+      AND pm.status = 'active'
       AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
   ) THEN
     RETURN jsonb_build_object('success', false, 'error', 'forbidden');
@@ -155,3 +155,7 @@ REVOKE ALL ON FUNCTION public.reject_join_request(uuid, uuid, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.reject_join_request(uuid, uuid, text) TO authenticated;
 
 NOTIFY pgrst, 'reload schema';
+
+
+
+

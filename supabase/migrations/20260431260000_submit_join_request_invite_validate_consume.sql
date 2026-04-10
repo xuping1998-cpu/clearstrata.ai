@@ -1,4 +1,4 @@
--- submit_join_request (invite path): strict validation → INVALID_INVITE; on success insert join_requests + used_count + 1
+-- submit_join_request (invite path): strict validation ?INVALID_INVITE; on success insert join_requests + used_count + 1
 -- All statements in this function run in one transaction (implicit COMMIT when the RPC returns).
 
 CREATE OR REPLACE FUNCTION public.submit_join_request(
@@ -34,7 +34,7 @@ BEGIN
     );
   END IF;
 
-  -- Invite path: code match + active + not expired + uses remaining → insert + consume
+  -- Invite path: code match + active + not expired + uses remaining ?insert + consume
   IF c IS NOT NULL THEN
     c := upper(c);
 
@@ -60,7 +60,7 @@ BEGIN
 
     IF EXISTS (
       SELECT 1 FROM public.property_members pm
-      WHERE pm.property_id = inv.property_id AND pm.user_id = v_uid AND pm.status = 'active'::member_status
+      WHERE pm.property_id = inv.property_id AND pm.user_id = v_uid AND pm.status = 'active'
     ) THEN
       RETURN jsonb_build_object('ok', false, 'success', false, 'message', 'ALREADY_MEMBER');
     END IF;
@@ -123,7 +123,7 @@ BEGIN
 
   IF EXISTS (
     SELECT 1 FROM public.property_members pm
-    WHERE pm.property_id = p_property_id AND pm.user_id = v_uid AND pm.status = 'active'::member_status
+    WHERE pm.property_id = p_property_id AND pm.user_id = v_uid AND pm.status = 'active'
   ) THEN
     RETURN jsonb_build_object('ok', false, 'error', 'already_member');
   END IF;
@@ -157,3 +157,7 @@ $fn$;
 
 REVOKE ALL ON FUNCTION public.submit_join_request(uuid, public.user_role, text, text, text, text, text, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.submit_join_request(uuid, public.user_role, text, text, text, text, text, text) TO authenticated;
+
+
+
+

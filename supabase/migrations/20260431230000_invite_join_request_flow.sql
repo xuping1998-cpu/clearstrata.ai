@@ -7,7 +7,7 @@ ALTER TABLE public.join_requests
 CREATE INDEX IF NOT EXISTS idx_join_requests_invite_id ON public.join_requests(invite_id);
 
 -- ---------------------------------------------------------------------------
--- submit_join_request_from_invite — validate invite, insert pending request
+-- submit_join_request_from_invite ?validate invite, insert pending request
 -- (does not consume invite use until review_join_request approves)
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.submit_join_request_from_invite(invite_code text)
@@ -55,7 +55,7 @@ BEGIN
 
   IF EXISTS (
     SELECT 1 FROM public.property_members pm
-    WHERE pm.property_id = inv.property_id AND pm.user_id = v_uid AND pm.status = 'active'::member_status
+    WHERE pm.property_id = inv.property_id AND pm.user_id = v_uid AND pm.status = 'active'
   ) THEN
     RETURN jsonb_build_object('success', false, 'message', 'ALREADY_MEMBER');
   END IF;
@@ -97,8 +97,9 @@ REVOKE ALL ON FUNCTION public.submit_join_request_from_invite(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.submit_join_request_from_invite(text) TO authenticated;
 
 -- ---------------------------------------------------------------------------
--- accept_property_invite — same as submit_join_request_from_invite (no direct join)
+-- accept_property_invite ?same as submit_join_request_from_invite (no direct join)
 -- ---------------------------------------------------------------------------
+DROP FUNCTION IF EXISTS public.accept_property_invite(text);
 CREATE OR REPLACE FUNCTION public.accept_property_invite(invite_code text)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -114,7 +115,7 @@ REVOKE ALL ON FUNCTION public.accept_property_invite(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.accept_property_invite(text) TO authenticated;
 
 -- ---------------------------------------------------------------------------
--- review_join_request — on approve, consume invite use when invite_id set
+-- review_join_request ?on approve, consume invite use when invite_id set
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.review_join_request(
   p_request_id uuid,
@@ -149,7 +150,7 @@ BEGIN
     SELECT 1 FROM public.property_members pm
     WHERE pm.user_id = v_uid
       AND pm.property_id = r.property_id
-      AND pm.status = 'active'::member_status
+      AND pm.status = 'active'
       AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
   ) THEN
     RETURN jsonb_build_object('ok', false, 'error', 'forbidden');
@@ -169,14 +170,14 @@ BEGIN
       r.property_id,
       r.user_id,
       r.requested_role,
-      'active'::member_status,
+      'active',
       COALESCE(p_unit_number, r.unit_number),
       v_uid,
       now()
     )
     ON CONFLICT (property_id, user_id) DO UPDATE SET
       role = EXCLUDED.role,
-      status = 'active'::member_status,
+      status = 'active',
       unit_number = COALESCE(EXCLUDED.unit_number, public.property_members.unit_number),
       approved_by = EXCLUDED.approved_by,
       approved_at = EXCLUDED.approved_at;
@@ -210,7 +211,7 @@ REVOKE ALL ON FUNCTION public.review_join_request(uuid, boolean, text, text) FRO
 GRANT EXECUTE ON FUNCTION public.review_join_request(uuid, boolean, text, text) TO authenticated;
 
 -- ---------------------------------------------------------------------------
--- get_invite_preview — include property_id for client join / join_requests checks
+-- get_invite_preview ?include property_id for client join / join_requests checks
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.get_invite_preview(invite_code text)
 RETURNS jsonb
@@ -256,3 +257,7 @@ $fn$;
 REVOKE ALL ON FUNCTION public.get_invite_preview(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_invite_preview(text) TO anon;
 GRANT EXECUTE ON FUNCTION public.get_invite_preview(text) TO authenticated;
+
+
+
+

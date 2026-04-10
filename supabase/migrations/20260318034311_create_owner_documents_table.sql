@@ -68,3 +68,6 @@ CREATE POLICY "Council can delete documents"
 
 CREATE INDEX IF NOT EXISTS owner_documents_uploaded_by_idx ON owner_documents(uploaded_by);
 CREATE INDEX IF NOT EXISTS owner_documents_created_at_idx ON owner_documents(created_at DESC);
+
+
+

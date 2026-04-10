@@ -78,3 +78,7 @@ CREATE INDEX IF NOT EXISTS idx_procurement_quotes_submitted_by ON procurement_qu
 -- Voting tables
 CREATE INDEX IF NOT EXISTS idx_vote_responses_user_id ON vote_responses(user_id);
 CREATE INDEX IF NOT EXISTS idx_votes_initiated_by ON votes(initiated_by);
+
+
+
+

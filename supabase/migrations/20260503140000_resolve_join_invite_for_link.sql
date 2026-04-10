@@ -1,4 +1,4 @@
--- Deep links: /join?token=... — validate property_invites without exposing table via RLS.
+-- Deep links: /join?token=... ?validate property_invites without exposing table via RLS.
 -- Token may be invite code (case-insensitive) or invite row UUID.
 
 CREATE OR REPLACE FUNCTION public.resolve_join_invite_for_link(p_token text)
@@ -57,3 +57,7 @@ $fn$;
 REVOKE ALL ON FUNCTION public.resolve_join_invite_for_link(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.resolve_join_invite_for_link(text) TO anon;
 GRANT EXECUTE ON FUNCTION public.resolve_join_invite_for_link(text) TO authenticated;
+
+
+
+

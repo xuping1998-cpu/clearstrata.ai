@@ -1,8 +1,8 @@
 /*
   # Invoice audit trail + optional columns for finance workflow
 
-  1. `invoice_audit_log` — who did what (approve, reject, pay, edit, etc.)
-  2. `invoices` — verified_by, verified_at, paid_at, paid_by, review_notes (reject reason)
+  1. `invoice_audit_log` ?who did what (approve, reject, pay, edit, etc.)
+  2. `invoices` ?verified_by, verified_at, paid_at, paid_by, review_notes (reject reason)
   3. RLS for audit log; permissive UPDATE on invoices for finance roles + uploader
 */
 
@@ -178,3 +178,7 @@ CREATE POLICY "Council or admin can update special levies"
       AND profiles.role IN ('council', 'admin')
     )
   );
+
+
+
+

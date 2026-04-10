@@ -87,3 +87,7 @@ BEGIN
     ALTER TABLE procurement_jobs ADD COLUMN ai_estimate_reasoning text;
   END IF;
 END $$;
+
+
+
+

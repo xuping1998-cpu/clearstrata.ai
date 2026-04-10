@@ -23,3 +23,6 @@ WHERE title_zh IS NULL;
 -- Then add the NOT NULL constraint
 ALTER TABLE compliance_docs 
 ALTER COLUMN title_zh SET NOT NULL;
+
+
+

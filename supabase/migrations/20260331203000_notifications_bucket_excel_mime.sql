@@ -13,3 +13,7 @@ SET allowed_mime_types = ARRAY[
   'image/png'
 ]::text[]
 WHERE id = 'notifications';
+
+
+
+

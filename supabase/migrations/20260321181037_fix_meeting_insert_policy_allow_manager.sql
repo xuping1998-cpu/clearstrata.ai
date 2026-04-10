@@ -25,3 +25,7 @@ CREATE POLICY "Council or manager can create meetings"
       AND profiles.role IN ('council', 'manager')
     )
   );
+
+
+
+

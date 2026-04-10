@@ -502,3 +502,7 @@ CREATE POLICY "Council can create notifications"
       AND role = 'council'
     )
   );
+
+
+
+

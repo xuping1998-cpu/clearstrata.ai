@@ -42,7 +42,7 @@ BEGIN
     SELECT 1 FROM public.property_members pm
     WHERE pm.user_id = v_actor
       AND pm.property_id = r.property_id
-      AND pm.status = 'active'::member_status
+      AND pm.status = 'active'
       AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
   ) THEN
     RETURN jsonb_build_object('success', false, 'error', 'forbidden');
@@ -76,14 +76,14 @@ BEGIN
       r.property_id,
       v_target_uid,
       v_role,
-      'active'::member_status,
+      'active',
       v_unit,
       p_reviewer_id,
       now()
     )
     ON CONFLICT (property_id, user_id) DO UPDATE SET
       role = EXCLUDED.role,
-      status = 'active'::member_status,
+      status = 'active',
       unit_number = COALESCE(EXCLUDED.unit_number, public.property_members.unit_number),
       approved_by = EXCLUDED.approved_by,
       approved_at = EXCLUDED.approved_at;
@@ -142,3 +142,7 @@ REVOKE ALL ON FUNCTION public.approve_join_request(uuid, uuid, text) FROM PUBLIC
 GRANT EXECUTE ON FUNCTION public.approve_join_request(uuid, uuid, text) TO authenticated;
 
 NOTIFY pgrst, 'reload schema';
+
+
+
+

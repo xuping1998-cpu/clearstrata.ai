@@ -116,3 +116,7 @@ BEGIN
       FOREIGN KEY (selected_quote_id) REFERENCES procurement_quotes(id) ON DELETE SET NULL;
   END IF;
 END $$;
+
+
+
+

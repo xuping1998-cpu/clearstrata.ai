@@ -1,14 +1,15 @@
 /*
-  # OCR 原始结果 + 规则审计引擎（与预算触发器独立）
+  OCR ???? + ????????????????
 
-  - invoice_ocr_raw：结构化 OCR 输出
-  - invoice_anomalies：规则命中明细（可扩展 AI 规则）
-  - invoices.is_abnormal + audit_summary：汇总
+  - invoice_ocr_raw???? OCR ??
+  - invoice_anomalies??????????? AI ???
+  - invoices.is_abnormal + audit_summary?????
 */
 
 -- ---------------------------------------------------------------------------
 -- 1) Tables
 -- ---------------------------------------------------------------------------
+
 CREATE TABLE IF NOT EXISTS public.invoice_ocr_raw (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   invoice_id uuid NOT NULL REFERENCES public.invoices(id) ON DELETE CASCADE,
@@ -22,7 +23,8 @@ CREATE TABLE IF NOT EXISTS public.invoice_ocr_raw (
 
 CREATE INDEX IF NOT EXISTS idx_invoice_ocr_raw_property ON public.invoice_ocr_raw(property_id);
 
-COMMENT ON TABLE public.invoice_ocr_raw IS 'OCR 结构化输出（vendor/amount/date/items）；与 invoice 1:1';
+COMMENT ON TABLE public.invoice_ocr_raw IS
+  'Structured OCR output (vendor, amount, date, line items); one row per invoice (1:1).';
 
 CREATE TABLE IF NOT EXISTS public.invoice_anomalies (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -40,7 +42,8 @@ CREATE TABLE IF NOT EXISTS public.invoice_anomalies (
 CREATE INDEX IF NOT EXISTS idx_invoice_anomalies_property ON public.invoice_anomalies(property_id);
 CREATE INDEX IF NOT EXISTS idx_invoice_anomalies_invoice ON public.invoice_anomalies(invoice_id);
 
-COMMENT ON TABLE public.invoice_anomalies IS '自动审计规则命中；未来可追加 AI 规则码';
+COMMENT ON TABLE public.invoice_anomalies IS
+  'Rule-engine hits; AI rules can be added later.';
 
 ALTER TABLE public.invoices
   ADD COLUMN IF NOT EXISTS is_abnormal boolean NOT NULL DEFAULT false;
@@ -48,8 +51,10 @@ ALTER TABLE public.invoices
 ALTER TABLE public.invoices
   ADD COLUMN IF NOT EXISTS audit_summary jsonb;
 
-COMMENT ON COLUMN public.invoices.is_abnormal IS '规则/审计引擎标记的异常（与 has_anomalies / 预算字段独立）';
-COMMENT ON COLUMN public.invoices.audit_summary IS '审计摘要 JSON：rule_codes、severity、extensible.ai_rules 预留';
+COMMENT ON COLUMN public.invoices.is_abnormal IS
+  'Abnormal per audit engine (independent of has_anomalies and budget columns).';
+COMMENT ON COLUMN public.invoices.audit_summary IS
+  'Audit summary JSON: rule_codes, severity, extensible.ai_rules reserved.';
 
 CREATE INDEX IF NOT EXISTS idx_invoices_property_abnormal ON public.invoices(property_id, is_abnormal)
   WHERE is_abnormal = true;
@@ -66,7 +71,7 @@ AS $$
 $$;
 
 -- ---------------------------------------------------------------------------
--- 3) Audit engine（不修改预算相关列）
+-- 3) Audit engine (does not modify budget-related columns)
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.run_invoice_audit_engine(p_invoice_id uuid)
 RETURNS void
@@ -107,7 +112,7 @@ BEGIN
       'no_quote',
       'medium',
       'Invoice has no linked procurement quote',
-      '发票未关联采购报价',
+      '?????????',
       jsonb_build_object('quote_id', null)
     );
     v_med := v_med + 1;
@@ -130,7 +135,7 @@ BEGIN
         'amount_gt_quote_110',
         'high',
         'Invoice total exceeds quote by more than 10%',
-        '发票金额超过关联报价 10% 以上',
+        '?????????? 10% ??',
         jsonb_build_object(
           'invoice_total', v.total_amount,
           'quote_amount', v_quote_amt,
@@ -143,7 +148,7 @@ BEGIN
     END IF;
   END IF;
 
-  -- 3) No budget category / no active package / no budget line（只写一条 no_budget_category，互斥）
+  -- 3) No budget category / no active package / no budget line (single rule_code no_budget_category, mutually exclusive branches)
   v_pkg := public.active_budget_package_id(v.property_id, v.fiscal_year);
   v_cat := (
     SELECT public.resolve_invoice_budget_category_id(i)
@@ -160,7 +165,7 @@ BEGIN
       'no_budget_category',
       'medium',
       'Category cannot be matched to budget categories',
-      '无法匹配预算科目',
+      '????????',
       jsonb_build_object('reason', 'unresolved_category', 'category', v.category, 'budget_category_id', v.budget_category_id)
     );
     v_med := v_med + 1;
@@ -175,7 +180,7 @@ BEGIN
       'no_budget_category',
       'medium',
       'No active budget package for this fiscal year',
-      '本财年无生效预算包',
+      '?????????',
       jsonb_build_object('reason', 'no_active_package', 'fiscal_year', v.fiscal_year)
     );
     v_med := v_med + 1;
@@ -197,7 +202,7 @@ BEGIN
         'no_budget_category',
         'medium',
         'No budget line for this category in the active package',
-        '当前生效预算包中无该科目预算行',
+        '???????????????',
         jsonb_build_object('reason', 'no_line_for_category', 'budget_category_id', v_cat, 'package_id', v_pkg)
       );
       v_med := v_med + 1;
@@ -226,7 +231,7 @@ BEGIN
         'duplicate_invoice',
         'high',
         'Possible duplicate: same vendor and invoice number exists',
-        '可能重复发票：同供应商与发票号已存在',
+        '??????????????????',
         jsonb_build_object('invoice_number', trim(v.invoice_number))
       );
       v_high := v_high + 1;
@@ -259,7 +264,7 @@ BEGIN
       'vendor_price_spike',
       'medium',
       'Invoice amount is high vs recent invoices from this vendor',
-      '相对该供应商近期发票金额异常偏高',
+      '????????????????',
       jsonb_build_object(
         'historical_avg', round(v_hist_avg, 2),
         'historical_count', v_hist_cnt,

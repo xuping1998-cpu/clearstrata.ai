@@ -1,4 +1,4 @@
-import { ReactNode, useState, useEffect, useMemo } from 'react';
+import { ReactNode, useState, useEffect, useMemo, useCallback } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -31,6 +31,16 @@ import { UserNotificationToast } from './UserNotificationToast';
 
 interface LayoutProps {
   children: ReactNode;
+}
+
+function isModulePathActive(location: ReturnType<typeof useLocation>, path: string): boolean {
+  if (path === '/manager-tasks?task_type=dispute') {
+    return (
+      location.pathname === '/manager-tasks' &&
+      new URLSearchParams(location.search).get('task_type') === 'dispute'
+    );
+  }
+  return location.pathname === path;
 }
 
 export function Layout({ children }: LayoutProps) {
@@ -71,64 +81,108 @@ export function Layout({ children }: LayoutProps) {
   const showInviteCodesNav = canManagePropertyInvitesFromContext(roleInProperty, memberships);
   const showJoinRequestsNav = canReviewJoinRequestsFromContext(roleInProperty, memberships);
   const showJoinRequestReviewCoreNav = canShowJoinRequestReviewNavFromContext(roleInProperty, memberships);
-  const showSystemSection = showPropertyAdmin || showInviteCodesNav || showJoinRequestsNav;
 
   const isDashboardHome = location.pathname === '/' || location.pathname === '/dashboard';
+  const homeActive = isDashboardHome;
 
-  const coreNavItems = [
-    { path: '/', icon: Home, label: t('nav_dashboard') },
-    { path: '/procurement', icon: ShoppingCart, label: t('nav_procurement') },
-    { path: '/voting', icon: Vote, label: t('nav_voting') },
-    { path: '/finance', icon: DollarSign, label: t('nav_finance') },
-    { path: '/owner-info', icon: Users, label: t('nav_owner_info') },
-    ...(showJoinRequestReviewCoreNav
-      ? [{ path: '/admin/join-requests', icon: ClipboardList, label: t('nav_review_applications') }]
-      : []),
-    { path: '/manager-tasks?task_type=dispute', icon: Scale, label: t('nav_disputes') },
-    { path: '/compliance', icon: FileText, label: t('nav_help_compliance') },
-  ];
+  const quickModules = useMemo(
+    () =>
+      [
+        { path: '/procurement', icon: ShoppingCart, label: t('nav_procurement'), iconBg: 'bg-blue-500' },
+        { path: '/voting', icon: Vote, label: t('nav_voting'), iconBg: 'bg-purple-500' },
+        { path: '/finance', icon: DollarSign, label: t('nav_finance'), iconBg: 'bg-green-500' },
+        { path: '/owner-info', icon: Users, label: t('nav_owner_info'), iconBg: 'bg-sky-500' },
+        {
+          path: '/manager-tasks?task_type=dispute',
+          icon: Scale,
+          label: t('nav_disputes'),
+          iconBg: 'bg-red-500',
+        },
+        { path: '/compliance', icon: FileText, label: t('nav_help_compliance'), iconBg: 'bg-indigo-500' },
+      ] as Array<{ path: string; icon: LucideIcon; label: string; iconBg: string }>,
+    [t],
+  );
 
-  const systemNavItems = [
-    ...(showInviteCodesNav
-      ? [{ path: '/admin/invites', icon: KeyRound, label: t('nav_invite_codes') }]
-      : []),
-    ...(showPropertyAdmin
-      ? [{ path: '/property-admin', icon: Users, label: t('nav_property_admin_sidebar') }]
-      : []),
-  ];
+  const systemNavItems = useMemo(
+    () =>
+      [
+        ...(showJoinRequestsNav && !showJoinRequestReviewCoreNav
+          ? [{ path: '/admin/join-requests', icon: ClipboardList, label: t('nav_join_requests') }]
+          : []),
+        ...(showInviteCodesNav
+          ? [{ path: '/admin/invites', icon: KeyRound, label: t('nav_invite_codes') }]
+          : []),
+        ...(showPropertyAdmin
+          ? [{ path: '/property-admin', icon: Users, label: t('nav_property_admin_sidebar') }]
+          : []),
+      ] as Array<{ path: string; icon: LucideIcon; label: string }>,
+    [
+      showJoinRequestsNav,
+      showJoinRequestReviewCoreNav,
+      showInviteCodesNav,
+      showPropertyAdmin,
+      t,
+    ],
+  );
 
-  const isNavActive = (path: string) => {
-    if (path === '/') return location.pathname === '/' || location.pathname === '/dashboard';
-    if (path === '/manager-tasks?task_type=dispute') {
+  const showSystemSection = systemNavItems.length > 0;
+
+  const renderSystemNavButton = useCallback(
+    (path: string, Icon: LucideIcon, label: string) => {
+      const active = location.pathname === path;
       return (
-        location.pathname === '/manager-tasks' &&
-        new URLSearchParams(location.search).get('task_type') === 'dispute'
-      );
-    }
-    return location.pathname === path;
-  };
-
-  const renderNavButton = (path: string, Icon: LucideIcon, label: string) => {
-    const active = isNavActive(path);
-    return (
-      <button
-        key={path === '/' ? 'home' : path}
-        type="button"
-        onClick={() => {
-          navigate(path);
-          setMobileMenuOpen(false);
-        }}
-        className={`
+        <button
+          key={path}
+          type="button"
+          onClick={() => {
+            navigate(path);
+            setMobileMenuOpen(false);
+          }}
+          className={`
           w-full flex items-center gap-3 px-4 py-3 rounded-lg
           transition-colors text-left
           ${active ? 'bg-[#1D9E75] text-white' : 'text-gray-700 hover:bg-gray-100'}
         `}
-      >
-        <Icon size={20} />
-        <span className="font-medium">{label}</span>
-      </button>
-    );
-  };
+        >
+          <Icon size={20} />
+          <span className="font-medium">{label}</span>
+        </button>
+      );
+    },
+    [location.pathname, navigate],
+  );
+
+  const renderModuleCard = useCallback(
+    (path: string, Icon: LucideIcon, label: string, iconBg: string) => {
+      const active = isModulePathActive(location, path);
+      return (
+        <button
+          key={path}
+          type="button"
+          onClick={() => {
+            navigate(path);
+            setMobileMenuOpen(false);
+          }}
+          className={`
+            flex w-full items-center gap-4 rounded-2xl border px-4 py-4 text-left shadow-sm transition-all
+            ${
+              active
+                ? 'border-emerald-300 bg-emerald-50/80 ring-1 ring-emerald-200'
+                : 'border-gray-200 bg-white hover:border-emerald-200 hover:shadow-md'
+            }
+          `}
+        >
+          <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${iconBg}`}>
+            <Icon className="h-6 w-6 text-white" size={24} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-base font-semibold leading-snug text-gray-900">{label}</div>
+          </div>
+        </button>
+      );
+    },
+    [location, navigate],
+  );
 
   const handleLogout = async () => {
     try {
@@ -140,45 +194,45 @@ export function Layout({ children }: LayoutProps) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
+      <header className="sticky top-0 z-40 border-b border-gray-200 bg-white">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="flex h-16 items-center justify-between">
             <div className="flex items-center gap-4">
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="lg:hidden p-2 rounded-lg hover:bg-gray-100"
+                className="rounded-lg p-2 hover:bg-gray-100 lg:hidden"
               >
                 {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
               </button>
               <button
                 type="button"
                 onClick={() => navigate('/')}
-                className="text-2xl font-bold text-[#1D9E75] hover:opacity-90 transition-opacity"
+                className="text-2xl font-bold text-[#1D9E75] transition-opacity hover:opacity-90"
               >
                 {language === 'en' ? 'clearstrata.ai' : '清涟.ai'}
               </button>
             </div>
 
-            <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1 justify-end">
+            <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:gap-3">
               <PWAInstallButton />
               {memberships.length >= 1 && currentPropertyId && (
-                <div className="flex min-w-0 items-center shrink text-sm text-gray-600 border-r border-gray-200 pr-2 sm:pr-3">
+                <div className="flex min-w-0 shrink items-center border-r border-gray-200 pr-2 text-sm text-gray-600 sm:pr-3">
                   {memberships.length === 1 ? (
                     <span
-                      className="inline max-w-[min(140px,28vw)] sm:max-w-[200px] truncate font-medium text-gray-800 text-xs sm:text-sm"
+                      className="inline max-w-[min(140px,28vw)] truncate text-xs font-medium text-gray-800 sm:max-w-[200px] sm:text-sm"
                       title={currentPropertyDisplayName}
                     >
                       {currentPropertyDisplayName}
                     </span>
                   ) : (
                     <label className="flex min-w-0 items-center gap-1.5 sm:gap-2">
-                      <span className="hidden md:inline whitespace-nowrap shrink-0 text-xs text-gray-500">
+                      <span className="hidden shrink-0 whitespace-nowrap text-xs text-gray-500 md:inline">
                         {t('select_property')}
                       </span>
                       <select
                         value={currentPropertyId}
                         onChange={(e) => setCurrentPropertyId(e.target.value)}
-                        className="border border-gray-200 rounded-lg px-2 py-1.5 min-w-0 max-w-[min(160px,42vw)] sm:max-w-[220px] text-gray-900 bg-white text-xs sm:text-sm"
+                        className="min-w-0 max-w-[min(160px,42vw)] rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-900 sm:max-w-[220px] sm:text-sm"
                         aria-label={t('select_property')}
                       >
                         {memberships.map((m) => (
@@ -193,33 +247,36 @@ export function Layout({ children }: LayoutProps) {
               )}
               <button
                 onClick={() => navigate('/profile')}
-                className="hidden sm:flex items-center gap-2 text-left hover:bg-gray-100 rounded-lg p-2 transition-colors"
+                className="hidden rounded-lg p-2 text-left transition-colors hover:bg-gray-100 sm:flex sm:items-center sm:gap-2"
               >
                 <div>
                   <div className="text-sm font-medium text-gray-900">
                     {language === 'en' ? profile?.full_name_en : profile?.full_name_zh || profile?.full_name_en}
                   </div>
-                  <div className="text-xs text-gray-500" title={language === 'en' ? 'Role in current property' : '当前物业中的角色'}>
+                  <div
+                    className="text-xs text-gray-500"
+                    title={language === 'en' ? 'Role in current property' : '当前物业中的角色'}
+                  >
                     {roleInProperty ? t(roleInProperty) : language === 'en' ? '—' : '未选择'}
                   </div>
                 </div>
               </button>
               <button
                 onClick={() => navigate('/profile')}
-                className="sm:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                className="rounded-lg p-2 transition-colors hover:bg-gray-100 sm:hidden"
                 title={language === 'en' ? 'Profile' : '个人信息'}
               >
                 <UserCircle size={20} />
               </button>
               <button
                 onClick={toggleLanguage}
-                className="px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors text-sm font-medium"
+                className="rounded-lg bg-gray-100 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-gray-200"
               >
                 {language === 'en' ? '中文' : 'EN'}
               </button>
               <button
                 onClick={handleLogout}
-                className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                className="rounded-lg p-2 transition-colors hover:bg-gray-100"
                 title={t('auth_logout')}
               >
                 <LogOut size={20} />
@@ -229,45 +286,92 @@ export function Layout({ children }: LayoutProps) {
         </div>
       </header>
 
-      <div className="flex">
-        <aside className={`
+      <div className="flex lg:items-start">
+        <aside
+          className={`
           ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
           lg:translate-x-0
           fixed lg:sticky top-16 left-0 h-[calc(100vh-4rem)]
-          w-64 bg-white border-r border-gray-200
+          w-64 border-r border-gray-200 bg-white
           transition-transform duration-200 ease-in-out
           z-30 overflow-y-auto
-        `}>
-          <nav className="p-4 space-y-6">
-            <div className="space-y-1">
-              {coreNavItems.map((item) => renderNavButton(item.path, item.icon, item.label))}
+        `}
+        >
+          <div className="flex h-full flex-col pb-6 pt-6">
+            <div className="px-4">
+              <button
+                type="button"
+                onClick={() => {
+                  navigate('/');
+                  setMobileMenuOpen(false);
+                }}
+                className={`flex w-full items-center gap-3 rounded-2xl px-4 py-4 text-left transition-colors ${
+                  homeActive ? 'bg-[#1D9E75] text-white shadow-md' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+                }`}
+              >
+                <Home className="h-5 w-5 shrink-0" size={20} />
+                <span className="text-lg font-semibold">{t('nav_dashboard')}</span>
+              </button>
             </div>
 
-            {showSystemSection && (
-              <div>
-                <p className="px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                  {t('nav_group_system')}
-                </p>
-                <div className="space-y-1">
-                  {systemNavItems.map((item) => renderNavButton(item.path, item.icon, item.label))}
-                </div>
+            <div className="mt-6 flex-1 overflow-y-auto px-4">
+              <div className="space-y-3">
+                {quickModules.map((m) => renderModuleCard(m.path, m.icon, m.label, m.iconBg))}
+                {showJoinRequestReviewCoreNav && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigate('/admin/join-requests');
+                      setMobileMenuOpen(false);
+                    }}
+                    className={`
+                      flex w-full items-center gap-4 rounded-2xl border px-4 py-4 text-left shadow-sm transition-all
+                      ${
+                        location.pathname === '/admin/join-requests'
+                          ? 'border-emerald-300 bg-emerald-50/80 ring-1 ring-emerald-200'
+                          : 'border-gray-200 bg-white hover:border-emerald-200 hover:shadow-md'
+                      }
+                    `}
+                  >
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-amber-500">
+                      <ClipboardList className="h-6 w-6 text-white" size={24} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-base font-semibold leading-snug text-gray-900">
+                        {t('nav_review_applications')}
+                      </div>
+                    </div>
+                  </button>
+                )}
               </div>
-            )}
-          </nav>
+
+              {showSystemSection && (
+                <div className="mt-8 border-t border-gray-100 pt-6">
+                  <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    {t('nav_group_system')}
+                  </p>
+                  <div className="space-y-1">
+                    {systemNavItems.map((item) =>
+                      renderSystemNavButton(item.path, item.icon, item.label),
+                    )}
+                  </div>
+                </div>
+              )}
+
+            </div>
+          </div>
         </aside>
 
         {mobileMenuOpen && (
           <div
-            className="lg:hidden fixed inset-0 bg-black bg-opacity-50 z-20 top-16"
+            className="fixed inset-0 top-16 z-20 bg-black bg-opacity-50 lg:hidden"
             onClick={() => setMobileMenuOpen(false)}
           />
         )}
 
         <main
-          className={`flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 ${
-            isDashboardHome
-              ? 'pt-1 sm:pt-2 lg:pt-3 pb-3 sm:pb-5 lg:pb-7'
-              : 'p-4 sm:p-6 lg:p-8'
+          className={`mx-auto w-full max-w-7xl flex-1 px-4 sm:px-6 lg:px-8 ${
+            isDashboardHome ? 'pt-6 pb-6 sm:pb-8 lg:pt-6 lg:pb-10' : 'p-4 sm:p-6 lg:p-8'
           }`}
         >
           <UserNotificationToast />

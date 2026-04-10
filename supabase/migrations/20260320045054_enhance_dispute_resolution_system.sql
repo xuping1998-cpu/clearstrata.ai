@@ -551,7 +551,7 @@ BEGIN
       NEW.id,
       'created',
       'Dispute created',
-      '纠纷已创建',
+      '纠纷已创?,
       NEW.reporter_id,
       jsonb_build_object('category', NEW.category, 'priority', NEW.priority)
     );
@@ -568,7 +568,7 @@ BEGIN
         NEW.id,
         'status_change',
         'Status changed from ' || OLD.status || ' to ' || NEW.status,
-        '状态从 ' || OLD.status || ' 变更为 ' || NEW.status,
+        '状态从 ' || OLD.status || ' 变更?' || NEW.status,
         jsonb_build_object('old_status', OLD.status, 'new_status', NEW.status)
       );
     END IF;
@@ -585,7 +585,7 @@ BEGIN
         NEW.id,
         'escalated',
         'Dispute escalated to council',
-        '纠纷已升级至业委会',
+        '纠纷已升级至业委?,
         jsonb_build_object('reason', NEW.escalation_reason)
       );
     END IF;
@@ -621,7 +621,7 @@ BEGIN
         NEW.id,
         'resolved',
         'Dispute resolved',
-        '纠纷已解决',
+        '纠纷已解?,
         jsonb_build_object('resolved_at', NEW.resolved_at)
       );
     END IF;
@@ -645,3 +645,7 @@ COMMENT ON TABLE dispute_evidence IS 'Evidence attachments (photo, video, audio,
 COMMENT ON TABLE dispute_timeline IS 'Auto-generated timeline of all dispute events';
 COMMENT ON COLUMN disputes.repeat_complaint_count IS 'Number of similar complaints from same reporter about same respondent in 90 days';
 COMMENT ON COLUMN disputes.repeat_complaint_threshold_reached IS 'Auto-flagged when 5+ repeat complaints detected';
+
+
+
+

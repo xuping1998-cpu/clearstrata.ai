@@ -552,3 +552,7 @@ COMMENT ON TABLE meeting_minutes IS 'Minutes documents with approval workflow';
 COMMENT ON TABLE meeting_minutes_versions IS 'Version history for minutes with change tracking';
 COMMENT ON TABLE meeting_documents IS 'Pre and post meeting documents';
 COMMENT ON TABLE meeting_quota_tracker IS 'Annual meeting quota tracking and overtime fee calculation';
+
+
+
+

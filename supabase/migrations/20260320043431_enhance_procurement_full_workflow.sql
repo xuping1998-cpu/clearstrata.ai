@@ -418,3 +418,7 @@ COMMENT ON TABLE procurement_invoices IS 'Invoice management with OCR data and v
 COMMENT ON TABLE procurement_verifications IS 'Three-party verification system: requester, council, AI';
 COMMENT ON TABLE vendor_ratings IS 'Vendor performance ratings building trusted vendor database';
 COMMENT ON TABLE procurement_audit_log IS 'Complete audit trail of all procurement actions - permanent archive';
+
+
+
+

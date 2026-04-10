@@ -37,7 +37,7 @@ BEGIN
     END;
 
     NEW.author_role := CASE r
-      WHEN 'council' THEN '业委会'
+      WHEN 'council' THEN '业委?
       WHEN 'manager' THEN '物业经理'
       ELSE r
     END;
@@ -64,7 +64,7 @@ BEGIN
   END;
 
   NEW.author_role := CASE r
-    WHEN 'council' THEN '业委会'
+    WHEN 'council' THEN '业委?
     WHEN 'manager' THEN '物业经理'
     ELSE r
   END;
@@ -72,3 +72,7 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+
+
+
+

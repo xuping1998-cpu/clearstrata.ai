@@ -74,3 +74,6 @@ CREATE POLICY "Users can delete their own meeting records"
 CREATE INDEX IF NOT EXISTS idx_meeting_records_date ON meeting_records(meeting_date DESC);
 CREATE INDEX IF NOT EXISTS idx_meeting_records_created_by ON meeting_records(created_by);
 CREATE INDEX IF NOT EXISTS idx_meeting_records_related_vote ON meeting_records(related_vote_id);
+
+
+

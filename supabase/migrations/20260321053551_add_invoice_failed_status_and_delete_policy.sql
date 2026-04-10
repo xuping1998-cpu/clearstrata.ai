@@ -31,3 +31,7 @@ CREATE POLICY "Council can delete invoices"
       AND profiles.role IN ('council', 'manager')
     )
   );
+
+
+
+

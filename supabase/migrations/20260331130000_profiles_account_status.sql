@@ -26,3 +26,7 @@ FROM residents r
 WHERE r.user_id = p.id
   AND r.status = 'pending'
   AND p.status = 'active';
+
+
+
+

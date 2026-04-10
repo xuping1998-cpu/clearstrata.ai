@@ -6,3 +6,7 @@ DROP POLICY IF EXISTS "public read properties" ON public.properties;
 CREATE POLICY "public read properties"
   ON public.properties FOR SELECT TO authenticated
   USING (allow_public_join_requests = true);
+
+
+
+

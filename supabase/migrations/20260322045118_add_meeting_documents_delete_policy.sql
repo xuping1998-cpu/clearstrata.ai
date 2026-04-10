@@ -23,3 +23,7 @@ CREATE POLICY "Council or manager or uploader can delete documents"
       AND profiles.role IN ('council', 'manager')
     )
   );
+
+
+
+

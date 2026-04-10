@@ -616,3 +616,7 @@ CREATE POLICY "vreg_all_tenant"
   ON public.vendor_registry FOR ALL TO authenticated
   USING (property_id IN (SELECT public.user_property_ids()))
   WITH CHECK (property_id IN (SELECT public.user_property_ids()));
+
+
+
+

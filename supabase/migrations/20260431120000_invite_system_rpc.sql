@@ -44,7 +44,7 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM public.property_members pm
     WHERE pm.user_id = v_uid AND pm.property_id = p_property_id
-      AND pm.status = 'active'::member_status
+      AND pm.status = 'active'
       AND pm.role IN ('property_admin', 'admin', 'council', 'manager')
   ) THEN
     RETURN jsonb_build_object('ok', false, 'error', 'forbidden');
@@ -64,7 +64,7 @@ END;
 $fn$;
 
 -- ---------------------------------------------------------------------------
--- accept_property_invite — standardized messages for app
+-- accept_property_invite ?standardized messages for app
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.accept_property_invite(invite_code text)
 RETURNS jsonb
@@ -109,10 +109,10 @@ BEGIN
   END IF;
 
   INSERT INTO public.property_members (property_id, user_id, role, status, approved_at)
-  VALUES (inv.property_id, v_uid, inv.role, 'active'::member_status, now())
+  VALUES (inv.property_id, v_uid, inv.role, 'active', now())
   ON CONFLICT (property_id, user_id) DO UPDATE SET
     role = EXCLUDED.role,
-    status = 'active'::member_status,
+    status = 'active',
     approved_at = now();
 
   UPDATE public.property_invites
@@ -135,7 +135,7 @@ REVOKE ALL ON FUNCTION public.accept_property_invite(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.accept_property_invite(text) TO authenticated;
 
 -- ---------------------------------------------------------------------------
--- Public preview (no auth) — for /join landing
+-- Public preview (no auth) ?for /join landing
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.get_invite_preview(invite_code text)
 RETURNS jsonb
@@ -201,7 +201,7 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM public.property_members pm
     WHERE pm.user_id = v_uid AND pm.property_id = p_property_id
-      AND pm.status = 'active'::member_status
+      AND pm.status = 'active'
       AND pm.role IN ('property_admin', 'admin', 'council', 'manager')
   ) THEN
     RETURN jsonb_build_object('ok', false, 'error', 'forbidden');
@@ -237,7 +237,11 @@ CREATE POLICY "pi_select_property"
       SELECT 1 FROM public.property_members pm
       WHERE pm.user_id = (SELECT auth.uid())
         AND pm.property_id = property_invites.property_id
-        AND pm.status = 'active'::member_status
+        AND pm.status = 'active'
         AND pm.role IN ('property_admin', 'admin', 'council', 'manager')
     )
   );
+
+
+
+

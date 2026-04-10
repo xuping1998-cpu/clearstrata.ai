@@ -1,30 +1,40 @@
 /*
-  # 最终规则补充
+  Budget rules:
 
-  1) 发票：status 进入 approved / paid 时计算并锁定 is_budget_exceeded 与 budget_anomaly_flag；
-     之后若仍为 approved/paid，不因预算/分类/金额等变更而重算。
-  2) budget_package 切换 active：不回溯修改报价/发票历史字段；Dashboard RPC 仅读取当前 active package。
-  3) 科目无法解析：is_budget_exceeded = true，budget_anomaly_flag = 'category_unmatched'（发票/报价，供 OCR 审计预留）。
+  1) Invoice:
+     When status becomes approved / paid:
+     - compute and lock is_budget_exceeded
+     - lock budget_anomaly_flag
+     After that, if still approved/paid, do not recompute when amount/category/etc. changes.
+
+  2) budget_package switch to active:
+     - do NOT retroactively modify quotes/invoices
+     - dashboard RPCs read the current active package only
+
+  3) Category unmatched (invoice / quote, reserved for OCR audit):
+     - is_budget_exceeded = true
+     - budget_anomaly_flag = 'category_unmatched'
 */
 
--- ---------------------------------------------------------------------------
--- 常量说明（应用层可与之一致）
--- ---------------------------------------------------------------------------
+-- ------------------------------------------------------------
+-- Column comments
+-- ------------------------------------------------------------
 COMMENT ON COLUMN public.invoices.budget_anomaly_flag IS
-  '异常标记；category_unmatched 表示科目无法匹配到 budget_categories（OCR/审计预留）；审批通过后与 is_budget_exceeded 一并锁定。';
+  'Anomaly flag. category_unmatched: category could not be matched to budget_categories (OCR/audit); locked with is_budget_exceeded after approval.';
 
 ALTER TABLE public.procurement_quotes
   ADD COLUMN IF NOT EXISTS budget_anomaly_flag text;
 
 COMMENT ON COLUMN public.procurement_quotes.budget_anomaly_flag IS
-  '异常标记；category_unmatched 表示科目无法匹配；与 is_budget_exceeded 同步维护（选中报价重算时更新）。';
+  'Anomaly flag for quotes. category_unmatched: unmatched category; kept in sync with is_budget_exceeded when the selected quote is recomputed.';
 
 COMMENT ON TABLE public.budget_package IS
-  '年度预算包。切换 active 不会触发系统回溯修改历史报价/发票；Dashboard 仅汇总当前财年 status=active 的包。';
+  'Annual budget package. Switching active does not retroactively change historical quotes/invoices; dashboard aggregates only the current fiscal year active package.';
 
--- ---------------------------------------------------------------------------
--- 报价：category_unmatched 仅当 resolve 为 NULL
--- ---------------------------------------------------------------------------
+-- ------------------------------------------------------------
+-- Quotes: recompute is_budget_exceeded and budget_anomaly_flag
+-- category_unmatched when resolve_quote_budget_category_id returns NULL
+-- ------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.apply_budget_exceeded_to_quote(p_job_id uuid, p_quote_id uuid)
 RETURNS void
 LANGUAGE plpgsql
@@ -141,9 +151,10 @@ BEGIN
 END;
 $$;
 
--- ---------------------------------------------------------------------------
--- 发票：审批通过（approved / paid）时计算一次；通过后锁定 is_budget_exceeded 与 budget_anomaly_flag
--- ---------------------------------------------------------------------------
+-- ------------------------------------------------------------
+-- Invoices: compute once when entering approved/paid; then lock
+-- is_budget_exceeded and budget_anomaly_flag
+-- ------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.invoices_before_budget_exceeded()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -156,7 +167,7 @@ DECLARE
   v_budget numeric;
   v_act numeric;
 BEGIN
-  -- 非已批准/已支付：不保留锁定字段
+  -- Not approved/paid: do not keep locked values
   IF NEW.status NOT IN ('approved', 'paid') THEN
     NEW.is_budget_exceeded := NULL;
     IF TG_OP = 'UPDATE' AND OLD.status IN ('approved', 'paid') THEN
@@ -165,7 +176,7 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  -- 已在批准态之间更新：锁定，不重算
+  -- Staying within approved/paid: lock, no recompute
   IF TG_OP = 'UPDATE'
      AND OLD.status IN ('approved', 'paid')
      AND NEW.status IN ('approved', 'paid') THEN
@@ -174,7 +185,7 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  -- 首次进入 approved/paid（或 INSERT 即为 approved/paid）
+  -- First transition to approved/paid (or INSERT as approved/paid)
   IF NEW.fiscal_year IS NULL THEN
     NEW.fiscal_year := EXTRACT(YEAR FROM COALESCE(NEW.invoice_date::date, CURRENT_DATE))::int;
   END IF;
@@ -229,17 +240,18 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.dashboard_budget_summary(uuid, int) IS
-  'Dashboard：仅汇总当前财年 active 的 budget_package 下预算行；不回溯历史包。';
+  'Dashboard: aggregate budget rows only from the current fiscal year active budget_package; no backfill of historical packages.';
 
 COMMENT ON FUNCTION public.dashboard_budget_categories(uuid, int) IS
-  'Dashboard：预算来自当前 active package；committed/actual 为当前数据，不因曾用包而重算历史行。';
+  'Dashboard: budgets from current active package; committed/actual from current data, not recomputed for past packages.';
 
 COMMENT ON FUNCTION public.dashboard_budget_alerts(uuid, int) IS
-  'Dashboard：与 summary 一致，仅基于当前 active package。';
+  'Dashboard: same scope as summary, based on current active package only.';
 
--- ---------------------------------------------------------------------------
--- Alerts：报价科目未匹配单独一类；超预算承诺不含纯 category_unmatched（避免重复）
--- ---------------------------------------------------------------------------
+-- ------------------------------------------------------------
+-- Alerts: quote category unmatched as its own type; over-budget
+-- commitment excludes pure category_unmatched (avoid duplicates)
+-- ------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.dashboard_budget_alerts(p_property_id uuid, p_year int)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -287,9 +299,9 @@ BEGIN
         'severity', 'high',
         'code', c.code,
         'title_en', 'Over budget (actual)',
-        'title_zh', '科目超支（实际已入账）',
+        'title_zh', '???????????',
         'message_en', c.name_en || ' actual exceeds budget',
-        'message_zh', COALESCE(c.name_zh, c.name_en) || ' 实际支出已超过年度预算',
+        'message_zh', COALESCE(c.name_zh, c.name_en) || ' ???????????',
         'link_hint', '/finance?tab=invoices'
       ) AS alert
       FROM cats c
@@ -303,9 +315,9 @@ BEGIN
         'severity', 'high',
         'invoice_id', i.id,
         'title_en', 'Invoice outside budget lines',
-        'title_zh', '发票科目无对应年度预算',
+        'title_zh', '???????????',
         'message_en', coalesce(i.vendor_name, 'Invoice'),
-        'message_zh', coalesce(i.vendor_name, '发票'),
+        'message_zh', coalesce(i.vendor_name, '??'),
         'link_hint', '/finance?tab=invoices&invoice=' || i.id::text
       ) AS alert
       FROM public.invoices i
@@ -332,9 +344,9 @@ BEGIN
         'severity', 'medium',
         'quote_id', pq.id,
         'title_en', 'Quote category not matched',
-        'title_zh', '报价科目无法匹配',
+        'title_zh', '????????',
         'message_en', coalesce(pq.vendor_name, 'Quote'),
-        'message_zh', coalesce(pq.vendor_name, '报价'),
+        'message_zh', coalesce(pq.vendor_name, '??'),
         'link_hint', '/procurement'
       ) AS alert
       FROM public.procurement_quotes pq
@@ -351,9 +363,9 @@ BEGIN
         'severity', 'medium',
         'quote_id', pq.id,
         'title_en', 'Quote over budget commitment',
-        'title_zh', '报价超出预算承诺',
+        'title_zh', '????????',
         'message_en', coalesce(pq.vendor_name, 'Quote'),
-        'message_zh', coalesce(pq.vendor_name, '报价'),
+        'message_zh', coalesce(pq.vendor_name, '??'),
         'link_hint', '/procurement'
       ) AS alert
       FROM public.procurement_quotes pq
@@ -370,9 +382,9 @@ BEGIN
         'severity', 'low',
         'invoice_id', i.id,
         'title_en', 'Invoice anomaly flag',
-        'title_zh', '发票异常标记',
+        'title_zh', '??????',
         'message_en', coalesce(i.budget_anomaly_flag, 'flagged'),
-        'message_zh', coalesce(i.budget_anomaly_flag, '已标记'),
+        'message_zh', coalesce(i.budget_anomaly_flag, '???'),
         'link_hint', '/finance?tab=invoices&invoice=' || i.id::text
       ) AS alert
       FROM public.invoices i
@@ -389,9 +401,9 @@ BEGIN
         'severity', 'high',
         'invoice_id', i.id,
         'title_en', 'Invoice category not matched (OCR audit)',
-        'title_zh', '发票科目无法匹配（OCR 审计）',
+        'title_zh', '?????????OCR ???',
         'message_en', coalesce(i.vendor_name, 'Invoice'),
-        'message_zh', coalesce(i.vendor_name, '发票'),
+        'message_zh', coalesce(i.vendor_name, '??'),
         'link_hint', '/finance?tab=invoices&invoice=' || i.id::text
       ) AS alert
       FROM public.invoices i
@@ -422,7 +434,7 @@ $$;
 REVOKE ALL ON FUNCTION public.dashboard_budget_alerts(uuid, int) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.dashboard_budget_alerts(uuid, int) TO authenticated;
 
--- 回填选中报价（刷新 anomaly 标记）
+-- Backfill selected quotes (refresh is_budget_exceeded / anomaly flags)
 DO $$
 DECLARE
   r RECORD;

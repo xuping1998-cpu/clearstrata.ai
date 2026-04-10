@@ -19,3 +19,7 @@ create policy "leads_insert_public"
   for insert
   to anon, authenticated
   with check (true);
+
+
+
+

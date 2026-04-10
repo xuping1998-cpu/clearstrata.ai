@@ -6,3 +6,7 @@ DROP TRIGGER IF EXISTS trg_community_notifications_fanout_insert ON public.commu
 DROP TRIGGER IF EXISTS trg_community_notifications_fanout_update ON public.community_notifications;
 
 DROP FUNCTION IF EXISTS public.fanout_community_announcement_inbox();
+
+
+
+

@@ -115,15 +115,15 @@ INSERT INTO meeting_templates (name_en, name_zh, description_en, description_zh,
     'Annual General Meeting',
     '年度业主大会',
     'Annual meeting for all owners to review yearly performance and elect council members',
-    '所有业主参加的年度会议，审查年度绩效并选举业委会成员',
+    '所有业主参加的年度会议，审查年度绩效并选举业委会成?,
     E'1. Opening and attendance\n2. Review of previous meeting minutes\n3. Financial report for the year\n4. Maintenance summary and budget approval\n5. Election of council members\n6. Other business\n7. Closing',
     true
   ),
   (
     'Council Meeting',
-    '业委会会议',
+    '业委会会?,
     'Regular council meeting to discuss and decide on strata matters',
-    '业委会定期会议，讨论和决定小区事务',
+    '业委会定期会议，讨论和决定小区事?,
     E'1. Opening and roll call\n2. Review of previous minutes\n3. Financial update\n4. Maintenance requests review\n5. Upcoming projects discussion\n6. Owner inquiries\n7. Next meeting date\n8. Closing',
     true
   ),
@@ -131,15 +131,15 @@ INSERT INTO meeting_templates (name_en, name_zh, description_en, description_zh,
     'Special General Meeting',
     '特别业主大会',
     'Special meeting called for urgent or specific matters requiring owner approval',
-    '为需要业主批准的紧急或特定事项召开的特别会议',
+    '为需要业主批准的紧急或特定事项召开的特别会?,
     E'1. Opening and attendance\n2. Purpose of special meeting\n3. Discussion of specific matter\n4. Voting on resolution\n5. Closing',
     true
   ),
   (
     'Emergency Meeting',
-    '紧急会议',
+    '紧急会?,
     'Emergency meeting for immediate issues requiring urgent attention',
-    '需要紧急处理的即时问题的紧急会议',
+    '需要紧急处理的即时问题的紧急会?,
     E'1. Emergency situation briefing\n2. Immediate actions required\n3. Decision and authorization\n4. Communication plan\n5. Follow-up tasks',
     true
   )
@@ -147,3 +147,7 @@ ON CONFLICT DO NOTHING;
 
 CREATE INDEX IF NOT EXISTS idx_meeting_attachments_meeting_id ON meeting_attachments(meeting_id);
 CREATE INDEX IF NOT EXISTS idx_meeting_records_template_id ON meeting_records(template_id);
+
+
+
+

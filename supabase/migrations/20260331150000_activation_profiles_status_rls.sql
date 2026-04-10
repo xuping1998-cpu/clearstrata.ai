@@ -60,3 +60,7 @@ CREATE POLICY "Owners can update own resident record"
       AND profiles.role IN ('council', 'admin')
     )
   );
+
+
+
+

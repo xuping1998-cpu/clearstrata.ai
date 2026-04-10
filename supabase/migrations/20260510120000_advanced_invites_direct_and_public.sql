@@ -1,5 +1,5 @@
 -- Advanced commercial invites:
--- * property_direct_invites: directed links /join?invite=TOKEN (legacy table name "property_invites" already taken)
+-- property_direct_invites: directed links /join?invite=TOKEN (legacy table name "property_invites" already taken)
 -- * resolve_* RPCs for anon join landing
 -- * submit_join_request: direct invite + public property_invite_codes + legacy property_invites
 
@@ -44,7 +44,7 @@ CREATE POLICY "pdi_select_staff"
       SELECT 1 FROM public.property_members pm
       WHERE pm.user_id = (SELECT auth.uid())
         AND pm.property_id = property_direct_invites.property_id
-        AND pm.status = 'active'::member_status
+        AND pm.status = 'active'
         AND pm.role IN ('property_admin', 'admin', 'council', 'manager')
     )
   );
@@ -57,7 +57,7 @@ CREATE POLICY "pdi_insert_staff"
       SELECT 1 FROM public.property_members pm
       WHERE pm.user_id = (SELECT auth.uid())
         AND pm.property_id = property_direct_invites.property_id
-        AND pm.status = 'active'::member_status
+        AND pm.status = 'active'
         AND pm.role IN ('property_admin', 'admin', 'council', 'manager')
     )
   );
@@ -70,7 +70,7 @@ CREATE POLICY "pdi_update_staff"
       SELECT 1 FROM public.property_members pm
       WHERE pm.user_id = (SELECT auth.uid())
         AND pm.property_id = property_direct_invites.property_id
-        AND pm.status = 'active'::member_status
+        AND pm.status = 'active'
         AND pm.role IN ('property_admin', 'admin', 'council', 'manager')
     )
   )
@@ -80,7 +80,7 @@ CREATE POLICY "pdi_update_staff"
       SELECT 1 FROM public.property_members pm
       WHERE pm.user_id = (SELECT auth.uid())
         AND pm.property_id = property_direct_invites.property_id
-        AND pm.status = 'active'::member_status
+        AND pm.status = 'active'
         AND pm.role IN ('property_admin', 'admin', 'council', 'manager')
     )
   );
@@ -100,7 +100,7 @@ CREATE INDEX IF NOT EXISTS idx_join_requests_direct_invite_id
   ON public.join_requests(direct_invite_id);
 
 -- ---------------------------------------------------------------------------
--- 3) Resolve public invite code (property_invite_codes) — anon OK
+-- 3) Resolve public invite code (property_invite_codes) anon OK
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.resolve_public_invite_code(p_code text)
 RETURNS jsonb
@@ -154,7 +154,7 @@ REVOKE ALL ON FUNCTION public.resolve_public_invite_code(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.resolve_public_invite_code(text) TO anon, authenticated;
 
 -- ---------------------------------------------------------------------------
--- 4) Resolve directed invite token — anon OK
+-- 4) Resolve directed invite token anon OK
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.resolve_direct_invite_for_join(p_token text)
 RETURNS jsonb
@@ -211,7 +211,7 @@ REVOKE ALL ON FUNCTION public.resolve_direct_invite_for_join(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.resolve_direct_invite_for_join(text) TO anon, authenticated;
 
 -- ---------------------------------------------------------------------------
--- 5) Map intended_role text → user_role (resident → owner)
+-- 5) Map intended_role text user_role (resident owner)
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.map_intended_role_to_user_role(p text)
 RETURNS public.user_role
@@ -220,15 +220,15 @@ IMMUTABLE
 SET search_path = public
 AS $m$
   SELECT CASE lower(trim(coalesce(p, '')))
-    WHEN 'tenant' THEN 'tenant'::public.user_role
-    WHEN 'viewer' THEN 'viewer'::public.user_role
+    WHEN 'tenant' THEN 'owner'::public.user_role
+    WHEN 'viewer' THEN 'owner'::public.user_role
     WHEN 'council' THEN 'council'::public.user_role
     WHEN 'manager' THEN 'manager'::public.user_role
-    WHEN 'property_admin' THEN 'property_admin'::public.user_role
+    WHEN 'property_admin' THEN 'owner'::public.user_role
     WHEN 'owner' THEN 'owner'::public.user_role
     WHEN 'resident' THEN 'owner'::public.user_role
     ELSE 'owner'::public.user_role
-  END;
+  END
 $m$;
 
 REVOKE ALL ON FUNCTION public.map_intended_role_to_user_role(text) FROM PUBLIC;
@@ -237,11 +237,9 @@ GRANT EXECUTE ON FUNCTION public.map_intended_role_to_user_role(text) TO authent
 -- ---------------------------------------------------------------------------
 -- 6) submit_join_request (replace): direct_id + inferred + public pic + legacy invite
 -- ---------------------------------------------------------------------------
-DROP FUNCTION IF EXISTS public.submit_join_request(uuid, public.user_role, text, text, text, text, text, text);
-
 CREATE OR REPLACE FUNCTION public.submit_join_request(
   p_property_id uuid DEFAULT NULL,
-  p_requested_role public.user_role DEFAULT 'owner',
+  p_requested_role public.user_role DEFAULT 'owner'::public.user_role,
   p_unit_number text DEFAULT NULL,
   p_note text DEFAULT NULL,
   p_full_name text DEFAULT NULL,
@@ -259,17 +257,23 @@ SET search_path = public
 AS $fn$
 DECLARE
   v_uid uuid := auth.uid();
+
   vprof public.profiles%ROWTYPE;
+
   v_name text;
   v_email text;
   v_phone text;
   v_email_norm text;
+
   inv public.property_invites%ROWTYPE;
   c text := NULLIF(trim(p_invite_code), '');
+
   dir public.property_direct_invites%ROWTYPE;
   pic public.property_invite_codes%ROWTYPE;
+
   v_role public.user_role;
   v_unit text;
+
   v_inf_role text;
   v_inf_unit text;
 BEGIN
@@ -279,28 +283,51 @@ BEGIN
       'success', false,
       'error', 'not_authenticated',
       'message', 'NOT_AUTHENTICATED',
-      'message_zh', '请先登录后再提交。'
+      'message_zh', '请先登录后再提交'
     );
   END IF;
 
-  -- ========== A) Directed invite (property_direct_invites) ==========
+  -- ========= A) Directed invite (property_direct_invites) =========
   IF p_direct_invite_id IS NOT NULL THEN
-    SELECT * INTO dir FROM public.property_direct_invites WHERE id = p_direct_invite_id FOR UPDATE;
+    SELECT * INTO dir
+    FROM public.property_direct_invites
+    WHERE id = p_direct_invite_id
+    FOR UPDATE;
 
     IF NOT FOUND THEN
-      RETURN jsonb_build_object('ok', false, 'success', false, 'message', 'INVALID_INVITE', 'message_zh', '邀请无效。');
+      RETURN jsonb_build_object(
+        'ok', false,
+        'success', false,
+        'message', 'INVALID_INVITE',
+        'message_zh', '邀请无效'
+      );
     END IF;
 
     IF dir.property_id IS DISTINCT FROM p_property_id THEN
-      RETURN jsonb_build_object('ok', false, 'success', false, 'message', 'INVALID_INVITE', 'message_zh', '物业与邀请不匹配。');
+      RETURN jsonb_build_object(
+        'ok', false,
+        'success', false,
+        'message', 'INVALID_INVITE',
+        'message_zh', '物业与邀请不匹配'
+      );
     END IF;
 
     IF NOT dir.is_active THEN
-      RETURN jsonb_build_object('ok', false, 'success', false, 'message', 'INVALID_INVITE', 'message_zh', '邀请已停用。');
+      RETURN jsonb_build_object(
+        'ok', false,
+        'success', false,
+        'message', 'INVALID_INVITE',
+        'message_zh', '邀请无效'
+      );
     END IF;
 
     IF dir.expires_at IS NOT NULL AND dir.expires_at < now() THEN
-      RETURN jsonb_build_object('ok', false, 'success', false, 'message', 'INVITE_EXPIRED', 'message_zh', '邀请已过期。');
+      RETURN jsonb_build_object(
+        'ok', false,
+        'success', false,
+        'message', 'INVITE_EXPIRED',
+        'message_zh', '邀请码已过期'
+      );
     END IF;
 
     IF dir.max_uses > 0 AND dir.used_count >= dir.max_uses THEN
@@ -308,22 +335,25 @@ BEGIN
         'ok', false,
         'success', false,
         'message', 'INVITE_LIMIT_REACHED',
-        'message_zh', '该邀请已达到使用上限。'
+        'message_zh', '该邀请码已达到使用上限'
       );
     END IF;
 
     SELECT * INTO vprof FROM public.profiles WHERE id = v_uid;
 
     IF EXISTS (
-      SELECT 1 FROM public.property_members pm
-      WHERE pm.property_id = dir.property_id AND pm.user_id = v_uid AND pm.status = 'active'::member_status
+      SELECT 1
+      FROM public.property_members pm
+      WHERE pm.property_id = dir.property_id
+        AND pm.user_id = v_uid
+        AND pm.status = 'active'
     ) THEN
       RETURN jsonb_build_object(
         'ok', false,
         'success', false,
         'error', 'already_member',
         'message', 'ALREADY_MEMBER',
-        'message_zh', '你已经是该物业成员，无需重复申请。'
+        'message_zh', '你已经是该物业成员，无需重复申请'
       );
     END IF;
 
@@ -335,7 +365,8 @@ BEGIN
     v_email_norm := lower(trim(coalesce(v_email, '')));
 
     IF v_email_norm <> '' AND EXISTS (
-      SELECT 1 FROM public.join_requests jr
+      SELECT 1
+      FROM public.join_requests jr
       WHERE jr.property_id = dir.property_id
         AND jr.status = 'pending'::join_request_status
         AND lower(trim(coalesce(jr.email, ''))) = v_email_norm
@@ -345,20 +376,23 @@ BEGIN
         'success', false,
         'error', 'already_pending',
         'message', 'You already have a pending request for this property.',
-        'message_zh', '你已提交过该物业的申请，请等待审核。'
+        'message_zh', '你已提交过该物业的申请，请等待审核'
       );
     END IF;
 
     IF EXISTS (
-      SELECT 1 FROM public.join_requests jr
-      WHERE jr.property_id = dir.property_id AND jr.user_id = v_uid AND jr.status = 'pending'::join_request_status
+      SELECT 1
+      FROM public.join_requests jr
+      WHERE jr.property_id = dir.property_id
+        AND jr.user_id = v_uid
+        AND jr.status = 'pending'::join_request_status
     ) THEN
       RETURN jsonb_build_object(
         'ok', false,
         'success', false,
         'error', 'already_pending',
         'message', 'You already have a pending request for this property.',
-        'message_zh', '你已提交过该物业的申请，请等待审核。'
+        'message_zh', '你已提交过该物业的申请，请等待审核'
       );
     END IF;
 
@@ -391,7 +425,9 @@ BEGIN
     WHERE id = dir.id;
 
     IF dir.max_uses > 0 AND dir.used_count + 1 >= dir.max_uses THEN
-      UPDATE public.property_direct_invites SET is_active = false WHERE id = dir.id;
+      UPDATE public.property_direct_invites
+      SET is_active = false
+      WHERE id = dir.id;
     END IF;
 
     RETURN jsonb_build_object(
@@ -403,45 +439,67 @@ BEGIN
     );
   END IF;
 
-  -- ========== B) Legacy property_invites (upper code) ==========
+  -- ========= B) Legacy property_invites (upper code) =========
   IF c IS NOT NULL THEN
     c := upper(c);
 
-    SELECT * INTO inv FROM public.property_invites WHERE code = c FOR UPDATE;
+    SELECT * INTO inv
+    FROM public.property_invites
+    WHERE code = c
+    FOR UPDATE;
 
     IF FOUND THEN
       IF inv.expires_at IS NOT NULL AND inv.expires_at < now() THEN
-        UPDATE public.property_invites SET status = 'expired' WHERE id = inv.id;
-        RETURN jsonb_build_object('ok', false, 'success', false, 'message', 'INVALID_INVITE');
+        UPDATE public.property_invites
+        SET status = 'expired'
+        WHERE id = inv.id;
+
+        RETURN jsonb_build_object(
+          'ok', false,
+          'success', false,
+          'message', 'INVALID_INVITE'
+        );
       END IF;
 
       IF inv.status <> 'active' THEN
-        RETURN jsonb_build_object('ok', false, 'success', false, 'message', 'INVALID_INVITE');
+        RETURN jsonb_build_object(
+          'ok', false,
+          'success', false,
+          'message', 'INVALID_INVITE'
+        );
       END IF;
 
       IF inv.max_uses > 0 AND inv.used_count >= inv.max_uses THEN
-        RETURN jsonb_build_object('ok', false, 'success', false, 'message', 'INVALID_INVITE');
+        RETURN jsonb_build_object(
+          'ok', false,
+          'success', false,
+          'message', 'INVALID_INVITE'
+        );
       END IF;
 
       SELECT * INTO vprof FROM public.profiles WHERE id = v_uid;
 
       IF EXISTS (
-        SELECT 1 FROM public.property_members pm
-        WHERE pm.property_id = inv.property_id AND pm.user_id = v_uid AND pm.status = 'active'::member_status
+        SELECT 1
+        FROM public.property_members pm
+        WHERE pm.property_id = inv.property_id
+          AND pm.user_id = v_uid
+          AND pm.status = 'active'
       ) THEN
         RETURN jsonb_build_object(
           'ok', false,
           'success', false,
           'error', 'already_member',
           'message', 'ALREADY_MEMBER',
-          'message_zh', '你已经是该物业成员，无需重复申请。'
+          'message_zh', '你已经是该物业成员，无需重复申请'
         );
       END IF;
 
       v_email_norm := lower(trim(coalesce(vprof.email, '')));
 
       IF v_email_norm <> '' AND EXISTS (
-        SELECT 1 FROM public.join_requests jr
+        SELECT 1
+        FROM public.join_requests jr
         WHERE jr.property_id = inv.property_id
           AND jr.status = 'pending'::join_request_status
           AND lower(trim(coalesce(jr.email, ''))) = v_email_norm
@@ -451,20 +509,23 @@ BEGIN
           'success', false,
           'error', 'already_pending',
           'message', 'You already have a pending request for this property.',
-          'message_zh', '你已提交过该物业的申请，请等待审核。'
+          'message_zh', '你已提交过该物业的申请，请等待审核'
         );
       END IF;
 
       IF EXISTS (
-        SELECT 1 FROM public.join_requests jr
-        WHERE jr.property_id = inv.property_id AND jr.user_id = v_uid AND jr.status = 'pending'::join_request_status
+        SELECT 1
+        FROM public.join_requests jr
+        WHERE jr.property_id = inv.property_id
+          AND jr.user_id = v_uid
+          AND jr.status = 'pending'::join_request_status
       ) THEN
         RETURN jsonb_build_object(
           'ok', false,
           'success', false,
           'error', 'already_pending',
           'message', 'You already have a pending request for this property.',
-          'message_zh', '你已提交过该物业的申请，请等待审核。'
+          'message_zh', '你已提交过该物业的申请，请等待审核'
         );
       END IF;
 
@@ -500,21 +561,33 @@ BEGIN
         'message', 'PENDING_APPROVAL'
       );
     END IF;
+  END IF;
 
-    -- ========== C) Public property_invite_codes ==========
-    c := NULLIF(trim(p_invite_code), '');
+    -- ========= C) Public property_invite_codes =========
+  c := NULLIF(trim(p_invite_code), '');
+
+  IF c IS NOT NULL THEN
     SELECT * INTO pic
     FROM public.property_invite_codes
-    WHERE code = c OR lower(code) = lower(trim(c))
+    WHERE code = c OR lower(code) = lower(c)
     FOR UPDATE;
 
     IF FOUND THEN
       IF NOT pic.is_active THEN
-        RETURN jsonb_build_object('ok', false, 'success', false, 'message', 'INVALID_INVITE');
+        RETURN jsonb_build_object(
+          'ok', false,
+          'success', false,
+          'message', 'INVALID_INVITE'
+        );
       END IF;
 
       IF pic.expires_at IS NOT NULL AND pic.expires_at < now() THEN
-        RETURN jsonb_build_object('ok', false, 'success', false, 'message', 'INVALID_INVITE', 'message_zh', '邀请码已过期。');
+        RETURN jsonb_build_object(
+          'ok', false,
+          'success', false,
+          'message', 'INVALID_INVITE',
+          'message_zh', '邀请码已过期'
+        );
       END IF;
 
       IF pic.max_uses > 0 AND pic.used_count >= pic.max_uses THEN
@@ -522,15 +595,22 @@ BEGIN
           'ok', false,
           'success', false,
           'message', 'INVITE_LIMIT_REACHED',
-          'message_zh', '该邀请码已达到使用上限。'
+          'message_zh', '该邀请码已达到使用上限'
         );
       END IF;
 
       IF pic.property_id IS DISTINCT FROM p_property_id THEN
-        RETURN jsonb_build_object('ok', false, 'success', false, 'message', 'INVALID_INVITE', 'message_zh', '物业与邀请码不匹配。');
+        RETURN jsonb_build_object(
+          'ok', false,
+          'success', false,
+          'message', 'INVALID_INVITE',
+          'message_zh', '物业与邀请码不匹配'
+        );
       END IF;
 
-      SELECT * INTO vprof FROM public.profiles WHERE id = v_uid;
+      SELECT * INTO vprof
+      FROM public.profiles
+      WHERE id = v_uid;
 
       v_name := COALESCE(NULLIF(trim(p_full_name), ''), vprof.full_name_en, vprof.email);
       v_email := COALESCE(NULLIF(trim(p_email), ''), vprof.email);
@@ -538,20 +618,24 @@ BEGIN
       v_email_norm := lower(trim(coalesce(v_email, '')));
 
       IF EXISTS (
-        SELECT 1 FROM public.property_members pm
-        WHERE pm.property_id = pic.property_id AND pm.user_id = v_uid AND pm.status = 'active'::member_status
+        SELECT 1
+        FROM public.property_members pm
+        WHERE pm.property_id = pic.property_id
+          AND pm.user_id = v_uid
+          AND pm.status = 'active'
       ) THEN
         RETURN jsonb_build_object(
           'ok', false,
           'success', false,
           'error', 'already_member',
           'message', 'ALREADY_MEMBER',
-          'message_zh', '你已经是该物业成员，无需重复申请。'
+          'message_zh', '你已经是该物业成员，无需重复申请'
         );
       END IF;
 
       IF v_email_norm <> '' AND EXISTS (
-        SELECT 1 FROM public.join_requests jr
+        SELECT 1
+        FROM public.join_requests jr
         WHERE jr.property_id = pic.property_id
           AND jr.status = 'pending'::join_request_status
           AND lower(trim(coalesce(jr.email, ''))) = v_email_norm
@@ -561,20 +645,23 @@ BEGIN
           'success', false,
           'error', 'already_pending',
           'message', 'You already have a pending request for this property.',
-          'message_zh', '你已提交过该物业的申请，请等待审核。'
+          'message_zh', '你已提交过该物业的申请，请等待审核'
         );
       END IF;
 
       IF EXISTS (
-        SELECT 1 FROM public.join_requests jr
-        WHERE jr.property_id = pic.property_id AND jr.user_id = v_uid AND jr.status = 'pending'::join_request_status
+        SELECT 1
+        FROM public.join_requests jr
+        WHERE jr.property_id = pic.property_id
+          AND jr.user_id = v_uid
+          AND jr.status = 'pending'::join_request_status
       ) THEN
         RETURN jsonb_build_object(
           'ok', false,
           'success', false,
           'error', 'already_pending',
           'message', 'You already have a pending request for this property.',
-          'message_zh', '你已提交过该物业的申请，请等待审核。'
+          'message_zh', '你已提交过该物业的申请，请等待审核'
         );
       END IF;
 
@@ -582,8 +669,20 @@ BEGIN
       v_inf_unit := NULLIF(trim(p_inferred_unit_number), '');
 
       INSERT INTO public.join_requests (
-        property_id, user_id, requested_role, full_name, email, phone, unit_number, note, status,
-        invite_id, invite_code, direct_invite_id, inferred_role, inferred_unit_number
+        property_id,
+        user_id,
+        requested_role,
+        full_name,
+        email,
+        phone,
+        unit_number,
+        note,
+        status,
+        invite_id,
+        invite_code,
+        direct_invite_id,
+        inferred_role,
+        inferred_unit_number
       ) VALUES (
         pic.property_id,
         v_uid,
@@ -606,40 +705,57 @@ BEGIN
       WHERE id = pic.id;
 
       IF pic.max_uses > 0 AND pic.used_count + 1 >= pic.max_uses THEN
-        UPDATE public.property_invite_codes SET is_active = false WHERE id = pic.id;
+        UPDATE public.property_invite_codes
+        SET is_active = false
+        WHERE id = pic.id;
       END IF;
 
-      RETURN jsonb_build_object('ok', true, 'success', true);
+      RETURN jsonb_build_object(
+        'ok', true,
+        'success', true
+      );
     END IF;
 
-    RETURN jsonb_build_object('ok', false, 'success', false, 'message', 'INVALID_INVITE');
+    RETURN jsonb_build_object(
+      'ok', false,
+      'success', false,
+      'message', 'INVALID_INVITE'
+    );
   END IF;
 
-  -- ========== D) Public open join by property ==========
-  IF p_property_id IS NULL OR NOT EXISTS (SELECT 1 FROM public.properties WHERE id = p_property_id) THEN
+  -- ========= D) Public open join by property =========
+  IF p_property_id IS NULL OR NOT EXISTS (
+    SELECT 1
+    FROM public.properties
+    WHERE id = p_property_id
+  ) THEN
     RETURN jsonb_build_object(
       'ok', false,
       'success', false,
       'error', 'bad_property',
       'message', 'Invalid or missing property.',
-      'message_zh', '物业不存在或无效。'
+      'message_zh', '物业不存在或无效'
     );
   END IF;
 
   IF NOT EXISTS (
-    SELECT 1 FROM public.properties p
-    WHERE p.id = p_property_id AND p.allow_public_join_requests = true
+    SELECT 1
+    FROM public.properties p
+    WHERE p.id = p_property_id
+      AND p.allow_public_join_requests = true
   ) THEN
     RETURN jsonb_build_object(
       'ok', false,
       'success', false,
       'error', 'property_closed',
       'message', 'This property is not accepting public applications.',
-      'message_zh', '该物业当前不接受公开申请。'
+      'message_zh', '该物业当前不接受公开申请'
     );
   END IF;
 
-  SELECT * INTO vprof FROM public.profiles WHERE id = v_uid;
+  SELECT * INTO vprof
+  FROM public.profiles
+  WHERE id = v_uid;
 
   v_name := COALESCE(NULLIF(trim(p_full_name), ''), vprof.full_name_en, vprof.email);
   v_email := COALESCE(NULLIF(trim(p_email), ''), vprof.email);
@@ -647,20 +763,24 @@ BEGIN
   v_email_norm := lower(trim(coalesce(v_email, '')));
 
   IF EXISTS (
-    SELECT 1 FROM public.property_members pm
-    WHERE pm.property_id = p_property_id AND pm.user_id = v_uid AND pm.status = 'active'::member_status
+    SELECT 1
+    FROM public.property_members pm
+    WHERE pm.property_id = p_property_id
+      AND pm.user_id = v_uid
+      AND pm.status = 'active'
   ) THEN
     RETURN jsonb_build_object(
       'ok', false,
       'success', false,
       'error', 'already_member',
       'message', 'You are already a member of this property.',
-      'message_zh', '你已经是该物业成员，无需重复申请。'
+      'message_zh', '你已经是该物业成员，无需重复申请'
     );
   END IF;
 
   IF v_email_norm <> '' AND EXISTS (
-    SELECT 1 FROM public.join_requests jr
+    SELECT 1
+    FROM public.join_requests jr
     WHERE jr.property_id = p_property_id
       AND jr.status = 'pending'::join_request_status
       AND lower(trim(coalesce(jr.email, ''))) = v_email_norm
@@ -670,20 +790,23 @@ BEGIN
       'success', false,
       'error', 'already_pending',
       'message', 'You already have a pending request for this property.',
-      'message_zh', '你已提交过该物业的申请，请等待审核。'
+      'message_zh', '你已提交过该物业的申请，请等待审核'
     );
   END IF;
 
   IF EXISTS (
-    SELECT 1 FROM public.join_requests jr
-    WHERE jr.property_id = p_property_id AND jr.user_id = v_uid AND jr.status = 'pending'::join_request_status
+    SELECT 1
+    FROM public.join_requests jr
+    WHERE jr.property_id = p_property_id
+      AND jr.user_id = v_uid
+      AND jr.status = 'pending'::join_request_status
   ) THEN
     RETURN jsonb_build_object(
       'ok', false,
       'success', false,
       'error', 'already_pending',
       'message', 'You already have a pending request for this property.',
-      'message_zh', '你已提交过该物业的申请，请等待审核。'
+      'message_zh', '你已提交过该物业的申请，请等待审核'
     );
   END IF;
 
@@ -691,8 +814,20 @@ BEGIN
   v_inf_unit := NULLIF(trim(p_inferred_unit_number), '');
 
   INSERT INTO public.join_requests (
-    property_id, user_id, requested_role, full_name, email, phone, unit_number, note, status,
-    invite_id, invite_code, direct_invite_id, inferred_role, inferred_unit_number
+    property_id,
+    user_id,
+    requested_role,
+    full_name,
+    email,
+    phone,
+    unit_number,
+    note,
+    status,
+    invite_id,
+    invite_code,
+    direct_invite_id,
+    inferred_role,
+    inferred_unit_number
   ) VALUES (
     p_property_id,
     v_uid,
@@ -700,7 +835,7 @@ BEGIN
     v_name,
     v_email,
     v_phone,
-    p_unit_number,
+    NULLIF(trim(p_unit_number), ''),
     p_note,
     'pending'::join_request_status,
     NULL,
@@ -710,7 +845,10 @@ BEGIN
     v_inf_unit
   );
 
-  RETURN jsonb_build_object('ok', true, 'success', true);
+  RETURN jsonb_build_object(
+    'ok', true,
+    'success', true
+  );
 END;
 $fn$;
 

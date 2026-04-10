@@ -38,3 +38,7 @@ CREATE POLICY "Users can delete their own documents"
   FOR DELETE
   TO authenticated
   USING (bucket_id = 'documents' AND owner = auth.uid());
+
+
+
+

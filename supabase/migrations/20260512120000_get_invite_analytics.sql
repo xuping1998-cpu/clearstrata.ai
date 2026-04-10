@@ -1,4 +1,10 @@
--- Invite source analytics for property staff (public codes, property_direct_invites, legacy property_invites).
+-- ---------------------------------------------------------------------------
+-- Invite source analytics for property staff
+-- Covers:
+--   1) public property_invite_codes
+--   2) property_direct_invites
+--   3) legacy property_invites
+-- ---------------------------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION public.get_invite_analytics(
   p_property_id uuid,
@@ -20,17 +26,24 @@ DECLARE
   v_avg numeric;
 BEGIN
   IF v_uid IS NULL THEN
-    RETURN jsonb_build_object('ok', false, 'error', 'not_authenticated');
+    RETURN jsonb_build_object(
+      'ok', false,
+      'error', 'not_authenticated'
+    );
   END IF;
 
   IF NOT EXISTS (
-    SELECT 1 FROM public.property_members pm
+    SELECT 1
+    FROM public.property_members pm
     WHERE pm.user_id = v_uid
       AND pm.property_id = p_property_id
-      AND pm.status = 'active'::member_status
-      AND pm.role IN ('property_admin', 'admin', 'council', 'manager')
+      AND pm.status = 'active'
+      AND pm.role::text IN ('property_admin', 'admin', 'council', 'manager')
   ) THEN
-    RETURN jsonb_build_object('ok', false, 'error', 'forbidden');
+    RETURN jsonb_build_object(
+      'ok', false,
+      'error', 'forbidden'
+    );
   END IF;
 
   WITH
@@ -48,11 +61,11 @@ BEGIN
       )::bigint AS request_count,
       COUNT(jr.id) FILTER (
         WHERE (p_since IS NULL OR jr.created_at >= p_since)
-          AND jr.status = 'approved'::join_request_status
+          AND jr.status = 'approved'::public.join_request_status
       )::bigint AS approved_count,
       COUNT(jr.id) FILTER (
         WHERE (p_since IS NULL OR jr.created_at >= p_since)
-          AND jr.status = 'rejected'::join_request_status
+          AND jr.status = 'rejected'::public.join_request_status
       )::bigint AS rejected_count,
       MAX(jr.created_at) FILTER (
         WHERE p_since IS NULL OR jr.created_at >= p_since
@@ -70,7 +83,7 @@ BEGIN
     SELECT
       pdi.id AS source_id,
       'direct'::text AS kind,
-      COALESCE(NULLIF(trim(pdi.label), ''), left(pdi.invite_token, 12) || '…') AS label,
+      COALESCE(NULLIF(trim(pdi.label), ''), left(pdi.invite_token, 12) || '...') AS label,
       pdi.invite_token AS identifier,
       pdi.is_active,
       pdi.expires_at,
@@ -80,11 +93,11 @@ BEGIN
       )::bigint AS request_count,
       COUNT(jr.id) FILTER (
         WHERE (p_since IS NULL OR jr.created_at >= p_since)
-          AND jr.status = 'approved'::join_request_status
+          AND jr.status = 'approved'::public.join_request_status
       )::bigint AS approved_count,
       COUNT(jr.id) FILTER (
         WHERE (p_since IS NULL OR jr.created_at >= p_since)
-          AND jr.status = 'rejected'::join_request_status
+          AND jr.status = 'rejected'::public.join_request_status
       )::bigint AS rejected_count,
       MAX(jr.created_at) FILTER (
         WHERE p_since IS NULL OR jr.created_at >= p_since
@@ -110,11 +123,11 @@ BEGIN
       )::bigint AS request_count,
       COUNT(jr.id) FILTER (
         WHERE (p_since IS NULL OR jr.created_at >= p_since)
-          AND jr.status = 'approved'::join_request_status
+          AND jr.status = 'approved'::public.join_request_status
       )::bigint AS approved_count,
       COUNT(jr.id) FILTER (
         WHERE (p_since IS NULL OR jr.created_at >= p_since)
-          AND jr.status = 'rejected'::join_request_status
+          AND jr.status = 'rejected'::public.join_request_status
       )::bigint AS rejected_count,
       MAX(jr.created_at) FILTER (
         WHERE p_since IS NULL OR jr.created_at >= p_since
@@ -137,7 +150,8 @@ BEGIN
     SELECT
       u.*,
       CASE
-        WHEN u.request_count > 0 THEN round(u.approved_count::numeric / u.request_count::numeric, 4)
+        WHEN u.request_count > 0
+          THEN round(u.approved_count::numeric / u.request_count::numeric, 4)
         ELSE 0::numeric
       END AS conversion_rate
     FROM unioned u
@@ -195,3 +209,6 @@ REVOKE ALL ON FUNCTION public.get_invite_analytics(uuid, timestamptz) FROM PUBLI
 GRANT EXECUTE ON FUNCTION public.get_invite_analytics(uuid, timestamptz) TO authenticated;
 
 NOTIFY pgrst, 'reload schema';
+
+
+

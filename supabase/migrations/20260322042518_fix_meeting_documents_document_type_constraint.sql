@@ -18,3 +18,7 @@ ALTER TABLE meeting_documents
 ALTER TABLE meeting_documents
   ADD CONSTRAINT meeting_documents_document_type_check
   CHECK (document_type IN ('agenda', 'background', 'minutes', 'report', 'other'));
+
+
+
+

@@ -88,3 +88,7 @@ CREATE POLICY "Council members can delete vendors"
 
 CREATE INDEX IF NOT EXISTS idx_vendor_registry_categories ON vendor_registry USING GIN (service_categories);
 CREATE INDEX IF NOT EXISTS idx_vendor_registry_status ON vendor_registry (status);
+
+
+
+

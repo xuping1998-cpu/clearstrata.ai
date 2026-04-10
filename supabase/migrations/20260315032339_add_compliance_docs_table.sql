@@ -97,3 +97,7 @@ CREATE INDEX IF NOT EXISTS idx_compliance_docs_category ON compliance_docs(categ
 CREATE INDEX IF NOT EXISTS idx_compliance_docs_expiry_date ON compliance_docs(expiry_date);
 CREATE INDEX IF NOT EXISTS idx_compliance_docs_uploaded_by ON compliance_docs(uploaded_by);
 CREATE INDEX IF NOT EXISTS idx_compliance_docs_status ON compliance_docs(status);
+
+
+
+

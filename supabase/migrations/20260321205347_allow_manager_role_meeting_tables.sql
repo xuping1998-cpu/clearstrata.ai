@@ -72,3 +72,7 @@ CREATE POLICY "Council or manager can upload documents"
       AND profiles.role IN ('council', 'manager')
     )
   );
+
+
+
+

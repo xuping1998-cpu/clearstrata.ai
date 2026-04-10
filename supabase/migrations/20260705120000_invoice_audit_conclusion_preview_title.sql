@@ -1,6 +1,7 @@
 /*
-  审计结论文本、前 3 条异常预览 JSON、正式会议标题 report_title
-  部署在 041 之后；若 041 已用旧 DELETE 策略，本迁移仍安全追加列并同步邮件日志版本
+  invoice_audit_reports:
+  - audit_conclusion_text, preview_anomalies_json, report_title (meeting / PDF)
+  Deploy after 20260704120000; safe if 041 used DELETE policies (additive columns + sync)
 */
 
 ALTER TABLE public.invoice_audit_reports
@@ -12,11 +13,14 @@ ALTER TABLE public.invoice_audit_reports
 ALTER TABLE public.invoice_audit_reports
   ADD COLUMN IF NOT EXISTS report_title text;
 
-COMMENT ON COLUMN public.invoice_audit_reports.audit_conclusion_text IS '生成时快照：审计结论文案（会议可读）';
-COMMENT ON COLUMN public.invoice_audit_reports.preview_anomalies_json IS '生成时快照：至多 3 条异常规则摘要（JSON 数组）';
-COMMENT ON COLUMN public.invoice_audit_reports.report_title IS '正式会议材料标题；PDF 封面主标题优先使用';
+COMMENT ON COLUMN public.invoice_audit_reports.audit_conclusion_text IS
+  'Snapshot at generation: human-readable audit conclusion for meetings.';
+COMMENT ON COLUMN public.invoice_audit_reports.preview_anomalies_json IS
+  'Snapshot at generation: up to 3 anomaly rule summaries (JSON array).';
+COMMENT ON COLUMN public.invoice_audit_reports.report_title IS
+  'Formal meeting document title; used as PDF cover main title when set.';
 
--- 与主表 report_version 再次对齐（041 重排后若新增行可再跑）
+-- Re-align email log rows with parent report_version after 041 renumbering (idempotent)
 UPDATE public.invoice_audit_report_email_logs l
 SET report_version = r.report_version
 FROM public.invoice_audit_reports r

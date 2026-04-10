@@ -1,9 +1,10 @@
 /*
-  归档摘要字段、会议备注、唯一约束、content_hash 索引
-  email_logs.report_version 冗余字段
+  ?????????????????content_hash ??
+  email_logs.report_version ????
+  ??????
 */
 
--- 摘要（生成时快照）
+-- ?????????
 ALTER TABLE public.invoice_audit_reports
   ADD COLUMN IF NOT EXISTS summary_invoice_count int;
 
@@ -16,14 +17,18 @@ ALTER TABLE public.invoice_audit_reports
 ALTER TABLE public.invoice_audit_reports
   ADD COLUMN IF NOT EXISTS meeting_notes text;
 
-COMMENT ON COLUMN public.invoice_audit_reports.summary_invoice_count IS '生成时快照：异常发票笔数';
-COMMENT ON COLUMN public.invoice_audit_reports.summary_total_amount IS '生成时快照：异常发票金额合计';
-COMMENT ON COLUMN public.invoice_audit_reports.summary_high_risk_count IS '生成时快照：高危规则命中条数（anomalies.severity=high）';
-COMMENT ON COLUMN public.invoice_audit_reports.meeting_notes IS '会议/呈报附说明，生成时写入，可出现在 PDF 与详情';
+COMMENT ON COLUMN public.invoice_audit_reports.summary_invoice_count IS
+  'Snapshot at generation: number of abnormal invoices in the report.';
+COMMENT ON COLUMN public.invoice_audit_reports.summary_total_amount IS
+  'Snapshot at generation: sum of abnormal invoice amounts.';
+COMMENT ON COLUMN public.invoice_audit_reports.summary_high_risk_count IS
+  'Snapshot at generation: count of high-severity rule hits (e.g. anomalies.severity = high).';
+COMMENT ON COLUMN public.invoice_audit_reports.meeting_notes IS
+  'Meeting or board-pack notes captured at generation; may appear on PDF and in detail UI.';
 
 UPDATE public.invoice_audit_reports SET report_version = 1 WHERE report_version IS NULL;
 
--- 保留全部历史行：按 (property_id, fiscal_year, month) 重排 report_version 为 1..n（按创建时间），再建唯一索引
+-- Keep all historical rows: renumber report_version to 1..n per (property_id, fiscal_year, month) by created_at, then unique index
 DROP INDEX IF EXISTS public.invoice_audit_reports_prop_fy_month_ver_uniq;
 
 UPDATE public.invoice_audit_reports t
@@ -45,11 +50,12 @@ CREATE INDEX IF NOT EXISTS idx_invoice_audit_reports_content_hash
   ON public.invoice_audit_reports (content_hash)
   WHERE content_hash IS NOT NULL;
 
--- 邮件日志冗余 report 版本
+-- Email log: redundant report version for filtering and display
 ALTER TABLE public.invoice_audit_report_email_logs
   ADD COLUMN IF NOT EXISTS report_version int;
 
-COMMENT ON COLUMN public.invoice_audit_report_email_logs.report_version IS '冗余 invoice_audit_reports.report_version，便于按版本筛选与展示';
+COMMENT ON COLUMN public.invoice_audit_report_email_logs.report_version IS
+  'Denormalized invoice_audit_reports.report_version for filtering and display.';
 
 UPDATE public.invoice_audit_report_email_logs l
 SET report_version = r.report_version

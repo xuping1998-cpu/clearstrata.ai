@@ -144,3 +144,7 @@ END $$;
 -- Add indexes for new columns
 CREATE INDEX IF NOT EXISTS idx_procurement_jobs_selected_quote ON procurement_jobs(selected_quote_id);
 CREATE INDEX IF NOT EXISTS idx_procurement_jobs_assigned_manager ON procurement_jobs(assigned_manager_id);
+
+
+
+

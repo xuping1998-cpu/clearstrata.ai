@@ -147,3 +147,7 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_maintenance_updates_request_id ON maintenance_updates(request_id);
 CREATE INDEX IF NOT EXISTS idx_maintenance_updates_user_id ON maintenance_updates(user_id);
 CREATE INDEX IF NOT EXISTS idx_maintenance_requests_assigned_council ON maintenance_requests(assigned_council_member_id);
+
+
+
+

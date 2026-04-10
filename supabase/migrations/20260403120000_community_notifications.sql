@@ -1,7 +1,7 @@
 /*
   # Community bulletin board (社区公告)
 
-  Single announcement table for the owner portal — no per-user inbox fan-out.
+  Single announcement table for the owner portal ?no per-user inbox fan-out.
 */
 
 CREATE TABLE IF NOT EXISTS public.community_notifications (
@@ -64,3 +64,7 @@ CREATE POLICY "community_notifications_delete"
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.community_notifications TO authenticated;
 GRANT ALL ON public.community_notifications TO service_role;
+
+
+
+

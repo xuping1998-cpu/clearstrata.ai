@@ -7,6 +7,8 @@ export type DashboardBudgetSummary = {
   fiscal_year: number;
   property_id: string;
   active_package_id: string | null;
+  /** property_year = totals from annual_budgets by property + year (no package row). */
+  budget_scope?: 'property_year' | 'package';
   total_budget: number;
   committed: number;
   actual: number;
@@ -71,10 +73,15 @@ function num(v: unknown): number {
 function parseSummary(raw: unknown): DashboardBudgetSummary | null {
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
+  if (o.ok === false) return null;
+  const scopeRaw = o.budget_scope;
+  const budget_scope =
+    scopeRaw === 'package' ? 'package' : scopeRaw === 'property_year' ? 'property_year' : undefined;
   return {
     fiscal_year: num(o.fiscal_year),
     property_id: String(o.property_id ?? ''),
     active_package_id: o.active_package_id == null ? null : String(o.active_package_id),
+    budget_scope,
     total_budget: num(o.total_budget),
     committed: num(o.committed),
     actual: num(o.actual),
@@ -164,8 +171,17 @@ export async function fetchDashboardBudgetSummary(
     p_property_id: propertyId,
     p_year: fiscalYear,
   });
-  if (error) return { data: null, error: new Error(error.message) };
-  return { data: parseSummary(data), error: null };
+  if (error) {
+    console.error('[dashboard_budget_summary]', error.message);
+    return { data: null, error: new Error(error.message) };
+  }
+  const parsed = parseSummary(data);
+  if (!parsed && data && typeof data === 'object' && (data as Record<string, unknown>).ok === false) {
+    const msg = String((data as Record<string, unknown>).message ?? 'bad_property');
+    console.error('[dashboard_budget_summary] RPC returned ok=false', data);
+    return { data: null, error: new Error(msg) };
+  }
+  return { data: parsed, error: null };
 }
 
 export async function fetchDashboardBudgetCategories(
@@ -176,7 +192,10 @@ export async function fetchDashboardBudgetCategories(
     p_property_id: propertyId,
     p_year: fiscalYear,
   });
-  if (error) return { data: null, error: new Error(error.message) };
+  if (error) {
+    console.error('[dashboard_budget_categories]', error.message);
+    return { data: null, error: new Error(error.message) };
+  }
   return { data: parseCategories(data), error: null };
 }
 
@@ -188,7 +207,10 @@ export async function fetchDashboardBudgetTrend(
     p_property_id: propertyId,
     p_year: fiscalYear,
   });
-  if (error) return { data: null, error: new Error(error.message) };
+  if (error) {
+    console.error('[dashboard_budget_trend]', error.message);
+    return { data: null, error: new Error(error.message) };
+  }
   return { data: parseTrend(data), error: null };
 }
 
@@ -200,7 +222,10 @@ export async function fetchDashboardBudgetAlerts(
     p_property_id: propertyId,
     p_year: fiscalYear,
   });
-  if (error) return { data: null, error: new Error(error.message) };
+  if (error) {
+    console.error('[dashboard_budget_alerts]', error.message);
+    return { data: null, error: new Error(error.message) };
+  }
   return { data: parseAlerts(data), error: null };
 }
 

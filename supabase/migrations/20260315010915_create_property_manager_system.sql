@@ -391,3 +391,7 @@ CREATE INDEX IF NOT EXISTS idx_task_assignments_task_id ON task_assignments(task
 CREATE INDEX IF NOT EXISTS idx_task_assignments_manager_id ON task_assignments(manager_id);
 CREATE INDEX IF NOT EXISTS idx_key_copies_requested_by ON key_copies(requested_by);
 CREATE INDEX IF NOT EXISTS idx_owner_onboarding_user_id ON owner_onboarding(user_id);
+
+
+
+

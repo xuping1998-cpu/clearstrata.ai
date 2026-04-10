@@ -30,3 +30,6 @@ BEGIN
     ALTER TABLE profiles ADD COLUMN unit_number text DEFAULT '' NOT NULL;
   END IF;
 END $$;
+
+
+

@@ -73,7 +73,7 @@ BEGIN
 
     IF EXISTS (
       SELECT 1 FROM public.property_members pm
-      WHERE pm.property_id = inv.property_id AND pm.user_id = v_uid AND pm.status = 'active'::member_status
+      WHERE pm.property_id = inv.property_id AND pm.user_id = v_uid AND pm.status = 'active'
     ) THEN
       RETURN jsonb_build_object('ok', false, 'success', false, 'message', 'ALREADY_MEMBER');
     END IF;
@@ -135,7 +135,7 @@ BEGIN
 
   IF EXISTS (
     SELECT 1 FROM public.property_members pm
-    WHERE pm.property_id = p_property_id AND pm.user_id = v_uid AND pm.status = 'active'::member_status
+    WHERE pm.property_id = p_property_id AND pm.user_id = v_uid AND pm.status = 'active'
   ) THEN
     RETURN jsonb_build_object('ok', false, 'error', 'already_member');
   END IF;
@@ -172,3 +172,7 @@ GRANT EXECUTE ON FUNCTION public.submit_join_request(uuid, public.user_role, tex
 
 -- Hint PostgREST / Supabase API to reload function list (avoids stale "schema cache" after deploy)
 NOTIFY pgrst, 'reload schema';
+
+
+
+

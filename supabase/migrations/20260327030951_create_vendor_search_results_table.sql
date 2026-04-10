@@ -78,3 +78,7 @@ CREATE POLICY "Council members can delete vendor search results"
       AND profiles.role = 'council'
     )
   );
+
+
+
+

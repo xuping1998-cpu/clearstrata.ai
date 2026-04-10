@@ -202,3 +202,7 @@ CREATE TRIGGER update_dereg_updated_at_trigger
   BEFORE UPDATE ON deregistration_requests
   FOR EACH ROW
   EXECUTE FUNCTION update_residents_updated_at();
+
+
+
+

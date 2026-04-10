@@ -129,3 +129,7 @@ CREATE POLICY "Council can delete vendor ratings"
       AND profiles.role = 'council'
     )
   );
+
+
+
+

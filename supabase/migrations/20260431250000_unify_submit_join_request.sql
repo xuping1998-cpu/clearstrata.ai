@@ -69,7 +69,7 @@ BEGIN
 
     IF EXISTS (
       SELECT 1 FROM public.property_members pm
-      WHERE pm.property_id = inv.property_id AND pm.user_id = v_uid AND pm.status = 'active'::member_status
+      WHERE pm.property_id = inv.property_id AND pm.user_id = v_uid AND pm.status = 'active'
     ) THEN
       RETURN jsonb_build_object('ok', false, 'success', false, 'message', 'ALREADY_MEMBER');
     END IF;
@@ -128,7 +128,7 @@ BEGIN
 
   IF EXISTS (
     SELECT 1 FROM public.property_members pm
-    WHERE pm.property_id = p_property_id AND pm.user_id = v_uid AND pm.status = 'active'::member_status
+    WHERE pm.property_id = p_property_id AND pm.user_id = v_uid AND pm.status = 'active'
   ) THEN
     RETURN jsonb_build_object('ok', false, 'error', 'already_member');
   END IF;
@@ -163,7 +163,7 @@ $fn$;
 REVOKE ALL ON FUNCTION public.submit_join_request(uuid, public.user_role, text, text, text, text, text, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.submit_join_request(uuid, public.user_role, text, text, text, text, text, text) TO authenticated;
 
--- accept_property_invite → unified RPC (backward compatible for any old clients)
+-- accept_property_invite ?unified RPC (backward compatible for any old clients)
 CREATE OR REPLACE FUNCTION public.accept_property_invite(invite_code text)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -186,3 +186,7 @@ $fn$;
 
 REVOKE ALL ON FUNCTION public.accept_property_invite(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.accept_property_invite(text) TO authenticated;
+
+
+
+

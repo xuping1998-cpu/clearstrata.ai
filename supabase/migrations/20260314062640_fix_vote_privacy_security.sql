@@ -46,3 +46,7 @@ CREATE POLICY "Users can view own vote responses"
   ON vote_responses FOR SELECT
   TO authenticated
   USING (user_id = auth.uid());
+
+
+
+

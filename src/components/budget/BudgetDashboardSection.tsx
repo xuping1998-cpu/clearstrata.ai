@@ -37,7 +37,7 @@ export function BudgetDashboardSection() {
   const anchorYear = new Date().getFullYear();
   const [fiscalYear, setFiscalYear] = useState(anchorYear);
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [summary, setSummary] = useState<Awaited<ReturnType<typeof fetchDashboardBudgetSummary>>['data']>(null);
   const [categories, setCategories] = useState<DashboardBudgetCategoryRow[]>([]);
   const [alerts, setAlerts] = useState<BudgetAlert[]>([]);
@@ -50,23 +50,29 @@ export function BudgetDashboardSection() {
       setSummary(null);
       setCategories([]);
       setAlerts([]);
-      setErr(null);
+      setLoadError(false);
       return;
     }
     let cancelled = false;
     void (async () => {
       setLoading(true);
-      setErr(null);
+      setLoadError(false);
       const [sRes, cRes, aRes] = await Promise.all([
         fetchDashboardBudgetSummary(currentPropertyId, fiscalYear),
         fetchDashboardBudgetCategories(currentPropertyId, fiscalYear),
         fetchDashboardBudgetAlerts(currentPropertyId, fiscalYear),
       ]);
       if (cancelled) return;
-      if (sRes.error) setErr(sRes.error.message);
-      else if (cRes.error) setErr(cRes.error.message);
-      else if (aRes.error) setErr(aRes.error.message);
-      else setErr(null);
+      if (sRes.error || cRes.error || aRes.error) {
+        console.error('Budget dashboard RPC failed', {
+          summary: sRes.error?.message,
+          categories: cRes.error?.message,
+          alerts: aRes.error?.message,
+        });
+        setLoadError(true);
+      } else {
+        setLoadError(false);
+      }
       setSummary(sRes.data);
       setCategories(cRes.data?.categories ?? []);
       setAlerts(aRes.data?.alerts ?? []);
@@ -86,8 +92,11 @@ export function BudgetDashboardSection() {
   return (
     <section
       className="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"
-      aria-labelledby="budget-dashboard-heading"
+      aria-labelledby="dashboard-page-h1"
     >
+      <h1 id="dashboard-page-h1" className="mb-3 text-2xl font-bold text-gray-900">
+        {t('dashboard_page_h1')}
+      </h1>
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
         <div className="flex items-center gap-2">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-600 text-white">
@@ -123,15 +132,15 @@ export function BudgetDashboardSection() {
         </div>
       )}
 
-      {!loading && err && (
-        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
-          {t('budget_home_load_error')}: {err}
+      {!loading && loadError && (
+        <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+          {t('budget_home_load_error_retry')}
         </div>
       )}
 
-      {!loading && !err && summary && (
+      {!loading && !loadError && summary && (
         <>
-          {summary.active_package_id == null && (
+          {summary.budget_scope === 'package' && summary.active_package_id == null && (
             <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
               <AlertTriangle className="mt-0.5 shrink-0" size={18} aria-hidden />
               <span>{t('budget_home_no_active_package')}</span>

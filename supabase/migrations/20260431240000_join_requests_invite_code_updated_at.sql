@@ -3,9 +3,11 @@
 DO $$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_enum e
+    SELECT 1
+    FROM pg_enum e
     JOIN pg_type t ON e.enumtypid = t.oid
-    WHERE t.typname = 'join_request_status' AND e.enumlabel = 'cancelled'
+    WHERE t.typname = 'join_request_status'
+      AND e.enumlabel = 'cancelled'
   ) THEN
     ALTER TYPE public.join_request_status ADD VALUE 'cancelled';
   END IF;
@@ -32,7 +34,7 @@ CREATE TRIGGER tr_join_requests_updated_at
   EXECUTE FUNCTION public.touch_join_requests_updated_at();
 
 -- ---------------------------------------------------------------------------
--- submit_join_request_from_invite — store invite_code on row
+-- submit_join_request_from_invite store invite_code on row
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.submit_join_request_from_invite(invite_code text)
 RETURNS jsonb
@@ -79,7 +81,7 @@ BEGIN
 
   IF EXISTS (
     SELECT 1 FROM public.property_members pm
-    WHERE pm.property_id = inv.property_id AND pm.user_id = v_uid AND pm.status = 'active'::member_status
+    WHERE pm.property_id = inv.property_id AND pm.user_id = v_uid AND pm.status = 'active'
   ) THEN
     RETURN jsonb_build_object('success', false, 'message', 'ALREADY_MEMBER');
   END IF;
@@ -122,7 +124,7 @@ REVOKE ALL ON FUNCTION public.submit_join_request_from_invite(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.submit_join_request_from_invite(text) TO authenticated;
 
 -- ---------------------------------------------------------------------------
--- submit_join_request (public property) — explicit NULL invite fields
+-- submit_join_request (public property) explicit NULL invite fields
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.submit_join_request(
   p_property_id uuid,
@@ -168,7 +170,7 @@ BEGIN
 
   IF EXISTS (
     SELECT 1 FROM public.property_members pm
-    WHERE pm.property_id = p_property_id AND pm.user_id = v_uid AND pm.status = 'active'::member_status
+    WHERE pm.property_id = p_property_id AND pm.user_id = v_uid AND pm.status = 'active'
   ) THEN
     RETURN jsonb_build_object('ok', false, 'error', 'already_member');
   END IF;
@@ -202,3 +204,7 @@ $fn$;
 
 REVOKE ALL ON FUNCTION public.submit_join_request(uuid, public.user_role, text, text, text, text, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.submit_join_request(uuid, public.user_role, text, text, text, text, text) TO authenticated;
+
+
+
+

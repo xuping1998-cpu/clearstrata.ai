@@ -114,3 +114,7 @@ CREATE TRIGGER trg_notifications_fanout_update
     OR OLD.file_url IS DISTINCT FROM NEW.file_url
   )
   EXECUTE FUNCTION public.fanout_owner_announcement_inbox();
+
+
+
+

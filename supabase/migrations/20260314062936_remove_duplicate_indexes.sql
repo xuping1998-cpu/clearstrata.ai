@@ -36,3 +36,7 @@ DROP INDEX IF EXISTS idx_maintenance_requests_assigned;
 -- Remove duplicate index on maintenance_updates.request_id
 -- Keep idx_maintenance_updates_request_id (more explicit)
 DROP INDEX IF EXISTS idx_maintenance_updates_request;
+
+
+
+

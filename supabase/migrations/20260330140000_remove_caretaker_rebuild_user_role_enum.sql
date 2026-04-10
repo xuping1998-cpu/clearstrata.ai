@@ -5,7 +5,7 @@
      plus ALL policies on `disputes` (per product requirement).
   2. Data: former caretakers become `manager`.
   3. Rebuild enum: owner, council, admin, manager.
-  4. Recreate snapped policies (replace caretaker → manager in expressions).
+  4. Recreate snapped policies (replace caretaker ?manager in expressions).
 */
 
 BEGIN;
@@ -116,7 +116,7 @@ ALTER TYPE user_role_new RENAME TO user_role;
 ALTER TABLE profiles ALTER COLUMN role SET DEFAULT 'owner'::user_role;
 
 -- ---------------------------------------------------------------------------
--- 3. Recreate policies from snapshot (caretaker → manager in SQL text)
+-- 3. Recreate policies from snapshot (caretaker ?manager in SQL text)
 -- ---------------------------------------------------------------------------
 DO $$
 DECLARE
@@ -375,3 +375,7 @@ CREATE POLICY "Dispute parties can view timeline"
   );
 
 COMMIT;
+
+
+
+

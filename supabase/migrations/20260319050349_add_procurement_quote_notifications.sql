@@ -79,3 +79,7 @@ CREATE INDEX IF NOT EXISTS idx_procurement_quote_notifications_job_id ON procure
 CREATE INDEX IF NOT EXISTS idx_procurement_quote_notifications_quote_id ON procurement_quote_notifications(quote_id);
 CREATE INDEX IF NOT EXISTS idx_procurement_quote_notifications_manager_id ON procurement_quote_notifications(sent_to_manager_id);
 CREATE INDEX IF NOT EXISTS idx_procurement_quote_notifications_sent_by ON procurement_quote_notifications(sent_by);
+
+
+
+

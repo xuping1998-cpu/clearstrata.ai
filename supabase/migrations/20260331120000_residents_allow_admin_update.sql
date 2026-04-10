@@ -36,3 +36,7 @@ CREATE POLICY "Council or admin can delete residents"
       AND profiles.role IN ('council', 'admin')
     )
   );
+
+
+
+

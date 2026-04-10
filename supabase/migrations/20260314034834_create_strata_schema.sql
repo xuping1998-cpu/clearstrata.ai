@@ -8,7 +8,7 @@
   ## User Roles
   - owner: Regular property owner (业主)
   - caretaker: Building caretaker (管家)
-  - council: Council member (业委会成员)
+  - council: Council member (业委会成?
 
   ## Tables Created
 
@@ -723,3 +723,7 @@ CREATE INDEX IF NOT EXISTS idx_hiring_candidates_job_id ON hiring_candidates(job
 CREATE INDEX IF NOT EXISTS idx_communications_status ON communications(status);
 CREATE INDEX IF NOT EXISTS idx_communications_category ON communications(category);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
+
+
+
+

@@ -26,3 +26,7 @@ CREATE POLICY "Council can delete owner info"
       AND profiles.role = 'council'
     )
   );
+
+
+
+

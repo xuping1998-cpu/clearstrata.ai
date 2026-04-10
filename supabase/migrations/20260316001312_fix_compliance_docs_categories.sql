@@ -26,3 +26,7 @@ BEGIN
     ADD CONSTRAINT compliance_docs_category_check 
     CHECK (category IN ('insurance', 'bylaw', 'financial', 'safety', 'legal', 'other'));
 END $$;
+
+
+
+

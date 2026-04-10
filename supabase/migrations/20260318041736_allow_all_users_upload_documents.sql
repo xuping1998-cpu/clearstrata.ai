@@ -19,3 +19,7 @@ CREATE POLICY "Authenticated users can insert documents"
   FOR INSERT
   TO authenticated
   WITH CHECK (auth.uid() = uploaded_by);
+
+
+
+

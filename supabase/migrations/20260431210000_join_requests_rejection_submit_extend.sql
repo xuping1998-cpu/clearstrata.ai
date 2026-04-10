@@ -49,7 +49,7 @@ BEGIN
 
   IF EXISTS (
     SELECT 1 FROM public.property_members pm
-    WHERE pm.property_id = p_property_id AND pm.user_id = v_uid AND pm.status = 'active'::member_status
+    WHERE pm.property_id = p_property_id AND pm.user_id = v_uid AND pm.status = 'active'
   ) THEN
     RETURN jsonb_build_object('ok', false, 'error', 'already_member');
   END IF;
@@ -111,7 +111,7 @@ BEGIN
     SELECT 1 FROM public.property_members pm
     WHERE pm.user_id = v_uid
       AND pm.property_id = r.property_id
-      AND pm.status = 'active'::member_status
+      AND pm.status = 'active'
       AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
   ) THEN
     RETURN jsonb_build_object('ok', false, 'error', 'forbidden');
@@ -131,14 +131,14 @@ BEGIN
       r.property_id,
       r.user_id,
       r.requested_role,
-      'active'::member_status,
+      'active',
       COALESCE(p_unit_number, r.unit_number),
       v_uid,
       now()
     )
     ON CONFLICT (property_id, user_id) DO UPDATE SET
       role = EXCLUDED.role,
-      status = 'active'::member_status,
+      status = 'active',
       unit_number = COALESCE(EXCLUDED.unit_number, public.property_members.unit_number),
       approved_by = EXCLUDED.approved_by,
       approved_at = EXCLUDED.approved_at;
@@ -160,3 +160,7 @@ GRANT EXECUTE ON FUNCTION public.submit_join_request(uuid, public.user_role, tex
 
 REVOKE ALL ON FUNCTION public.review_join_request(uuid, boolean, text, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.review_join_request(uuid, boolean, text, text) TO authenticated;
+
+
+
+

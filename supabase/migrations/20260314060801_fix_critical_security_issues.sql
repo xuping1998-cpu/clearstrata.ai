@@ -89,3 +89,7 @@ CREATE POLICY "Council can update user roles"
       AND profiles.role = 'council'
     )
   );
+
+
+
+

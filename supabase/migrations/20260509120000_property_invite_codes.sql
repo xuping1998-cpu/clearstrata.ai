@@ -26,7 +26,7 @@ CREATE POLICY "pic_select_property"
       SELECT 1 FROM public.property_members pm
       WHERE pm.user_id = (SELECT auth.uid())
         AND pm.property_id = property_invite_codes.property_id
-        AND pm.status = 'active'::member_status
+        AND pm.status = 'active'
         AND pm.role IN ('property_admin', 'admin', 'council', 'manager')
     )
   );
@@ -39,7 +39,7 @@ CREATE POLICY "pic_insert_property"
       SELECT 1 FROM public.property_members pm
       WHERE pm.user_id = (SELECT auth.uid())
         AND pm.property_id = property_invite_codes.property_id
-        AND pm.status = 'active'::member_status
+        AND pm.status = 'active'
         AND pm.role IN ('property_admin', 'admin', 'council', 'manager')
     )
   );
@@ -52,7 +52,7 @@ CREATE POLICY "pic_update_property"
       SELECT 1 FROM public.property_members pm
       WHERE pm.user_id = (SELECT auth.uid())
         AND pm.property_id = property_invite_codes.property_id
-        AND pm.status = 'active'::member_status
+        AND pm.status = 'active'
         AND pm.role IN ('property_admin', 'admin', 'council', 'manager')
     )
   )
@@ -62,10 +62,14 @@ CREATE POLICY "pic_update_property"
       SELECT 1 FROM public.property_members pm
       WHERE pm.user_id = (SELECT auth.uid())
         AND pm.property_id = property_invite_codes.property_id
-        AND pm.status = 'active'::member_status
+        AND pm.status = 'active'
         AND pm.role IN ('property_admin', 'admin', 'council', 'manager')
     )
   );
 
 GRANT SELECT, INSERT, UPDATE ON public.property_invite_codes TO authenticated;
 GRANT ALL ON public.property_invite_codes TO service_role;
+
+
+
+

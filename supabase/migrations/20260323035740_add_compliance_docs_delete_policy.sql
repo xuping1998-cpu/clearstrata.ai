@@ -11,3 +11,7 @@ CREATE POLICY "Users can delete own compliance docs"
   FOR DELETE
   TO authenticated
   USING (auth.uid() = uploaded_by);
+
+
+
+

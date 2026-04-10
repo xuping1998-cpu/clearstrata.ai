@@ -1,6 +1,6 @@
 /*
-  异常发票审计报告归档：invoice_audit_reports + Storage 桶 invoice-audit-reports
-  file_url 存桶内对象路径（非公开桶，前端用 createSignedUrl 下载）
+  ???????????invoice_audit_reports + Storage bucket invoice-audit-reports
+  file_url ?????????????????? createSignedUrl ???
 */
 
 CREATE OR REPLACE FUNCTION public.invoice_audit_report_storage_property_id(object_name text)
@@ -8,10 +8,13 @@ RETURNS uuid
 LANGUAGE plpgsql
 IMMUTABLE
 AS $$
-DECLARE m text[];
+DECLARE
+  m text[];
 BEGIN
   m := regexp_match(object_name, '^([0-9a-f-]{36})/');
-  IF m IS NULL OR m[1] IS NULL THEN RETURN NULL; END IF;
+  IF m IS NULL OR m[1] IS NULL THEN
+    RETURN NULL;
+  END IF;
   RETURN m[1]::uuid;
 END;
 $$;
@@ -27,10 +30,14 @@ CREATE TABLE IF NOT EXISTS public.invoice_audit_reports (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-COMMENT ON TABLE public.invoice_audit_reports IS '异常发票审计 PDF 归档（file_url 为 Storage 对象路径，桶 invoice-audit-reports）';
-COMMENT ON COLUMN public.invoice_audit_reports.file_url IS 'Storage 对象路径（相对桶根），非完整 HTTP URL';
-COMMENT ON COLUMN public.invoice_audit_reports.fiscal_year IS '报告生成时的公历年份（UTC）';
-COMMENT ON COLUMN public.invoice_audit_reports.month IS '报告生成时的月份 1–12（UTC）';
+COMMENT ON TABLE public.invoice_audit_reports IS
+  'Abnormal invoice audit PDF archive; file_url is the Storage object path (bucket invoice-audit-reports).';
+COMMENT ON COLUMN public.invoice_audit_reports.file_url IS
+  'Storage object path relative to bucket root, not a full HTTP URL.';
+COMMENT ON COLUMN public.invoice_audit_reports.fiscal_year IS
+  'Calendar year when the report was generated (UTC).';
+COMMENT ON COLUMN public.invoice_audit_reports.month IS
+  'Month 1-12 when the report was generated (UTC).';
 
 CREATE UNIQUE INDEX IF NOT EXISTS invoice_audit_reports_client_request_id_key
   ON public.invoice_audit_reports (client_request_id)
@@ -49,12 +56,12 @@ CREATE POLICY "iar_select_staff"
       SELECT 1 FROM public.property_members pm
       WHERE pm.user_id = (SELECT auth.uid())
         AND pm.property_id = invoice_audit_reports.property_id
-        AND pm.status = 'active'::member_status
+        AND pm.status = 'active'
         AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
     )
   );
 
--- 仅服务端 service role 写入；客户端无 INSERT 策略
+-- Writes only via service role; no INSERT policy for clients
 
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES (
@@ -79,12 +86,12 @@ CREATE POLICY "invoice_audit_reports_storage_select_staff"
       SELECT 1 FROM public.property_members pm
       WHERE pm.user_id = (SELECT auth.uid())
         AND pm.property_id = public.invoice_audit_report_storage_property_id(name)
-        AND pm.status = 'active'::member_status
+        AND pm.status = 'active'
         AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
     )
   );
 
--- 允许已登录物业员工删除自己物业下误传对象（可选；归档一般只增）
+-- Optional: allow property staff to delete mistaken objects under their property (archives are usually append-only)
 DROP POLICY IF EXISTS "invoice_audit_reports_storage_delete_staff" ON storage.objects;
 CREATE POLICY "invoice_audit_reports_storage_delete_staff"
   ON storage.objects FOR DELETE TO authenticated
@@ -95,7 +102,7 @@ CREATE POLICY "invoice_audit_reports_storage_delete_staff"
       SELECT 1 FROM public.property_members pm
       WHERE pm.user_id = (SELECT auth.uid())
         AND pm.property_id = public.invoice_audit_report_storage_property_id(name)
-        AND pm.status = 'active'::member_status
+        AND pm.status = 'active'
         AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
     )
   );

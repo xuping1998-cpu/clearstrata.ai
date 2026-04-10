@@ -17,3 +17,7 @@ CREATE POLICY "Council can delete procurement jobs"
       AND profiles.role = 'council'
     )
   );
+
+
+
+

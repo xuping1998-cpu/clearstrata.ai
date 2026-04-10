@@ -182,3 +182,7 @@ CREATE POLICY "Council can update special levies"
   );
 
 CREATE INDEX IF NOT EXISTS idx_special_levies_status ON special_levies(status);
+
+
+
+

@@ -1,18 +1,7 @@
 /*
-  Budget dashboard RPCs (align with frontend dashboardApi.ts).
-
-  Signatures:
-    dashboard_budget_summary(p_property_id uuid, p_year int)
-    dashboard_budget_categories(p_property_id uuid, p_year int)
-    dashboard_budget_trend(p_property_id uuid, p_year int)
-    dashboard_budget_alerts(p_property_id uuid, p_year int)
-
-  Prerequisites: public.user_property_ids() (20260707130000 or 20260410120000 chain),
-    active_budget_package_id, resolve_invoice_budget_category_id, resolve_quote_budget_category_id,
-    budget tables from 202606101 / 202606111 / 202606121.
-
-  Sources: summary/categories/trend from 20260611120000_budget_package_fiscal_year_rpc.sql;
-    alerts body from 20260612120000_invoice_budget_lock_category_anomaly.sql.
+  Dashboard budget RPCs: do not depend on annual_budgets.package_id.
+  Aggregate by property_id + fiscal_year (+ budget_category_id where needed).
+  Compatible with schemas that only have property_id on annual_budgets.
 */
 
 -- ---------------------------------------------------------------------------
@@ -25,39 +14,49 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_pkg uuid;
-  v_budget numeric;
-  v_committed numeric;
-  v_actual numeric;
+  v_budget numeric := 0;
+  v_committed numeric := 0;
+  v_actual numeric := 0;
 BEGIN
+  IF p_property_id IS NULL THEN
+    RETURN jsonb_build_object(
+      'ok', false,
+      'error', 'bad_property',
+      'message', 'property_id is required'
+    );
+  END IF;
+
   IF NOT (p_property_id IN (SELECT public.user_property_ids())) THEN
     RAISE EXCEPTION 'forbidden';
   END IF;
 
-  v_pkg := public.active_budget_package_id(p_property_id, p_year);
-
-  SELECT COALESCE(SUM(ab.amount), 0) INTO v_budget
+  SELECT COALESCE(SUM(ab.amount), 0)
+  INTO v_budget
   FROM public.annual_budgets ab
-  WHERE ab.package_id = v_pkg
+  WHERE ab.property_id = p_property_id
     AND ab.fiscal_year = p_year;
 
-  SELECT COALESCE(SUM(pq.quoted_amount), 0) INTO v_committed
+  SELECT COALESCE(SUM(pq.quoted_amount), 0)
+  INTO v_committed
   FROM public.procurement_jobs j
   INNER JOIN public.procurement_quotes pq ON pq.id = j.selected_quote_id
   WHERE j.property_id = p_property_id
     AND j.fiscal_year = p_year
     AND j.selected_quote_id IS NOT NULL;
 
-  SELECT COALESCE(SUM(i.total_amount), 0) INTO v_actual
+  SELECT COALESCE(SUM(i.total_amount), 0)
+  INTO v_actual
   FROM public.invoices i
   WHERE i.property_id = p_property_id
     AND i.fiscal_year = p_year
     AND i.status = 'approved';
 
   RETURN jsonb_build_object(
+    'ok', true,
+    'budget_scope', 'property_year',
     'fiscal_year', p_year,
     'property_id', p_property_id,
-    'active_package_id', v_pkg,
+    'active_package_id', NULL::uuid,
     'total_budget', v_budget,
     'committed', v_committed,
     'actual', v_actual,
@@ -69,10 +68,10 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.dashboard_budget_summary(uuid, int) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.dashboard_budget_summary(uuid, int) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.dashboard_budget_summary(uuid, int) TO authenticated, service_role;
 
 COMMENT ON FUNCTION public.dashboard_budget_summary(uuid, int) IS
-  'Dashboard: aggregates rows for the current active budget_package only; no historical package backfill.';
+  'Dashboard: totals from annual_budgets by property_id + fiscal_year; committed from selected quotes; actual from approved invoices.';
 
 -- ---------------------------------------------------------------------------
 -- dashboard_budget_categories
@@ -83,14 +82,10 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
-DECLARE
-  v_pkg uuid;
 BEGIN
   IF NOT (p_property_id IN (SELECT public.user_property_ids())) THEN
     RAISE EXCEPTION 'forbidden';
   END IF;
-
-  v_pkg := public.active_budget_package_id(p_property_id, p_year);
 
   RETURN (
     WITH cats AS (
@@ -102,7 +97,7 @@ BEGIN
     bud AS (
       SELECT ab.budget_category_id, COALESCE(SUM(ab.amount), 0) AS amt
       FROM public.annual_budgets ab
-      WHERE ab.package_id = v_pkg
+      WHERE ab.property_id = p_property_id
         AND ab.fiscal_year = p_year
       GROUP BY ab.budget_category_id
     ),
@@ -131,7 +126,7 @@ BEGIN
     )
     SELECT jsonb_build_object(
       'fiscal_year', p_year,
-      'active_package_id', v_pkg,
+      'active_package_id', NULL::uuid,
       'categories', COALESCE(
         (
           SELECT jsonb_agg(row_json ORDER BY sort_order, code)
@@ -165,70 +160,10 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.dashboard_budget_categories(uuid, int) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.dashboard_budget_categories(uuid, int) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.dashboard_budget_categories(uuid, int) TO authenticated, service_role;
 
 COMMENT ON FUNCTION public.dashboard_budget_categories(uuid, int) IS
-  'Dashboard: budgets from current active package; committed/actual from current data only.';
-
--- ---------------------------------------------------------------------------
--- dashboard_budget_trend
--- ---------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION public.dashboard_budget_trend(p_property_id uuid, p_year int)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  r jsonb;
-BEGIN
-  IF NOT (p_property_id IN (SELECT public.user_property_ids())) THEN
-    RAISE EXCEPTION 'forbidden';
-  END IF;
-
-  WITH act AS (
-    SELECT EXTRACT(MONTH FROM i.invoice_date::date)::int AS mo,
-           SUM(i.total_amount) AS amt
-    FROM public.invoices i
-    WHERE i.property_id = p_property_id
-      AND i.fiscal_year = p_year
-      AND i.status = 'approved'
-    GROUP BY 1
-  ),
-  comm AS (
-    SELECT EXTRACT(MONTH FROM j.created_at)::int AS mo,
-           SUM(pq.quoted_amount) AS amt
-    FROM public.procurement_jobs j
-    INNER JOIN public.procurement_quotes pq ON pq.id = j.selected_quote_id
-    WHERE j.property_id = p_property_id
-      AND j.fiscal_year = p_year
-      AND j.selected_quote_id IS NOT NULL
-    GROUP BY 1
-  )
-  SELECT jsonb_build_object(
-    'fiscal_year', p_year,
-    'months', COALESCE(
-      (SELECT jsonb_agg(
-        jsonb_build_object(
-          'month', mo.m,
-          'actual', COALESCE(a.amt, 0),
-          'committed', COALESCE(c.amt, 0)
-        ) ORDER BY mo.m
-      )
-      FROM generate_series(1, 12) AS mo(m)
-      LEFT JOIN act a ON a.mo = mo.m
-      LEFT JOIN comm c ON c.mo = mo.m
-      ),
-      '[]'::jsonb
-    )
-  ) INTO r;
-
-  RETURN r;
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.dashboard_budget_trend(uuid, int) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.dashboard_budget_trend(uuid, int) TO authenticated;
+  'Dashboard: per-category budget from annual_budgets by property + year; no package_id.';
 
 -- ---------------------------------------------------------------------------
 -- dashboard_budget_alerts
@@ -242,14 +177,10 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
-DECLARE
-  v_pkg uuid;
 BEGIN
   IF NOT (p_property_id IN (SELECT public.user_property_ids())) THEN
     RAISE EXCEPTION 'forbidden';
   END IF;
-
-  v_pkg := public.active_budget_package_id(p_property_id, p_year);
 
   RETURN (
     WITH cats AS (
@@ -261,7 +192,7 @@ BEGIN
     bud AS (
       SELECT ab.budget_category_id, COALESCE(SUM(ab.amount), 0) AS amt
       FROM public.annual_budgets ab
-      WHERE ab.package_id = v_pkg
+      WHERE ab.property_id = p_property_id
         AND ab.fiscal_year = p_year
       GROUP BY ab.budget_category_id
     ),
@@ -315,7 +246,7 @@ BEGIN
           OR NOT EXISTS (
             SELECT 1
             FROM public.annual_budgets ab
-            WHERE ab.package_id = v_pkg
+            WHERE ab.property_id = p_property_id
               AND ab.budget_category_id = public.resolve_invoice_budget_category_id(i)
               AND ab.fiscal_year = p_year
           )
@@ -424,14 +355,9 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.dashboard_budget_alerts(uuid, int) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.dashboard_budget_alerts(uuid, int)
-TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.dashboard_budget_alerts(uuid, int) TO authenticated, service_role;
 
 COMMENT ON FUNCTION public.dashboard_budget_alerts(uuid, int) IS
-  'Dashboard: same scope as summary; alerts use current active package only.';
+  'Dashboard alerts: no annual_budgets.package_id; budgets scoped by property + fiscal year.';
 
 NOTIFY pgrst, 'reload schema';
-
-
-
-

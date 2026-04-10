@@ -24,7 +24,7 @@ ALTER TYPE public.user_role ADD VALUE IF NOT EXISTS 'property_admin';
 ALTER TYPE public.user_role ADD VALUE IF NOT EXISTS 'tenant';
 
 -- ---------------------------------------------------------------------------
--- 2) Rename property_users → property_members + columns
+-- 2) Rename property_users ?property_members + columns
 -- ---------------------------------------------------------------------------
 
 DO $r$
@@ -43,8 +43,8 @@ ALTER TABLE public.property_members
   ADD COLUMN IF NOT EXISTS approved_by uuid REFERENCES public.profiles(id),
   ADD COLUMN IF NOT EXISTS approved_at timestamptz;
 
-UPDATE public.property_members SET status = 'active'::member_status WHERE status IS NULL;
-ALTER TABLE public.property_members ALTER COLUMN status SET DEFAULT 'active'::member_status;
+UPDATE public.property_members SET status = 'active' WHERE status IS NULL;
+ALTER TABLE public.property_members ALTER COLUMN status SET DEFAULT 'active';
 ALTER TABLE public.property_members ALTER COLUMN status SET NOT NULL;
 
 ALTER INDEX IF EXISTS idx_property_users_user_id RENAME TO idx_property_members_user_id;
@@ -83,7 +83,7 @@ AS $$
   SELECT pm.property_id
   FROM public.property_members pm
   WHERE pm.user_id = (SELECT auth.uid())
-    AND pm.status = 'active'::member_status;
+    AND pm.status = 'active';
 $$;
 
 REVOKE ALL ON FUNCTION public.user_property_ids() FROM PUBLIC;
@@ -99,7 +99,7 @@ AS $$
   SELECT pm.property_id
   FROM public.property_members pm
   WHERE pm.user_id = (SELECT auth.uid())
-    AND pm.status = 'active'::member_status
+    AND pm.status = 'active'
     AND pm.role IN ('property_admin', 'admin', 'council', 'manager');
 $$;
 
@@ -116,7 +116,7 @@ AS $$
   SELECT pm.property_id
   FROM public.property_members pm
   WHERE pm.user_id = (SELECT auth.uid())
-    AND pm.status = 'active'::member_status
+    AND pm.status = 'active'
     AND pm.role IN ('property_admin', 'admin');
 $$;
 
@@ -133,8 +133,8 @@ DECLARE
   pid uuid := '00000000-0000-4000-a000-000000000001'::uuid;
 BEGIN
   INSERT INTO public.property_members (property_id, user_id, role, status)
-  VALUES (pid, NEW.id, NEW.role, 'active'::member_status)
-  ON CONFLICT (property_id, user_id) DO UPDATE SET role = EXCLUDED.role, status = 'active'::member_status;
+  VALUES (pid, NEW.id, NEW.role, 'active')
+  ON CONFLICT (property_id, user_id) DO UPDATE SET role = EXCLUDED.role, status = 'active';
   RETURN NEW;
 END;
 $f$;
@@ -219,10 +219,10 @@ BEGIN
   END IF;
 
   INSERT INTO public.property_members (property_id, user_id, role, status, approved_at)
-  VALUES (inv.property_id, v_uid, inv.role, 'active'::member_status, now())
+  VALUES (inv.property_id, v_uid, inv.role, 'active', now())
   ON CONFLICT (property_id, user_id) DO UPDATE SET
     role = EXCLUDED.role,
-    status = 'active'::member_status,
+    status = 'active',
     approved_at = now();
 
   UPDATE public.property_invites
@@ -264,7 +264,7 @@ BEGIN
 
   IF EXISTS (
     SELECT 1 FROM public.property_members pm
-    WHERE pm.property_id = p_property_id AND pm.user_id = v_uid AND pm.status = 'active'::member_status
+    WHERE pm.property_id = p_property_id AND pm.user_id = v_uid AND pm.status = 'active'
   ) THEN
     RETURN jsonb_build_object('ok', false, 'error', 'already_member');
   END IF;
@@ -325,7 +325,7 @@ BEGIN
     SELECT 1 FROM public.property_members pm
     WHERE pm.user_id = v_uid
       AND pm.property_id = r.property_id
-      AND pm.status = 'active'::member_status
+      AND pm.status = 'active'
       AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
   ) THEN
     RETURN jsonb_build_object('ok', false, 'error', 'forbidden');
@@ -344,14 +344,14 @@ BEGIN
       r.property_id,
       r.user_id,
       r.requested_role,
-      'active'::member_status,
+      'active',
       COALESCE(p_unit_number, r.unit_number),
       v_uid,
       now()
     )
     ON CONFLICT (property_id, user_id) DO UPDATE SET
       role = EXCLUDED.role,
-      status = 'active'::member_status,
+      status = 'active',
       unit_number = COALESCE(EXCLUDED.unit_number, public.property_members.unit_number),
       approved_by = EXCLUDED.approved_by,
       approved_at = EXCLUDED.approved_at;
@@ -390,7 +390,7 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM public.property_members pm
     WHERE pm.user_id = v_uid AND pm.property_id = p_property_id
-      AND pm.status = 'active'::member_status
+      AND pm.status = 'active'
       AND pm.role IN ('property_admin', 'admin')
   ) THEN
     RETURN jsonb_build_object('ok', false, 'error', 'forbidden');
@@ -446,7 +446,7 @@ CREATE POLICY "pi_select_property"
       SELECT 1 FROM public.property_members pm
       WHERE pm.user_id = (SELECT auth.uid())
         AND pm.property_id = property_invites.property_id
-        AND pm.status = 'active'::member_status
+        AND pm.status = 'active'
         AND pm.role IN ('property_admin', 'admin')
     )
   );
@@ -462,7 +462,7 @@ CREATE POLICY "jr_select_scope"
         SELECT 1 FROM public.property_members pm
         WHERE pm.user_id = (SELECT auth.uid())
           AND pm.property_id = join_requests.property_id
-          AND pm.status = 'active'::member_status
+          AND pm.status = 'active'
           AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
       )
     )
@@ -558,7 +558,7 @@ CREATE POLICY "cn_insert_staff"
       SELECT 1 FROM public.property_members pm
       WHERE pm.user_id = (SELECT auth.uid())
         AND pm.property_id = community_notifications.property_id
-                AND pm.status = 'active'::member_status
+                AND pm.status = 'active'
         AND pm.role IN ('admin', 'manager', 'council', 'property_admin')
     )
   );
@@ -606,7 +606,7 @@ CREATE POLICY "inv_update_tenant"
         SELECT 1 FROM public.property_members pm
         WHERE pm.user_id = (SELECT auth.uid())
           AND pm.property_id = invoices.property_id
-                  AND pm.status = 'active'::member_status
+                  AND pm.status = 'active'
         AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
       )
     )
@@ -619,7 +619,7 @@ CREATE POLICY "inv_update_tenant"
         SELECT 1 FROM public.property_members pm
         WHERE pm.user_id = (SELECT auth.uid())
           AND pm.property_id = invoices.property_id
-                  AND pm.status = 'active'::member_status
+                  AND pm.status = 'active'
         AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
       )
     )
@@ -635,7 +635,7 @@ CREATE POLICY "inv_delete_tenant"
         SELECT 1 FROM public.property_members pm
         WHERE pm.user_id = (SELECT auth.uid())
           AND pm.property_id = invoices.property_id
-                  AND pm.status = 'active'::member_status
+                  AND pm.status = 'active'
         AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
       )
     )
@@ -654,7 +654,7 @@ CREATE POLICY "ial_insert_staff"
       SELECT 1 FROM public.property_members pm
       WHERE pm.user_id = (SELECT auth.uid())
         AND pm.property_id = invoice_audit_log.property_id
-                AND pm.status = 'active'::member_status
+                AND pm.status = 'active'
         AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
     )
   );
@@ -680,7 +680,7 @@ CREATE POLICY "mtg_insert_staff"
       SELECT 1 FROM public.property_members pm
       WHERE pm.user_id = (SELECT auth.uid())
         AND pm.property_id = meetings.property_id
-                AND pm.status = 'active'::member_status
+                AND pm.status = 'active'
         AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
     )
   );
@@ -693,7 +693,7 @@ CREATE POLICY "mtg_update_staff"
       SELECT 1 FROM public.property_members pm
       WHERE pm.user_id = (SELECT auth.uid())
         AND pm.property_id = meetings.property_id
-                AND pm.status = 'active'::member_status
+                AND pm.status = 'active'
         AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
     )
   )
@@ -703,7 +703,7 @@ CREATE POLICY "mtg_update_staff"
       SELECT 1 FROM public.property_members pm
       WHERE pm.user_id = (SELECT auth.uid())
         AND pm.property_id = meetings.property_id
-                AND pm.status = 'active'::member_status
+                AND pm.status = 'active'
         AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
     )
   );
@@ -720,7 +720,7 @@ CREATE POLICY "mai_write_staff"
       SELECT 1 FROM public.property_members pm
       WHERE pm.user_id = (SELECT auth.uid())
         AND pm.property_id = meeting_agenda_items.property_id
-                AND pm.status = 'active'::member_status
+                AND pm.status = 'active'
         AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
     )
   );
@@ -733,7 +733,7 @@ CREATE POLICY "mai_update_staff"
       SELECT 1 FROM public.property_members pm
       WHERE pm.user_id = (SELECT auth.uid())
         AND pm.property_id = meeting_agenda_items.property_id
-                AND pm.status = 'active'::member_status
+                AND pm.status = 'active'
         AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
     )
   )
@@ -747,7 +747,7 @@ CREATE POLICY "mai_delete_staff"
       SELECT 1 FROM public.property_members pm
       WHERE pm.user_id = (SELECT auth.uid())
         AND pm.property_id = meeting_agenda_items.property_id
-                AND pm.status = 'active'::member_status
+                AND pm.status = 'active'
         AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
     )
   );
@@ -764,7 +764,7 @@ CREATE POLICY "mat_write_staff"
       SELECT 1 FROM public.property_members pm
       WHERE pm.user_id = (SELECT auth.uid())
         AND pm.property_id = meeting_attendees.property_id
-                AND pm.status = 'active'::member_status
+                AND pm.status = 'active'
         AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
     )
   );
@@ -777,7 +777,7 @@ CREATE POLICY "mat_update_staff"
       SELECT 1 FROM public.property_members pm
       WHERE pm.user_id = (SELECT auth.uid())
         AND pm.property_id = meeting_attendees.property_id
-                AND pm.status = 'active'::member_status
+                AND pm.status = 'active'
         AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
     )
   )
@@ -791,7 +791,7 @@ CREATE POLICY "mat_delete_staff"
       SELECT 1 FROM public.property_members pm
       WHERE pm.user_id = (SELECT auth.uid())
         AND pm.property_id = meeting_attendees.property_id
-                AND pm.status = 'active'::member_status
+                AND pm.status = 'active'
         AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
     )
   );
@@ -815,7 +815,7 @@ CREATE POLICY "mv_update_staff"
       SELECT 1 FROM public.property_members pm
       WHERE pm.user_id = (SELECT auth.uid())
         AND pm.property_id = meeting_votes.property_id
-                AND pm.status = 'active'::member_status
+                AND pm.status = 'active'
         AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
     )
   )
@@ -829,7 +829,7 @@ CREATE POLICY "mv_delete_staff"
       SELECT 1 FROM public.property_members pm
       WHERE pm.user_id = (SELECT auth.uid())
         AND pm.property_id = meeting_votes.property_id
-                AND pm.status = 'active'::member_status
+                AND pm.status = 'active'
         AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
     )
   );
@@ -846,7 +846,7 @@ CREATE POLICY "mdoc_insert_staff"
       SELECT 1 FROM public.property_members pm
       WHERE pm.user_id = (SELECT auth.uid())
         AND pm.property_id = meeting_documents.property_id
-                AND pm.status = 'active'::member_status
+                AND pm.status = 'active'
         AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
     )
   );
@@ -956,7 +956,7 @@ CREATE POLICY "res_select_tenant"
         SELECT 1 FROM public.property_members pm
         WHERE pm.user_id = (SELECT auth.uid())
           AND pm.property_id = residents.property_id
-                  AND pm.status = 'active'::member_status
+                  AND pm.status = 'active'
         AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
       )
     )
@@ -972,7 +972,7 @@ CREATE POLICY "res_insert_tenant"
         SELECT 1 FROM public.property_members pm
         WHERE pm.user_id = (SELECT auth.uid())
           AND pm.property_id = residents.property_id
-                  AND pm.status = 'active'::member_status
+                  AND pm.status = 'active'
         AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
       )
     )
@@ -988,7 +988,7 @@ CREATE POLICY "res_update_tenant"
         SELECT 1 FROM public.property_members pm
         WHERE pm.user_id = (SELECT auth.uid())
           AND pm.property_id = residents.property_id
-                  AND pm.status = 'active'::member_status
+                  AND pm.status = 'active'
         AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
       )
     )
@@ -1003,7 +1003,7 @@ CREATE POLICY "res_delete_tenant"
       SELECT 1 FROM public.property_members pm
       WHERE pm.user_id = (SELECT auth.uid())
         AND pm.property_id = residents.property_id
-                AND pm.status = 'active'::member_status
+                AND pm.status = 'active'
         AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
     )
   );
@@ -1072,7 +1072,7 @@ CREATE POLICY "ms_select_tenant"
         SELECT 1 FROM public.property_members pm
         WHERE pm.user_id = (SELECT auth.uid())
           AND pm.property_id = monthly_summaries.property_id
-                  AND pm.status = 'active'::member_status
+                  AND pm.status = 'active'
         AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
       )
     )
@@ -1086,7 +1086,7 @@ CREATE POLICY "ms_write_staff"
       SELECT 1 FROM public.property_members pm
       WHERE pm.user_id = (SELECT auth.uid())
         AND pm.property_id = monthly_summaries.property_id
-                AND pm.status = 'active'::member_status
+                AND pm.status = 'active'
         AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
     )
   );
@@ -1099,7 +1099,7 @@ CREATE POLICY "ms_update_staff"
       SELECT 1 FROM public.property_members pm
       WHERE pm.user_id = (SELECT auth.uid())
         AND pm.property_id = monthly_summaries.property_id
-                AND pm.status = 'active'::member_status
+                AND pm.status = 'active'
         AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
     )
   )
@@ -1155,3 +1155,7 @@ CREATE POLICY "properties_update_staff"
     AND id IN (SELECT public.user_property_admin_ids())
   )
   WITH CHECK (id IN (SELECT public.user_property_ids()));
+
+
+
+

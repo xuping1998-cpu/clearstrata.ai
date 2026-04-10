@@ -40,3 +40,7 @@ CREATE POLICY "Owners can create own info"
   ON owner_info FOR INSERT
   TO authenticated
   WITH CHECK (user_id = auth.uid());
+
+
+
+

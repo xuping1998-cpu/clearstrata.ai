@@ -462,7 +462,7 @@ ALTER TABLE public.monthly_summaries DROP CONSTRAINT IF EXISTS monthly_summaries
 CREATE UNIQUE INDEX IF NOT EXISTS monthly_summaries_property_month_unique ON public.monthly_summaries(property_id, month);
 
 -- ---------------------------------------------------------------------------
--- 5) New profile → default property_users
+-- 5) New profile ?default property_users
 -- ---------------------------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION public.trg_profiles_add_default_property_user()
@@ -507,3 +507,7 @@ GRANT SELECT ON public.properties TO authenticated;
 GRANT SELECT ON public.property_users TO authenticated;
 GRANT ALL ON public.properties TO service_role;
 GRANT ALL ON public.property_users TO service_role;
+
+
+
+

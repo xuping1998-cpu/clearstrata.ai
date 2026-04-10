@@ -66,6 +66,8 @@ interface Invoice {
   related_task_id?: string | null;
   /** 对应已批准报价，用于与实际金额对比 */
   quote_id?: string | null;
+  /** approved/paid 时由库计算锁定；pending 时常为 null */
+  is_budget_exceeded?: boolean | null;
   uploader?: { full_name_en: string; full_name_zh?: string };
 }
 
@@ -165,6 +167,8 @@ export function InvoiceManagement({
     Record<string, { taskId: string; title: string }>
   >({});
   const [quoteVarianceByInvoiceId, setQuoteVarianceByInvoiceId] = useState<Record<string, QuoteVarianceResult>>({});
+  /** 关联报价是否超预算承诺（pending 审批时可读，用于必填审批理由） */
+  const [quoteOverBudgetByInvoiceId, setQuoteOverBudgetByInvoiceId] = useState<Record<string, boolean>>({});
   const [exportingMeetingPack, setExportingMeetingPack] = useState(false);
 
   const canAudit = canManageInvoiceWorkflow(roleInProperty);
@@ -244,26 +248,35 @@ export function InvoiceManagement({
     let cancelled = false;
     if (!currentPropertyId || invoices.length === 0) {
       setQuoteVarianceByInvoiceId({});
+      setQuoteOverBudgetByInvoiceId({});
       return;
     }
     const withQuote = invoices.filter((i) => i.quote_id);
     if (withQuote.length === 0) {
       setQuoteVarianceByInvoiceId({});
+      setQuoteOverBudgetByInvoiceId({});
       return;
     }
     void (async () => {
       const qids = [...new Set(withQuote.map((i) => i.quote_id).filter(Boolean))] as string[];
-      const { data: quotes } = await supabase.from('procurement_quotes').select('id, quoted_amount').in('id', qids);
+      const { data: quotes } = await supabase
+        .from('procurement_quotes')
+        .select('id, quoted_amount, is_budget_exceeded')
+        .in('id', qids);
       if (cancelled) return;
       const qm = new Map((quotes ?? []).map((q) => [q.id, Number(q.quoted_amount)]));
+      const qBudget = new Map((quotes ?? []).map((q) => [q.id, Boolean(q.is_budget_exceeded)]));
       const out: Record<string, QuoteVarianceResult> = {};
+      const overMap: Record<string, boolean> = {};
       for (const inv of withQuote) {
         if (!inv.quote_id) continue;
         const qa = qm.get(inv.quote_id);
         const v = computeQuoteInvoiceVariance(qa, inv.total_amount);
         if (v) out[inv.id] = v;
+        if (qBudget.get(inv.quote_id)) overMap[inv.id] = true;
       }
       setQuoteVarianceByInvoiceId(out);
+      setQuoteOverBudgetByInvoiceId(overMap);
     })();
     return () => {
       cancelled = true;
@@ -566,21 +579,22 @@ export function InvoiceManagement({
     const inv = invoices.find((i) => i.id === id);
     if (!inv || !profile) return;
     let variance: QuoteVarianceResult | null = quoteVarianceByInvoiceId[inv.id] ?? null;
-    if (inv.quote_id && variance == null) {
+    let quoteOverBudget = inv.quote_id ? Boolean(quoteOverBudgetByInvoiceId[inv.id]) : false;
+    if (inv.quote_id && (variance == null || !quoteOverBudget)) {
       const { data: q } = await supabase
         .from('procurement_quotes')
-        .select('quoted_amount')
+        .select('quoted_amount, is_budget_exceeded')
         .eq('id', inv.quote_id)
         .maybeSingle();
-      variance = computeQuoteInvoiceVariance(q != null ? Number(q.quoted_amount) : null, inv.total_amount);
+      if (variance == null) {
+        variance = computeQuoteInvoiceVariance(q != null ? Number(q.quoted_amount) : null, inv.total_amount);
+      }
+      if (q?.is_budget_exceeded === true) quoteOverBudget = true;
     }
     const trimmed = approvalNotes?.trim();
-    if (variance?.warningLevel === 'danger' && !trimmed) {
-      alert(
-        l
-          ? 'This invoice has a critical variance. Please add an approval reason before approving.'
-          : '该发票存在异常，请填写审批理由后再通过',
-      );
+    const needsReasonForVariance = variance?.warningLevel === 'danger';
+    if ((needsReasonForVariance || quoteOverBudget) && !trimmed) {
+      alert(l ? 'Please enter an approval reason.' : '必须填写审批理由');
       return;
     }
     await applyInvoiceUpdate(
@@ -597,22 +611,26 @@ export function InvoiceManagement({
     );
   };
 
-  /** 列表快捷通过：红色预警必须先打开详情填写理由 */
+  /** 列表快捷通过：红色预警或报价超预算必须先打开详情填写理由 */
   const approveInvoiceFromList = async (inv: Invoice) => {
     let v: QuoteVarianceResult | null = quoteVarianceByInvoiceId[inv.id] ?? null;
-    if (inv.quote_id && v == null) {
+    let quoteOverBudget = inv.quote_id ? Boolean(quoteOverBudgetByInvoiceId[inv.id]) : false;
+    if (inv.quote_id && (v == null || !quoteOverBudget)) {
       const { data: q } = await supabase
         .from('procurement_quotes')
-        .select('quoted_amount')
+        .select('quoted_amount, is_budget_exceeded')
         .eq('id', inv.quote_id)
         .maybeSingle();
-      v = computeQuoteInvoiceVariance(q != null ? Number(q.quoted_amount) : null, inv.total_amount);
+      if (v == null) {
+        v = computeQuoteInvoiceVariance(q != null ? Number(q.quoted_amount) : null, inv.total_amount);
+      }
+      if (q?.is_budget_exceeded === true) quoteOverBudget = true;
     }
-    if (v?.warningLevel === 'danger') {
+    if (v?.warningLevel === 'danger' || quoteOverBudget) {
       alert(
         l
-          ? 'This invoice has a critical variance. Open details and enter an approval reason before approving.'
-          : '该发票存在异常，请填写审批理由后再通过',
+          ? 'Open details and enter an approval reason before approving.'
+          : '必须填写审批理由',
       );
       setSelectedInvoice(inv);
       return;
@@ -1342,6 +1360,7 @@ function InvoiceDetailModal({
   const [saving, setSaving] = useState(false);
   const [linkedTasks, setLinkedTasks] = useState<LinkedTask[]>([]);
   const [quoteVarianceResult, setQuoteVarianceResult] = useState<QuoteVarianceResult | null>(null);
+  const [quoteBudgetExceeded, setQuoteBudgetExceeded] = useState(false);
   const [approvalNote, setApprovalNote] = useState('');
   const [relatedTaskTitleFallback, setRelatedTaskTitleFallback] = useState<string | null>(null);
   const [exportingPdf, setExportingPdf] = useState(false);
@@ -1408,15 +1427,17 @@ function InvoiceDetailModal({
     let cancelled = false;
     if (!invoice.quote_id) {
       setQuoteVarianceResult(null);
+      setQuoteBudgetExceeded(false);
       return;
     }
     void (async () => {
       const { data } = await supabase
         .from('procurement_quotes')
-        .select('quoted_amount')
+        .select('quoted_amount, is_budget_exceeded')
         .eq('id', invoice.quote_id)
         .maybeSingle();
       if (cancelled) return;
+      setQuoteBudgetExceeded(Boolean(data?.is_budget_exceeded));
       if (data != null && data.quoted_amount != null) {
         setQuoteVarianceResult(computeQuoteInvoiceVariance(Number(data.quoted_amount), invoice.total_amount));
       } else {
@@ -1691,16 +1712,15 @@ function InvoiceDetailModal({
             <section className="rounded-xl border border-gray-200 bg-gray-50/80 p-4">
               <h3 className="text-sm font-semibold text-gray-900 mb-3">{l ? 'Approval' : '审批'}</h3>
               {(() => {
-                const requiresApprovalReason = quoteVarianceResult?.warningLevel === 'danger';
-                const warnSuggest = quoteVarianceResult?.warningLevel === 'warning';
+                const requiresApprovalReason =
+                  quoteVarianceResult?.warningLevel === 'danger' || quoteBudgetExceeded;
+                const warnSuggest =
+                  quoteVarianceResult?.warningLevel === 'warning' &&
+                  !quoteBudgetExceeded;
                 const missingDangerNote = requiresApprovalReason && !approvalNote.trim();
                 const handleApproveClick = () => {
                   if (requiresApprovalReason && !approvalNote.trim()) {
-                    alert(
-                      l
-                        ? 'This invoice has a critical variance. Please add an approval reason before approving.'
-                        : '该发票存在异常，请填写审批理由后再通过',
-                    );
+                    alert(l ? 'Please enter an approval reason.' : '必须填写审批理由');
                     return;
                   }
                   onApprove(invoice.id, approvalNote);
@@ -1717,7 +1737,15 @@ function InvoiceDetailModal({
                       ) : null}
                     </label>
                     {requiresApprovalReason ? (
-                      <p className="text-xs text-red-700 mb-2">{l ? 'Required before approve.' : '请填写审批理由后再通过'}</p>
+                      <p className="text-xs text-red-700 mb-2">
+                        {quoteBudgetExceeded && quoteVarianceResult?.warningLevel !== 'danger'
+                          ? l
+                            ? 'Quote exceeds budget commitment — approval note required.'
+                            : '报价已超预算承诺，请填写审批理由后再通过'
+                          : l
+                            ? 'Required before approve.'
+                            : '请填写审批理由后再通过'}
+                      </p>
                     ) : warnSuggest ? (
                       <p className="text-xs text-amber-800 mb-2">
                         {l ? 'Variance is elevated — adding a note is recommended.' : '报价偏差偏高，建议填写审批备注。'}

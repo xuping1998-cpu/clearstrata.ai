@@ -29,3 +29,7 @@ CREATE POLICY "Owners and council can add candidates"
       AND profiles.role IN ('owner', 'council')
     )
   );
+
+
+
+

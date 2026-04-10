@@ -31,7 +31,7 @@ BEGIN
       'success', false,
       'error', 'not_authenticated',
       'message', 'NOT_AUTHENTICATED',
-      'message_zh', '请先登录后再提交。'
+      'message_zh', '请先登录后再提交?
     );
   END IF;
 
@@ -61,14 +61,14 @@ BEGIN
 
     IF EXISTS (
       SELECT 1 FROM public.property_members pm
-      WHERE pm.property_id = inv.property_id AND pm.user_id = v_uid AND pm.status = 'active'::member_status
+      WHERE pm.property_id = inv.property_id AND pm.user_id = v_uid AND pm.status = 'active'
     ) THEN
       RETURN jsonb_build_object(
         'ok', false,
         'success', false,
         'error', 'already_member',
         'message', 'ALREADY_MEMBER',
-        'message_zh', '你已经是该物业成员，无需重复申请。'
+        'message_zh', '你已经是该物业成员，无需重复申请?
       );
     END IF;
 
@@ -85,7 +85,7 @@ BEGIN
         'success', false,
         'error', 'already_pending',
         'message', 'You already have a pending request for this property.',
-        'message_zh', '你已提交过该物业的申请，请等待审核。'
+        'message_zh', '你已提交过该物业的申请，请等待审核?
       );
     END IF;
 
@@ -98,7 +98,7 @@ BEGIN
         'success', false,
         'error', 'already_pending',
         'message', 'You already have a pending request for this property.',
-        'message_zh', '你已提交过该物业的申请，请等待审核。'
+        'message_zh', '你已提交过该物业的申请，请等待审核?
       );
     END IF;
 
@@ -137,7 +137,7 @@ BEGIN
       'success', false,
       'error', 'bad_property',
       'message', 'Invalid or missing property.',
-      'message_zh', '物业不存在或无效。'
+      'message_zh', '物业不存在或无效?
     );
   END IF;
 
@@ -150,7 +150,7 @@ BEGIN
       'success', false,
       'error', 'property_closed',
       'message', 'This property is not accepting public applications.',
-      'message_zh', '该物业当前不接受公开申请。'
+      'message_zh', '该物业当前不接受公开申请?
     );
   END IF;
 
@@ -163,14 +163,14 @@ BEGIN
 
   IF EXISTS (
     SELECT 1 FROM public.property_members pm
-    WHERE pm.property_id = p_property_id AND pm.user_id = v_uid AND pm.status = 'active'::member_status
+    WHERE pm.property_id = p_property_id AND pm.user_id = v_uid AND pm.status = 'active'
   ) THEN
     RETURN jsonb_build_object(
       'ok', false,
       'success', false,
       'error', 'already_member',
       'message', 'You are already a member of this property.',
-      'message_zh', '你已经是该物业成员，无需重复申请。'
+      'message_zh', '你已经是该物业成员，无需重复申请?
     );
   END IF;
 
@@ -185,7 +185,7 @@ BEGIN
       'success', false,
       'error', 'already_pending',
       'message', 'You already have a pending request for this property.',
-      'message_zh', '你已提交过该物业的申请，请等待审核。'
+      'message_zh', '你已提交过该物业的申请，请等待审核?
     );
   END IF;
 
@@ -213,3 +213,7 @@ REVOKE ALL ON FUNCTION public.submit_join_request(uuid, public.user_role, text, 
 GRANT EXECUTE ON FUNCTION public.submit_join_request(uuid, public.user_role, text, text, text, text, text, text) TO authenticated;
 
 NOTIFY pgrst, 'reload schema';
+
+
+
+
