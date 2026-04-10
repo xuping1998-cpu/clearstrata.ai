@@ -4,11 +4,8 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useProperty } from '../../contexts/PropertyContext';
 import {
   fetchDashboardBudgetAlerts,
-  fetchDashboardBudgetCategories,
   fetchDashboardBudgetSummary,
-  formatCurrency,
   type BudgetAlert,
-  type DashboardBudgetCategoryRow,
 } from '../../lib/budget/dashboardApi';
 import { fetchDashboardKpis, fetchRecentAbnormalInvoices } from '../../lib/dashboard';
 import type { AbnormalInvoiceItem, DashboardKpi } from '../../types/dashboard';
@@ -35,7 +32,6 @@ export function HomeBudgetPanel() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [summary, setSummary] = useState<Awaited<ReturnType<typeof fetchDashboardBudgetSummary>>['data']>(null);
-  const [categories, setCategories] = useState<DashboardBudgetCategoryRow[]>([]);
   const [alerts, setAlerts] = useState<BudgetAlert[]>([]);
   const [abnormalInvoices, setAbnormalInvoices] = useState<AbnormalInvoiceItem[]>([]);
   const [abnormalLoadError, setAbnormalLoadError] = useState(false);
@@ -63,7 +59,6 @@ export function HomeBudgetPanel() {
     if (!currentPropertyId) {
       setLoading(false);
       setSummary(null);
-      setCategories([]);
       setAlerts([]);
       setAbnormalInvoices([]);
       setAbnormalLoadError(false);
@@ -92,17 +87,15 @@ export function HomeBudgetPanel() {
         return { items: [] as DashboardKpi[] };
       });
 
-      const [sRes, cRes, aRes] = await Promise.all([
+      const [sRes, aRes] = await Promise.all([
         fetchDashboardBudgetSummary(currentPropertyId, fiscalYear),
-        fetchDashboardBudgetCategories(currentPropertyId, fiscalYear),
         fetchDashboardBudgetAlerts(currentPropertyId, fiscalYear),
       ]);
       const [abnormalOut, kpiOut] = await Promise.all([abnormalP, kpiP]);
       if (cancelled) return;
-      if (sRes.error || cRes.error || aRes.error) {
+      if (sRes.error || aRes.error) {
         console.error('Budget dashboard RPC failed', {
           summary: sRes.error?.message,
-          categories: cRes.error?.message,
           alerts: aRes.error?.message,
         });
         setLoadError(true);
@@ -110,7 +103,6 @@ export function HomeBudgetPanel() {
         setLoadError(false);
       }
       setSummary(sRes.data);
-      setCategories(cRes.data?.categories ?? []);
       setAlerts(aRes.data?.alerts ?? []);
       setAbnormalInvoices(abnormalOut.items);
       setAbnormalLoadError(!abnormalOut.ok);
@@ -156,10 +148,6 @@ export function HomeBudgetPanel() {
 
   if (!currentPropertyId) return null;
 
-  const topCategories = [...categories]
-    .sort((a, b) => b.actual - a.actual || b.committed - a.committed)
-    .slice(0, 6);
-
   return (
     <section className="mb-4" aria-labelledby="dashboard-page-h1">
       <div className="space-y-6">
@@ -194,7 +182,7 @@ export function HomeBudgetPanel() {
         )}
 
         {!loading && loadError && (
-          <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm text-red-700 shadow-sm">
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm">
             {errorMsg}
           </div>
         )}
@@ -202,7 +190,7 @@ export function HomeBudgetPanel() {
         {!loading && !loadError && summary && (
           <>
             {summary.budget_scope === 'package' && summary.active_package_id == null && (
-              <div className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 shadow-sm">
+              <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 shadow-sm">
                 <AlertTriangle className="mt-0.5 size-5 shrink-0" aria-hidden />
                 <span>{t('budget_home_no_active_package')}</span>
               </div>
@@ -220,10 +208,7 @@ export function HomeBudgetPanel() {
               <div className="xl:col-span-4">
                 <BudgetOverviewCard summary={summary} language={language} />
               </div>
-              <div
-                ref={alertsSectionRef}
-                className="scroll-mt-28 xl:col-span-8"
-              >
+              <div ref={alertsSectionRef} className="scroll-mt-28 xl:col-span-8">
                 <BudgetAlertsCard
                   alerts={alerts}
                   en={en}
@@ -233,61 +218,11 @@ export function HomeBudgetPanel() {
                 />
               </div>
             </div>
-
-            {topCategories.length > 0 && (
-              <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-                <h3 className="text-lg font-semibold text-gray-900">{t('budget_home_categories')}</h3>
-                <p className="mt-1 text-sm text-gray-500">
-                  {en ? 'Top spending categories for the selected fiscal year' : '所选财年支出占比较高的预算科目'}
-                </p>
-                <div className="mt-4 overflow-x-auto rounded-xl border border-gray-100">
-                  <table className="min-w-full text-left text-sm">
-                    <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
-                      <tr>
-                        <th className="px-3 py-2">{t('budget_home_col_category')}</th>
-                        <th className="px-3 py-2 text-right">{t('budget_home_col_budget')}</th>
-                        <th className="px-3 py-2 text-right">{t('budget_home_col_committed')}</th>
-                        <th className="px-3 py-2 text-right">{t('budget_home_col_actual')}</th>
-                        <th className="px-3 py-2 text-center">{t('budget_home_col_status')}</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {topCategories.map((row) => (
-                        <tr key={row.category_id} className={row.over_budget ? 'bg-red-50/60' : ''}>
-                          <td className="px-3 py-2 font-medium text-gray-900">
-                            {en ? row.name_en : row.name_zh || row.name_en}
-                            <span className="ml-1 text-xs font-normal text-gray-400">({row.code})</span>
-                          </td>
-                          <td className="px-3 py-2 text-right tabular-nums text-gray-700">
-                            {formatCurrency(row.budget, language)}
-                          </td>
-                          <td className="px-3 py-2 text-right tabular-nums text-gray-700">
-                            {formatCurrency(row.committed, language)}
-                          </td>
-                          <td className="px-3 py-2 text-right tabular-nums text-gray-700">
-                            {formatCurrency(row.actual, language)}
-                          </td>
-                          <td className="px-3 py-2 text-center text-xs">
-                            {row.over_budget ? (
-                              <span className="rounded-full bg-red-100 px-2 py-0.5 font-medium text-red-800">
-                                {t('budget_home_status_over')}
-                              </span>
-                            ) : (
-                              <span className="text-gray-500">{t('budget_home_status_ok')}</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
           </>
         )}
 
         {!loading && (
-          <div ref={abnormalInvoicesSectionRef} className="grid grid-cols-1 scroll-mt-28">
+          <div ref={abnormalInvoicesSectionRef} className="scroll-mt-28">
             <RecentAbnormalInvoicesCard
               items={abnormalInvoices}
               loadError={abnormalLoadError}

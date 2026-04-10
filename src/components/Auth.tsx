@@ -6,6 +6,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { supabase } from '../lib/supabase';
 import { getAuthErrorMessage } from '../lib/authErrorMessages';
 import { DEFAULT_PROPERTY_ID } from '../lib/defaultProperty';
+import { AuthPromoPanel } from './AuthPromoPanel';
 
 export function Auth() {
   const [isLogin, setIsLogin] = useState(true);
@@ -145,28 +146,28 @@ export function Auth() {
   const forgotCanSubmit = Boolean(email.trim()) && !resetSending;
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-emerald-50/80 via-white to-gray-50 p-4">
-      <div className="mb-8 text-center">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-[#1D9E75] text-white mb-4 shadow-lg shadow-[#1D9E75]/25">
-          <Building2 size={32} />
-        </div>
-        <h1 className="text-2xl font-bold text-gray-900 tracking-tight">ClearStrata</h1>
-        <p className="text-gray-500 text-sm mt-1">
-          {language === 'en' ? 'Strata management, simplified' : '物业管理，更透明'}
-        </p>
-        <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-sm">
-          <Link to="/pricing" className="font-medium text-[#1D9E75] hover:underline">
-            {t('nav_pricing')}
-          </Link>
-          <Link to="/contact" className="font-medium text-[#1D9E75] hover:underline">
-            {t('nav_contact')}
-          </Link>
-        </div>
-      </div>
+    <div className="min-h-screen bg-gray-50">
+      <div className="mx-auto flex min-h-screen max-w-7xl flex-col lg:flex-row">
+        <div className="flex w-full flex-col items-center justify-center px-6 py-8 lg:w-1/2 lg:py-10">
+          <div className="mb-6 w-full max-w-md text-center lg:mb-8">
+            <div className="mb-3 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-[#1D9E75] text-white shadow-lg shadow-[#1D9E75]/25 sm:h-16 sm:w-16">
+              <Building2 className="size-7 sm:size-8" />
+            </div>
+            <h1 className="text-2xl font-bold tracking-tight text-gray-900">ClearStrata</h1>
+            <p className="mt-1 text-sm text-gray-500">{t('auth_slogan')}</p>
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-sm">
+              <Link to="/pricing" className="font-medium text-[#1D9E75] hover:underline">
+                {t('nav_pricing')}
+              </Link>
+              <Link to="/contact" className="font-medium text-[#1D9E75] hover:underline">
+                {t('nav_contact')}
+              </Link>
+            </div>
+          </div>
 
-      <div className="w-full max-w-md">
-        <div className="bg-white rounded-2xl shadow-xl shadow-gray-200/60 border border-gray-100 overflow-visible">
-          <div className="flex border-b border-gray-100">
+          <div className="w-full max-w-md">
+            <div className="overflow-visible rounded-2xl border border-gray-100 bg-white shadow-xl shadow-gray-200/60">
+              <div className="flex border-b border-gray-100">
             <button
               type="button"
               onClick={() => { setIsLogin(true); resetForm(); }}
@@ -196,9 +197,9 @@ export function Auth() {
             >
               {language === 'en' ? '中文' : 'EN'}
             </button>
-          </div>
+              </div>
 
-          <form onSubmit={handleSubmit} className="p-6 space-y-4">
+              <form onSubmit={handleSubmit} className="space-y-4 p-6">
             {passwordUpdated && (
               <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-900 text-sm flex justify-between gap-2 items-start">
                 <span>{t('auth_password_updated_banner')}</span>
@@ -558,7 +559,13 @@ export function Auth() {
                 {error}
               </div>
             )}
-          </form>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex w-full items-center justify-center border-t border-gray-200 bg-gradient-to-b from-gray-50/80 to-emerald-50/30 px-6 py-8 lg:w-1/2 lg:border-l lg:border-t-0 lg:border-gray-100 lg:bg-gradient-to-br lg:from-white lg:to-emerald-50/40 lg:py-10">
+          <AuthPromoPanel />
         </div>
       </div>
     </div>

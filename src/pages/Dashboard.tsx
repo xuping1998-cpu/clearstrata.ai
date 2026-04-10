@@ -6,9 +6,6 @@ import { useProperty } from '../contexts/PropertyContext';
 import { canReviewJoinRequestsFromContext } from '../lib/propertyPermissions';
 import { supabase } from '../lib/supabase';
 import { BudgetDashboardSection } from '../components/budget/BudgetDashboardSection';
-import { DashboardAbnormalInvoicesCard } from '../components/DashboardAbnormalInvoicesCard';
-import { DashboardPromoCard } from '../components/DashboardPromoCard';
-import { DashboardRedAlertInvoicesCard } from '../components/DashboardRedAlertInvoicesCard';
 
 export function Dashboard() {
   const { t, language } = useLanguage();
@@ -38,7 +35,7 @@ export function Dashboard() {
   }, [showJoinRequestBadge, currentPropertyId]);
 
   return (
-    <div className="w-full max-w-6xl mx-auto pt-0">
+    <div className="mx-auto w-full max-w-7xl pt-0">
       {showJoinRequestBadge && pendingJoinCount != null && pendingJoinCount > 0 && (
         <Link
           to="/admin/join-requests"
@@ -54,12 +51,6 @@ export function Dashboard() {
       )}
 
       <BudgetDashboardSection />
-
-      <DashboardAbnormalInvoicesCard />
-
-      <DashboardRedAlertInvoicesCard />
-
-      <DashboardPromoCard />
     </div>
   );
 }
