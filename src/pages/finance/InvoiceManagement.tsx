@@ -133,16 +133,32 @@ function statusStyle(status: string): { labelZh: string; labelEn: string; classN
   return map[status] || map.pending_review;
 }
 
+function createdAtInCurrentMonth(createdAt: string): boolean {
+  const c = new Date(createdAt);
+  if (Number.isNaN(c.getTime())) return false;
+  const now = new Date();
+  return c.getFullYear() === now.getFullYear() && c.getMonth() === now.getMonth();
+}
+
 export function InvoiceManagement({
   highlightInvoiceId,
   dangerFilterOnly = false,
   auditFilterOnly = false,
+  abnormalFilterOnly = false,
+  highRiskFilterOnly = false,
+  rangeThisMonthOnly = false,
 }: {
   highlightInvoiceId?: string | null;
   /** 仅显示「明显高于报价」的红色预警发票（首页「查看全部」） */
   dangerFilterOnly?: boolean;
   /** 仅显示审计规则标记异常的发票（首页审计卡片） */
   auditFilterOnly?: boolean;
+  /** 预算/科目异常或规则标记异常（与首页 KPI 深链 filter=abnormal 对齐） */
+  abnormalFilterOnly?: boolean;
+  /** 高风险：红色报价偏差、审计异常、异常状态或预算超支标记 */
+  highRiskFilterOnly?: boolean;
+  /** 与 abnormal 等组合：仅保留创建时间落在本自然月的发票 */
+  rangeThisMonthOnly?: boolean;
 } = {}) {
   const { profile } = useAuth();
   const { currentPropertyId, memberships, roleInProperty } = useProperty();
@@ -703,6 +719,21 @@ export function InvoiceManagement({
         if (!isRedAlertVariance(v)) return false;
       }
       if (auditFilterOnly && !inv.is_abnormal) return false;
+      if (abnormalFilterOnly) {
+        const flag = inv.budget_anomaly_flag != null && String(inv.budget_anomaly_flag).trim() !== '';
+        if (!inv.is_abnormal && !flag) return false;
+        if (rangeThisMonthOnly && !createdAtInCurrentMonth(inv.created_at)) return false;
+      }
+      if (highRiskFilterOnly) {
+        const v = quoteVarianceByInvoiceId[inv.id];
+        const redVar = isRedAlertVariance(v);
+        const flag = inv.budget_anomaly_flag != null && String(inv.budget_anomaly_flag).trim() !== '';
+        const abnormalish = Boolean(inv.is_abnormal) || flag;
+        const flagged = inv.status === 'flagged';
+        const budgetEx = inv.is_budget_exceeded === true;
+        if (!redVar && !abnormalish && !flagged && !budgetEx) return false;
+        if (rangeThisMonthOnly && !abnormalFilterOnly && !createdAtInCurrentMonth(inv.created_at)) return false;
+      }
       const q = searchTerm.trim().toLowerCase();
       const matchSearch =
         !q ||
@@ -723,6 +754,9 @@ export function InvoiceManagement({
     dateTo,
     dangerFilterOnly,
     auditFilterOnly,
+    abnormalFilterOnly,
+    highRiskFilterOnly,
+    rangeThisMonthOnly,
     quoteVarianceByInvoiceId,
   ]);
 
@@ -832,6 +866,30 @@ export function InvoiceManagement({
             {l
               ? 'Filtered: audit-flagged invoices only (automatic rules).'
               : '当前筛选：审计规则标记的异常发票。'}
+          </span>
+          <Link to="/finance?tab=invoices" className="font-semibold text-[#1D9E75] hover:underline shrink-0">
+            {l ? 'Show all invoices' : '查看全部发票'}
+          </Link>
+        </div>
+      )}
+      {abnormalFilterOnly && (
+        <div className="rounded-xl border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-950 flex flex-wrap items-center gap-2 justify-between">
+          <span>
+            {l
+              ? `Filtered: abnormal invoices${rangeThisMonthOnly ? ' (created this month)' : ''}.`
+              : `当前筛选：异常发票${rangeThisMonthOnly ? '（本月创建）' : ''}。`}
+          </span>
+          <Link to="/finance?tab=invoices" className="font-semibold text-[#1D9E75] hover:underline shrink-0">
+            {l ? 'Show all invoices' : '查看全部发票'}
+          </Link>
+        </div>
+      )}
+      {highRiskFilterOnly && !abnormalFilterOnly && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 flex flex-wrap items-center gap-2 justify-between">
+          <span>
+            {l
+              ? 'Filtered: high-risk invoices (quote variance, audit flags, exceptions, or budget exceeded).'
+              : '当前筛选：高风险发票（报价偏差、审计/科目异常、流程异常或预算超支标记）。'}
           </span>
           <Link to="/finance?tab=invoices" className="font-semibold text-[#1D9E75] hover:underline shrink-0">
             {l ? 'Show all invoices' : '查看全部发票'}

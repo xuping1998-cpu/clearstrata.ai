@@ -164,19 +164,19 @@ export function Layout({ children }: LayoutProps) {
             setMobileMenuOpen(false);
           }}
           className={`
-            flex w-full items-center gap-4 rounded-2xl border px-4 py-4 text-left shadow-sm transition-all
+            flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left text-sm shadow-sm transition-all
             ${
               active
                 ? 'border-emerald-300 bg-emerald-50/80 ring-1 ring-emerald-200'
-                : 'border-gray-200 bg-white hover:border-emerald-200 hover:shadow-md'
+                : 'border-gray-200 bg-white hover:border-emerald-200 hover:shadow-sm'
             }
           `}
         >
-          <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${iconBg}`}>
-            <Icon className="h-6 w-6 text-white" size={24} />
+          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${iconBg}`}>
+            <Icon className="h-5 w-5 text-white" size={20} />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="text-base font-semibold leading-snug text-gray-900">{label}</div>
+            <div className="text-sm font-semibold leading-snug text-gray-900">{label}</div>
           </div>
         </button>
       );
@@ -298,14 +298,14 @@ export function Layout({ children }: LayoutProps) {
         `}
         >
           <div className="flex h-full flex-col pb-6 pt-6">
-            <div className="px-4">
+            <div className="mb-6 px-4">
               <button
                 type="button"
                 onClick={() => {
                   navigate('/');
                   setMobileMenuOpen(false);
                 }}
-                className={`flex w-full items-center gap-3 rounded-2xl px-4 py-4 text-left transition-colors ${
+                className={`flex w-full items-center gap-3 rounded-xl px-4 py-4 text-left transition-colors ${
                   homeActive ? 'bg-[#1D9E75] text-white shadow-md' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
                 }`}
               >
@@ -314,7 +314,7 @@ export function Layout({ children }: LayoutProps) {
               </button>
             </div>
 
-            <div className="mt-6 flex-1 overflow-y-auto px-4">
+            <div className="mt-20 flex-1 overflow-y-auto px-4">
               <div className="space-y-3">
                 {quickModules.map((m) => renderModuleCard(m.path, m.icon, m.label, m.iconBg))}
                 {showJoinRequestReviewCoreNav && (
@@ -325,19 +325,19 @@ export function Layout({ children }: LayoutProps) {
                       setMobileMenuOpen(false);
                     }}
                     className={`
-                      flex w-full items-center gap-4 rounded-2xl border px-4 py-4 text-left shadow-sm transition-all
+                      flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left text-sm shadow-sm transition-all
                       ${
                         location.pathname === '/admin/join-requests'
                           ? 'border-emerald-300 bg-emerald-50/80 ring-1 ring-emerald-200'
-                          : 'border-gray-200 bg-white hover:border-emerald-200 hover:shadow-md'
+                          : 'border-gray-200 bg-white hover:border-emerald-200 hover:shadow-sm'
                       }
                     `}
                   >
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-amber-500">
-                      <ClipboardList className="h-6 w-6 text-white" size={24} />
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500">
+                      <ClipboardList className="h-5 w-5 text-white" size={20} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="text-base font-semibold leading-snug text-gray-900">
+                      <div className="text-sm font-semibold leading-snug text-gray-900">
                         {t('nav_review_applications')}
                       </div>
                     </div>

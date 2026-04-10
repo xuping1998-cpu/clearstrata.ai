@@ -152,7 +152,7 @@ export function Auth() {
         </div>
         <h1 className="text-2xl font-bold text-gray-900 tracking-tight">ClearStrata</h1>
         <p className="text-gray-500 text-sm mt-1">
-          {language === 'en' ? 'Strata management, simplified' : '物业管理，更简单'}
+          {language === 'en' ? 'Strata management, simplified' : '物业管理，更透明'}
         </p>
         <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-sm">
           <Link to="/pricing" className="font-medium text-[#1D9E75] hover:underline">

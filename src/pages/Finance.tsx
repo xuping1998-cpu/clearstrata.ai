@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { FileText, Bot, TrendingUp, BarChart3 } from 'lucide-react';
+import { FileText, Bot, TrendingUp, BarChart3, PieChart } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useProperty } from '../contexts/PropertyContext';
 import { BackButton } from '../components/BackButton';
@@ -8,8 +8,9 @@ import { InvoiceManagement } from './finance/InvoiceManagement';
 import InvoiceInterpreter from './finance/InvoiceInterpreter';
 import { RevenueDashboard } from './finance/RevenueDashboard';
 import { MonthlySummary } from './finance/MonthlySummary';
+import { FinanceBudgetTab } from './finance/FinanceBudgetTab';
 
-type FinanceTab = 'invoices' | 'interpreter' | 'revenue' | 'summary';
+type FinanceTab = 'invoices' | 'budget' | 'interpreter' | 'revenue' | 'summary';
 
 interface TabConfig {
   key: FinanceTab;
@@ -20,6 +21,7 @@ interface TabConfig {
 
 const allTabs: TabConfig[] = [
   { key: 'invoices', labelEn: 'Invoice Management', labelZh: '发票管理', icon: <FileText size={18} /> },
+  { key: 'budget', labelEn: 'Budget', labelZh: '年度预算', icon: <PieChart size={18} /> },
   { key: 'interpreter', labelEn: 'AI Interpreter', labelZh: 'AI发票解读', icon: <Bot size={18} /> },
   { key: 'revenue', labelEn: 'Revenue Dashboard', labelZh: '收入看板', icon: <TrendingUp size={18} /> },
   { key: 'summary', labelEn: 'Monthly Summary', labelZh: '月度摘要', icon: <BarChart3 size={18} /> },
@@ -44,19 +46,36 @@ export function Finance() {
   const invoiceHighlightId = searchParams.get('invoice');
   const filterDanger = searchParams.get('filter') === 'danger';
   const filterAudit = searchParams.get('filter') === 'audit';
+  const filterAbnormal = searchParams.get('filter') === 'abnormal';
+  const filterHighRisk = searchParams.get('filter') === 'high_risk';
+  const rangeThisMonth = searchParams.get('range') === 'this_month';
 
   useEffect(() => {
     const tab = searchParams.get('tab') as FinanceTab | null;
-    if ((filterDanger || filterAudit) && financeFullAccess) {
+    if (
+      (filterDanger || filterAudit || filterAbnormal || filterHighRisk) &&
+      financeFullAccess
+    ) {
       setActiveTab('invoices');
       return;
     }
-    if (tab && ['invoices', 'interpreter', 'revenue', 'summary'].includes(tab) && financeFullAccess) {
+    if (
+      tab &&
+      ['invoices', 'budget', 'interpreter', 'revenue', 'summary'].includes(tab) &&
+      financeFullAccess
+    ) {
       setActiveTab(tab);
     } else {
       setActiveTab(financeFullAccess ? 'invoices' : 'summary');
     }
-  }, [financeFullAccess, searchParams, filterDanger, filterAudit]);
+  }, [
+    financeFullAccess,
+    searchParams,
+    filterDanger,
+    filterAudit,
+    filterAbnormal,
+    filterHighRisk,
+  ]);
 
   const l = language === 'en';
 
@@ -104,8 +123,12 @@ export function Finance() {
           highlightInvoiceId={invoiceHighlightId}
           dangerFilterOnly={filterDanger}
           auditFilterOnly={filterAudit}
+          abnormalFilterOnly={filterAbnormal}
+          highRiskFilterOnly={filterHighRisk}
+          rangeThisMonthOnly={rangeThisMonth}
         />
       )}
+      {financeFullAccess && activeTab === 'budget' && <FinanceBudgetTab />}
       {financeFullAccess && activeTab === 'interpreter' && <InvoiceInterpreter />}
       {financeFullAccess && activeTab === 'revenue' && <RevenueDashboard />}
       {(activeTab === 'summary' || !financeFullAccess) && <MonthlySummary />}
