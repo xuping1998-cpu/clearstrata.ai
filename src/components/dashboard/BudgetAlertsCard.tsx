@@ -16,7 +16,11 @@ function severityRank(s: string): number {
 function isBudgetAlert(type?: string) {
   if (!type) return false;
   if (type.includes('quote')) return false;
-  return type.includes('budget') || type.includes('category_over');
+  return (
+    type.includes('budget') ||
+    type.includes('category_over') ||
+    type.includes('category_unmatched')
+  );
 }
 
 function isInvoiceAlert(type?: string) {

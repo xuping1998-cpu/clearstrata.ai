@@ -292,15 +292,15 @@ export function Layout({ children }: LayoutProps) {
           ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
           lg:translate-x-0
           fixed lg:sticky top-16 left-0 h-[calc(100vh-4rem)]
-          w-56 shrink-0 border-r border-gray-200 bg-white
+          w-52 shrink-0 border-r border-gray-200 bg-white
           transition-transform duration-200 ease-in-out
           z-30 overflow-y-auto
         `}
         >
           <div
-            className={`flex h-full flex-col pb-4 ${isDashboardHome ? 'pt-4' : 'pt-5'} lg:pb-6`}
+            className={`flex h-full flex-col pb-4 ${isDashboardHome ? 'pt-3' : 'pt-5'} lg:pb-6`}
           >
-            <div className={`px-3 sm:px-3.5 ${isDashboardHome ? 'mb-3' : 'mb-4'}`}>
+            <div className={`px-2.5 sm:px-3 ${isDashboardHome ? 'mb-3' : 'mb-4'}`}>
               <button
                 type="button"
                 onClick={() => {
@@ -316,7 +316,7 @@ export function Layout({ children }: LayoutProps) {
               </button>
             </div>
 
-            <div className="mt-6 flex-1 overflow-y-auto px-3 sm:px-3.5">
+            <div className="mt-6 flex-1 overflow-y-auto px-2.5 sm:px-3">
               <div className="space-y-3">
                 {quickModules.map((m) => renderModuleCard(m.path, m.icon, m.label, m.iconBg))}
                 {showJoinRequestReviewCoreNav && (
@@ -372,10 +372,10 @@ export function Layout({ children }: LayoutProps) {
         )}
 
         <main
-          className={`min-w-0 w-full max-w-7xl flex-1 px-3 sm:px-5 lg:px-6 ${
+          className={`min-w-0 w-full max-w-7xl flex-1 ${
             isDashboardHome
-              ? 'pt-4 pb-6 sm:pb-8 lg:pt-4 lg:pb-10'
-              : 'py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8'
+              ? 'px-3 pb-6 pt-3 sm:px-4 sm:pb-8 lg:pb-10 lg:pl-3 lg:pr-6 lg:pt-3'
+              : 'px-3 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8'
           }`}
         >
           <UserNotificationToast />

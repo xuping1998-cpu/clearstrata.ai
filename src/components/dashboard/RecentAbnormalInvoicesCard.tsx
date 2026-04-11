@@ -81,9 +81,10 @@ function isThisMonth(value?: string | null) {
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
 }
 
-/** 与发票工作流对齐：科目/预算异常标记，或待处理、流程异常状态 */
+/** 与发票工作流对齐：规则审计高风险、科目/预算异常标记，或待处理、流程异常状态 */
 function isHighRisk(item: AbnormalInvoiceItem) {
   const st = item.status ?? '';
+  if (item.audit_severity === 'high') return true;
   return (
     item.budget_anomaly_flag === 'category_unmatched' ||
     item.budget_anomaly_flag === 'over_budget' ||
@@ -91,6 +92,12 @@ function isHighRisk(item: AbnormalInvoiceItem) {
     st === 'pending_review' ||
     st === 'flagged'
   );
+}
+
+function primaryAnomalyLine(item: AbnormalInvoiceItem, en: boolean): string {
+  const msg = en ? item.audit_message_en : item.audit_message_zh;
+  if (msg && msg.trim()) return msg.trim();
+  return anomalyText(item.budget_anomaly_flag, en);
 }
 
 export type RecentAbnormalInvoicesCardProps = {
@@ -233,12 +240,12 @@ export function RecentAbnormalInvoicesCard({
         </div>
       ) : filteredItems.length === 0 ? (
         items.length === 0 ? (
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-6 py-10 text-center">
-            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-white text-emerald-600 shadow-sm">
-              <CheckCircle2 className="size-6" aria-hidden />
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-5 text-center sm:py-6">
+            <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-white text-emerald-600 shadow-sm">
+              <CheckCircle2 className="size-5" aria-hidden />
             </div>
-            <div className="text-lg font-medium text-emerald-800">{emptyAll}</div>
-            <div className="mt-2 text-sm text-emerald-700">{emptyAllSubtitle}</div>
+            <div className="text-base font-medium text-emerald-800">{emptyAll}</div>
+            <div className="mt-1 text-xs leading-relaxed text-emerald-700 sm:text-sm">{emptyAllSubtitle}</div>
           </div>
         ) : (
           <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-center text-sm text-gray-600">
@@ -260,7 +267,7 @@ export function RecentAbnormalInvoicesCard({
                         {item.vendor_name?.trim() || (en ? 'Unnamed vendor' : '未命名供应商')}
                       </div>
                       <div className="mt-1 text-sm text-gray-600">
-                        {anomalyText(item.budget_anomaly_flag, en)}
+                        {primaryAnomalyLine(item, en)}
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2">
                         <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700">
