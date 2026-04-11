@@ -139,13 +139,13 @@ export function Layout({ children }: LayoutProps) {
             setMobileMenuOpen(false);
           }}
           className={`
-          w-full flex items-center gap-3 px-4 py-3 rounded-lg
-          transition-colors text-left
+          flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] font-medium
+          transition-colors
           ${active ? 'bg-[#1D9E75] text-white' : 'text-gray-700 hover:bg-gray-100'}
         `}
         >
-          <Icon size={20} />
-          <span className="font-medium">{label}</span>
+          <Icon size={18} />
+          <span className="leading-snug">{label}</span>
         </button>
       );
     },
@@ -164,7 +164,7 @@ export function Layout({ children }: LayoutProps) {
             setMobileMenuOpen(false);
           }}
           className={`
-            flex w-full items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left text-sm shadow-sm transition-all
+            flex min-h-[72px] w-full items-center gap-2 rounded-2xl border px-3 py-2 text-left shadow-sm transition-all
             ${
               active
                 ? 'border-emerald-300 bg-emerald-50/80 ring-1 ring-emerald-200'
@@ -172,11 +172,11 @@ export function Layout({ children }: LayoutProps) {
             }
           `}
         >
-          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${iconBg}`}>
-            <Icon className="h-5 w-5 text-white" size={20} />
+          <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${iconBg}`}>
+            <Icon className="h-[18px] w-[18px] text-white" size={18} />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-semibold leading-snug text-gray-900">{label}</div>
+            <div className="text-[15px] font-semibold leading-snug text-gray-900">{label}</div>
           </div>
         </button>
       );
@@ -297,27 +297,25 @@ export function Layout({ children }: LayoutProps) {
           z-30 overflow-hidden
         `}
         >
-          <div
-            className={`flex h-full min-h-0 flex-col ${isDashboardHome ? 'pt-3' : 'pt-5'}`}
-          >
-            <div className={`shrink-0 px-2.5 sm:px-3 ${isDashboardHome ? 'mb-2.5' : 'mb-4'}`}>
+          <div className="flex h-full min-h-0 flex-col lg:min-h-0">
+            <div className={`shrink-0 px-2.5 sm:px-3 ${isDashboardHome ? 'pt-3 pb-0' : 'pt-5 pb-0'}`}>
               <button
                 type="button"
                 onClick={() => {
                   navigate('/');
                   setMobileMenuOpen(false);
                 }}
-                className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-left transition-colors sm:gap-3 sm:px-3.5 ${
+                className={`flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left transition-colors sm:gap-2.5 sm:px-3.5 ${
                   homeActive ? 'bg-[#1D9E75] text-white shadow-md' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
                 }`}
               >
                 <Home className="h-5 w-5 shrink-0" size={20} />
-                <span className="text-base font-semibold sm:text-lg">{t('nav_dashboard')}</span>
+                <span className="text-[15px] font-semibold sm:text-base">{t('nav_dashboard')}</span>
               </button>
             </div>
 
-            <div className="mt-4 min-h-0 flex-1 overflow-y-auto px-2.5 sm:px-3">
-              <div className="space-y-2">
+            <div className="shrink-0 px-2.5 pt-2 sm:px-3">
+              <div className="space-y-1.5">
                 {quickModules.map((m) => renderModuleCard(m.path, m.icon, m.label, m.iconBg))}
                 {showJoinRequestReviewCoreNav && (
                   <button
@@ -327,7 +325,7 @@ export function Layout({ children }: LayoutProps) {
                       setMobileMenuOpen(false);
                     }}
                     className={`
-                      flex w-full items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left text-sm shadow-sm transition-all
+                      flex min-h-[72px] w-full items-center gap-2 rounded-2xl border px-3 py-2 text-left shadow-sm transition-all
                       ${
                         location.pathname === '/admin/join-requests'
                           ? 'border-emerald-300 bg-emerald-50/80 ring-1 ring-emerald-200'
@@ -335,43 +333,43 @@ export function Layout({ children }: LayoutProps) {
                       }
                     `}
                   >
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500">
-                      <ClipboardList className="h-5 w-5 text-white" size={20} />
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-500">
+                      <ClipboardList className="h-[18px] w-[18px] text-white" size={18} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="text-sm font-semibold leading-snug text-gray-900">
+                      <div className="text-[15px] font-semibold leading-snug text-gray-900">
                         {t('nav_review_applications')}
                       </div>
                     </div>
                   </button>
                 )}
               </div>
-
-              {showSystemSection && (
-                <div className="mt-5 border-t border-gray-100 pt-4">
-                  <p className="mb-1.5 px-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    {t('nav_group_system')}
-                  </p>
-                  <div className="space-y-1">
-                    {systemNavItems.map((item) =>
-                      renderSystemNavButton(item.path, item.icon, item.label),
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
 
-            <div className="mt-auto shrink-0 px-4 pb-6">
-              <div className="rounded-2xl border border-gray-200 bg-white p-3">
-                <div className="mb-2 text-center text-xs text-gray-600">
+            {showSystemSection ? (
+              <div className="mt-2 min-h-0 flex-1 overflow-y-auto border-t border-gray-100 px-2.5 pt-3 sm:px-3">
+                <p className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                  {t('nav_group_system')}
+                </p>
+                <div className="space-y-0.5">
+                  {systemNavItems.map((item) => renderSystemNavButton(item.path, item.icon, item.label))}
+                </div>
+              </div>
+            ) : (
+              <div className="min-h-0 flex-1" aria-hidden />
+            )}
+
+            <div className="mt-auto shrink-0 px-3 pb-4 pt-2">
+              <div className="rounded-2xl border border-gray-200 bg-white p-2">
+                <div className="mb-1 text-center text-[10px] leading-tight text-gray-600">
                   {language === 'en' ? 'Scan to view spending' : '扫码查看支出'}
                 </div>
                 <img
                   src="/qr-code.png"
                   alt=""
-                  className="mx-auto h-24 w-24 object-contain"
+                  className="mx-auto h-20 w-20 object-contain"
                 />
-                <div className="mt-2 text-center text-[10px] text-gray-400">
+                <div className="mt-1 text-center text-[9px] leading-tight text-gray-400">
                   {language === 'en' ? 'Make every expense transparent' : '让每一笔支出透明'}
                 </div>
               </div>
