@@ -131,7 +131,7 @@ export function HomeBudgetPanel() {
 
   return (
     <section className="mb-2 mt-0" aria-labelledby="dashboard-page-h1">
-      <div className="mx-auto w-full max-w-5xl space-y-4">
+      <div className="mx-auto w-full max-w-5xl space-y-2">
         {loading && (
           <div className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-500 shadow-sm">
             <Loader2 className="size-5 shrink-0 animate-spin text-gray-400" aria-hidden />
@@ -141,16 +141,11 @@ export function HomeBudgetPanel() {
 
         {!loading && (
           <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
-            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
               <div>
                 <h1 id="dashboard-page-h1" className="text-xl font-bold text-gray-900 sm:text-2xl">
                   {headerTitle}
                 </h1>
-                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-500">
-                  <span>{en ? 'Budget' : '预算执行'}</span>
-                  <span>{en ? 'Abnormal invoices' : '异常发票'}</span>
-                  <span>{en ? 'Open risks' : '待处理风险事项'}</span>
-                </div>
               </div>
               <div className="flex items-center gap-3">
                 <span className="text-sm text-gray-500">{yearLabel}</span>
@@ -169,19 +164,19 @@ export function HomeBudgetPanel() {
             </div>
 
             {loadError && (
-              <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700 shadow-sm">
+              <div className="mt-1 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700 shadow-sm">
                 {errorMsg}
               </div>
             )}
 
             {summary && summary.budget_scope === 'package' && summary.active_package_id == null && (
-              <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-950 shadow-sm">
+              <div className="mt-1 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-950 shadow-sm">
                 <AlertTriangle className="mt-0.5 size-5 shrink-0" aria-hidden />
                 <span>{t('budget_home_no_active_package')}</span>
               </div>
             )}
 
-            <div className="mt-4">
+            <div className="mt-2">
               <DashboardKpiBar
                 compact
                 en={en}
@@ -191,7 +186,7 @@ export function HomeBudgetPanel() {
               />
             </div>
 
-            <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-12 xl:gap-5">
+            <div className="mt-2 grid grid-cols-1 gap-4 xl:grid-cols-12 xl:gap-5">
               <div className="xl:col-span-8">
                 {summary ? (
                   <BudgetOverviewCard summary={summary} language={language} embedded />

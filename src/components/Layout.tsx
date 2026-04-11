@@ -294,13 +294,13 @@ export function Layout({ children }: LayoutProps) {
           fixed lg:sticky top-16 left-0 h-[calc(100vh-4rem)]
           w-52 shrink-0 border-r border-gray-200 bg-white
           transition-transform duration-200 ease-in-out
-          z-30 overflow-y-auto
+          z-30 overflow-hidden
         `}
         >
           <div
-            className={`flex h-full flex-col pb-3 ${isDashboardHome ? 'pt-3' : 'pt-5'} lg:pb-5`}
+            className={`flex h-full min-h-0 flex-col ${isDashboardHome ? 'pt-3' : 'pt-5'}`}
           >
-            <div className={`px-2.5 sm:px-3 ${isDashboardHome ? 'mb-2.5' : 'mb-4'}`}>
+            <div className={`shrink-0 px-2.5 sm:px-3 ${isDashboardHome ? 'mb-2.5' : 'mb-4'}`}>
               <button
                 type="button"
                 onClick={() => {
@@ -316,7 +316,7 @@ export function Layout({ children }: LayoutProps) {
               </button>
             </div>
 
-            <div className="mt-4 flex-1 overflow-y-auto px-2.5 sm:px-3">
+            <div className="mt-4 min-h-0 flex-1 overflow-y-auto px-2.5 sm:px-3">
               <div className="space-y-2">
                 {quickModules.map((m) => renderModuleCard(m.path, m.icon, m.label, m.iconBg))}
                 {showJoinRequestReviewCoreNav && (
@@ -359,7 +359,22 @@ export function Layout({ children }: LayoutProps) {
                   </div>
                 </div>
               )}
+            </div>
 
+            <div className="mt-auto shrink-0 px-4 pb-6">
+              <div className="rounded-2xl border border-gray-200 bg-white p-3">
+                <div className="mb-2 text-center text-xs text-gray-600">
+                  {language === 'en' ? 'Scan to view spending' : '扫码查看支出'}
+                </div>
+                <img
+                  src="/qr-code.png"
+                  alt=""
+                  className="mx-auto h-24 w-24 object-contain"
+                />
+                <div className="mt-2 text-center text-[10px] text-gray-400">
+                  {language === 'en' ? 'Make every expense transparent' : '让每一笔支出透明'}
+                </div>
+              </div>
             </div>
           </div>
         </aside>

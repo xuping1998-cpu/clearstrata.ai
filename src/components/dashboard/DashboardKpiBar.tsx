@@ -21,7 +21,7 @@ function kpiCornerHint(item: DashboardKpi, en: boolean): string {
 
 function cardShellCompact(className: string) {
   return [
-    'rounded-2xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 sm:px-4 sm:py-3',
+    'rounded-2xl border border-gray-200 bg-gray-50 px-4 py-2',
     'transition hover:border-emerald-300/80 hover:shadow-sm',
     className,
   ].join(' ');
@@ -58,11 +58,11 @@ function KpiCardBody({
         <div className="shrink-0 max-w-[50%] text-right text-xs leading-snug text-gray-400">{corner}</div>
       </div>
       <div
-        className={`mt-1.5 text-xl font-bold tabular-nums tracking-tight sm:text-2xl ${valueClass(item.key)}`}
+        className={`mt-1 text-xl font-bold tabular-nums tracking-tight sm:text-2xl ${valueClass(item.key)}`}
       >
         {item.value}
       </div>
-      <div className="mt-1.5 flex justify-end">
+      <div className="mt-1 flex justify-end">
         <span className="text-sm font-medium text-blue-600">{viewLabel}</span>
       </div>
     </>
