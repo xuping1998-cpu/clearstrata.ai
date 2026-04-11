@@ -164,7 +164,7 @@ export function Layout({ children }: LayoutProps) {
             setMobileMenuOpen(false);
           }}
           className={`
-            flex min-h-[72px] w-full items-center gap-2 rounded-2xl border px-3 py-2 text-left shadow-sm transition-all
+            flex min-h-[54px] w-full items-center gap-2 rounded-2xl border px-3 py-2 text-left shadow-sm transition-all
             ${
               active
                 ? 'border-emerald-300 bg-emerald-50/80 ring-1 ring-emerald-200'
@@ -172,8 +172,8 @@ export function Layout({ children }: LayoutProps) {
             }
           `}
         >
-          <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${iconBg}`}>
-            <Icon className="h-[18px] w-[18px] text-white" size={18} />
+          <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${iconBg}`}>
+            <Icon className="h-4 w-4 text-white" size={16} />
           </div>
           <div className="min-w-0 flex-1">
             <div className="text-[15px] font-semibold leading-snug text-gray-900">{label}</div>
@@ -315,7 +315,7 @@ export function Layout({ children }: LayoutProps) {
             </div>
 
             <div className="shrink-0 px-2.5 pt-2 sm:px-3">
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 {quickModules.map((m) => renderModuleCard(m.path, m.icon, m.label, m.iconBg))}
                 {showJoinRequestReviewCoreNav && (
                   <button
@@ -325,7 +325,7 @@ export function Layout({ children }: LayoutProps) {
                       setMobileMenuOpen(false);
                     }}
                     className={`
-                      flex min-h-[72px] w-full items-center gap-2 rounded-2xl border px-3 py-2 text-left shadow-sm transition-all
+                      flex min-h-[54px] w-full items-center gap-2 rounded-2xl border px-3 py-2 text-left shadow-sm transition-all
                       ${
                         location.pathname === '/admin/join-requests'
                           ? 'border-emerald-300 bg-emerald-50/80 ring-1 ring-emerald-200'
@@ -333,8 +333,8 @@ export function Layout({ children }: LayoutProps) {
                       }
                     `}
                   >
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-500">
-                      <ClipboardList className="h-[18px] w-[18px] text-white" size={18} />
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500">
+                      <ClipboardList className="h-4 w-4 text-white" size={16} />
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="text-[15px] font-semibold leading-snug text-gray-900">
