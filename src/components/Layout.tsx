@@ -360,16 +360,16 @@ export function Layout({ children }: LayoutProps) {
             )}
 
             <div className="mt-auto shrink-0 px-3 pb-4 pt-2">
-              <div className="rounded-2xl border border-gray-200 bg-white p-2">
-                <div className="mb-1 text-center text-[10px] leading-tight text-gray-600">
+              <div className="rounded-2xl border border-gray-200 bg-white p-4">
+                <div className="mb-2 text-center text-base font-medium leading-snug text-gray-900">
                   {language === 'en' ? 'Scan to view spending' : '扫码查看支出'}
                 </div>
                 <img
                   src="/qr-code.png"
                   alt=""
-                  className="mx-auto h-20 w-20 object-contain"
+                  className="mx-auto h-28 w-28 object-contain"
                 />
-                <div className="mt-1 text-center text-[9px] leading-tight text-gray-400">
+                <div className="mt-2 text-center text-xs text-gray-500">
                   {language === 'en' ? 'Make every expense transparent' : '让每一笔支出透明'}
                 </div>
               </div>
