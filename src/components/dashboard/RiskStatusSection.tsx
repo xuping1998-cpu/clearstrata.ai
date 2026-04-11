@@ -53,7 +53,7 @@ export function RiskStatusSection({ en, alerts, summary, monthlyAbnormalCount }:
 
   return (
     <div
-      className={`flex min-h-0 flex-col rounded-2xl border border-gray-200 bg-gray-50/80 ${hasRisk ? 'h-full p-4' : 'p-3'}`}
+      className={`flex min-h-0 flex-col rounded-2xl border border-gray-200 bg-gray-50/80 ${hasRisk ? 'h-full p-3 sm:p-3.5' : 'p-2.5'}`}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-base font-semibold text-gray-900">{title}</h2>
@@ -61,12 +61,12 @@ export function RiskStatusSection({ en, alerts, summary, monthlyAbnormalCount }:
       </div>
 
       {!hasRisk ? (
-        <div className="mt-2 space-y-1 text-sm">
+        <div className="mt-1.5 space-y-0.5 text-sm">
           <p className="font-medium leading-snug text-gray-900">{stableMain}</p>
           <p className="text-xs leading-relaxed text-gray-600">{stableSub}</p>
         </div>
       ) : (
-        <div className="mt-3 flex min-h-0 flex-1 flex-col gap-3">
+        <div className="mt-2.5 flex min-h-0 flex-1 flex-col gap-2.5">
           <dl className="grid grid-cols-1 gap-2 text-sm">
             <div className="flex justify-between gap-2">
               <dt className="text-gray-500">{en ? 'Open risk items' : '待处理风险事项'}</dt>

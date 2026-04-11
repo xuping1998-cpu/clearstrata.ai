@@ -37,57 +37,63 @@ export function BudgetOverviewCard({ summary, language, embedded = false }: Budg
       </div>
       {!embedded && <p className="mt-1 text-sm text-gray-500">{t('budget_home_subtitle')}</p>}
 
-      <div className={`grid grid-cols-2 gap-2 ${embedded ? 'mt-3' : 'mt-4 gap-2.5'}`}>
+      <div className={`grid grid-cols-2 gap-2 ${embedded ? 'mt-2' : 'mt-4 gap-2.5'}`}>
         <div
-          className={`flex flex-col justify-center rounded-xl border border-gray-100 bg-white px-3 py-2 ${embedded ? 'min-h-[3.5rem]' : 'min-h-[4rem] py-2.5'}`}
+          className={`flex flex-col justify-center rounded-xl border border-gray-100 bg-white px-3 py-1.5 ${embedded ? 'min-h-0' : 'min-h-[4rem] py-2.5'}`}
         >
           <div className="text-xs font-medium text-gray-500">{t('budget_home_total_budget')}</div>
-          <div className="mt-0.5 text-lg font-bold tabular-nums tracking-tight text-gray-900 sm:text-xl">
+          <div
+            className={`mt-0.5 font-bold tabular-nums tracking-tight text-gray-900 ${embedded ? 'text-base sm:text-lg' : 'text-lg sm:text-xl'}`}
+          >
             {formatCurrency(summary.total_budget, language)}
           </div>
         </div>
         <div
-          className={`flex flex-col justify-center rounded-xl border border-gray-100 bg-white px-3 py-2 ${embedded ? 'min-h-[3.5rem]' : 'min-h-[4rem] py-2.5'}`}
+          className={`flex flex-col justify-center rounded-xl border border-gray-100 bg-white px-3 ${embedded ? 'py-1.5 min-h-0' : 'min-h-[4rem] py-2.5'}`}
         >
           <div className="text-xs font-medium text-gray-500">{t('budget_home_committed')}</div>
-          <div className="mt-0.5 text-lg font-bold tabular-nums tracking-tight text-gray-900 sm:text-xl">
+          <div
+            className={`mt-0.5 font-bold tabular-nums tracking-tight text-gray-900 ${embedded ? 'text-base sm:text-lg' : 'text-lg sm:text-xl'}`}
+          >
             {formatCurrency(summary.committed, language)}
           </div>
         </div>
         <div
-          className={`flex flex-col justify-center rounded-xl border border-gray-100 bg-white px-3 py-2 ${embedded ? 'min-h-[3.5rem]' : 'min-h-[4rem] py-2.5'}`}
+          className={`flex flex-col justify-center rounded-xl border border-gray-100 bg-white px-3 ${embedded ? 'py-1.5 min-h-0' : 'min-h-[4rem] py-2.5'}`}
         >
           <div className="text-xs font-medium text-gray-500">{t('budget_home_actual')}</div>
-          <div className="mt-0.5 text-lg font-bold tabular-nums tracking-tight text-gray-900 sm:text-xl">
+          <div
+            className={`mt-0.5 font-bold tabular-nums tracking-tight text-gray-900 ${embedded ? 'text-base sm:text-lg' : 'text-lg sm:text-xl'}`}
+          >
             {formatCurrency(summary.actual, language)}
           </div>
         </div>
         <div
-          className={`flex flex-col justify-center rounded-xl border border-gray-100 bg-white px-3 py-2 ${embedded ? 'min-h-[3.5rem]' : 'min-h-[4rem] py-2.5'}`}
+          className={`flex flex-col justify-center rounded-xl border border-gray-100 bg-white px-3 ${embedded ? 'py-1.5 min-h-0' : 'min-h-[4rem] py-2.5'}`}
         >
           <div className="text-xs font-medium text-gray-500">{t('budget_home_remaining')}</div>
           <div
-            className={`mt-0.5 text-lg font-bold tabular-nums tracking-tight sm:text-xl ${
-              overBudget ? 'text-red-700' : 'text-emerald-800'
-            }`}
+            className={`mt-0.5 font-bold tabular-nums tracking-tight ${
+              embedded ? 'text-base sm:text-lg' : 'text-lg sm:text-xl'
+            } ${overBudget ? 'text-red-700' : 'text-emerald-800'}`}
           >
             {formatCurrency(summary.remaining_budget, language)}
           </div>
         </div>
       </div>
 
-      <div className={embedded ? 'mt-3' : 'mt-5'}>
-        <div className="mb-1.5 flex items-center justify-between text-xs text-gray-500">
+      <div className={embedded ? 'mt-2' : 'mt-5'}>
+        <div className={`flex items-center justify-between text-xs text-gray-500 ${embedded ? 'mb-1' : 'mb-1.5'}`}>
           <span>{t('budget_home_util_actual_pct')}</span>
           <span className="font-semibold tabular-nums text-gray-700">{rawUtilPct.toFixed(1)}%</span>
         </div>
-        <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+        <div className={`${embedded ? 'h-1.5' : 'h-2'} overflow-hidden rounded-full bg-gray-100`}>
           <div
             className={`h-full rounded-full transition-[width] ${overBudget ? 'bg-red-500' : 'bg-emerald-500'}`}
             style={{ width: `${Number.isFinite(barWidth) ? barWidth : 0}%` }}
           />
         </div>
-        <p className="mt-1.5 text-xs text-gray-500">
+        <p className={`${embedded ? 'mt-1' : 'mt-1.5'} text-xs text-gray-500`}>
           {t('budget_home_util_committed_pct')}{' '}
           <span className="font-medium text-gray-700">
             {(summary.committed_utilization * 100).toFixed(1)}%

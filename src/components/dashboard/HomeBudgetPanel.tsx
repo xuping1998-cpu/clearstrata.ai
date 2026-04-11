@@ -54,9 +54,6 @@ export function HomeBudgetPanel() {
   }, [displayKpis]);
 
   const headerTitle = en ? 'Finance & risk overview' : '财务与风险概览';
-  const headerSubtitle = en
-    ? 'Live budget performance and open risk items'
-    : '实时查看预算执行情况与待处理风险事项';
   const yearLabel = en ? 'Fiscal year' : '财年';
   const loadingMsg = en ? 'Loading dashboard budget data…' : '正在加载首页预算数据…';
   const errorMsg = en
@@ -133,23 +130,27 @@ export function HomeBudgetPanel() {
   if (!currentPropertyId) return null;
 
   return (
-    <section className="mb-4" aria-labelledby="dashboard-page-h1">
-      <div className="mx-auto w-full max-w-6xl space-y-5">
+    <section className="mb-2 mt-0" aria-labelledby="dashboard-page-h1">
+      <div className="mx-auto w-full max-w-5xl space-y-4">
         {loading && (
-          <div className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-white px-5 py-4 text-sm text-gray-500 shadow-sm">
+          <div className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-500 shadow-sm">
             <Loader2 className="size-5 shrink-0 animate-spin text-gray-400" aria-hidden />
             <span>{loadingMsg}</span>
           </div>
         )}
 
         {!loading && (
-          <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
-            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
-                <h1 id="dashboard-page-h1" className="text-2xl font-bold text-gray-900">
+                <h1 id="dashboard-page-h1" className="text-xl font-bold text-gray-900 sm:text-2xl">
                   {headerTitle}
                 </h1>
-                <p className="mt-1 text-sm text-gray-500">{headerSubtitle}</p>
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-500">
+                  <span>{en ? 'Budget' : '预算执行'}</span>
+                  <span>{en ? 'Abnormal invoices' : '异常发票'}</span>
+                  <span>{en ? 'Open risks' : '待处理风险事项'}</span>
+                </div>
               </div>
               <div className="flex items-center gap-3">
                 <span className="text-sm text-gray-500">{yearLabel}</span>
@@ -168,28 +169,29 @@ export function HomeBudgetPanel() {
             </div>
 
             {loadError && (
-              <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm">
+              <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700 shadow-sm">
                 {errorMsg}
               </div>
             )}
 
             {summary && summary.budget_scope === 'package' && summary.active_package_id == null && (
-              <div className="mt-5 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 shadow-sm">
+              <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-950 shadow-sm">
                 <AlertTriangle className="mt-0.5 size-5 shrink-0" aria-hidden />
                 <span>{t('budget_home_no_active_package')}</span>
               </div>
             )}
 
-            <div className="mt-6">
+            <div className="mt-4">
               <DashboardKpiBar
                 compact
+                en={en}
                 items={displayKpis}
                 viewLabel={en ? 'View' : '查看'}
                 onKpiClick={handleKpiClick}
               />
             </div>
 
-            <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-12">
+            <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-12 xl:gap-5">
               <div className="xl:col-span-8">
                 {summary ? (
                   <BudgetOverviewCard summary={summary} language={language} embedded />

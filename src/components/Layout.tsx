@@ -164,7 +164,7 @@ export function Layout({ children }: LayoutProps) {
             setMobileMenuOpen(false);
           }}
           className={`
-            flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left text-sm shadow-sm transition-all
+            flex w-full items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left text-sm shadow-sm transition-all
             ${
               active
                 ? 'border-emerald-300 bg-emerald-50/80 ring-1 ring-emerald-200'
@@ -298,9 +298,9 @@ export function Layout({ children }: LayoutProps) {
         `}
         >
           <div
-            className={`flex h-full flex-col pb-4 ${isDashboardHome ? 'pt-3' : 'pt-5'} lg:pb-6`}
+            className={`flex h-full flex-col pb-3 ${isDashboardHome ? 'pt-3' : 'pt-5'} lg:pb-5`}
           >
-            <div className={`px-2.5 sm:px-3 ${isDashboardHome ? 'mb-3' : 'mb-4'}`}>
+            <div className={`px-2.5 sm:px-3 ${isDashboardHome ? 'mb-2.5' : 'mb-4'}`}>
               <button
                 type="button"
                 onClick={() => {
@@ -316,8 +316,8 @@ export function Layout({ children }: LayoutProps) {
               </button>
             </div>
 
-            <div className="mt-6 flex-1 overflow-y-auto px-2.5 sm:px-3">
-              <div className="space-y-3">
+            <div className="mt-4 flex-1 overflow-y-auto px-2.5 sm:px-3">
+              <div className="space-y-2">
                 {quickModules.map((m) => renderModuleCard(m.path, m.icon, m.label, m.iconBg))}
                 {showJoinRequestReviewCoreNav && (
                   <button
@@ -327,7 +327,7 @@ export function Layout({ children }: LayoutProps) {
                       setMobileMenuOpen(false);
                     }}
                     className={`
-                      flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left text-sm shadow-sm transition-all
+                      flex w-full items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left text-sm shadow-sm transition-all
                       ${
                         location.pathname === '/admin/join-requests'
                           ? 'border-emerald-300 bg-emerald-50/80 ring-1 ring-emerald-200'
@@ -348,8 +348,8 @@ export function Layout({ children }: LayoutProps) {
               </div>
 
               {showSystemSection && (
-                <div className="mt-8 border-t border-gray-100 pt-6">
-                  <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                <div className="mt-5 border-t border-gray-100 pt-4">
+                  <p className="mb-1.5 px-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
                     {t('nav_group_system')}
                   </p>
                   <div className="space-y-1">
@@ -374,7 +374,7 @@ export function Layout({ children }: LayoutProps) {
         <main
           className={`min-w-0 w-full max-w-7xl flex-1 ${
             isDashboardHome
-              ? 'px-3 pb-6 pt-3 sm:px-4 sm:pb-8 lg:pb-10 lg:pl-3 lg:pr-6 lg:pt-3'
+              ? 'px-3 pb-5 pt-0 sm:px-4 sm:pb-6 lg:pb-6 lg:pl-2 lg:pr-5 lg:pt-0'
               : 'px-3 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8'
           }`}
         >
