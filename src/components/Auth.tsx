@@ -8,6 +8,60 @@ import { getAuthErrorMessage } from '../lib/authErrorMessages';
 import { DEFAULT_PROPERTY_ID } from '../lib/defaultProperty';
 import { AuthPromoPanel } from './AuthPromoPanel';
 
+function persistCurrentPropertyId(propertyId: string) {
+  try {
+    localStorage.setItem('currentPropertyId', propertyId);
+    localStorage.setItem('clearstrata-current-property-id', propertyId);
+  } catch {
+    /* ignore */
+  }
+}
+
+const GUEST_PROPERTY_STORAGE_KEY = 'guestPropertyId';
+
+/** After scan-as-guest signup: bind stored property via invite (RLS-safe). */
+async function claimGuestStoredPropertyAfterSignUp(): Promise<string | null> {
+  let gid: string | null = null;
+  try {
+    gid = localStorage.getItem(GUEST_PROPERTY_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+  if (!gid) return null;
+  const { data, error } = await supabase.rpc('ensure_invite_owner_membership', {
+    p_property_id: gid,
+  });
+  if (error) {
+    console.warn('ensure_invite_owner_membership', error);
+    return null;
+  }
+  if (data == null) return null;
+  const pid = String(data);
+  try {
+    localStorage.removeItem(GUEST_PROPERTY_STORAGE_KEY);
+    persistCurrentPropertyId(pid);
+  } catch {
+    /* ignore */
+  }
+  return pid;
+}
+
+/** QR / deep link: ?propertyCode=BCS3736 — bind user to property via RPC (RLS-safe). */
+async function claimPropertyFromUrlIfPresent(): Promise<string | null> {
+  const params = new URLSearchParams(window.location.search);
+  const propertyCode = params.get('propertyCode');
+  if (!propertyCode?.trim()) return null;
+  const { data, error } = await supabase.rpc('claim_property_by_code', {
+    p_code: propertyCode.trim(),
+  });
+  if (error) {
+    console.warn('claim_property_by_code', error);
+    return null;
+  }
+  if (data == null) return null;
+  return String(data);
+}
+
 export function Auth() {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
@@ -88,6 +142,12 @@ export function Auth() {
       if (isLogin) {
         const cleanEmail = email.trim().toLowerCase();
         await signIn(cleanEmail, password);
+        const claimedId = await claimPropertyFromUrlIfPresent();
+        if (claimedId) {
+          persistCurrentPropertyId(claimedId);
+          navigate('/', { replace: true });
+          return;
+        }
         if (safeRedirectAfterAuth()) return;
       } else {
         const user = await signUp(email, password, fullNameEn, fullNameZh, unitNumber);
@@ -111,6 +171,17 @@ export function Auth() {
             status: 'pending',
             strata_fee_status: 'current',
           });
+          const guestClaimed = await claimGuestStoredPropertyAfterSignUp();
+          if (guestClaimed) {
+            navigate('/', { replace: true });
+            return;
+          }
+          const claimedId = await claimPropertyFromUrlIfPresent();
+          if (claimedId) {
+            persistCurrentPropertyId(claimedId);
+            navigate('/', { replace: true });
+            return;
+          }
           if (safeRedirectAfterAuth()) return;
         }
       }

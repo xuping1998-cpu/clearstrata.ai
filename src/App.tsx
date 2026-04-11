@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { PropertyProvider, useProperty } from './contexts/PropertyContext';
+import { PropertyEntry } from './pages/PropertyEntry';
 import { Auth } from './components/Auth';
 import { ResetPassword } from './pages/ResetPassword';
 import { Layout } from './components/Layout';
@@ -248,25 +249,11 @@ function SelectPropertyRoute() {
 }
 
 function AppContent() {
-  const { session, loading, user } = useAuth();
-  const { ready: propertyReady, currentPropertyId, memberships } = useProperty();
-  const hasActiveMembership = useHasActivePropertyMembership(user?.id, propertyReady);
-
-  if (loading || (session && !propertyReady) || (session && hasActiveMembership === null)) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-[#1D9E75] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <>
       <PostLoginPropertyRedirect />
       <Routes>
+      <Route path="/p/:code" element={<PropertyEntry />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/pricing" element={<PricingRoute />} />
       <Route path="/contact" element={<ContactRoute />} />
@@ -336,25 +323,60 @@ function AppContent() {
           </SessionLayoutGate>
         }
       />
-      <Route
-        path="/*"
-        element={
-          session ? (
-            hasActiveMembership === false ? (
-              <JoinAccessGate />
-            ) : !currentPropertyId ? (
-              <Navigate to="/select-property" replace />
-            ) : (
-              <Layout>
-                <AuthenticatedRoutes />
-              </Layout>
-            )
-          ) : (
-            <Auth />
-          )
-        }
-      />
+      <Route path="/*" element={<AppMain />} />
     </Routes>
+    </>
+  );
+}
+
+function AppMain() {
+  const { session, loading, user } = useAuth();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const { ready: propertyReady, currentPropertyId, memberships, isGuest } = useProperty();
+  const hasActiveMembership = useHasActivePropertyMembership(user?.id, propertyReady);
+
+  if (loading || (session && !propertyReady) || (session && hasActiveMembership === null)) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-[#1D9E75] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const guestHome =
+    !session &&
+    isGuest &&
+    currentPropertyId &&
+    location.pathname === '/' &&
+    searchParams.get('guest') === '1';
+
+  if (guestHome) {
+    return (
+      <Layout>
+        <Dashboard />
+      </Layout>
+    );
+  }
+
+  return (
+    <>
+      {session ? (
+        hasActiveMembership === false ? (
+          <JoinAccessGate />
+        ) : !currentPropertyId ? (
+          <Navigate to="/select-property" replace />
+        ) : (
+          <Layout>
+            <AuthenticatedRoutes />
+          </Layout>
+        )
+      ) : (
+        <Auth />
+      )}
     </>
   );
 }

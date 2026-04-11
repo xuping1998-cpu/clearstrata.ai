@@ -17,6 +17,16 @@ import { samePropertyId } from '../lib/propertyIdMatch';
 const STORAGE_KEY = 'clearstrata-current-property-id';
 /** Optional alias for compatibility with docs / external tooling. */
 const LEGACY_STORAGE_KEY = 'currentPropertyId';
+/** Guest browse (scan /p/:code without login). */
+export const GUEST_PROPERTY_STORAGE_KEY = 'guestPropertyId';
+
+function readGuestPropertyId(): string | null {
+  try {
+    return localStorage.getItem(GUEST_PROPERTY_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
 
 function readStoredPropertyId(): string | null {
   try {
@@ -79,6 +89,8 @@ interface PropertyContextValue {
   /** Legacy: always false when memberships exist (default property is auto-selected). */
   needsPropertyChoice: boolean;
   refreshMemberships: () => Promise<void>;
+  /** True when viewing a property via scan link without login (guestPropertyId). */
+  isGuest: boolean;
 }
 
 const PropertyContext = createContext<PropertyContextValue | undefined>(undefined);
@@ -86,6 +98,7 @@ const PropertyContext = createContext<PropertyContextValue | undefined>(undefine
 export function PropertyProvider({ children }: { children: ReactNode }) {
   const { user, session } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
+  const guestQuery = searchParams.get('guest');
   const searchParamsRef = useRef(searchParams);
   searchParamsRef.current = searchParams;
 
@@ -93,6 +106,7 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
   const [memberships, setMemberships] = useState<PropertyMembership[]>([]);
   const [currentPropertyId, setCurrentPropertyIdState] = useState<string | null>(null);
   const [needsPropertyChoice, setNeedsPropertyChoice] = useState(false);
+  const [isGuest, setIsGuest] = useState(false);
 
   const loadMemberships = useCallback(async () => {
     if (!user?.id) {
@@ -140,6 +154,7 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
     }));
 
     setMemberships(mems);
+    setIsGuest(false);
 
     if (mems.length === 0) {
       setCurrentPropertyIdState(null);
@@ -160,14 +175,22 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!session) {
       setMemberships([]);
-      setCurrentPropertyIdState(null);
+      const gid = readGuestPropertyId();
+      const guestMode = guestQuery === '1';
+      if (guestMode && gid) {
+        setCurrentPropertyIdState(gid);
+        setIsGuest(true);
+      } else {
+        setCurrentPropertyIdState(null);
+        setIsGuest(false);
+      }
       setNeedsPropertyChoice(false);
       setReady(true);
       return;
     }
     setReady(false);
     void loadMemberships();
-  }, [session, loadMemberships]);
+  }, [session, loadMemberships, guestQuery]);
 
   /** URL 含有效 propertyId 且与 state 不一致时，以 URL 为准（前进/后退/分享链接）。 */
   useEffect(() => {
@@ -254,6 +277,7 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
       setCurrentPropertyId,
       needsPropertyChoice,
       refreshMemberships: loadMemberships,
+      isGuest,
     }),
     [
       ready,
@@ -263,6 +287,7 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
       setCurrentPropertyId,
       needsPropertyChoice,
       loadMemberships,
+      isGuest,
     ],
   );
 
