@@ -1,12 +1,20 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, X, ThumbsUp, ThumbsDown, AlertCircle, CheckCircle, Users, Calendar, ArrowLeft, Clock, DollarSign, ChevronRight } from 'lucide-react';
+import { Plus, X, ThumbsUp, ThumbsDown, AlertCircle, CheckCircle, Users, ArrowLeft, DollarSign, ChevronRight } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useProperty } from '../contexts/PropertyContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { supabase } from '../lib/supabase';
 import { localDateTimeToIso } from '../utils/meetingDateTime';
-import { meetingTimeIso } from '../lib/meetingDisplay';
+
+/** List row: matches DB columns available on `meetings` (minimal schema). */
+interface MeetingListRow {
+  id: string;
+  meeting_type: string;
+  title_en: string | null;
+  title_zh: string | null;
+  description_en: string | null;
+}
 
 interface Meeting {
   id: string;
@@ -111,65 +119,85 @@ export function Voting() {
 
       const currentYear = new Date().getFullYear();
 
-      const { data: meetingsData } = await supabase
+      // Only columns guaranteed on `meetings` — no filters/order on missing columns (avoids 400).
+      const { data: meetingsData, error: meetingsError } = await supabase
         .from('meetings')
-        .select(`
-          *,
-          agenda_items:meeting_agenda_items(*)
-        `)
-        .eq('property_id', currentPropertyId)
-        .order('created_at', { ascending: false });
+        .select('id, meeting_type, title_en, title_zh, description_en');
 
-      if (meetingsData) {
-        const meetingsWithVotes = await Promise.all(
-          meetingsData.map(async (meeting) => {
-            if (meeting.agenda_items) {
-              const itemsWithUserVotes = await Promise.all(
-                meeting.agenda_items.map(async (item: AgendaItem) => {
-                  const { data: userVote } = await supabase
-                    .from('meeting_votes')
-                    .select('vote_decision')
-                    .eq('agenda_item_id', item.id)
-                    .eq('voter_id', user.id)
-                    .maybeSingle();
-
-                  return {
-                    ...item,
-                    user_voted: !!userVote,
-                    user_vote: userVote?.vote_decision,
-                  };
-                })
-              );
-              meeting.agenda_items = itemsWithUserVotes;
+      if (meetingsError) {
+        console.error('meetings list', meetingsError);
+        setMeetings([]);
+      } else {
+        const rows = (meetingsData ?? []) as MeetingListRow[];
+        const agendaByMeeting = new Map<string, AgendaItem[]>();
+        if (rows.length > 0) {
+          const ids = rows.map((r) => r.id);
+          const { data: agendaRows, error: agendaErr } = await supabase
+            .from('meeting_agenda_items')
+            .select('*')
+            .in('meeting_id', ids);
+          if (!agendaErr && agendaRows) {
+            for (const raw of agendaRows) {
+              const item = raw as AgendaItem;
+              const list = agendaByMeeting.get(item.meeting_id) ?? [];
+              list.push(item);
+              agendaByMeeting.set(item.meeting_id, list);
             }
-            return meeting;
-          })
+          }
+        }
+
+        const meetingsWithVotes: Meeting[] = await Promise.all(
+          rows.map(async (row) => {
+            const rawItems = agendaByMeeting.get(row.id) ?? [];
+            const itemsWithUserVotes = await Promise.all(
+              rawItems.map(async (item: AgendaItem) => {
+                const { data: userVote } = await supabase
+                  .from('meeting_votes')
+                  .select('vote_decision')
+                  .eq('agenda_item_id', item.id)
+                  .eq('voter_id', user.id)
+                  .maybeSingle();
+
+                return {
+                  ...item,
+                  user_voted: !!userVote,
+                  user_vote: userVote?.vote_decision,
+                };
+              }),
+            );
+
+            const typeVal = row.meeting_type as Meeting['meeting_type'];
+            return {
+              id: row.id,
+              meeting_type: typeVal,
+              title_en: row.title_en ?? '',
+              title_zh: row.title_zh ?? undefined,
+              description_en: row.description_en ?? '',
+              description_zh: undefined,
+              status: 'scheduled',
+              is_virtual: false,
+              counts_against_quota: false,
+              is_overtime: false,
+              property_id: currentPropertyId,
+              agenda_items: itemsWithUserVotes,
+            };
+          }),
         );
         setMeetings(meetingsWithVotes);
       }
 
-      const { data: quotaData } = await supabase
-        .from('meeting_quota_tracker')
-        .select('*')
-        .eq('property_id', currentPropertyId)
-        .eq('fiscal_year', currentYear)
-        .maybeSingle();
-
-      if (quotaData) {
-        setQuota(quotaData);
-      } else {
-        setQuota({
-          fiscal_year: currentYear,
-          agm_count: 0,
-          council_regular_count: 0,
-          ad_hoc_count: 0,
-          sgm_count: 0,
-          total_quota_used: 0,
-          free_quota_limit: 8,
-          overtime_meetings: 0,
-          total_overtime_fees: 0,
-        });
-      }
+      // Temporarily skip DB quota fetch (avoid fiscal_year / property_id filters on broken schemas).
+      setQuota({
+        fiscal_year: currentYear,
+        agm_count: 0,
+        council_regular_count: 0,
+        ad_hoc_count: 0,
+        sgm_count: 0,
+        total_quota_used: 0,
+        free_quota_limit: 8,
+        overtime_meetings: 0,
+        total_overtime_fees: 0,
+      });
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
@@ -505,39 +533,11 @@ export function Voting() {
                             )}
                           </div>
                           <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                            {mt(meeting.title_en, meeting.title_zh)}
+                            {meeting.title_zh?.trim() || meeting.title_en}
                           </h3>
-                          {mt(meeting.description_en, meeting.description_zh) && (
-                            <p className="text-gray-600 mb-3">
-                              {mt(meeting.description_en, meeting.description_zh)}
-                            </p>
-                          )}
-                          <div className="flex items-center gap-4 text-sm text-gray-600">
-                            <div className="flex items-center gap-1">
-                              <Calendar size={16} />
-                              {(() => {
-                                const iso = meetingTimeIso(meeting);
-                                return iso
-                                  ? new Date(iso).toLocaleDateString(l ? 'en-US' : 'zh-CN')
-                                  : '—';
-                              })()}
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <Clock size={16} />
-                              {meeting.duration_minutes} {l ? 'min' : '分钟'}
-                            </div>
-                            {meeting.is_virtual && meeting.meeting_link && (
-                              <a
-                                href={meeting.meeting_link}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-[#1D9E75] hover:underline"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                {l ? 'Join Online' : '加入在线会议'}
-                              </a>
-                            )}
-                          </div>
+                          {meeting.description_en?.trim() ? (
+                            <p className="text-gray-600 mb-3 line-clamp-3">{meeting.description_en}</p>
+                          ) : null}
                         </div>
                         <button
                           onClick={(e) => { e.stopPropagation(); navigate(`/voting/${meeting.id}`); }}

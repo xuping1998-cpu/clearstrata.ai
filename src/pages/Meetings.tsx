@@ -5,15 +5,13 @@ import { useAuth } from '../contexts/AuthContext';
 import { useProperty } from '../contexts/PropertyContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { supabase } from '../lib/supabase';
-import { meetingTimeIso } from '../lib/meetingDisplay';
 
 type MeetingRow = {
   id: string;
+  meeting_type?: string;
   title_en: string;
   title_zh?: string | null;
-  scheduled_date?: string | null;
-  created_at?: string | null;
-  status: string;
+  description_en?: string | null;
 };
 
 export function Meetings() {
@@ -61,10 +59,7 @@ export function Meetings() {
     void (async () => {
       const { data, error } = await supabase
         .from('meetings')
-        .select('*')
-        .eq('property_id', currentPropertyId)
-        .order('created_at', { ascending: false })
-        .limit(80);
+        .select('id, meeting_type, title_en, title_zh, description_en');
       if (!cancelled) {
         if (error) {
           console.error(error);
@@ -118,42 +113,33 @@ export function Meetings() {
         <p className="mt-8 text-gray-600">{en ? 'No meetings yet.' : '暂无会议。'}</p>
       ) : (
         <ul className="mt-6 divide-y divide-gray-200 rounded-2xl border border-gray-200 bg-white">
-          {rows.map((m) => {
-            const timeIso = meetingTimeIso(m);
-            const when = timeIso
-              ? new Date(timeIso).toLocaleString(en ? 'en-CA' : 'zh-CN', {
-                  dateStyle: 'short',
-                  timeStyle: 'short',
-                })
-              : '—';
-            return (
-              <li key={m.id}>
-                {isDemoMode ? (
-                  <div className="flex items-center justify-between gap-3 px-4 py-4">
-                    <div>
-                      <div className="font-medium text-gray-900">{m.title_zh?.trim() || m.title_en}</div>
-                      <div className="text-xs text-gray-500">
-                        {when} · {m.status}
-                      </div>
-                    </div>
+          {rows.map((m) => (
+            <li key={m.id}>
+              {isDemoMode ? (
+                <div className="flex items-center justify-between gap-3 px-4 py-4">
+                  <div>
+                    <div className="font-medium text-gray-900">{m.title_zh?.trim() || m.title_en}</div>
+                    {m.description_en?.trim() ? (
+                      <div className="mt-1 line-clamp-2 text-xs text-gray-500">{m.description_en}</div>
+                    ) : null}
                   </div>
-                ) : (
-                  <Link
-                    to={`/voting/${m.id}`}
-                    className="flex items-center justify-between gap-3 px-4 py-4 hover:bg-gray-50"
-                  >
-                    <div>
-                      <div className="font-medium text-gray-900">{m.title_zh?.trim() || m.title_en}</div>
-                      <div className="text-xs text-gray-500">
-                        {when} · {m.status}
-                      </div>
-                    </div>
-                    <ChevronRight className="size-5 shrink-0 text-gray-400" />
-                  </Link>
-                )}
-              </li>
-            );
-          })}
+                </div>
+              ) : (
+                <Link
+                  to={`/voting/${m.id}`}
+                  className="flex items-center justify-between gap-3 px-4 py-4 hover:bg-gray-50"
+                >
+                  <div>
+                    <div className="font-medium text-gray-900">{m.title_zh?.trim() || m.title_en}</div>
+                    {m.description_en?.trim() ? (
+                      <div className="mt-1 line-clamp-2 text-xs text-gray-500">{m.description_en}</div>
+                    ) : null}
+                  </div>
+                  <ChevronRight className="size-5 shrink-0 text-gray-400" />
+                </Link>
+              )}
+            </li>
+          ))}
         </ul>
       )}
 
