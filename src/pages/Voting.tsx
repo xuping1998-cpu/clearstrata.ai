@@ -6,6 +6,7 @@ import { useProperty } from '../contexts/PropertyContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { supabase } from '../lib/supabase';
 import { localDateTimeToIso } from '../utils/meetingDateTime';
+import { meetingTimeIso } from '../lib/meetingDisplay';
 
 interface Meeting {
   id: string;
@@ -14,7 +15,7 @@ interface Meeting {
   title_zh?: string;
   description_en: string;
   description_zh?: string;
-  scheduled_date: string;
+  scheduled_date?: string;
   scheduled_end_date?: string;
   actual_start_time?: string;
   actual_end_time?: string;
@@ -26,8 +27,8 @@ interface Meeting {
   counts_against_quota: boolean;
   is_overtime: boolean;
   overtime_fee?: number;
-  fiscal_year: number;
-  created_at: string;
+  fiscal_year?: number;
+  created_at?: string;
   property_id: string;
   agenda_items?: AgendaItem[];
 }
@@ -117,7 +118,7 @@ export function Voting() {
           agenda_items:meeting_agenda_items(*)
         `)
         .eq('property_id', currentPropertyId)
-        .order('scheduled_date', { ascending: false });
+        .order('created_at', { ascending: false });
 
       if (meetingsData) {
         const meetingsWithVotes = await Promise.all(
@@ -514,7 +515,12 @@ export function Voting() {
                           <div className="flex items-center gap-4 text-sm text-gray-600">
                             <div className="flex items-center gap-1">
                               <Calendar size={16} />
-                              {new Date(meeting.scheduled_date).toLocaleDateString(l ? 'en-US' : 'zh-CN')}
+                              {(() => {
+                                const iso = meetingTimeIso(meeting);
+                                return iso
+                                  ? new Date(iso).toLocaleDateString(l ? 'en-US' : 'zh-CN')
+                                  : '—';
+                              })()}
                             </div>
                             <div className="flex items-center gap-1">
                               <Clock size={16} />
