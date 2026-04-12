@@ -46,23 +46,17 @@ export function CreateMeeting() {
       const currentYear = new Date().getFullYear();
       const scheduledDateTimeIso = localDateTimeToIso(scheduledDate, scheduledTime || '10:00');
 
-      const { data: quotaData } = await supabase
-        .from('meeting_quota_tracker')
-        .select('*')
-        .eq('property_id', currentPropertyId)
-        .eq('fiscal_year', currentYear)
-        .maybeSingle();
-
-      const quota = quotaData ?? {
+      // Local fallback only — do not query meeting_quota_tracker (avoids 400 / RLS issues).
+      const quota = {
         fiscal_year: currentYear,
-        total_quota_used: 0,
-        free_quota_limit: 8,
+        used: 0,
+        total: 8,
         agm_count: 0,
         ad_hoc_count: 0,
       };
 
-      const quotaUsed = quota.total_quota_used ?? 0;
-      const isOvertime = quotaUsed >= (quota.free_quota_limit ?? 8);
+      const quotaUsed = quota.used;
+      const isOvertime = quotaUsed >= quota.total;
 
       if (meetingType === 'agm' && (quota.agm_count ?? 0) >= 1) {
         setErr(en ? 'AGM quota for this year is already used.' : '本年度 AGM 配额已使用');

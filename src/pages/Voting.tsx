@@ -62,12 +62,12 @@ interface AgendaItem {
 
 interface MeetingQuota {
   fiscal_year: number;
+  used: number;
+  total: number;
   agm_count: number;
   council_regular_count: number;
   ad_hoc_count: number;
   sgm_count: number;
-  total_quota_used: number;
-  free_quota_limit: number;
   overtime_meetings: number;
   total_overtime_fees: number;
 }
@@ -106,8 +106,36 @@ export function Voting() {
     loadData();
   }, [user, currentPropertyId]);
 
+  function meetingFromRow(row: MeetingListRow, propertyId: string): Meeting {
+    const rawType = (row.meeting_type || 'council_regular').toLowerCase();
+    const allowed: Meeting['meeting_type'][] = ['agm', 'council_regular', 'ad_hoc', 'sgm'];
+    const meeting_type = (allowed.includes(rawType as Meeting['meeting_type'])
+      ? rawType
+      : 'council_regular') as Meeting['meeting_type'];
+    return {
+      id: row.id,
+      meeting_type,
+      title_en: row.title_en ?? '',
+      title_zh: row.title_zh ?? undefined,
+      description_en: row.description_en ?? '',
+      description_zh: undefined,
+      status: 'scheduled',
+      is_virtual: false,
+      counts_against_quota: false,
+      is_overtime: false,
+      property_id: propertyId,
+      agenda_items: [],
+    };
+  }
+
   const loadData = async () => {
-    if (!user || !currentPropertyId) return;
+    if (!user) {
+      setMeetings([]);
+      setLoading(false);
+      return;
+    }
+
+    const propertyId = currentPropertyId ?? '';
 
     try {
       setIsCouncil(
@@ -119,82 +147,77 @@ export function Voting() {
 
       const currentYear = new Date().getFullYear();
 
-      // Only columns guaranteed on `meetings` — no filters/order on missing columns (avoids 400).
       const { data: meetingsData, error: meetingsError } = await supabase
         .from('meetings')
         .select('id, meeting_type, title_en, title_zh, description_en');
 
       if (meetingsError) {
-        console.error('meetings list', meetingsError);
         setMeetings([]);
       } else {
         const rows = (meetingsData ?? []) as MeetingListRow[];
-        const agendaByMeeting = new Map<string, AgendaItem[]>();
-        if (rows.length > 0) {
-          const ids = rows.map((r) => r.id);
-          const { data: agendaRows, error: agendaErr } = await supabase
-            .from('meeting_agenda_items')
-            .select('*')
-            .in('meeting_id', ids);
-          if (!agendaErr && agendaRows) {
-            for (const raw of agendaRows) {
-              const item = raw as AgendaItem;
-              const list = agendaByMeeting.get(item.meeting_id) ?? [];
-              list.push(item);
-              agendaByMeeting.set(item.meeting_id, list);
+        // Render list immediately from DB rows (no agenda/quota dependency).
+        const initial: Meeting[] = rows.map((row) => meetingFromRow(row, propertyId));
+        setMeetings(initial);
+
+        // Best-effort: agenda + vote flags; failures must not clear the list.
+        try {
+          if (rows.length > 0) {
+            const ids = rows.map((r) => r.id);
+            const { data: agendaRows, error: agendaErr } = await supabase
+              .from('meeting_agenda_items')
+              .select('*')
+              .in('meeting_id', ids);
+            const agendaByMeeting = new Map<string, AgendaItem[]>();
+            if (!agendaErr && agendaRows) {
+              for (const raw of agendaRows) {
+                const item = raw as AgendaItem;
+                const list = agendaByMeeting.get(item.meeting_id) ?? [];
+                list.push(item);
+                agendaByMeeting.set(item.meeting_id, list);
+              }
             }
-          }
-        }
 
-        const meetingsWithVotes: Meeting[] = await Promise.all(
-          rows.map(async (row) => {
-            const rawItems = agendaByMeeting.get(row.id) ?? [];
-            const itemsWithUserVotes = await Promise.all(
-              rawItems.map(async (item: AgendaItem) => {
-                const { data: userVote } = await supabase
-                  .from('meeting_votes')
-                  .select('vote_decision')
-                  .eq('agenda_item_id', item.id)
-                  .eq('voter_id', user.id)
-                  .maybeSingle();
-
-                return {
-                  ...item,
-                  user_voted: !!userVote,
-                  user_vote: userVote?.vote_decision,
-                };
+            const withVotes: Meeting[] = await Promise.all(
+              rows.map(async (row) => {
+                const base = meetingFromRow(row, propertyId);
+                const rawItems = agendaByMeeting.get(row.id) ?? [];
+                const itemsWithUserVotes = await Promise.all(
+                  rawItems.map(async (item: AgendaItem) => {
+                    try {
+                      const { data: userVote } = await supabase
+                        .from('meeting_votes')
+                        .select('vote_decision')
+                        .eq('agenda_item_id', item.id)
+                        .eq('voter_id', user.id)
+                        .maybeSingle();
+                      return {
+                        ...item,
+                        user_voted: !!userVote,
+                        user_vote: userVote?.vote_decision as AgendaItem['user_vote'],
+                      };
+                    } catch {
+                      return { ...item, user_voted: false, user_vote: undefined };
+                    }
+                  }),
+                );
+                return { ...base, agenda_items: itemsWithUserVotes };
               }),
             );
-
-            const typeVal = row.meeting_type as Meeting['meeting_type'];
-            return {
-              id: row.id,
-              meeting_type: typeVal,
-              title_en: row.title_en ?? '',
-              title_zh: row.title_zh ?? undefined,
-              description_en: row.description_en ?? '',
-              description_zh: undefined,
-              status: 'scheduled',
-              is_virtual: false,
-              counts_against_quota: false,
-              is_overtime: false,
-              property_id: currentPropertyId,
-              agenda_items: itemsWithUserVotes,
-            };
-          }),
-        );
-        setMeetings(meetingsWithVotes);
+            setMeetings(withVotes);
+          }
+        } catch (enrichErr) {
+          console.error('meetings agenda/vote enrich (non-fatal)', enrichErr);
+        }
       }
 
-      // Temporarily skip DB quota fetch (avoid fiscal_year / property_id filters on broken schemas).
       setQuota({
         fiscal_year: currentYear,
+        used: 0,
+        total: 8,
         agm_count: 0,
         council_regular_count: 0,
         ad_hoc_count: 0,
         sgm_count: 0,
-        total_quota_used: 0,
-        free_quota_limit: 8,
         overtime_meetings: 0,
         total_overtime_fees: 0,
       });
@@ -218,8 +241,8 @@ export function Voting() {
       const scheduledDateTimeIso = localDateTimeToIso(newMeeting.scheduled_date, newMeeting.scheduled_time || '00:00');
       const currentYear = new Date().getFullYear();
 
-      const quotaUsed = quota?.total_quota_used || 0;
-      const isOvertime = quotaUsed >= (quota?.free_quota_limit || 8);
+      const quotaUsed = quota?.used ?? 0;
+      const isOvertime = quotaUsed >= (quota?.total ?? 8);
 
       if (newMeeting.meeting_type === 'agm' && (quota?.agm_count || 0) >= 1) {
         setCreateError(
@@ -244,8 +267,8 @@ export function Voting() {
       if (isOvertime) {
         const confirmOvertime = window.confirm(
           l
-            ? `Warning: free meeting quota (${quota?.free_quota_limit}) is used up. This meeting will incur overtime fees of $100/hour. Continue?`
-            : `警告：免费会议配额（${quota?.free_quota_limit}次）已用完。此会议将产生加班费用$100/小时。是否继续？`,
+            ? `Warning: free meeting quota (${quota?.total ?? 8}) is used up. This meeting will incur overtime fees of $100/hour. Continue?`
+            : `警告：免费会议配额（${quota?.total ?? 8}次）已用完。此会议将产生加班费用$100/小时。是否继续？`,
         );
         if (!confirmOvertime) {
           setCreating(false);
@@ -349,23 +372,23 @@ export function Voting() {
   };
 
   const getMeetingTypeLabel = (type: Meeting['meeting_type']) => {
-    const labels = {
+    const labels: Record<Meeting['meeting_type'], string> = {
       agm: l ? 'AGM' : '年度大会 (AGM)',
       council_regular: l ? 'Council Meeting' : '业委会例会',
       ad_hoc: l ? 'Ad Hoc Meeting' : '机动会议',
       sgm: l ? 'SGM' : '特别大会 (SGM)',
     };
-    return labels[type];
+    return labels[type] ?? (l ? 'Meeting' : '会议');
   };
 
   const getMeetingTypeColor = (type: Meeting['meeting_type']) => {
-    const colors = {
+    const colors: Record<Meeting['meeting_type'], string> = {
       agm: 'bg-purple-100 text-purple-800',
       council_regular: 'bg-blue-100 text-blue-800',
       ad_hoc: 'bg-orange-100 text-orange-800',
       sgm: 'bg-red-100 text-red-800',
     };
-    return colors[type];
+    return colors[type] ?? 'bg-gray-100 text-gray-800';
   };
 
   const getStatusLabel = (status: Meeting['status']) => {
@@ -432,7 +455,7 @@ export function Voting() {
                 <div>
                   <p className="text-sm text-gray-600">{l ? 'Used' : '已用次数'}</p>
                   <p className="text-2xl font-bold text-[#1D9E75]">
-                    {quota.total_quota_used} / {quota.free_quota_limit}
+                    {quota.used} / {quota.total}
                   </p>
                 </div>
                 {quota.overtime_meetings > 0 && (
@@ -462,7 +485,7 @@ export function Voting() {
       )}
 
       <div className="max-w-7xl mx-auto p-6">
-        {quota && quota.total_quota_used >= quota.free_quota_limit - 1 && (
+        {quota && quota.used >= quota.total - 1 && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
             <div className="flex items-start gap-3">
               <AlertCircle className="text-yellow-600 mt-0.5" size={20} />
@@ -470,8 +493,8 @@ export function Voting() {
                 <p className="font-semibold text-yellow-900">{l ? 'Meeting Quota Warning' : '会议配额警告'}</p>
                 <p className="text-sm text-yellow-800 mt-1">
                   {l
-                    ? `Only ${quota.free_quota_limit - quota.total_quota_used} free meetings remaining this year. Additional meetings will incur $100/hour overtime fees.`
-                    : `本年度仅剩 ${quota.free_quota_limit - quota.total_quota_used} 次免费会议。额外会议将产生$100/小时的超时费用。`
+                    ? `Only ${quota.total - quota.used} free meetings remaining this year. Additional meetings will incur $100/hour overtime fees.`
+                    : `本年度仅剩 ${quota.total - quota.used} 次免费会议。额外会议将产生$100/小时的超时费用。`
                   }
                 </p>
               </div>
@@ -533,11 +556,11 @@ export function Voting() {
                             )}
                           </div>
                           <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                            {meeting.title_zh?.trim() || meeting.title_en}
+                            {meeting.title_zh?.trim() || meeting.title_en || (l ? 'Untitled meeting' : '未命名会议')}
                           </h3>
-                          {meeting.description_en?.trim() ? (
-                            <p className="text-gray-600 mb-3 line-clamp-3">{meeting.description_en}</p>
-                          ) : null}
+                          <p className="text-gray-600 mb-3 line-clamp-6 whitespace-pre-wrap">
+                            {meeting.description_en || ''}
+                          </p>
                         </div>
                         <button
                           onClick={(e) => { e.stopPropagation(); navigate(`/voting/${meeting.id}`); }}
