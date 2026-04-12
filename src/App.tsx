@@ -18,7 +18,7 @@ import { AuditReportDetail } from './pages/AuditReportDetail';
 import { VendorRiskSignals } from './pages/VendorRiskSignals';
 import { InvoiceUpload } from './pages/InvoiceUpload';
 import { Meetings } from './pages/Meetings';
-import { CreateMeeting } from './pages/CreateMeeting';
+import { MeetingEditor } from './pages/MeetingEditor';
 import { FinanceInvoiceDeepLink, FinanceInvoicesListDeepLink } from './pages/finance/FinanceInvoiceRoutes';
 import { OwnerInfo } from './pages/OwnerInfo';
 import { ManagerTasks } from './pages/ManagerTasks';
@@ -210,7 +210,9 @@ function AuthenticatedRoutes() {
       <Route path="/vendor-risk-signals" element={<VendorRiskSignals />} />
       <Route path="/invoices/upload" element={<InvoiceUpload />} />
       <Route path="/meetings" element={<Meetings />} />
-      <Route path="/meetings/create" element={<CreateMeeting />} />
+      <Route path="/meetings/create" element={<Navigate to="/meetings/new" replace />} />
+      <Route path="/meetings/new" element={<MeetingEditor />} />
+      <Route path="/meetings/:meetingId/edit" element={<MeetingEditor />} />
       <Route path="/finance" element={<Finance />} />
       <Route path="/hiring" element={<Hiring />} />
       <Route path="/owner-info" element={<OwnerInfo />} />
