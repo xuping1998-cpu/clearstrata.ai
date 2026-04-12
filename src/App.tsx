@@ -16,6 +16,9 @@ import { InvoiceAuditReportsPage } from './pages/finance/InvoiceAuditReportsPage
 import { InvoiceAuditReportDetailPage } from './pages/finance/InvoiceAuditReportDetailPage';
 import { AuditReportDetail } from './pages/AuditReportDetail';
 import { VendorRiskSignals } from './pages/VendorRiskSignals';
+import { InvoiceUpload } from './pages/InvoiceUpload';
+import { Meetings } from './pages/Meetings';
+import { CreateMeeting } from './pages/CreateMeeting';
 import { FinanceInvoiceDeepLink, FinanceInvoicesListDeepLink } from './pages/finance/FinanceInvoiceRoutes';
 import { OwnerInfo } from './pages/OwnerInfo';
 import { ManagerTasks } from './pages/ManagerTasks';
@@ -43,6 +46,8 @@ import { AdminInviteCodes } from './pages/admin/AdminInviteCodes';
 import AdminJoinRequests from './pages/admin/AdminJoinRequests';
 import { JoinAccessGate } from './pages/JoinAccessGate';
 import { PostLoginPropertyRedirect } from './components/PostLoginPropertyRedirect';
+import { DemoDashboardRoute } from './components/DemoDashboardRoute';
+import { PropertyDemoEntry } from './pages/PropertyDemoEntry';
 import { canManagePropertyInvites, canReviewJoinRequestsAsStaff } from './lib/propertyPermissions';
 import type { UserRole } from './lib/supabase';
 import { useHasActivePropertyMembership } from './hooks/useHasActivePropertyMembership';
@@ -203,6 +208,9 @@ function AuthenticatedRoutes() {
       <Route path="/finance/invoice-audit-reports/:reportId" element={<InvoiceAuditReportDetailPage />} />
       <Route path="/audit-reports/:reportId" element={<AuditReportDetail />} />
       <Route path="/vendor-risk-signals" element={<VendorRiskSignals />} />
+      <Route path="/invoices/upload" element={<InvoiceUpload />} />
+      <Route path="/meetings" element={<Meetings />} />
+      <Route path="/meetings/create" element={<CreateMeeting />} />
       <Route path="/finance" element={<Finance />} />
       <Route path="/hiring" element={<Hiring />} />
       <Route path="/owner-info" element={<OwnerInfo />} />
@@ -257,6 +265,47 @@ function AppContent() {
     <>
       <PostLoginPropertyRedirect />
       <Routes>
+      <Route path="/demo/:propertyCode" element={<PropertyDemoEntry />} />
+      <Route
+        path="/demo-home"
+        element={
+          <DemoDashboardRoute>
+            <Dashboard />
+          </DemoDashboardRoute>
+        }
+      />
+      <Route
+        path="/demo/finance"
+        element={
+          <DemoDashboardRoute>
+            <Finance />
+          </DemoDashboardRoute>
+        }
+      />
+      <Route
+        path="/demo/voting"
+        element={
+          <DemoDashboardRoute>
+            <Meetings />
+          </DemoDashboardRoute>
+        }
+      />
+      <Route
+        path="/demo/owner-info"
+        element={
+          <DemoDashboardRoute>
+            <OwnerInfo />
+          </DemoDashboardRoute>
+        }
+      />
+      <Route
+        path="/demo/compliance"
+        element={
+          <DemoDashboardRoute>
+            <Compliance />
+          </DemoDashboardRoute>
+        }
+      />
       <Route path="/p/:code" element={<PropertyEntry />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/pricing" element={<PricingRoute />} />

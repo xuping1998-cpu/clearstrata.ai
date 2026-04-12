@@ -9,6 +9,11 @@ import {
   fetchDashboardKpis,
   fetchRecentAiAuditInvoices,
 } from '../../lib/dashboard';
+import {
+  buildDemoDashboardKpis,
+  fetchDemoAiHomeSnapshot,
+  fetchDemoDashboardBudgetSummary,
+} from '../../lib/demoDashboardApi';
 import { supabase } from '../../lib/supabase';
 import type { DashboardAiRiskSummary, DashboardKpi, RecentAiAuditInvoiceItem } from '../../types/dashboard';
 import { BudgetOverviewCard } from './BudgetOverviewCard';
@@ -31,7 +36,7 @@ export function HomeBudgetPanel() {
   const { t, language } = useLanguage();
   const en = language === 'en';
   const navigate = useNavigate();
-  const { currentPropertyId } = useProperty();
+  const { currentPropertyId, isDemoMode, guestPropertyCode } = useProperty();
   const anchorYear = new Date().getFullYear();
   const [fiscalYear, setFiscalYear] = useState(anchorYear);
   const [loading, setLoading] = useState(true);
@@ -83,6 +88,34 @@ export function HomeBudgetPanel() {
       setAiRiskFailed(false);
       setRecentAiError(false);
 
+      if (isDemoMode && guestPropertyCode) {
+        const [sRes, snap] = await Promise.all([
+          fetchDemoDashboardBudgetSummary(guestPropertyCode, fiscalYear),
+          fetchDemoAiHomeSnapshot(guestPropertyCode, fiscalYear, 12),
+        ]);
+        if (cancelled) return;
+        if (sRes.error) {
+          console.error('Demo budget RPC failed', sRes.error?.message);
+          setLoadError(true);
+        } else {
+          setLoadError(false);
+        }
+        setSummary(sRes.data);
+        setKpis(buildDemoDashboardKpis(fiscalYear, language, sRes.data, snap.aiRisk));
+        if (snap.error) {
+          setAiRiskFailed(true);
+          setAiRiskData(null);
+        } else {
+          setAiRiskFailed(false);
+          setAiRiskData(snap.aiRisk);
+        }
+        setAiRiskPending(false);
+        setRecentAiItems(snap.recentItems);
+        setRecentAiError(Boolean(snap.error));
+        setLoading(false);
+        return;
+      }
+
       const kpiP = fetchDashboardKpis(currentPropertyId, fiscalYear, language).catch((e) => {
         console.error('fetchDashboardKpis failed', e);
         return { items: [] as DashboardKpi[], aiRisk: null as DashboardAiRiskSummary | null };
@@ -128,10 +161,10 @@ export function HomeBudgetPanel() {
     return () => {
       cancelled = true;
     };
-  }, [currentPropertyId, fiscalYear, language]);
+  }, [currentPropertyId, fiscalYear, language, isDemoMode, guestPropertyCode]);
 
   useEffect(() => {
-    if (!currentPropertyId) {
+    if (!currentPropertyId || isDemoMode) {
       setVendorRiskSummary(null);
       setVendorRiskPending(false);
       return;
@@ -148,10 +181,10 @@ export function HomeBudgetPanel() {
     return () => {
       cancelled = true;
     };
-  }, [currentPropertyId]);
+  }, [currentPropertyId, isDemoMode]);
 
   useEffect(() => {
-    if (!currentPropertyId) return;
+    if (!currentPropertyId || isDemoMode) return;
     const channel = supabase
       .channel(`iar-home-${currentPropertyId}`)
       .on(
@@ -204,7 +237,7 @@ export function HomeBudgetPanel() {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [currentPropertyId, fiscalYear, language]);
+  }, [currentPropertyId, fiscalYear, language, isDemoMode]);
 
   function handleKpiClick(key: DashboardKpi['key']) {
     if (
@@ -269,7 +302,12 @@ export function HomeBudgetPanel() {
                   {headerTitle}
                 </h1>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center justify-end gap-3">
+                {!isDemoMode && (
+                  <button type="button" className="btn-primary" onClick={() => navigate('/invoices/upload')}>
+                    {en ? 'Upload invoice' : '上传发票'}
+                  </button>
+                )}
                 <span className="text-sm text-gray-500">{yearLabel}</span>
                 <select
                   value={fiscalYear}
@@ -334,7 +372,7 @@ export function HomeBudgetPanel() {
                   aiRisk={aiRiskData}
                   aiRiskPending={aiRiskPending}
                   aiRiskFailed={aiRiskFailed}
-                  onGenerateMeetingReport={handleGenerateMeetingReport}
+                  onGenerateMeetingReport={isDemoMode ? undefined : handleGenerateMeetingReport}
                   generatingMeetingReport={meetingReportBusy}
                   vendorRiskSummary={vendorRiskSummary}
                   vendorRiskPending={vendorRiskPending}

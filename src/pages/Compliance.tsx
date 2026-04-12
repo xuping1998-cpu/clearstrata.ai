@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Plus, FileText, AlertTriangle, CheckCircle, X, Upload, Loader2, MessageCircle, Send, Trash2 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useProperty } from '../contexts/PropertyContext';
 import { supabase } from '../lib/supabase';
 import { BackButton } from '../components/BackButton';
 
@@ -27,6 +28,8 @@ interface ChatMessage {
 export function Compliance() {
   const { language } = useLanguage();
   const { profile } = useAuth();
+  const { isDemoMode } = useProperty();
+
   const [docs, setDocs] = useState<ComplianceDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -68,8 +71,9 @@ export function Compliance() {
   };
 
   useEffect(() => {
+    if (isDemoMode) return;
     loadDocs();
-  }, [profile]);
+  }, [profile, isDemoMode]);
 
   const compressImage = async (file: File, quality: number = 0.6, maxDimension: number = 1600): Promise<File> => {
     return new Promise((resolve) => {
@@ -491,6 +495,19 @@ export function Compliance() {
       setDeleteConfirmId(null);
     }
   };
+
+  if (isDemoMode) {
+    const en = language === 'en';
+    return (
+      <div className="mx-auto max-w-2xl rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-700">
+        <p>
+          {en
+            ? 'Demo mode: compliance documents and uploads are hidden. Register to access permitted content.'
+            : '演示模式：法规与合规文件含管理资料，不在此展示。注册加入后可按权限查看。'}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">

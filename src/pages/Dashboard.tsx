@@ -7,7 +7,23 @@ export function Dashboard() {
   const { language } = useLanguage();
   const en = language === 'en';
   const navigate = useNavigate();
-  const { isGuest } = useProperty();
+  const { isGuest, isDemoMode, guestPropertyCode } = useProperty();
+
+  if (isDemoMode && guestPropertyCode) {
+    return (
+      <>
+        <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
+          <p className="font-medium">{en ? 'Demo mode (read-only)' : '演示模式（只读）'}</p>
+          <p className="mt-1 text-emerald-900/90">
+            {en
+              ? `You are viewing ${guestPropertyCode} as a demo. Register to join this property and use full features.`
+              : `你正在查看 ${guestPropertyCode} 的演示模式。注册后可加入该物业并使用完整功能。`}
+          </p>
+        </div>
+        <HomeBudgetPanel />
+      </>
+    );
+  }
 
   if (isGuest) {
     return (

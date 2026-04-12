@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Building2, Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -7,6 +7,11 @@ import { supabase } from '../lib/supabase';
 import { getAuthErrorMessage } from '../lib/authErrorMessages';
 import { DEFAULT_PROPERTY_ID } from '../lib/defaultProperty';
 import { AuthPromoPanel } from './AuthPromoPanel';
+import {
+  APP_MODE_STORAGE_KEY,
+  GUEST_PROPERTY_STORAGE_KEY,
+  clearPublicDemoLocalStorage,
+} from '../contexts/PropertyContext';
 
 function persistCurrentPropertyId(propertyId: string) {
   try {
@@ -16,8 +21,6 @@ function persistCurrentPropertyId(propertyId: string) {
     /* ignore */
   }
 }
-
-const GUEST_PROPERTY_STORAGE_KEY = 'guestPropertyId';
 
 /** After scan-as-guest signup: bind stored property via invite (RLS-safe). */
 async function claimGuestStoredPropertyAfterSignUp(): Promise<string | null> {
@@ -62,6 +65,30 @@ async function claimPropertyFromUrlIfPresent(): Promise<string | null> {
   return String(data);
 }
 
+/** After /demo/BCS3736 signup: membership on public demo property only (server-enforced). */
+async function claimPublicDemoPropertyAfterSignUp(): Promise<string | null> {
+  let gid: string | null = null;
+  try {
+    if (localStorage.getItem(APP_MODE_STORAGE_KEY) !== 'demo') return null;
+    gid = localStorage.getItem(GUEST_PROPERTY_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+  if (!gid) return null;
+  const { data, error } = await supabase.rpc('claim_public_demo_property_membership', {
+    p_property_id: gid,
+  });
+  if (error) {
+    console.warn('claim_public_demo_property_membership', error);
+    return null;
+  }
+  if (data == null) return null;
+  const pid = String(data);
+  clearPublicDemoLocalStorage();
+  persistCurrentPropertyId(pid);
+  return pid;
+}
+
 export function Auth() {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
@@ -88,6 +115,12 @@ export function Auth() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const passwordUpdated = searchParams.get('passwordUpdated') === '1';
+
+  useEffect(() => {
+    if (searchParams.get('mode') === 'signup') {
+      setIsLogin(false);
+    }
+  }, [searchParams]);
 
   const safeRedirectAfterAuth = (): boolean => {
     const raw = searchParams.get('redirect');
@@ -142,6 +175,7 @@ export function Auth() {
       if (isLogin) {
         const cleanEmail = email.trim().toLowerCase();
         await signIn(cleanEmail, password);
+        clearPublicDemoLocalStorage();
         const claimedId = await claimPropertyFromUrlIfPresent();
         if (claimedId) {
           persistCurrentPropertyId(claimedId);
@@ -171,6 +205,11 @@ export function Auth() {
             status: 'pending',
             strata_fee_status: 'current',
           });
+          const demoClaimed = await claimPublicDemoPropertyAfterSignUp();
+          if (demoClaimed) {
+            navigate('/', { replace: true });
+            return;
+          }
           const guestClaimed = await claimGuestStoredPropertyAfterSignUp();
           if (guestClaimed) {
             navigate('/', { replace: true });

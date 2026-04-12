@@ -28,7 +28,7 @@ const tabs: TabConfig[] = [
 ];
 
 export function OwnerInfo() {
-  const { currentRole } = useProperty();
+  const { currentRole, isDemoMode } = useProperty();
   const [searchParams] = useSearchParams();
   const location = useLocation();
   const canManageRestrictedTabs =
@@ -65,6 +65,16 @@ export function OwnerInfo() {
   }, [location.pathname, location.hash]);
 
   const visibleTabs = tabs.filter((tab) => !tab.councilOnly || canManageRestrictedTabs);
+
+  if (isDemoMode) {
+    return (
+      <div className="mx-auto max-w-2xl rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-700">
+        <p>
+          演示模式：业主与个人敏感信息不在此展示。注册并加入物业后，可按权限查看公告与公开信息。
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div>

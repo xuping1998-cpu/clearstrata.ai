@@ -29,7 +29,9 @@ const allTabs: TabConfig[] = [
 
 export function Finance() {
   const { language } = useLanguage();
-  const { currentRole } = useProperty();
+  const { currentRole, isDemoMode } = useProperty();
+  const l = language === 'en';
+
   const [searchParams] = useSearchParams();
   const financeFullAccess =
     currentRole === 'council' ||
@@ -77,7 +79,20 @@ export function Finance() {
     filterHighRisk,
   ]);
 
-  const l = language === 'en';
+  if (isDemoMode) {
+    return (
+      <div className="mx-auto max-w-3xl space-y-4">
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
+          {l
+            ? 'Demo mode: detailed ledgers and invoice tools are available after you register and join the property.'
+            : '演示模式：完整账本与发票功能请在注册并加入物业后使用。'}
+        </div>
+        <p className="text-sm text-gray-600">
+          {l ? 'Financial overview and risk KPIs are on the demo home page.' : '财务与风险概览请见演示首页。'}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div>

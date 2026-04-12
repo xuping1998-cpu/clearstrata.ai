@@ -48,7 +48,14 @@ export function Layout({ children }: LayoutProps) {
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { profile, signOut } = useAuth();
-  const { memberships, currentPropertyId, setCurrentPropertyId, roleInProperty } = useProperty();
+  const {
+    memberships,
+    currentPropertyId,
+    setCurrentPropertyId,
+    roleInProperty,
+    isDemoMode,
+    guestPropertyCode,
+  } = useProperty();
   const { t, language, toggleLanguage, setLanguage } = useLanguage();
 
   const currentMembership = useMemo(
@@ -82,25 +89,35 @@ export function Layout({ children }: LayoutProps) {
   const showJoinRequestsNav = canReviewJoinRequestsFromContext(roleInProperty, memberships);
   const showJoinRequestReviewCoreNav = canShowJoinRequestReviewNavFromContext(roleInProperty, memberships);
 
-  const isDashboardHome = location.pathname === '/' || location.pathname === '/dashboard';
+  const isDashboardHome =
+    location.pathname === '/' ||
+    location.pathname === '/dashboard' ||
+    location.pathname === '/demo-home';
   const homeActive = isDashboardHome;
 
   const quickModules = useMemo(
     () =>
-      [
-        { path: '/procurement', icon: ShoppingCart, label: t('nav_procurement'), iconBg: 'bg-blue-500' },
-        { path: '/voting', icon: Vote, label: t('nav_voting'), iconBg: 'bg-purple-500' },
-        { path: '/finance', icon: DollarSign, label: t('nav_finance'), iconBg: 'bg-green-500' },
-        { path: '/owner-info', icon: Users, label: t('nav_owner_info'), iconBg: 'bg-sky-500' },
-        {
-          path: '/manager-tasks?task_type=dispute',
-          icon: Scale,
-          label: t('nav_disputes'),
-          iconBg: 'bg-red-500',
-        },
-        { path: '/compliance', icon: FileText, label: t('nav_help_compliance'), iconBg: 'bg-indigo-500' },
-      ] as Array<{ path: string; icon: LucideIcon; label: string; iconBg: string }>,
-    [t],
+      isDemoMode
+        ? ([
+            { path: '/demo/voting', icon: Vote, label: t('nav_voting'), iconBg: 'bg-purple-500' },
+            { path: '/demo/finance', icon: DollarSign, label: t('nav_finance'), iconBg: 'bg-green-500' },
+            { path: '/demo/owner-info', icon: Users, label: t('nav_owner_info'), iconBg: 'bg-sky-500' },
+            { path: '/demo/compliance', icon: FileText, label: t('nav_help_compliance'), iconBg: 'bg-indigo-500' },
+          ] as Array<{ path: string; icon: LucideIcon; label: string; iconBg: string }>)
+        : ([
+            { path: '/procurement', icon: ShoppingCart, label: t('nav_procurement'), iconBg: 'bg-blue-500' },
+            { path: '/voting', icon: Vote, label: t('nav_voting'), iconBg: 'bg-purple-500' },
+            { path: '/finance', icon: DollarSign, label: t('nav_finance'), iconBg: 'bg-green-500' },
+            { path: '/owner-info', icon: Users, label: t('nav_owner_info'), iconBg: 'bg-sky-500' },
+            {
+              path: '/manager-tasks?task_type=dispute',
+              icon: Scale,
+              label: t('nav_disputes'),
+              iconBg: 'bg-red-500',
+            },
+            { path: '/compliance', icon: FileText, label: t('nav_help_compliance'), iconBg: 'bg-indigo-500' },
+          ] as Array<{ path: string; icon: LucideIcon; label: string; iconBg: string }>),
+    [t, isDemoMode],
   );
 
   const systemNavItems = useMemo(
@@ -125,7 +142,7 @@ export function Layout({ children }: LayoutProps) {
     ],
   );
 
-  const showSystemSection = systemNavItems.length > 0;
+  const showSystemSection = !isDemoMode && systemNavItems.length > 0;
 
   const renderSystemNavButton = useCallback(
     (path: string, Icon: LucideIcon, label: string) => {
@@ -206,7 +223,7 @@ export function Layout({ children }: LayoutProps) {
               </button>
               <button
                 type="button"
-                onClick={() => navigate('/')}
+                onClick={() => navigate(isDemoMode ? '/demo-home' : '/')}
                 className="text-2xl font-bold text-[#1D9E75] transition-opacity hover:opacity-90"
               >
                 {language === 'en' ? 'clearstrata.ai' : '清涟.ai'}
@@ -215,6 +232,24 @@ export function Layout({ children }: LayoutProps) {
 
             <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:gap-3">
               <PWAInstallButton />
+              {isDemoMode && (
+                <div className="hidden shrink-0 items-center gap-2 sm:flex">
+                  <button
+                    type="button"
+                    onClick={() => navigate('/?mode=signup')}
+                    className="rounded-lg bg-[#1D9E75] px-3 py-1.5 text-xs font-semibold text-white sm:text-sm"
+                  >
+                    {language === 'en' ? 'Register' : '注册加入'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/')}
+                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-800 sm:text-sm"
+                  >
+                    {language === 'en' ? 'Log in' : '登录'}
+                  </button>
+                </div>
+              )}
               {memberships.length >= 1 && currentPropertyId && (
                 <div className="flex min-w-0 shrink items-center border-r border-gray-200 pr-2 text-sm text-gray-600 sm:pr-3">
                   {memberships.length === 1 ? (
@@ -245,46 +280,84 @@ export function Layout({ children }: LayoutProps) {
                   )}
                 </div>
               )}
-              <button
-                onClick={() => navigate('/profile')}
-                className="hidden rounded-lg p-2 text-left transition-colors hover:bg-gray-100 sm:flex sm:items-center sm:gap-2"
-              >
-                <div>
-                  <div className="text-sm font-medium text-gray-900">
-                    {language === 'en' ? profile?.full_name_en : profile?.full_name_zh || profile?.full_name_en}
-                  </div>
-                  <div
-                    className="text-xs text-gray-500"
-                    title={language === 'en' ? 'Role in current property' : '当前物业中的角色'}
+              {!isDemoMode && (
+                <>
+                  <button
+                    onClick={() => navigate('/profile')}
+                    className="hidden rounded-lg p-2 text-left transition-colors hover:bg-gray-100 sm:flex sm:items-center sm:gap-2"
                   >
-                    {roleInProperty ? t(roleInProperty) : language === 'en' ? '—' : '未选择'}
-                  </div>
-                </div>
-              </button>
-              <button
-                onClick={() => navigate('/profile')}
-                className="rounded-lg p-2 transition-colors hover:bg-gray-100 sm:hidden"
-                title={language === 'en' ? 'Profile' : '个人信息'}
-              >
-                <UserCircle size={20} />
-              </button>
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">
+                        {language === 'en' ? profile?.full_name_en : profile?.full_name_zh || profile?.full_name_en}
+                      </div>
+                      <div
+                        className="text-xs text-gray-500"
+                        title={language === 'en' ? 'Role in current property' : '当前物业中的角色'}
+                      >
+                        {roleInProperty ? t(roleInProperty) : language === 'en' ? '—' : '未选择'}
+                      </div>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => navigate('/profile')}
+                    className="rounded-lg p-2 transition-colors hover:bg-gray-100 sm:hidden"
+                    title={language === 'en' ? 'Profile' : '个人信息'}
+                  >
+                    <UserCircle size={20} />
+                  </button>
+                </>
+              )}
               <button
                 onClick={toggleLanguage}
                 className="rounded-lg bg-gray-100 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-gray-200"
               >
                 {language === 'en' ? '中文' : 'EN'}
               </button>
-              <button
-                onClick={handleLogout}
-                className="rounded-lg p-2 transition-colors hover:bg-gray-100"
-                title={t('auth_logout')}
-              >
-                <LogOut size={20} />
-              </button>
+              {!isDemoMode && (
+                <button
+                  onClick={handleLogout}
+                  className="rounded-lg p-2 transition-colors hover:bg-gray-100"
+                  title={t('auth_logout')}
+                >
+                  <LogOut size={20} />
+                </button>
+              )}
             </div>
           </div>
         </div>
       </header>
+
+      {isDemoMode && (
+        <div className="border-b border-emerald-200 bg-emerald-50">
+          <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2 px-4 py-2 text-xs text-emerald-950 sm:text-sm sm:px-6 lg:px-8">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white sm:text-xs">
+                {language === 'en' ? 'Demo' : '演示'}
+              </span>
+              <span className="font-medium">
+                {language === 'en' ? 'Read-only preview' : '只读体验'}
+                {guestPropertyCode ? ` · ${guestPropertyCode}` : ''}
+              </span>
+            </div>
+            <div className="flex shrink-0 gap-2 sm:hidden">
+              <button
+                type="button"
+                onClick={() => navigate('/?mode=signup')}
+                className="rounded-lg bg-[#1D9E75] px-2.5 py-1 text-xs font-semibold text-white"
+              >
+                {language === 'en' ? 'Register' : '注册'}
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate('/')}
+                className="rounded-lg border border-emerald-300 bg-white px-2.5 py-1 text-xs font-medium text-emerald-900"
+              >
+                {language === 'en' ? 'Log in' : '登录'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex min-w-0 lg:items-start">
         <aside
@@ -306,7 +379,7 @@ export function Layout({ children }: LayoutProps) {
               <button
                 type="button"
                 onClick={() => {
-                  navigate('/');
+                  navigate(isDemoMode ? '/demo-home' : '/');
                   setMobileMenuOpen(false);
                 }}
                 className={`flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left transition-colors sm:gap-2.5 sm:px-3.5 ${
@@ -321,7 +394,7 @@ export function Layout({ children }: LayoutProps) {
             <div className="shrink-0 px-2.5 pt-1 sm:px-3 lg:pt-2">
               <div className="space-y-0.5 lg:space-y-1">
                 {quickModules.map((m) => renderModuleCard(m.path, m.icon, m.label, m.iconBg))}
-                {showJoinRequestReviewCoreNav && (
+                {showJoinRequestReviewCoreNav && !isDemoMode && (
                   <button
                     type="button"
                     onClick={() => {

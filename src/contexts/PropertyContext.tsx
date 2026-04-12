@@ -8,7 +8,7 @@ import {
   useState,
   ReactNode,
 } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { supabase, type UserRole } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 import { samePropertyId } from '../lib/propertyIdMatch';
@@ -19,6 +19,36 @@ const STORAGE_KEY = 'clearstrata-current-property-id';
 const LEGACY_STORAGE_KEY = 'currentPropertyId';
 /** Guest browse (scan /p/:code without login). */
 export const GUEST_PROPERTY_STORAGE_KEY = 'guestPropertyId';
+export const APP_MODE_STORAGE_KEY = 'appMode';
+export const GUEST_PROPERTY_CODE_STORAGE_KEY = 'guestPropertyCode';
+export const GUEST_PROPERTY_NAME_STORAGE_KEY = 'guestPropertyName';
+
+export type DemoLocalState = { id: string; code: string; name: string | null };
+
+export function readDemoLocalState(): DemoLocalState | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    if (localStorage.getItem(APP_MODE_STORAGE_KEY) !== 'demo') return null;
+    const id = localStorage.getItem(GUEST_PROPERTY_STORAGE_KEY);
+    if (!id) return null;
+    const code = localStorage.getItem(GUEST_PROPERTY_CODE_STORAGE_KEY) ?? '';
+    const name = localStorage.getItem(GUEST_PROPERTY_NAME_STORAGE_KEY);
+    return { id, code, name: name || null };
+  } catch {
+    return null;
+  }
+}
+
+export function clearPublicDemoLocalStorage(): void {
+  try {
+    localStorage.removeItem(APP_MODE_STORAGE_KEY);
+    localStorage.removeItem(GUEST_PROPERTY_CODE_STORAGE_KEY);
+    localStorage.removeItem(GUEST_PROPERTY_NAME_STORAGE_KEY);
+    localStorage.removeItem(GUEST_PROPERTY_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
 
 function readGuestPropertyId(): string | null {
   try {
@@ -38,6 +68,16 @@ function readStoredPropertyId(): string | null {
   }
 }
 
+/** QR / 深链：与 React Router 同步读取，避免首屏仅 window 带参时漏读。 */
+function getPropertyIdFromUrl(searchParams: URLSearchParams): string | null {
+  const fromRouter = searchParams.get('propertyId');
+  if (fromRouter) return fromRouter;
+  if (typeof window !== 'undefined') {
+    return new URLSearchParams(window.location.search).get('propertyId');
+  }
+  return null;
+}
+
 function persistPropertyId(id: string): void {
   try {
     localStorage.setItem(STORAGE_KEY, id);
@@ -53,14 +93,17 @@ export interface PropertyMembership {
   role: UserRole;
 }
 
-/** URL > localStorage > (single membership only) first property; IDs normalized via membership rows. */
+/**
+ * 优先级：1) URL propertyId（最高） 2) localStorage 3) memberships[0]
+ * 仅允许选择用户已加入的物业；URL/缓存中的 ID 会规范为 membership 行内的 canonical id。
+ */
 function resolvePropertyIdFromSources(
   mems: PropertyMembership[],
   searchParams: URLSearchParams,
 ): string | null {
   if (mems.length === 0) return null;
 
-  const urlPid = searchParams.get('propertyId');
+  const urlPid = getPropertyIdFromUrl(searchParams);
   const urlHit = urlPid ? mems.find((m) => samePropertyId(m.propertyId, urlPid)) : null;
   if (urlHit) return urlHit.propertyId;
 
@@ -68,9 +111,7 @@ function resolvePropertyIdFromSources(
   const savedHit = saved ? mems.find((m) => samePropertyId(m.propertyId, saved)) : null;
   if (savedHit) return savedHit.propertyId;
 
-  if (mems.length === 1) return mems[0].propertyId;
-
-  return null;
+  return mems[0].propertyId;
 }
 
 interface PropertyContextValue {
@@ -91,22 +132,40 @@ interface PropertyContextValue {
   refreshMemberships: () => Promise<void>;
   /** True when viewing a property via scan link without login (guestPropertyId). */
   isGuest: boolean;
+  /** Public QR demo: /demo/BCS3736, no login. */
+  isDemoMode: boolean;
+  /** Set when isDemoMode (e.g. BCS3736). */
+  guestPropertyCode: string | null;
 }
 
 const PropertyContext = createContext<PropertyContextValue | undefined>(undefined);
 
 export function PropertyProvider({ children }: { children: ReactNode }) {
   const { user, session } = useAuth();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const guestQuery = searchParams.get('guest');
   const searchParamsRef = useRef(searchParams);
   searchParamsRef.current = searchParams;
 
   const [ready, setReady] = useState(!session);
-  const [memberships, setMemberships] = useState<PropertyMembership[]>([]);
-  const [currentPropertyId, setCurrentPropertyIdState] = useState<string | null>(null);
+  const [memberships, setMemberships] = useState<PropertyMembership[]>(() => {
+    const d = readDemoLocalState();
+    return d
+      ? [
+          {
+            propertyId: d.id,
+            name: d.name || d.code || 'Demo',
+            role: 'viewer' as UserRole,
+          },
+        ]
+      : [];
+  });
+  const [currentPropertyId, setCurrentPropertyIdState] = useState<string | null>(() => readDemoLocalState()?.id ?? null);
   const [needsPropertyChoice, setNeedsPropertyChoice] = useState(false);
   const [isGuest, setIsGuest] = useState(false);
+  const [isDemoMode, setIsDemoMode] = useState(() => Boolean(readDemoLocalState()));
+  const [guestPropertyCode, setGuestPropertyCodeState] = useState<string | null>(() => readDemoLocalState()?.code ?? null);
 
   const loadMemberships = useCallback(async () => {
     if (!user?.id) {
@@ -155,6 +214,8 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
 
     setMemberships(mems);
     setIsGuest(false);
+    setIsDemoMode(false);
+    setGuestPropertyCodeState(null);
 
     if (mems.length === 0) {
       setCurrentPropertyIdState(null);
@@ -165,7 +226,7 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
 
     const chosen = resolvePropertyIdFromSources(mems, searchParamsRef.current);
     setCurrentPropertyIdState(chosen);
-    setNeedsPropertyChoice(mems.length > 1 && chosen == null);
+    setNeedsPropertyChoice(false);
     if (chosen) {
       persistPropertyId(chosen);
     }
@@ -174,6 +235,25 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!session) {
+      const demo = readDemoLocalState();
+      if (demo) {
+        setMemberships([
+          {
+            propertyId: demo.id,
+            name: demo.name || demo.code || 'Demo',
+            role: 'viewer',
+          },
+        ]);
+        setCurrentPropertyIdState(demo.id);
+        setGuestPropertyCodeState(demo.code);
+        setIsDemoMode(true);
+        setIsGuest(false);
+        setNeedsPropertyChoice(false);
+        setReady(true);
+        return;
+      }
+      setIsDemoMode(false);
+      setGuestPropertyCodeState(null);
       setMemberships([]);
       const gid = readGuestPropertyId();
       const guestMode = guestQuery === '1';
@@ -190,12 +270,12 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
     }
     setReady(false);
     void loadMemberships();
-  }, [session, loadMemberships, guestQuery]);
+  }, [session, loadMemberships, guestQuery, location.pathname]);
 
-  /** URL 含有效 propertyId 且与 state 不一致时，以 URL 为准（前进/后退/分享链接）。 */
+  /** URL 含有效 propertyId 且与 state 不一致时，以 URL 为准（扫码 / 前进后退 / 分享链接）。 */
   useEffect(() => {
-    if (!ready || memberships.length === 0) return;
-    const urlPid = searchParams.get('propertyId');
+    if (!ready || memberships.length === 0 || isDemoMode) return;
+    const urlPid = getPropertyIdFromUrl(searchParams);
     if (!urlPid) return;
     const urlHit = memberships.find((m) => samePropertyId(m.propertyId, urlPid));
     if (!urlHit) return;
@@ -204,11 +284,11 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
       persistPropertyId(urlHit.propertyId);
       return urlHit.propertyId;
     });
-  }, [searchParams, memberships, ready]);
+  }, [searchParams, memberships, ready, isDemoMode]);
 
   /** current 不在 memberships 内时：仅单物业时回退到唯一物业；多物业未选择时不自动指定。 */
   useEffect(() => {
-    if (!ready || memberships.length === 0) return;
+    if (!ready || memberships.length === 0 || isDemoMode) return;
     const valid =
       currentPropertyId &&
       memberships.some((m) => samePropertyId(m.propertyId, currentPropertyId));
@@ -221,12 +301,12 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
     setCurrentPropertyIdState(next);
     setNeedsPropertyChoice(false);
     persistPropertyId(next);
-  }, [memberships, ready, currentPropertyId]);
+  }, [memberships, ready, currentPropertyId, isDemoMode]);
 
   /** 缺失或无效 URL 时，把当前物业写回 query（与 state 对齐）。 */
   useEffect(() => {
-    if (!ready || !currentPropertyId || memberships.length === 0) return;
-    const urlPid = searchParams.get('propertyId');
+    if (!ready || !currentPropertyId || memberships.length === 0 || isDemoMode) return;
+    const urlPid = getPropertyIdFromUrl(searchParams);
     if (urlPid && samePropertyId(urlPid, currentPropertyId)) return;
     if (urlPid) {
       const urlHit = memberships.find((m) => samePropertyId(m.propertyId, urlPid));
@@ -240,13 +320,14 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
       },
       { replace: true },
     );
-  }, [ready, currentPropertyId, memberships, searchParams, setSearchParams]);
+  }, [ready, currentPropertyId, memberships, searchParams, setSearchParams, isDemoMode]);
 
   const setCurrentPropertyId = useCallback(
     (id: string) => {
       setCurrentPropertyIdState(id);
       setNeedsPropertyChoice(false);
       persistPropertyId(id);
+      if (isDemoMode) return;
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev);
@@ -256,7 +337,7 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
         { replace: true },
       );
     },
-    [setSearchParams],
+    [setSearchParams, isDemoMode],
   );
 
   const roleInProperty = useMemo(() => {
@@ -278,6 +359,8 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
       needsPropertyChoice,
       refreshMemberships: loadMemberships,
       isGuest,
+      isDemoMode,
+      guestPropertyCode,
     }),
     [
       ready,
@@ -288,6 +371,8 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
       needsPropertyChoice,
       loadMemberships,
       isGuest,
+      isDemoMode,
+      guestPropertyCode,
     ],
   );
 
