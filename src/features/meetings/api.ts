@@ -117,6 +117,22 @@ export interface MeetingDetailBundle {
 const MEETING_LIST_COLUMNS =
   'id, property_id, fiscal_year, meeting_type, title_en, title_zh, description_en, description_zh, scheduled_at, meeting_format, status, created_at';
 
+const AGENDA_DETAIL_COLUMNS =
+  'id, meeting_id, sort_order, title_en, title_zh, description_en, description_zh, requires_vote, vote_rule, created_at';
+
+const VOTE_DETAIL_COLUMNS =
+  'id, meeting_id, agenda_item_id, title_en, title_zh, description_en, description_zh, vote_rule, status, opens_at, closes_at, created_at';
+
+const VOTE_OPTION_COLUMNS = 'id, vote_id, option_key, label_en, label_zh, sort_order';
+
+const BALLOT_DETAIL_COLUMNS = 'id, vote_id, property_id, voter_user_id, selected_option_key, unit_weight, created_at';
+
+const INVITATION_DETAIL_COLUMNS =
+  'id, meeting_id, property_id, recipient_user_id, delivery_channel, delivery_status, sent_at, opened_at, created_at';
+
+const RESOLUTION_DETAIL_COLUMNS =
+  'id, meeting_id, agenda_item_id, resolution_text, outcome, followup_required, created_at';
+
 export function meetingTitleZhFirst(m: Pick<MeetingRow, 'title_zh' | 'title_en'>) {
   const zh = m.title_zh?.trim();
   const en = m.title_en?.trim();
@@ -188,89 +204,114 @@ export async function getMeetingDashboardStats(propertyId: string, fiscalYear: n
   };
 }
 
-export async function getMeetingDetail(meetingId: string, propertyId: string): Promise<MeetingDetailBundle> {
-  const empty: MeetingDetailBundle = {
-    meeting: null,
-    agendaItems: [],
-    votes: [],
-    ballotsByVoteId: {},
-    myBallotsByVoteId: {},
-    invitations: [],
-    resolutions: [],
-  };
+export type MeetingDetailExtras = Omit<MeetingDetailBundle, 'meeting'>;
 
-  const [meetingRes, userRes] = await Promise.all([
-    supabase
-      .from('meetings')
-      .select(
-        'id, property_id, fiscal_year, meeting_type, title_en, title_zh, description_en, description_zh, scheduled_at, meeting_format, status, notice_sent_at, voting_open_at, voting_close_at, created_by, created_at, updated_at',
-      )
-      .eq('id', meetingId)
-      .eq('property_id', propertyId)
-      .maybeSingle(),
-    supabase.auth.getUser(),
-  ]);
+const emptyExtras = (): MeetingDetailExtras => ({
+  agendaItems: [],
+  votes: [],
+  ballotsByVoteId: {},
+  myBallotsByVoteId: {},
+  invitations: [],
+  resolutions: [],
+});
 
-  const meeting = meetingRes.data;
-  if (meetingRes.error || !meeting) {
-    return { ...empty, meeting: null };
+/** Core row only — `id` + `.single()` only; RLS enforces access (no client-side property_id filter). */
+export async function fetchMeetingCore(meetingId: string) {
+  try {
+    const { data, error } = await supabase.from('meetings').select('*').eq('id', meetingId).single();
+
+    if (error || !data) {
+      return { meeting: null as MeetingRow | null, error };
+    }
+    return { meeting: data as MeetingRow, error: null };
+  } catch {
+    return { meeting: null, error: null };
   }
+}
 
-  const uid = userRes.data.user?.id;
+/**
+ * Agenda, new-model votes + options + ballots, invitations, resolutions.
+ * Each sub-query is tolerant of errors (returns empty slice); never touches `meeting_votes_legacy`.
+ */
+export async function fetchMeetingExtras(meetingId: string): Promise<MeetingDetailExtras> {
+  try {
+    const uid = (await supabase.auth.getUser()).data.user?.id ?? null;
 
-  const [agendaRes, votesRes, invRes, resRes] = await Promise.all([
-    supabase
+    let agendaItems: MeetingAgendaRow[] = [];
+    const agendaRes = await supabase
       .from('meeting_agenda_items')
-      .select('id, meeting_id, sort_order, title_en, title_zh, description_en, description_zh, requires_vote, vote_rule, created_at')
+      .select(AGENDA_DETAIL_COLUMNS)
       .eq('meeting_id', meetingId)
-      .order('sort_order', { ascending: true }),
-    supabase.from('meeting_votes').select('*').eq('meeting_id', meetingId),
-    supabase.from('meeting_invitations').select('*').eq('meeting_id', meetingId),
-    supabase.from('meeting_resolutions').select('*').eq('meeting_id', meetingId),
-  ]);
+      .order('sort_order', { ascending: true });
+    if (!agendaRes.error && agendaRes.data) agendaItems = agendaRes.data as MeetingAgendaRow[];
 
-  const agendaItems = (agendaRes.data ?? []) as MeetingAgendaRow[];
-  const voteRows = (votesRes.data ?? []) as MeetingVoteRow[];
-  const voteIds = voteRows.map((v) => v.id);
+    let voteRows: MeetingVoteRow[] = [];
+    const votesRes = await supabase.from('meeting_votes').select(VOTE_DETAIL_COLUMNS).eq('meeting_id', meetingId);
+    if (!votesRes.error && votesRes.data) voteRows = votesRes.data as MeetingVoteRow[];
 
-  let optionsByVote: Record<string, MeetingVoteOptionRow[]> = {};
-  if (voteIds.length > 0) {
-    const { data: optRows } = await supabase.from('meeting_vote_options').select('*').in('vote_id', voteIds);
-    for (const o of (optRows ?? []) as MeetingVoteOptionRow[]) {
-      optionsByVote[o.vote_id] = optionsByVote[o.vote_id] ?? [];
-      optionsByVote[o.vote_id].push(o);
+    const voteIds = voteRows.map((v) => v.id);
+    const optionsByVote: Record<string, MeetingVoteOptionRow[]> = {};
+    if (voteIds.length > 0) {
+      const optRes = await supabase.from('meeting_vote_options').select(VOTE_OPTION_COLUMNS).in('vote_id', voteIds);
+      if (!optRes.error && optRes.data) {
+        for (const o of optRes.data as MeetingVoteOptionRow[]) {
+          optionsByVote[o.vote_id] = optionsByVote[o.vote_id] ?? [];
+          optionsByVote[o.vote_id].push(o);
+        }
+        for (const k of Object.keys(optionsByVote)) {
+          optionsByVote[k].sort((a, b) => a.sort_order - b.sort_order);
+        }
+      }
     }
-    for (const k of Object.keys(optionsByVote)) {
-      optionsByVote[k].sort((a, b) => a.sort_order - b.sort_order);
+
+    const votes = voteRows.map((v) => ({
+      ...v,
+      options: optionsByVote[v.id] ?? [],
+    }));
+
+    const ballotsByVoteId: Record<string, MeetingBallotRow[]> = {};
+    const myBallotsByVoteId: Record<string, MeetingBallotRow | undefined> = {};
+
+    if (voteIds.length > 0) {
+      const ballotRes = await supabase.from('meeting_ballots').select(BALLOT_DETAIL_COLUMNS).in('vote_id', voteIds);
+      if (!ballotRes.error && ballotRes.data) {
+        for (const b of ballotRes.data as MeetingBallotRow[]) {
+          ballotsByVoteId[b.vote_id] = ballotsByVoteId[b.vote_id] ?? [];
+          ballotsByVoteId[b.vote_id].push(b);
+          if (uid && b.voter_user_id === uid) myBallotsByVoteId[b.vote_id] = b;
+        }
+      }
     }
+
+    let invitations: MeetingInvitationRow[] = [];
+    const invRes = await supabase.from('meeting_invitations').select(INVITATION_DETAIL_COLUMNS).eq('meeting_id', meetingId);
+    if (!invRes.error && invRes.data) invitations = invRes.data as MeetingInvitationRow[];
+
+    let resolutions: MeetingResolutionRow[] = [];
+    const resRes = await supabase.from('meeting_resolutions').select(RESOLUTION_DETAIL_COLUMNS).eq('meeting_id', meetingId);
+    if (!resRes.error && resRes.data) resolutions = resRes.data as MeetingResolutionRow[];
+
+    return {
+      agendaItems,
+      votes,
+      ballotsByVoteId,
+      myBallotsByVoteId,
+      invitations,
+      resolutions,
+    };
+  } catch {
+    return emptyExtras();
   }
+}
 
-  const votes = voteRows.map((v) => ({
-    ...v,
-    options: optionsByVote[v.id] ?? [],
-  }));
-
-  const ballotsByVoteId: Record<string, MeetingBallotRow[]> = {};
-  const myBallotsByVoteId: Record<string, MeetingBallotRow | undefined> = {};
-
-  if (voteIds.length > 0 && uid) {
-    const { data: ballots } = await supabase.from('meeting_ballots').select('*').in('vote_id', voteIds);
-    for (const b of (ballots ?? []) as MeetingBallotRow[]) {
-      ballotsByVoteId[b.vote_id] = ballotsByVoteId[b.vote_id] ?? [];
-      ballotsByVoteId[b.vote_id].push(b);
-      if (b.voter_user_id === uid) myBallotsByVoteId[b.vote_id] = b;
-    }
+/** Full bundle: same meeting query as detail page (`select('*')` on meetings by id); extras never drop the meeting row. */
+export async function getMeetingDetail(meetingId: string): Promise<MeetingDetailBundle> {
+  const { meeting } = await fetchMeetingCore(meetingId);
+  if (!meeting) {
+    return { meeting: null, ...emptyExtras() };
   }
-
-  return {
-    meeting: meeting as MeetingRow,
-    agendaItems,
-    votes,
-    ballotsByVoteId,
-    myBallotsByVoteId,
-    invitations: (invRes.data ?? []) as MeetingInvitationRow[],
-    resolutions: (resRes.data ?? []) as MeetingResolutionRow[],
-  };
+  const extras = await fetchMeetingExtras(meetingId);
+  return { meeting, ...extras };
 }
 
 export async function createMeeting(input: {
@@ -412,20 +453,40 @@ export async function createVote(input: {
   return { voteId, error: oErr };
 }
 
-export async function castBallot(input: {
-  voteId: string;
-  propertyId: string;
-  voterUserId: string;
-  selectedOptionKey: string;
-}) {
+/** Resolves `property_id` via vote → meeting; uses current auth user as voter. */
+export async function castBallot(voteId: string, selectedOptionKey: string) {
+  const {
+    data: { user },
+    error: userErr,
+  } = await supabase.auth.getUser();
+  if (userErr || !user) {
+    return { id: undefined, error: userErr ?? ({ message: 'Not signed in' } as { message: string }) };
+  }
+
+  const { data: vote, error: vErr } = await supabase
+    .from('meeting_votes')
+    .select('id, meeting_id')
+    .eq('id', voteId)
+    .single();
+
+  if (vErr || !vote) return { id: undefined, error: vErr };
+
+  const { data: mrow, error: mErr } = await supabase
+    .from('meetings')
+    .select('property_id')
+    .eq('id', vote.meeting_id as string)
+    .single();
+
+  if (mErr || !mrow?.property_id) return { id: undefined, error: mErr };
+
   const { data, error } = await supabase
     .from('meeting_ballots')
     .upsert(
       {
-        vote_id: input.voteId,
-        property_id: input.propertyId,
-        voter_user_id: input.voterUserId,
-        selected_option_key: input.selectedOptionKey,
+        vote_id: voteId,
+        property_id: mrow.property_id as string,
+        voter_user_id: user.id,
+        selected_option_key: selectedOptionKey,
       },
       { onConflict: 'vote_id,voter_user_id' },
     )

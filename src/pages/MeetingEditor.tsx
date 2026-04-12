@@ -49,7 +49,7 @@ export function MeetingEditor() {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      const bundle = await getMeetingDetail(meetingId, currentPropertyId);
+      const bundle = await getMeetingDetail(meetingId);
       if (cancelled) return;
       const m = bundle.meeting;
       if (!m) {
