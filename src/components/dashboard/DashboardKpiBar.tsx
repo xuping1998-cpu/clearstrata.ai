@@ -4,6 +4,8 @@ import type { DashboardKpi } from '../../types/dashboard';
 function valueClass(key: DashboardKpi['key']) {
   switch (key) {
     case 'high_risk_alerts':
+    case 'over_budget':
+    case 'bypass_approval':
       return 'text-red-600';
     case 'monthly_abnormal_invoices':
       return 'text-amber-600';
@@ -38,7 +40,12 @@ export type DashboardKpiBarProps = {
 };
 
 function isDashboardLinkedKey(key: DashboardKpi['key']) {
-  return key === 'high_risk_alerts' || key === 'monthly_abnormal_invoices';
+  return (
+    key === 'high_risk_alerts' ||
+    key === 'monthly_abnormal_invoices' ||
+    key === 'over_budget' ||
+    key === 'bypass_approval'
+  );
 }
 
 function KpiCardBody({
@@ -77,7 +84,10 @@ export function DashboardKpiBar({
   en = true,
 }: DashboardKpiBarProps) {
   if (!compact) {
-    const grid = 'grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4';
+    const grid =
+      items.length >= 6
+        ? 'grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3'
+        : 'grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4';
     return (
       <div className={grid}>
         {items.map((item) => {
@@ -132,7 +142,9 @@ export function DashboardKpiBar({
   }
 
   const grid =
-    'grid grid-cols-1 gap-2 md:grid-cols-2 md:gap-2 xl:grid-cols-4 xl:gap-2.5';
+    items.length >= 6
+      ? 'grid grid-cols-1 gap-2 md:grid-cols-2 md:gap-2 xl:grid-cols-3 xl:gap-2.5'
+      : 'grid grid-cols-1 gap-2 md:grid-cols-2 md:gap-2 xl:grid-cols-4 xl:gap-2.5';
 
   return (
     <div className={grid}>

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertCircle, CheckCircle2, ChevronRight } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
-import type { AbnormalInvoiceItem } from '../../types/dashboard';
+import type { RecentAiAuditInvoiceItem } from '../../types/dashboard';
 
 export type InvoiceFilter = 'all' | 'high_risk' | 'this_month';
 
@@ -22,57 +22,6 @@ function formatDate(value: string | null | undefined, locale: 'en' | 'zh') {
   return d.toLocaleDateString(locale === 'zh' ? 'zh-CN' : 'en-CA');
 }
 
-function statusText(status: string | null | undefined, en: boolean) {
-  if (en) {
-    switch (status) {
-      case 'approved':
-        return 'Approved';
-      case 'paid':
-        return 'Paid';
-      case 'pending_review':
-        return 'Pending review';
-      case 'pending_upload':
-        return 'Uploading';
-      case 'flagged':
-        return 'Flagged';
-      case 'rejected':
-        return 'Rejected';
-      default:
-        return status?.trim() ? status : 'Unknown';
-    }
-  }
-  switch (status) {
-    case 'approved':
-      return '已批准';
-    case 'paid':
-      return '已付款';
-    case 'pending_review':
-      return '待审核';
-    case 'pending_upload':
-      return '上传中';
-    case 'flagged':
-      return '已标记';
-    case 'rejected':
-      return '已拒绝';
-    case 'pending':
-      return '待处理';
-    default:
-      return status?.trim() ? status : '未知';
-  }
-}
-
-function anomalyText(flag: string | null | undefined, en: boolean) {
-  if (!flag) return en ? 'Abnormal invoice' : '异常发票';
-  switch (flag) {
-    case 'category_unmatched':
-      return en ? 'Category unmatched' : '科目无法匹配';
-    case 'over_budget':
-      return en ? 'Over budget' : '预算超支';
-    default:
-      return flag;
-  }
-}
-
 function isThisMonth(value?: string | null) {
   if (!value) return false;
   const d = new Date(value);
@@ -81,27 +30,33 @@ function isThisMonth(value?: string | null) {
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
 }
 
-/** 与发票工作流对齐：规则审计高风险、科目/预算异常标记，或待处理、流程异常状态 */
-function isHighRisk(item: AbnormalInvoiceItem) {
-  const st = item.status ?? '';
-  if (item.audit_severity === 'high') return true;
-  return (
-    item.budget_anomaly_flag === 'category_unmatched' ||
-    item.budget_anomaly_flag === 'over_budget' ||
-    st === 'pending' ||
-    st === 'pending_review' ||
-    st === 'flagged'
-  );
+function riskLevelLabel(level: string, en: boolean): string {
+  const x = level.toLowerCase();
+  if (en) {
+    if (x === 'critical') return 'Critical';
+    if (x === 'high') return 'High';
+    if (x === 'medium') return 'Medium';
+    if (x === 'low') return 'Low';
+    return level || '—';
+  }
+  if (x === 'critical') return '严重';
+  if (x === 'high') return '高';
+  if (x === 'medium') return '中';
+  if (x === 'low') return '低';
+  return level || '—';
 }
 
-function primaryAnomalyLine(item: AbnormalInvoiceItem, en: boolean): string {
-  const msg = en ? item.audit_message_en : item.audit_message_zh;
-  if (msg && msg.trim()) return msg.trim();
-  return anomalyText(item.budget_anomaly_flag, en);
+function isHighRiskAi(item: RecentAiAuditInvoiceItem): boolean {
+  const x = item.risk_level.toLowerCase();
+  return x === 'high' || x === 'critical';
+}
+
+function isAiScoreAbnormal(item: RecentAiAuditInvoiceItem): boolean {
+  return item.risk_score > 0.6;
 }
 
 export type RecentAbnormalInvoicesCardProps = {
-  items: AbnormalInvoiceItem[];
+  items: RecentAiAuditInvoiceItem[];
   loadError?: boolean;
   filter?: InvoiceFilter;
   onFilterChange?: (filter: InvoiceFilter) => void;
@@ -131,22 +86,22 @@ export function RecentAbnormalInvoicesCard({
   const filteredItems = useMemo(() => {
     let list = [...items];
     if (currentFilter === 'high_risk') {
-      list = list.filter(isHighRisk);
+      list = list.filter(isHighRiskAi);
     }
     if (currentFilter === 'this_month') {
-      list = list.filter((item) => isThisMonth(item.invoice_date || item.created_at));
+      list = list.filter((item) => isThisMonth(item.invoice_date));
     }
     return list.slice(0, 3);
   }, [items, currentFilter]);
 
-  const title = en ? 'Recent abnormal invoices' : '最近异常发票';
+  const title = en ? 'Recent AI-flagged invoices' : '最近 AI 异常发票';
   const subtitle = en
-    ? 'Prioritize high-risk, category, or budget anomalies'
-    : '优先处理高风险、科目异常或预算异常单据';
+    ? 'Hard flags (over budget / approval) or AI risk score > 0.6'
+    : '硬约束（超预算/审批）或 AI 风险分数 > 0.6';
   const viewAll = en ? 'View all' : '查看全部';
   const loadErrText = en
-    ? 'Could not load abnormal invoices. Please try again later.'
-    : '无法加载异常发票列表，请稍后重试。';
+    ? 'Could not load AI invoice list. Please try again later.'
+    : '无法加载 AI 发票列表，请稍后重试。';
 
   const tabs: { key: InvoiceFilter; labelZh: string; labelEn: string }[] = [
     { key: 'all', labelZh: '全部', labelEn: 'All' },
@@ -154,12 +109,12 @@ export function RecentAbnormalInvoicesCard({
     { key: 'this_month', labelZh: '本月新增', labelEn: 'This month' },
   ];
 
-  const emptyAll = en ? 'No abnormal invoices right now.' : '当前没有异常发票';
-  const emptyHigh = en ? 'No high-risk abnormal invoices.' : '当前没有高风险异常发票';
-  const emptyMonth = en ? 'No new abnormal invoices this month.' : '本月暂无新增异常发票';
+  const emptyAll = en ? 'No AI-flagged invoices in this fiscal year.' : '本财年暂无 AI 标记异常发票';
+  const emptyHigh = en ? 'No high-risk AI items.' : '暂无高风险 AI 标记';
+  const emptyMonth = en ? 'No new AI-flagged invoices this month.' : '本月暂无 AI 标记异常';
   const emptyAllSubtitle = en
-    ? 'Books look healthy — nothing urgent to action here.'
-    : '当前账务状态正常，暂无需要优先处理的异常单据';
+    ? 'No items match the current filters for this fiscal year.'
+    : '本财年在当前筛选下暂无符合条件的发票。';
 
   const emptyMessage =
     currentFilter === 'high_risk'
@@ -169,14 +124,14 @@ export function RecentAbnormalInvoicesCard({
         : emptyAll;
 
   const footerAll = en
-    ? 'Prioritize invoices with category mismatch or budget overrun.'
-    : '建议优先检查科目无法匹配和预算超支类发票';
+    ? 'Review invoices with elevated AI risk scores.'
+    : '建议复核 AI 风险分数较高的发票';
   const footerHigh = en
-    ? 'Showing high-risk abnormal invoices — please prioritize.'
-    : '当前展示高风险异常发票，建议优先处理';
+    ? 'Showing AI high / critical risk — please prioritize.'
+    : '当前展示 AI 高风险/严重项，建议优先处理';
   const footerMonth = en
-    ? 'Showing abnormal invoices from this month — follow up promptly.'
-    : '当前展示本月新增异常发票，请及时跟进';
+    ? 'Showing AI-flagged invoices from this month.'
+    : '当前展示本月 AI 标记异常发票';
 
   const footerTip =
     currentFilter === 'high_risk'
@@ -256,9 +211,9 @@ export function RecentAbnormalInvoicesCard({
         <>
           <ul className="space-y-2.5">
             {filteredItems.map((item) => (
-              <li key={item.id}>
+              <li key={item.invoice_id}>
                 <Link
-                  to={`/finance?tab=invoices&invoice=${encodeURIComponent(item.id)}`}
+                  to={`/finance?tab=invoices&invoice=${encodeURIComponent(item.invoice_id)}`}
                   className="block rounded-xl border border-gray-200 bg-gray-50/50 p-3 transition-all hover:border-red-300 hover:bg-red-50/50 hover:shadow-md"
                 >
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
@@ -266,16 +221,26 @@ export function RecentAbnormalInvoicesCard({
                       <div className="truncate text-base font-semibold text-gray-900">
                         {item.vendor_name?.trim() || (en ? 'Unnamed vendor' : '未命名供应商')}
                       </div>
-                      <div className="mt-1 text-sm text-gray-600">
-                        {primaryAnomalyLine(item, en)}
-                      </div>
+                      <div className="mt-1 text-sm text-gray-600 line-clamp-2">{item.summary}</div>
                       <div className="mt-3 flex flex-wrap gap-2">
                         <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700">
-                          {statusText(item.status, en)}
+                          {riskLevelLabel(item.risk_level, en)}
                         </span>
-                        <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-medium text-red-800">
-                          {en ? 'Needs review' : '需关注'}
-                        </span>
+                        {item.over_budget ? (
+                          <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-medium text-red-800">
+                            {en ? '🔴 Over budget' : '🔴 超预算'}
+                          </span>
+                        ) : null}
+                        {item.bypass_approval ? (
+                          <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-medium text-red-800">
+                            {en ? '🔴 Paid w/o approval' : '🔴 未审批执行'}
+                          </span>
+                        ) : null}
+                        {isAiScoreAbnormal(item) ? (
+                          <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-950">
+                            {en ? '🟡 AI anomaly' : '🟡 AI异常'}
+                          </span>
+                        ) : null}
                       </div>
                     </div>
                     <div className="flex shrink-0 flex-row items-end justify-between gap-4 border-t border-gray-100 pt-3 sm:flex-col sm:items-end sm:border-t-0 sm:pt-0">
@@ -283,7 +248,7 @@ export function RecentAbnormalInvoicesCard({
                         {formatMoney(item.total_amount, language)}
                       </div>
                       <div className="text-sm tabular-nums text-gray-500">
-                        {formatDate(item.invoice_date ?? item.created_at, language)}
+                        {formatDate(item.invoice_date, language)}
                       </div>
                     </div>
                   </div>

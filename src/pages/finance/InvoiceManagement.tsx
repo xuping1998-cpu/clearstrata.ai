@@ -17,6 +17,9 @@ import {
   FileSpreadsheet,
   FileDown,
   ShieldAlert,
+  Sparkles,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useProperty } from '../../contexts/PropertyContext';
@@ -28,6 +31,7 @@ import { computeQuoteInvoiceVariance, isRedAlertVariance, type QuoteVarianceResu
 import { exportInvoiceApprovalPdf } from '../../lib/pdf/exportInvoiceApprovalPdf';
 import { exportMonthlyAbnormalInvoicesMeetingPackPdf } from '../../lib/pdf/exportMonthlyAbnormalInvoicesMeetingPackPdf';
 import { QuoteVariancePanel } from '../../components/finance/QuoteVariancePanel';
+import { scheduleInvoiceAiAuditAfterInsert } from '../../lib/invoiceAudit';
 
 interface Invoice {
   id: string;
@@ -66,6 +70,10 @@ interface Invoice {
   related_task_id?: string | null;
   /** 对应已批准报价，用于与实际金额对比 */
   quote_id?: string | null;
+  /** 业委会/管理员正式批准后设为 true，用于未审批付款硬规则 */
+  approved?: boolean | null;
+  fiscal_year?: number | null;
+  budget_category_id?: string | null;
   /** approved/paid 时由库计算锁定；pending 时常为 null */
   is_budget_exceeded?: boolean | null;
   uploader?: { full_name_en: string; full_name_zh?: string };
@@ -133,6 +141,151 @@ function statusStyle(status: string): { labelZh: string; labelEn: string; classN
   return map[status] || map.pending_review;
 }
 
+type InvoiceAiAuditRow = {
+  id?: string;
+  invoice_id: string;
+  risk_level: string;
+  risk_score: number;
+  ai_summary_zh: string;
+  ai_summary_en: string;
+  ai_reasons: unknown;
+  ai_recommendations: unknown;
+  model_name: string | null;
+  status: string;
+  updated_at: string;
+};
+
+function pickPreferredAiAudit(rows: InvoiceAiAuditRow[]): InvoiceAiAuditRow | null {
+  if (rows.length === 0) return null;
+  const open = rows.filter((r) => r.status === 'open');
+  if (open.length === 1) return open[0];
+  if (open.length > 1) {
+    return open.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0];
+  }
+  return rows.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0];
+}
+
+function parseReasonItem(raw: unknown, l: boolean): { title: string; detail: string } {
+  if (typeof raw === 'string') {
+    return { title: l ? 'Note' : '说明', detail: raw };
+  }
+  if (raw && typeof raw === 'object') {
+    const o = raw as Record<string, unknown>;
+    const title = l
+      ? String(o.title_en ?? o.title_zh ?? o.title ?? '—')
+      : String(o.title_zh ?? o.title_en ?? o.title ?? '—');
+    const detail = l
+      ? String(o.explanation_en ?? o.explanation_zh ?? o.detail ?? o.message ?? '')
+      : String(o.explanation_zh ?? o.explanation_en ?? o.detail ?? o.message ?? '');
+    return { title, detail };
+  }
+  return { title: '—', detail: '' };
+}
+
+function parseRecItem(raw: unknown, l: boolean): { title: string; action: string } {
+  if (typeof raw === 'string') {
+    return { title: l ? 'Action' : '建议', action: raw };
+  }
+  if (raw && typeof raw === 'object') {
+    const o = raw as Record<string, unknown>;
+    const title = l
+      ? String(o.title_en ?? o.title_zh ?? o.title ?? '—')
+      : String(o.title_zh ?? o.title_en ?? o.title ?? '—');
+    const action = l
+      ? String(o.action_en ?? o.action_zh ?? o.action ?? '')
+      : String(o.action_zh ?? o.action_en ?? o.action ?? '');
+    return { title, action };
+  }
+  return { title: '—', action: '' };
+}
+
+function riskLevelBadgeClass(level: string): string {
+  switch (level) {
+    case 'low':
+      return 'bg-emerald-100 text-emerald-900 ring-1 ring-emerald-200';
+    case 'medium':
+      return 'bg-amber-100 text-amber-900 ring-1 ring-amber-200';
+    case 'high':
+      return 'bg-orange-100 text-orange-950 ring-1 ring-orange-200';
+    case 'critical':
+      return 'bg-red-100 text-red-900 ring-1 ring-red-300';
+    default:
+      return 'bg-gray-100 text-gray-800';
+  }
+}
+
+function riskLevelLabel(level: string, l: boolean): string {
+  const m: Record<string, { zh: string; en: string }> = {
+    low: { zh: '低风险', en: 'Low' },
+    medium: { zh: '中风险', en: 'Medium' },
+    high: { zh: '高风险', en: 'High' },
+    critical: { zh: '严重风险', en: 'Critical' },
+  };
+  const hit = m[level];
+  if (hit) return l ? hit.en : hit.zh;
+  return level;
+}
+
+function aiRiskShortLabel(level: string, l: boolean): string {
+  const m: Record<string, { zh: string; en: string }> = {
+    low: { zh: '低', en: 'L' },
+    medium: { zh: '中', en: 'M' },
+    high: { zh: '高', en: 'H' },
+    critical: { zh: '严重', en: '!' },
+  };
+  const hit = m[level];
+  if (hit) return l ? hit.en : hit.zh;
+  return level.slice(0, 4);
+}
+
+function AiListRiskBadge({ level, l }: { level: string; l: boolean }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${riskLevelBadgeClass(level)}`}
+      title={l ? `AI: ${level}` : `AI：${riskLevelLabel(level, false)}`}
+    >
+      <Sparkles className="size-3 shrink-0 opacity-80" aria-hidden />
+      {aiRiskShortLabel(level, l)}
+    </span>
+  );
+}
+
+function summarizeContextJson(ctx: Record<string, unknown> | null | undefined) {
+  if (!ctx || typeof ctx !== 'object') return null;
+  const budget = ctx.budget_year_summary as Record<string, unknown> | undefined;
+  const vendorHist = ctx.vendor_history_12m;
+  const catHist = ctx.category_history_12m;
+  const rules = ctx.rule_audit_open;
+  const ocr = ctx.ocr as Record<string, unknown> | undefined;
+  const inv = ctx.invoice as Record<string, unknown> | undefined;
+  const vendorCount = Array.isArray(vendorHist) ? vendorHist.length : 0;
+  const catCount = Array.isArray(catHist) ? catHist.length : 0;
+  const ruleCount = Array.isArray(rules) ? rules.length : 0;
+  let ocrAvailable = false;
+  if (ocr) {
+    const sj = ocr.structured_json;
+    const raw = ocr.raw_text;
+    const hasStruct =
+      sj != null &&
+      sj !== 'null' &&
+      (typeof sj === 'object' || (typeof sj === 'string' && (sj as string).length > 2 && (sj as string) !== 'null'));
+    const hasRaw = typeof raw === 'string' && raw.trim().length > 0;
+    ocrAvailable = Boolean(hasStruct || hasRaw);
+  }
+  const fiscalYear = budget?.fiscal_year;
+  const remaining = budget?.remaining_budget;
+  const catId = inv?.resolved_budget_category_id;
+  return {
+    fiscalYear: typeof fiscalYear === 'number' ? fiscalYear : null,
+    remainingBudget: typeof remaining === 'number' ? remaining : null,
+    budgetCategoryId: typeof catId === 'string' ? catId : null,
+    vendorCount,
+    categoryCount: catCount,
+    ruleCount,
+    ocrAvailable,
+  };
+}
+
 function createdAtInCurrentMonth(createdAt: string): boolean {
   const c = new Date(createdAt);
   if (Number.isNaN(c.getTime())) return false;
@@ -169,6 +322,7 @@ export function InvoiceManagement({
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
+  const [uploadAiHint, setUploadAiHint] = useState('');
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -298,6 +452,127 @@ export function InvoiceManagement({
       cancelled = true;
     };
   }, [currentPropertyId, invoices]);
+
+  const [aiAuditListMap, setAiAuditListMap] = useState<
+    Record<string, { risk_level: string; risk_score: number }>
+  >({});
+
+  useEffect(() => {
+    if (!currentPropertyId || invoices.length === 0) {
+      setAiAuditListMap({});
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const ids = invoices.map((i) => i.id);
+      const CHUNK = 100;
+      const merged: Record<
+        string,
+        { invoice_id: string; risk_level: string; risk_score: number; status: string; updated_at: string }
+      > = {};
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        const slice = ids.slice(i, i + CHUNK);
+        const { data, error } = await supabase
+          .from('invoice_ai_audits')
+          .select('invoice_id, risk_level, risk_score, status, updated_at')
+          .eq('property_id', currentPropertyId)
+          .in('invoice_id', slice);
+        if (cancelled) return;
+        if (error) {
+          setAiAuditListMap({});
+          return;
+        }
+        for (const row of data ?? []) {
+          const prev = merged[row.invoice_id];
+          if (!prev) {
+            merged[row.invoice_id] = row;
+          } else {
+            const prefer =
+              row.status === 'open' && prev.status !== 'open'
+                ? row
+                : new Date(row.updated_at) > new Date(prev.updated_at)
+                  ? row
+                  : prev;
+            merged[row.invoice_id] = prefer;
+          }
+        }
+      }
+      if (cancelled) return;
+      setAiAuditListMap(
+        Object.fromEntries(
+          Object.entries(merged).map(([k, v]) => [
+            k,
+            { risk_level: v.risk_level, risk_score: Number(v.risk_score) },
+          ]),
+        ),
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [invoices, currentPropertyId]);
+
+  const [hybridAuditByInvoiceId, setHybridAuditByInvoiceId] = useState<
+    Record<string, { over_budget: boolean; bypass_approval: boolean; ai_high: boolean }>
+  >({});
+
+  const [hybridAuditTick, setHybridAuditTick] = useState(0);
+
+  useEffect(() => {
+    if (!currentPropertyId) return;
+    const channel = supabase
+      .channel(`invoice-ai-results-${currentPropertyId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'invoice_ai_audit_results',
+          filter: `property_id=eq.${currentPropertyId}`,
+        },
+        () => setHybridAuditTick((n) => n + 1),
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [currentPropertyId]);
+
+  useEffect(() => {
+    if (!currentPropertyId || invoices.length === 0) {
+      setHybridAuditByInvoiceId({});
+      return;
+    }
+    let cancelled = false;
+    const ids = invoices.map((i) => i.id);
+    void (async () => {
+      const { data, error } = await supabase
+        .from('invoice_ai_audit_results')
+        .select('invoice_id, risk_score, over_budget, bypass_approval')
+        .eq('property_id', currentPropertyId)
+        .in('invoice_id', ids);
+      if (cancelled) return;
+      if (error) {
+        console.warn('[invoices] hybrid audit flags', error.message);
+        setHybridAuditByInvoiceId({});
+        return;
+      }
+      const m: Record<string, { over_budget: boolean; bypass_approval: boolean; ai_high: boolean }> = {};
+      for (const r of data ?? []) {
+        const id = r.invoice_id as string;
+        const rs = Number(r.risk_score) || 0;
+        m[id] = {
+          over_budget: r.over_budget === true,
+          bypass_approval: r.bypass_approval === true,
+          ai_high: rs > 0.6,
+        };
+      }
+      setHybridAuditByInvoiceId(m);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [invoices, currentPropertyId, hybridAuditTick]);
 
   useEffect(() => {
     if (!highlightInvoiceId || invoices.length === 0) return;
@@ -546,6 +821,12 @@ export function InvoiceManagement({
         console.error('invoice_ocr_raw insert threw:', e);
       }
 
+      scheduleInvoiceAiAuditAfterInsert(invoiceId);
+      setUploadAiHint(
+        l ? 'AI audit will complete in the background. Open the invoice in a moment to see results.' : 'AI 审计稍后完成，可稍后打开发票详情查看。',
+      );
+      window.setTimeout(() => setUploadAiHint(''), 8000);
+
       setUploadProgress(l ? 'Done!' : '识别完成！');
       await loadInvoices();
       setTimeout(() => setUploadProgress(''), 2000);
@@ -617,6 +898,7 @@ export function InvoiceManagement({
       id,
       {
         status: 'approved',
+        approved: true,
         verified_by: profile.id,
         verified_at: new Date().toISOString(),
         approval_note: trimmed || null,
@@ -690,6 +972,7 @@ export function InvoiceManagement({
         status: 'paid',
         paid_by: profile.id,
         paid_at: new Date().toISOString(),
+        approved: inv.status === 'approved' || inv.approved === true,
         updated_at: new Date().toISOString(),
       },
       { action: 'mark_paid', oldStatus: inv.status, newStatus: 'paid' }
@@ -946,6 +1229,12 @@ export function InvoiceManagement({
         </div>
       )}
 
+      {uploadAiHint ? (
+        <div className="rounded-xl border border-slate-200 bg-slate-50/90 px-4 py-2.5 text-xs text-slate-700">
+          {uploadAiHint}
+        </div>
+      ) : null}
+
       <div className="bg-white rounded-xl shadow-sm border border-gray-100">
         <div className="p-4 sm:p-6 border-b border-gray-200 space-y-4">
           <div className="flex flex-col xl:flex-row xl:items-end gap-4">
@@ -1068,6 +1357,9 @@ export function InvoiceManagement({
                     <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase max-w-[120px]">
                       {l ? 'Quote Δ' : '报价对比'}
                     </th>
+                    <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase w-14">
+                      AI
+                    </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                       {l ? 'Category' : '分类'}
                     </th>
@@ -1099,6 +1391,25 @@ export function InvoiceManagement({
                           {inv.hst_number && (
                             <div className="text-xs text-gray-500">HST: {inv.hst_number}</div>
                           )}
+                          {hybridAuditByInvoiceId[inv.id] ? (
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {hybridAuditByInvoiceId[inv.id].over_budget ? (
+                                <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-800">
+                                  {l ? '🔴 Over budget' : '🔴 超预算'}
+                                </span>
+                              ) : null}
+                              {hybridAuditByInvoiceId[inv.id].bypass_approval ? (
+                                <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-800">
+                                  {l ? '🔴 No approval' : '🔴 未审批执行'}
+                                </span>
+                              ) : null}
+                              {hybridAuditByInvoiceId[inv.id].ai_high ? (
+                                <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-950">
+                                  {l ? '🟡 AI risk' : '🟡 AI异常'}
+                                </span>
+                              ) : null}
+                            </div>
+                          ) : null}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-700">{inv.invoice_number || '-'}</td>
                         <td className="px-4 py-3 text-sm text-gray-700">
@@ -1117,6 +1428,13 @@ export function InvoiceManagement({
                             </span>
                           ) : (
                             <span className="text-gray-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3 text-center text-xs">
+                          {aiAuditListMap[inv.id] ? (
+                            <AiListRiskBadge level={aiAuditListMap[inv.id].risk_level} l={l} />
+                          ) : (
+                            <span className="text-gray-300">—</span>
                           )}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-700">{catLabel(inv.category)}</td>
@@ -1214,10 +1532,34 @@ export function InvoiceManagement({
                   >
                     <div className="flex justify-between gap-2 mb-2">
                       <span className="font-semibold text-gray-900">{inv.vendor_name}</span>
-                      <span className={`shrink-0 px-2 py-0.5 rounded-full text-xs font-medium ${st.className}`}>
-                        {l ? st.labelEn : st.labelZh}
-                      </span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {aiAuditListMap[inv.id] ? (
+                          <AiListRiskBadge level={aiAuditListMap[inv.id].risk_level} l={l} />
+                        ) : null}
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${st.className}`}>
+                          {l ? st.labelEn : st.labelZh}
+                        </span>
+                      </div>
                     </div>
+                    {hybridAuditByInvoiceId[inv.id] ? (
+                      <div className="mb-2 flex flex-wrap gap-1">
+                        {hybridAuditByInvoiceId[inv.id].over_budget ? (
+                          <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-800">
+                            {l ? '🔴 Over budget' : '🔴 超预算'}
+                          </span>
+                        ) : null}
+                        {hybridAuditByInvoiceId[inv.id].bypass_approval ? (
+                          <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-800">
+                            {l ? '🔴 No approval' : '🔴 未审批执行'}
+                          </span>
+                        ) : null}
+                        {hybridAuditByInvoiceId[inv.id].ai_high ? (
+                          <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-950">
+                            {l ? '🟡 AI risk' : '🟡 AI异常'}
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : null}
                     <div className="text-sm text-gray-600 space-y-1">
                       <div>
                         {inv.invoice_number || '—'} · {new Date(inv.invoice_date).toLocaleDateString(l ? 'en-CA' : 'zh-CN')}
@@ -1422,15 +1764,111 @@ function InvoiceDetailModal({
   const [approvalNote, setApprovalNote] = useState('');
   const [relatedTaskTitleFallback, setRelatedTaskTitleFallback] = useState<string | null>(null);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [aiAudit, setAiAudit] = useState<InvoiceAiAuditRow | null>(null);
+  const [aiAuditContextRow, setAiAuditContextRow] = useState<{
+    context_json: Record<string, unknown>;
+  } | null>(null);
+  const [aiAuditLoading, setAiAuditLoading] = useState(true);
+  const [aiRunLoading, setAiRunLoading] = useState(false);
+  const [reasonsExpanded, setReasonsExpanded] = useState(false);
+  const [contextFoldOpen, setContextFoldOpen] = useState(false);
+  const [devJsonOpen, setDevJsonOpen] = useState(false);
+  const [auditBanner, setAuditBanner] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
 
   const st = statusStyle(invoice.status);
   const aiData = invoice.ai_extracted_data as Record<string, unknown> | null;
+
+  const loadAiAuditBundle = useCallback(async () => {
+    setAiAuditLoading(true);
+    const [{ data: audits, error: auditErr }, { data: ctxRow }] = await Promise.all([
+      supabase.from('invoice_ai_audits').select('*').eq('invoice_id', invoice.id),
+      supabase.from('invoice_ai_audit_contexts').select('context_json').eq('invoice_id', invoice.id).maybeSingle(),
+    ]);
+    if (auditErr) {
+      setAiAudit(null);
+    } else {
+      const rows = (audits ?? []) as InvoiceAiAuditRow[];
+      setAiAudit(rows.length ? pickPreferredAiAudit(rows) : null);
+    }
+    if (ctxRow?.context_json && typeof ctxRow.context_json === 'object') {
+      setAiAuditContextRow({ context_json: ctxRow.context_json as Record<string, unknown> });
+    } else {
+      setAiAuditContextRow(null);
+    }
+    setAiAuditLoading(false);
+  }, [invoice.id]);
 
   useEffect(() => {
     setEditCategory(invoice.category || 'general');
     setEditNotes(invoice.notes || '');
     setApprovalNote('');
   }, [invoice]);
+
+  useEffect(() => {
+    void loadAiAuditBundle();
+  }, [loadAiAuditBundle]);
+
+  /** Poll a few times while AI audit is still empty (e.g. after upload auto-run). */
+  useEffect(() => {
+    if (aiAudit != null) return;
+    let ticks = 0;
+    const maxTicks = 12;
+    const id = window.setInterval(() => {
+      ticks += 1;
+      if (ticks > maxTicks) {
+        window.clearInterval(id);
+        return;
+      }
+      void loadAiAuditBundle();
+    }, 8000);
+    return () => window.clearInterval(id);
+  }, [invoice.id, aiAudit, loadAiAuditBundle]);
+
+  useEffect(() => {
+    setReasonsExpanded(false);
+    setContextFoldOpen(false);
+    setDevJsonOpen(false);
+    setAuditBanner(null);
+  }, [invoice.id]);
+
+  const runInvoiceAiAudit = async () => {
+    setAiRunLoading(true);
+    setAuditBanner(null);
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      if (!token) {
+        setAuditBanner({ type: 'err', msg: l ? 'Please sign in.' : '请先登录。' });
+        return;
+      }
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/run-invoice-ai-audit`;
+      const res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY as string,
+        },
+        body: JSON.stringify({ invoice_id: invoice.id }),
+      });
+      const json = (await res.json()) as { success?: boolean; error?: string };
+      if (!res.ok || !json.success) {
+        const detail = typeof json.error === 'string' ? json.error : 'ERR';
+        console.error('run-invoice-ai-audit', json);
+        setAuditBanner({ type: 'err', msg: l ? `Failed: ${detail}` : `失败：${detail}` });
+        return;
+      }
+      await loadAiAuditBundle();
+      await onRefresh();
+      setAuditBanner({ type: 'ok', msg: l ? 'AI audit updated.' : 'AI 审计已更新' });
+      window.setTimeout(() => setAuditBanner(null), 5000);
+    } catch (e) {
+      console.error('run-invoice-ai-audit', e);
+      setAuditBanner({ type: 'err', msg: l ? 'Network error' : '网络错误' });
+    } finally {
+      setAiRunLoading(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -1654,6 +2092,19 @@ function InvoiceDetailModal({
           </div>
         </div>
 
+        {auditBanner ? (
+          <div
+            className={`px-4 sm:px-6 py-2.5 text-sm border-b ${
+              auditBanner.type === 'ok'
+                ? 'bg-emerald-50 text-emerald-900 border-emerald-100'
+                : 'bg-red-50 text-red-800 border-red-100'
+            }`}
+            role="status"
+          >
+            {auditBanner.msg}
+          </div>
+        ) : null}
+
         <div className="p-4 sm:p-6 space-y-6">
           {/* 1. 发票基本信息 */}
           <section aria-labelledby="inv-basic-heading">
@@ -1702,6 +2153,238 @@ function InvoiceDetailModal({
                 }
               />
             </div>
+          </section>
+
+          {/* AI 审计结论 */}
+          <section aria-labelledby="inv-ai-audit-heading">
+            {aiAuditLoading ? (
+              <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-5">
+                <p className="text-sm text-gray-500">{l ? 'Loading…' : '加载中…'}</p>
+              </div>
+            ) : aiAudit ? (
+              <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-5 space-y-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <h3 id="inv-ai-audit-heading" className="text-base font-semibold text-gray-900">
+                    {l ? 'AI audit conclusion' : 'AI 审计结论'}
+                  </h3>
+                  <button
+                    type="button"
+                    disabled={aiRunLoading}
+                    onClick={() => void runInvoiceAiAudit()}
+                    className="shrink-0 rounded-lg bg-[#1D9E75] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#178a66] disabled:opacity-50"
+                  >
+                    {aiRunLoading ? (l ? 'Running…' : '运行中…') : l ? 'Run AI audit' : '立即运行 AI 审计'}
+                  </button>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <span
+                    className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${riskLevelBadgeClass(aiAudit.risk_level)}`}
+                  >
+                    {riskLevelLabel(aiAudit.risk_level, l)}
+                  </span>
+                  <div className="text-xs text-gray-600 text-right space-y-0.5">
+                    <div>
+                      {l ? 'Risk score' : '风险分数'}{' '}
+                      <span className="font-semibold text-gray-900">
+                        {Math.round(Number(aiAudit.risk_score))} / 100
+                      </span>
+                    </div>
+                    <div className="text-gray-500">
+                      {l ? 'Updated' : '更新'}{' '}
+                      {new Date(aiAudit.updated_at).toLocaleString(l ? 'en-CA' : 'zh-CN', {
+                        dateStyle: 'short',
+                        timeStyle: 'short',
+                      })}
+                    </div>
+                  </div>
+                </div>
+                <p className="text-sm sm:text-base leading-6 text-gray-700 whitespace-pre-wrap">
+                  {l ? aiAudit.ai_summary_en || aiAudit.ai_summary_zh : aiAudit.ai_summary_zh || aiAudit.ai_summary_en}
+                </p>
+                {(() => {
+                  const reasonsRaw = Array.isArray(aiAudit.ai_reasons)
+                    ? (aiAudit.ai_reasons as unknown[])
+                    : [];
+                  const parsed = reasonsRaw.map((r) => parseReasonItem(r, l));
+                  const show = reasonsExpanded ? parsed : parsed.slice(0, 3);
+                  if (parsed.length === 0) return null;
+                  return (
+                    <div>
+                      <h4 className="text-sm font-semibold text-gray-900 mb-2">
+                        {l ? 'Risk factors' : '风险原因'}
+                      </h4>
+                      <ul className="space-y-2">
+                        {show.map((item, idx) => (
+                          <li
+                            key={idx}
+                            className="rounded-lg bg-gray-50 border border-gray-100 px-3 py-2 text-sm text-gray-800"
+                          >
+                            <div className="font-medium text-gray-900">{item.title}</div>
+                            {item.detail ? (
+                              <p className="mt-1 text-gray-600 leading-relaxed">{item.detail}</p>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                      {parsed.length > 3 ? (
+                        <button
+                          type="button"
+                          onClick={() => setReasonsExpanded((v) => !v)}
+                          className="mt-2 text-xs font-medium text-[#1D9E75] hover:underline"
+                        >
+                          {reasonsExpanded
+                            ? l
+                              ? 'Show less'
+                              : '收起'
+                            : l
+                              ? `Show ${parsed.length - 3} more`
+                              : `展开更多（${parsed.length - 3}）`}
+                        </button>
+                      ) : null}
+                    </div>
+                  );
+                })()}
+                {(() => {
+                  const recRaw = Array.isArray(aiAudit.ai_recommendations)
+                    ? (aiAudit.ai_recommendations as unknown[])
+                    : [];
+                  const parsed = recRaw.map((r) => parseRecItem(r, l));
+                  if (parsed.length === 0) return null;
+                  return (
+                    <div className="pt-3 border-t border-gray-100">
+                      <h4 className="text-sm font-semibold text-gray-900 mb-2">
+                        {l ? 'Suggested next steps' : '建议动作'}
+                      </h4>
+                      <ul className="space-y-3">
+                        {parsed.map((item, idx) => (
+                          <li key={idx} className="text-sm">
+                            <div className="font-medium text-gray-900">{item.title}</div>
+                            {item.action ? (
+                              <p className="mt-1 text-gray-600 leading-relaxed">{item.action}</p>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })()}
+                {aiAudit.model_name ? (
+                  <p className="text-xs text-gray-400 pt-1">
+                    {l ? 'Model' : '模型'}: {aiAudit.model_name}
+                  </p>
+                ) : null}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-5 space-y-4">
+                <h3 id="inv-ai-audit-heading" className="text-base font-semibold text-gray-900">
+                  {l ? 'AI audit conclusion' : 'AI 审计结论'}
+                </h3>
+                <div className="rounded-xl bg-gray-50 border border-dashed border-gray-200 p-4 text-center space-y-2">
+                  <p className="text-sm font-medium text-gray-900">
+                    {l ? 'No AI audit yet' : '尚未生成 AI 审计结论'}
+                  </p>
+                  <p className="text-sm text-gray-600 leading-relaxed">
+                    {l
+                      ? 'This invoice has not been analyzed yet. You can run an AI audit manually.'
+                      : '该发票尚未完成 AI 风险分析。你可以手动触发一次 AI 审计。'}
+                  </p>
+                  <button
+                    type="button"
+                    disabled={aiRunLoading}
+                    onClick={() => void runInvoiceAiAudit()}
+                    className="mt-2 inline-flex items-center justify-center rounded-lg bg-[#1D9E75] px-4 py-2 text-sm font-semibold text-white hover:bg-[#178a66] disabled:opacity-50"
+                  >
+                    {aiRunLoading ? (l ? 'Running…' : '运行中…') : l ? 'Run AI audit now' : '立即运行 AI 审计'}
+                  </button>
+                </div>
+              </div>
+            )}
+            {aiAuditContextRow?.context_json ? (
+              <div className="mt-4 rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setContextFoldOpen((v) => !v)}
+                  className="flex w-full items-center justify-between gap-2 px-5 py-3 text-left text-sm font-semibold text-gray-900 hover:bg-gray-50"
+                >
+                  <span>{l ? 'Audit context summary' : '审计上下文摘要'}</span>
+                  {contextFoldOpen ? (
+                    <ChevronDown className="size-4 shrink-0 text-gray-500" />
+                  ) : (
+                    <ChevronRight className="size-4 shrink-0 text-gray-500" />
+                  )}
+                </button>
+                {contextFoldOpen ? (
+                  <div className="px-5 pb-5 pt-0 space-y-2 text-sm text-gray-700 border-t border-gray-100">
+                    {(() => {
+                      const s = summarizeContextJson(aiAuditContextRow.context_json);
+                      if (!s) {
+                        return <p className="text-gray-500">{l ? 'No summary.' : '暂无摘要。'}</p>;
+                      }
+                      return (
+                        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
+                          <div>
+                            <dt className="text-xs text-gray-500">
+                              {l ? 'Budget / FY' : '预算 / 财年'}
+                            </dt>
+                            <dd>
+                              {s.fiscalYear != null ? `${l ? 'FY' : '财年'} ${s.fiscalYear}` : '—'}
+                              {s.remainingBudget != null
+                                ? ` · ${l ? 'Remaining' : '剩余'} $${Number(s.remainingBudget).toFixed(2)}`
+                                : ''}
+                              {s.budgetCategoryId ? (
+                                <span className="text-gray-500 text-xs ml-1">
+                                  ({l ? 'cat' : '科目'} {s.budgetCategoryId.slice(0, 8)}…)
+                                </span>
+                              ) : null}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="text-xs text-gray-500">
+                              {l ? 'Same vendor invoices (12m)' : '同供应商历史（12 月）'}
+                            </dt>
+                            <dd>{s.vendorCount}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-xs text-gray-500">
+                              {l ? 'Same category invoices (12m)' : '同类别历史（12 月）'}
+                            </dt>
+                            <dd>{s.categoryCount}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-xs text-gray-500">
+                              {l ? 'Open rule hits' : '规则命中数'}
+                            </dt>
+                            <dd>{s.ruleCount}</dd>
+                          </div>
+                          <div className="sm:col-span-2">
+                            <dt className="text-xs text-gray-500">OCR</dt>
+                            <dd>{s.ocrAvailable ? (l ? 'Available' : '可用') : l ? 'Limited / none' : '不可用或有限'}</dd>
+                          </div>
+                        </dl>
+                      );
+                    })()}
+                    <button
+                      type="button"
+                      onClick={() => setDevJsonOpen((v) => !v)}
+                      className="text-xs font-medium text-gray-500 hover:text-gray-800 pt-2"
+                    >
+                      {devJsonOpen
+                        ? l
+                          ? 'Hide developer JSON'
+                          : '隐藏开发者 JSON'
+                        : l
+                          ? 'Show developer JSON'
+                          : '查看原始 JSON（开发者）'}
+                    </button>
+                    {devJsonOpen ? (
+                      <pre className="mt-2 max-h-48 overflow-auto rounded-lg bg-gray-900 text-gray-100 text-xs p-3 whitespace-pre-wrap break-all">
+                        {JSON.stringify(aiAuditContextRow.context_json, null, 2)}
+                      </pre>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </section>
 
           {/* 2. 费用异常提醒（红色预警） */}

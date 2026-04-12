@@ -31,7 +31,7 @@ export function BudgetOverviewCard({ summary, language, embedded = false }: Budg
               overBudget ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'
             }`}
           >
-            {overBudget ? (en ? 'Over budget' : '超支') : en ? 'On track' : '正常'}
+            {overBudget ? (en ? 'Over budget' : '超支') : en ? 'Within budget' : '预算内'}
           </span>
         )}
       </div>
@@ -108,8 +108,8 @@ export function BudgetOverviewCard({ summary, language, embedded = false }: Budg
               ? 'Spending has exceeded the annual budget. Please take action.'
               : '当前支出已超过年度预算，请尽快处理'
             : en
-              ? 'Overall budget execution is stable.'
-              : '当前预算执行总体稳定'}
+              ? 'Figures show approved budgets and recorded spend for this fiscal year.'
+              : '以下为当前财年批复预算与已入账支出对比。'}
         </div>
       )}
     </>

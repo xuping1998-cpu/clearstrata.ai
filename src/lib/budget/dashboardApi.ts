@@ -59,11 +59,6 @@ export type BudgetAlert = {
   invoice_id?: string;
 };
 
-export type DashboardBudgetAlertsPayload = {
-  fiscal_year: number;
-  alerts: BudgetAlert[];
-};
-
 function num(v: unknown): number {
   if (typeof v === 'number' && !Number.isNaN(v)) return v;
   if (typeof v === 'string' && v.trim() !== '') return Number(v);
@@ -138,31 +133,6 @@ function parseTrend(raw: unknown): DashboardBudgetTrendPayload | null {
   return { fiscal_year: num(o.fiscal_year), months };
 }
 
-function parseAlerts(raw: unknown): DashboardBudgetAlertsPayload | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const o = raw as Record<string, unknown>;
-  const alerts: BudgetAlert[] = [];
-  if (Array.isArray(o.alerts)) {
-    for (const a of o.alerts) {
-      if (!a || typeof a !== 'object') continue;
-      const x = a as Record<string, unknown>;
-      alerts.push({
-        type: String(x.type ?? ''),
-        severity: String(x.severity ?? ''),
-        title_en: String(x.title_en ?? ''),
-        title_zh: String(x.title_zh ?? ''),
-        message_en: x.message_en == null ? undefined : String(x.message_en),
-        message_zh: x.message_zh == null ? undefined : String(x.message_zh),
-        link_hint: x.link_hint == null ? undefined : String(x.link_hint),
-        code: x.code == null ? undefined : String(x.code),
-        quote_id: x.quote_id == null ? undefined : String(x.quote_id),
-        invoice_id: x.invoice_id == null ? undefined : String(x.invoice_id),
-      });
-    }
-  }
-  return { fiscal_year: num(o.fiscal_year), alerts };
-}
-
 export async function fetchDashboardBudgetSummary(
   propertyId: string,
   fiscalYear: number
@@ -212,21 +182,6 @@ export async function fetchDashboardBudgetTrend(
     return { data: null, error: new Error(error.message) };
   }
   return { data: parseTrend(data), error: null };
-}
-
-export async function fetchDashboardBudgetAlerts(
-  propertyId: string,
-  fiscalYear: number
-): Promise<{ data: DashboardBudgetAlertsPayload | null; error: Error | null }> {
-  const { data, error } = await supabase.rpc('dashboard_budget_alerts', {
-    p_property_id: propertyId,
-    p_year: fiscalYear,
-  });
-  if (error) {
-    console.error('[dashboard_budget_alerts]', error.message);
-    return { data: null, error: new Error(error.message) };
-  }
-  return { data: parseAlerts(data), error: null };
 }
 
 export function formatCurrency(n: number, locale: 'en' | 'zh'): string {

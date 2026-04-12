@@ -1,21 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useProperty } from '../../contexts/PropertyContext';
-import {
-  fetchDashboardBudgetAlerts,
-  fetchDashboardBudgetSummary,
-  type BudgetAlert,
-} from '../../lib/budget/dashboardApi';
+import { fetchDashboardBudgetSummary } from '../../lib/budget/dashboardApi';
 import {
   buildDashboardKpisFromState,
   fetchDashboardKpis,
-  fetchRecentAbnormalInvoices,
+  fetchRecentAiAuditInvoices,
 } from '../../lib/dashboard';
-import type { AbnormalInvoiceItem, DashboardKpi } from '../../types/dashboard';
+import { supabase } from '../../lib/supabase';
+import type { DashboardAiRiskSummary, DashboardKpi, RecentAiAuditInvoiceItem } from '../../types/dashboard';
 import { BudgetOverviewCard } from './BudgetOverviewCard';
 import { DashboardKpiBar } from './DashboardKpiBar';
+import { RecentAbnormalInvoicesCard } from './RecentAbnormalInvoicesCard';
 import { RiskStatusSection } from './RiskStatusSection';
+import { generateAuditReportForInvoice, getFirstHighRiskInvoiceId } from '../../lib/reportGenerator';
+import { fetchVendorRiskHomeSummary, type VendorRiskHomeSummary } from '../../lib/vendorRiskAudit';
 
 const YEARS_BACK = 3;
 const YEARS_FORWARD = 2;
@@ -29,29 +30,30 @@ function yearOptions(anchor: number): number[] {
 export function HomeBudgetPanel() {
   const { t, language } = useLanguage();
   const en = language === 'en';
+  const navigate = useNavigate();
   const { currentPropertyId } = useProperty();
   const anchorYear = new Date().getFullYear();
   const [fiscalYear, setFiscalYear] = useState(anchorYear);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [summary, setSummary] = useState<Awaited<ReturnType<typeof fetchDashboardBudgetSummary>>['data']>(null);
-  const [alerts, setAlerts] = useState<BudgetAlert[]>([]);
-  const [abnormalInvoices, setAbnormalInvoices] = useState<AbnormalInvoiceItem[]>([]);
   const [kpis, setKpis] = useState<DashboardKpi[]>([]);
+  const [aiRiskData, setAiRiskData] = useState<DashboardAiRiskSummary | null>(null);
+  const [aiRiskPending, setAiRiskPending] = useState(true);
+  const [aiRiskFailed, setAiRiskFailed] = useState(false);
+  const [recentAiItems, setRecentAiItems] = useState<RecentAiAuditInvoiceItem[]>([]);
+  const [recentAiError, setRecentAiError] = useState(false);
+  const [meetingReportBusy, setMeetingReportBusy] = useState(false);
+  const [vendorRiskSummary, setVendorRiskSummary] = useState<VendorRiskHomeSummary | null>(null);
+  const [vendorRiskPending, setVendorRiskPending] = useState(true);
   const riskStatusRef = useRef<HTMLDivElement | null>(null);
 
   const years = useMemo(() => yearOptions(anchorYear), [anchorYear]);
 
   const displayKpis = useMemo((): DashboardKpi[] => {
-    if (kpis.length >= 4) return kpis;
-    return buildDashboardKpisFromState(fiscalYear, language, summary, alerts, abnormalInvoices);
-  }, [kpis, fiscalYear, language, summary, alerts, abnormalInvoices]);
-
-  const monthlyAbnormalDisplay = useMemo(() => {
-    const k = displayKpis.find((x) => x.key === 'monthly_abnormal_invoices');
-    const v = k?.value;
-    return typeof v === 'number' ? v : Number(v) || 0;
-  }, [displayKpis]);
+    if (kpis.length >= 6) return kpis;
+    return buildDashboardKpisFromState(fiscalYear, language, summary);
+  }, [kpis, fiscalYear, language, summary]);
 
   const headerTitle = en ? 'Finance & risk overview' : '财务与风险概览';
   const yearLabel = en ? 'Fiscal year' : '财年';
@@ -64,51 +66,63 @@ export function HomeBudgetPanel() {
     if (!currentPropertyId) {
       setLoading(false);
       setSummary(null);
-      setAlerts([]);
-      setAbnormalInvoices([]);
       setKpis([]);
       setLoadError(false);
+      setAiRiskData(null);
+      setAiRiskPending(false);
+      setAiRiskFailed(false);
+      setRecentAiItems([]);
+      setRecentAiError(false);
       return;
     }
     let cancelled = false;
     void (async () => {
       setLoading(true);
       setLoadError(false);
-
-      const abnormalP = (async () => {
-        try {
-          const r = await fetchRecentAbnormalInvoices(currentPropertyId, fiscalYear);
-          return { ok: true as const, items: r.items };
-        } catch (e) {
-          console.error('Failed to load abnormal invoices', e);
-          return { ok: false as const, items: [] as AbnormalInvoiceItem[] };
-        }
-      })();
+      setAiRiskPending(true);
+      setAiRiskFailed(false);
+      setRecentAiError(false);
 
       const kpiP = fetchDashboardKpis(currentPropertyId, fiscalYear, language).catch((e) => {
         console.error('fetchDashboardKpis failed', e);
-        return { items: [] as DashboardKpi[] };
+        return { items: [] as DashboardKpi[], aiRisk: null as DashboardAiRiskSummary | null };
       });
 
-      const [sRes, aRes] = await Promise.all([
+      const recentP = (async () => {
+        try {
+          const r = await fetchRecentAiAuditInvoices(currentPropertyId, fiscalYear, 12);
+          return { items: r.items, err: false };
+        } catch (e) {
+          console.error('fetchRecentAiAuditInvoices failed', e);
+          return { items: [] as RecentAiAuditInvoiceItem[], err: true };
+        }
+      })();
+
+      const [sRes, kpiOut, recentOut] = await Promise.all([
         fetchDashboardBudgetSummary(currentPropertyId, fiscalYear),
-        fetchDashboardBudgetAlerts(currentPropertyId, fiscalYear),
+        kpiP,
+        recentP,
       ]);
-      const [abnormalOut, kpiOut] = await Promise.all([abnormalP, kpiP]);
+
       if (cancelled) return;
-      if (sRes.error || aRes.error) {
-        console.error('Budget dashboard RPC failed', {
-          summary: sRes.error?.message,
-          alerts: aRes.error?.message,
-        });
+      if (sRes.error) {
+        console.error('Budget dashboard RPC failed', { summary: sRes.error?.message });
         setLoadError(true);
       } else {
         setLoadError(false);
       }
       setSummary(sRes.data);
-      setAlerts(aRes.data?.alerts ?? []);
-      setAbnormalInvoices(abnormalOut.items);
       setKpis(kpiOut.items);
+      if (kpiOut.aiRisk === null) {
+        setAiRiskFailed(true);
+        setAiRiskData(null);
+      } else {
+        setAiRiskFailed(false);
+        setAiRiskData(kpiOut.aiRisk);
+      }
+      setAiRiskPending(false);
+      setRecentAiItems(recentOut.items);
+      setRecentAiError(recentOut.err);
       setLoading(false);
     })();
     return () => {
@@ -116,14 +130,122 @@ export function HomeBudgetPanel() {
     };
   }, [currentPropertyId, fiscalYear, language]);
 
+  useEffect(() => {
+    if (!currentPropertyId) {
+      setVendorRiskSummary(null);
+      setVendorRiskPending(false);
+      return;
+    }
+    let cancelled = false;
+    setVendorRiskPending(true);
+    void (async () => {
+      const s = await fetchVendorRiskHomeSummary(currentPropertyId);
+      if (!cancelled) {
+        setVendorRiskSummary(s);
+        setVendorRiskPending(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentPropertyId]);
+
+  useEffect(() => {
+    if (!currentPropertyId) return;
+    const channel = supabase
+      .channel(`iar-home-${currentPropertyId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'invoice_ai_audit_results',
+          filter: `property_id=eq.${currentPropertyId}`,
+        },
+        () => {
+          void (async () => {
+            try {
+              const kpiP = fetchDashboardKpis(currentPropertyId, fiscalYear, language).catch((e) => {
+                console.error('fetchDashboardKpis (realtime)', e);
+                return { items: [] as DashboardKpi[], aiRisk: null as DashboardAiRiskSummary | null };
+              });
+              const recentP = fetchRecentAiAuditInvoices(currentPropertyId, fiscalYear, 12).catch(() => ({
+                items: [],
+              }));
+              const [kpiOut, recentOut] = await Promise.all([kpiP, recentP]);
+              setKpis(kpiOut.items);
+              if (kpiOut.aiRisk === null) {
+                setAiRiskFailed(true);
+                setAiRiskData(null);
+              } else {
+                setAiRiskFailed(false);
+                setAiRiskData(kpiOut.aiRisk);
+              }
+              setRecentAiItems(recentOut.items);
+            } catch (e) {
+              console.error('realtime refresh dashboard', e);
+            }
+          })();
+        },
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'vendor_risk_signals',
+          filter: `property_id=eq.${currentPropertyId}`,
+        },
+        () => {
+          void fetchVendorRiskHomeSummary(currentPropertyId).then(setVendorRiskSummary);
+        },
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [currentPropertyId, fiscalYear, language]);
+
   function handleKpiClick(key: DashboardKpi['key']) {
-    if (key === 'high_risk_alerts' || key === 'monthly_abnormal_invoices') {
+    if (
+      key === 'high_risk_alerts' ||
+      key === 'monthly_abnormal_invoices' ||
+      key === 'over_budget' ||
+      key === 'bypass_approval'
+    ) {
       requestAnimationFrame(() => {
         riskStatusRef.current?.scrollIntoView({
           behavior: 'smooth',
           block: 'nearest',
         });
       });
+    }
+  }
+
+  async function handleGenerateMeetingReport() {
+    if (!currentPropertyId) return;
+    setMeetingReportBusy(true);
+    try {
+      const invoiceId = await getFirstHighRiskInvoiceId(currentPropertyId, fiscalYear);
+      if (!invoiceId) {
+        window.alert(
+          en
+            ? 'No high-risk invoice found for this fiscal year.'
+            : '本财年未找到高风险或严重等级发票。',
+        );
+        return;
+      }
+      const res = await generateAuditReportForInvoice(invoiceId);
+      if (res.error || !res.report_id) {
+        window.alert(res.error ?? (en ? 'Could not generate report.' : '生成报告失败。'));
+        return;
+      }
+      navigate(`/audit-reports/${res.report_id}`);
+    } catch (e) {
+      console.error(e);
+      window.alert(en ? 'Could not generate report.' : '生成报告失败。');
+    } finally {
+      setMeetingReportBusy(false);
     }
   }
 
@@ -187,7 +309,7 @@ export function HomeBudgetPanel() {
             </div>
 
             <div className="mt-2 grid grid-cols-1 gap-4 xl:grid-cols-12 xl:gap-5">
-              <div className="xl:col-span-8">
+              <div className="xl:col-span-8 space-y-4">
                 {summary ? (
                   <BudgetOverviewCard summary={summary} language={language} embedded />
                 ) : (
@@ -204,13 +326,18 @@ export function HomeBudgetPanel() {
                     </p>
                   </div>
                 )}
+                <RecentAbnormalInvoicesCard items={recentAiItems} loadError={recentAiError} />
               </div>
               <div ref={riskStatusRef} className="scroll-mt-24 xl:col-span-4">
                 <RiskStatusSection
                   en={en}
-                  alerts={alerts}
-                  summary={summary}
-                  monthlyAbnormalCount={monthlyAbnormalDisplay}
+                  aiRisk={aiRiskData}
+                  aiRiskPending={aiRiskPending}
+                  aiRiskFailed={aiRiskFailed}
+                  onGenerateMeetingReport={handleGenerateMeetingReport}
+                  generatingMeetingReport={meetingReportBusy}
+                  vendorRiskSummary={vendorRiskSummary}
+                  vendorRiskPending={vendorRiskPending}
                 />
               </div>
             </div>

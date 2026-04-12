@@ -14,6 +14,8 @@ import { Voting } from './pages/Voting';
 import { Finance } from './pages/Finance';
 import { InvoiceAuditReportsPage } from './pages/finance/InvoiceAuditReportsPage';
 import { InvoiceAuditReportDetailPage } from './pages/finance/InvoiceAuditReportDetailPage';
+import { AuditReportDetail } from './pages/AuditReportDetail';
+import { VendorRiskSignals } from './pages/VendorRiskSignals';
 import { FinanceInvoiceDeepLink, FinanceInvoicesListDeepLink } from './pages/finance/FinanceInvoiceRoutes';
 import { OwnerInfo } from './pages/OwnerInfo';
 import { ManagerTasks } from './pages/ManagerTasks';
@@ -199,6 +201,8 @@ function AuthenticatedRoutes() {
       <Route path="/finance/invoices" element={<FinanceInvoicesListDeepLink />} />
       <Route path="/finance/invoice-audit-reports" element={<InvoiceAuditReportsPage />} />
       <Route path="/finance/invoice-audit-reports/:reportId" element={<InvoiceAuditReportDetailPage />} />
+      <Route path="/audit-reports/:reportId" element={<AuditReportDetail />} />
+      <Route path="/vendor-risk-signals" element={<VendorRiskSignals />} />
       <Route path="/finance" element={<Finance />} />
       <Route path="/hiring" element={<Hiring />} />
       <Route path="/owner-info" element={<OwnerInfo />} />

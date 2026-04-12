@@ -294,11 +294,15 @@ export function Layout({ children }: LayoutProps) {
           fixed lg:sticky top-16 left-0 h-[calc(100vh-4rem)]
           w-52 shrink-0 border-r border-gray-200 bg-white
           transition-transform duration-200 ease-in-out
-          z-30 overflow-hidden
+          z-30 overflow-hidden max-lg:overflow-y-auto
         `}
         >
           <div className="flex h-full min-h-0 flex-col lg:min-h-0">
-            <div className={`shrink-0 px-2.5 sm:px-3 ${isDashboardHome ? 'pt-3 pb-0' : 'pt-5 pb-0'}`}>
+            <div
+              className={`shrink-0 px-2.5 sm:px-3 lg:pb-0 ${
+                isDashboardHome ? 'pt-2 pb-0 lg:pt-3' : 'pt-3 pb-0 lg:pt-5'
+              }`}
+            >
               <button
                 type="button"
                 onClick={() => {
@@ -314,8 +318,8 @@ export function Layout({ children }: LayoutProps) {
               </button>
             </div>
 
-            <div className="shrink-0 px-2.5 pt-2 sm:px-3">
-              <div className="space-y-1">
+            <div className="shrink-0 px-2.5 pt-1 sm:px-3 lg:pt-2">
+              <div className="space-y-0.5 lg:space-y-1">
                 {quickModules.map((m) => renderModuleCard(m.path, m.icon, m.label, m.iconBg))}
                 {showJoinRequestReviewCoreNav && (
                   <button
@@ -347,7 +351,7 @@ export function Layout({ children }: LayoutProps) {
             </div>
 
             {showSystemSection ? (
-              <div className="mt-2 min-h-0 flex-1 overflow-y-auto border-t border-gray-100 px-2.5 pt-3 sm:px-3">
+              <div className="mt-1.5 min-h-0 flex-1 overflow-y-auto border-t border-gray-100 px-2.5 pt-2.5 sm:px-3 max-lg:flex-none lg:mt-2 lg:pt-3">
                 <p className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
                   {t('nav_group_system')}
                 </p>
@@ -356,12 +360,12 @@ export function Layout({ children }: LayoutProps) {
                 </div>
               </div>
             ) : (
-              <div className="min-h-0 flex-1" aria-hidden />
+              <div className="min-h-0 flex-1 max-lg:flex-none" aria-hidden />
             )}
 
-            <div className="mt-auto shrink-0 px-3 pb-4 pt-2">
-              <div className="rounded-2xl border border-gray-200 bg-white p-4">
-                <div className="mb-2 text-center text-base font-medium leading-snug text-gray-900">
+            <div className="mt-2 shrink-0 px-3 pb-3 pt-1 lg:mt-auto lg:pb-4 lg:pt-2">
+              <div className="rounded-2xl border border-gray-200 bg-white p-3 lg:p-4">
+                <div className="mb-1.5 text-center text-base font-medium leading-snug text-gray-900 lg:mb-2">
                   {language === 'en' ? 'Scan to view spending' : '扫码查看支出'}
                 </div>
                 <img
@@ -369,7 +373,7 @@ export function Layout({ children }: LayoutProps) {
                   alt=""
                   className="mx-auto h-28 w-28 object-contain"
                 />
-                <div className="mt-2 text-center text-xs text-gray-500">
+                <div className="mt-1.5 text-center text-xs text-gray-500 lg:mt-2">
                   {language === 'en' ? 'Make every expense transparent' : '让每一笔支出透明'}
                 </div>
               </div>
