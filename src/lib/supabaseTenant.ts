@@ -1,16 +1,31 @@
 /**
- * Tenant scope for PostgREST builders. Only use on tables that define `property_id`.
- * Prefer chaining immediately after `.from(...).select(...)` / `.update(...)` / `.delete()`.
- * Inserts should set `property_id` on the row payload; do not use this helper on bare `.insert()` unless your client’s builder supports `.eq` on that chain.
+ * Multi-tenant client helpers: tenant tables must scope by `property_id`.
+ * **RLS is authoritative** — this catches missing client filters early.
  *
- * Typed loosely on purpose: Supabase’s generic query builder otherwise triggers “excessively deep” TS instantiation when composed.
+ * Always pass `currentPropertyId` from `useProperty()` (or assert after guards).
+ * Do not rely on global mutable state for tenant id (avoids React effect ordering bugs).
+ */
+
+/**
+ * Throws if no property is selected. Use at the start of loaders:
+ * `const pid = assertTenantPropertyId(currentPropertyId);`
+ */
+export function assertTenantPropertyId(propertyId: string | null | undefined): string {
+  const id = propertyId?.trim();
+  if (!id) {
+    throw new Error('No property selected: tenant queries require currentPropertyId.');
+  }
+  return id;
+}
+
+/**
+ * Apply `.eq('property_id', propertyId)` immediately after `.from(...).select|update|delete`.
+ * Only for tables that expose `property_id`. Inserts should set `property_id` in the row body.
  */
 export function withProperty<T extends { eq: (column: string, value: string) => T }>(
   query: T,
   propertyId: string | null | undefined,
 ): T {
-  if (propertyId == null || String(propertyId).trim() === '') {
-    throw new Error('withProperty: propertyId is required for tenant-scoped queries');
-  }
-  return query.eq('property_id', propertyId);
+  const id = assertTenantPropertyId(propertyId);
+  return query.eq('property_id', id);
 }

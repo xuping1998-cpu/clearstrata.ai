@@ -1,6 +1,10 @@
 /*
   # Directory / user management: same-property member visibility
 
+  **Superseded for profiles + final residents wording** by
+  `20260713120000_saas_production_profiles_rls_co_tenant.sql` (production SaaS).
+  This file remains for installs that applied it before 20260713; re-run is idempotent.
+
   Replaces overly restrictive SELECT rules that only allowed:
   - property_members: own row OR staff-property; owners only saw themselves.
   - residents: own row OR staff; owners only saw their own resident row.

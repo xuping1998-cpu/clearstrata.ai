@@ -230,6 +230,11 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
     if (chosen) {
       persistPropertyId(chosen);
     }
+    console.log('[property]', {
+      currentPropertyId: chosen,
+      membershipsCount: mems.length,
+      userId: user.id,
+    });
     setReady(true);
   }, [user?.id]);
 
