@@ -304,14 +304,89 @@ export async function fetchMeetingExtras(meetingId: string): Promise<MeetingDeta
   }
 }
 
-/** Full bundle: same meeting query as detail page (`select('*')` on meetings by id); extras never drop the meeting row. */
+/**
+ * Full meeting bundle for editors / one-shot loads.
+ * Child query failures yield empty slices; the main row still returns when the meeting exists.
+ */
 export async function getMeetingDetail(meetingId: string): Promise<MeetingDetailBundle> {
-  const { meeting } = await fetchMeetingCore(meetingId);
-  if (!meeting) {
+  const { data: meeting, error: meetingError } = await supabase
+    .from('meetings')
+    .select('*')
+    .eq('id', meetingId)
+    .single();
+
+  if (meetingError || !meeting) {
     return { meeting: null, ...emptyExtras() };
   }
-  const extras = await fetchMeetingExtras(meetingId);
-  return { meeting, ...extras };
+
+  const m = meeting as MeetingRow;
+
+  const agendaRes = await supabase
+    .from('meeting_agenda_items')
+    .select(AGENDA_DETAIL_COLUMNS)
+    .eq('meeting_id', meetingId)
+    .order('sort_order', { ascending: true });
+  const agendaError = agendaRes.error;
+  const agendaItems: MeetingAgendaRow[] =
+    !agendaError && agendaRes.data ? (agendaRes.data as MeetingAgendaRow[]) : [];
+
+  const votesRes = await supabase.from('meeting_votes').select(VOTE_DETAIL_COLUMNS).eq('meeting_id', meetingId);
+  const votesError = votesRes.error;
+  const voteRows: MeetingVoteRow[] = !votesError && votesRes.data ? (votesRes.data as MeetingVoteRow[]) : [];
+
+  const voteIds = voteRows.map((v) => v.id);
+  const optionsByVote: Record<string, MeetingVoteOptionRow[]> = {};
+  if (voteIds.length > 0) {
+    const optRes = await supabase.from('meeting_vote_options').select(VOTE_OPTION_COLUMNS).in('vote_id', voteIds);
+    if (!optRes.error && optRes.data) {
+      for (const o of optRes.data as MeetingVoteOptionRow[]) {
+        optionsByVote[o.vote_id] = optionsByVote[o.vote_id] ?? [];
+        optionsByVote[o.vote_id].push(o);
+      }
+      for (const k of Object.keys(optionsByVote)) {
+        optionsByVote[k].sort((a, b) => a.sort_order - b.sort_order);
+      }
+    }
+  }
+
+  const votes = voteRows.map((v) => ({
+    ...v,
+    options: optionsByVote[v.id] ?? [],
+  }));
+
+  const uid = (await supabase.auth.getUser()).data.user?.id ?? null;
+  const ballotsByVoteId: Record<string, MeetingBallotRow[]> = {};
+  const myBallotsByVoteId: Record<string, MeetingBallotRow | undefined> = {};
+  if (voteIds.length > 0) {
+    const ballotRes = await supabase.from('meeting_ballots').select(BALLOT_DETAIL_COLUMNS).in('vote_id', voteIds);
+    if (!ballotRes.error && ballotRes.data) {
+      for (const b of ballotRes.data as MeetingBallotRow[]) {
+        ballotsByVoteId[b.vote_id] = ballotsByVoteId[b.vote_id] ?? [];
+        ballotsByVoteId[b.vote_id].push(b);
+        if (uid && b.voter_user_id === uid) myBallotsByVoteId[b.vote_id] = b;
+      }
+    }
+  }
+
+  const invRes = await supabase.from('meeting_invitations').select(INVITATION_DETAIL_COLUMNS).eq('meeting_id', meetingId);
+  const invitationsError = invRes.error;
+  const invitations: MeetingInvitationRow[] =
+    !invitationsError && invRes.data ? (invRes.data as MeetingInvitationRow[]) : [];
+
+  const resRes = await supabase.from('meeting_resolutions').select(RESOLUTION_DETAIL_COLUMNS).eq('meeting_id', meetingId);
+  const resolutionsError = resRes.error;
+  const resolutions: MeetingResolutionRow[] =
+    !resolutionsError && resRes.data ? (resRes.data as MeetingResolutionRow[]) : [];
+
+  return {
+    meeting: m,
+    agendaItems,
+    votes,
+    ballotsByVoteId,
+    myBallotsByVoteId,
+    invitations,
+    resolutions,
+  };
 }
 
 export async function createMeeting(input: {

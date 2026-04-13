@@ -1,42 +1,20 @@
 /*
-  # Meeting module v2 — three-layer architecture
+  # Meeting module — production repair (idempotent)
 
-  Execution order (required for partial-run safety):
-  0) Drop legacy triggers on meetings / old meeting_votes (no dependency on new columns)
-  1) ALTER meetings … ADD COLUMN IF NOT EXISTS (all tenant + schedule columns first)
-  2) Legacy meeting_votes → meeting_votes_legacy rename + vote count trigger
-  3) meetings backfills + type/constraints + property_id / fiscal_year fill + DROP scheduled_date
-  4) meeting_agenda_items columns
-  5) meeting_votes, meeting_vote_options, meeting_ballots, invitations, resolutions (+ ballot trigger)
-  6) meetings schedule-guard trigger
-  7) Views meeting_yearly_stats, meeting_dashboard_cards + GRANT + COMMENT
-  8) Indexes (meetings, agenda, votes, invitations)
-  9) RLS policies
+  Fixes common partial-failure states:
+  - meetings.property_id (or other columns) missing
+  - GRANT on views before views existed (aborted earlier migration mid-file)
+  - meeting_invitations / meeting_resolutions / new meeting_votes stack / stats views never created
 
-  - Layer 1: meetings core (BC-friendly statuses, scheduled_at, meeting_format)
-  - Layer 2: agenda + structured votes + options + ballots (legacy per-row votes → meeting_votes_legacy)
-  - Layer 3: invitations + resolutions
-  - Derived stats views (replaces fragile meeting_quota_tracker usage in app)
-  - RLS via property_members + meetings joins
+  Safe to re-run. Uses ADD COLUMN IF NOT EXISTS, CREATE TABLE IF NOT EXISTS, CREATE OR REPLACE VIEW.
+
+  Order: (1) meetings columns → (2–4) backfills & constraints → (5) legacy vote rename →
+  (6) agenda → (7) child tables → (8) schedule trigger → (9) views + GRANT → (10) indexes → (11) RLS.
 */
 
--- ---------------------------------------------------------------------------
--- 0) Stop legacy triggers that reference old shapes / quota
--- ---------------------------------------------------------------------------
-
-DROP TRIGGER IF EXISTS meeting_quota_tracker_trigger ON public.meetings;
-
-DO $dv$
-BEGIN
-  IF to_regclass('public.meeting_votes') IS NOT NULL THEN
-    EXECUTE 'DROP TRIGGER IF EXISTS vote_count_trigger ON public.meeting_votes';
-  END IF;
-END $dv$;
-
--- ---------------------------------------------------------------------------
--- 1) meetings — add ALL required columns FIRST (before backfills, child DDL,
---    views, indexes, or RLS that reference these columns)
--- ---------------------------------------------------------------------------
+-- ============================================================================
+-- 1) meetings — ensure ALL required columns exist BEFORE any UPDATE / INDEX / VIEW
+-- ============================================================================
 
 ALTER TABLE public.meetings
   ADD COLUMN IF NOT EXISTS property_id uuid REFERENCES public.properties(id),
@@ -55,9 +33,171 @@ UPDATE public.meetings
 SET created_at = now()
 WHERE created_at IS NULL;
 
--- ---------------------------------------------------------------------------
--- 2) Legacy ballots table rename (frees name "meeting_votes" for new model)
--- ---------------------------------------------------------------------------
+-- ============================================================================
+-- 2) Backfill scheduled_at (no reference to scheduled_date unless column exists)
+-- ============================================================================
+
+DO $sd$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'meetings' AND column_name = 'scheduled_date'
+  ) THEN
+    UPDATE public.meetings SET scheduled_at = COALESCE(scheduled_at, scheduled_date) WHERE scheduled_at IS NULL;
+  ELSE
+    UPDATE public.meetings SET scheduled_at = COALESCE(scheduled_at, created_at) WHERE scheduled_at IS NULL;
+  END IF;
+END $sd$;
+
+DO $mf$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'meetings'
+      AND column_name = 'is_virtual'
+  ) THEN
+    UPDATE public.meetings
+    SET meeting_format = CASE
+      WHEN meeting_format IS NOT NULL AND trim(meeting_format) <> '' THEN meeting_format
+      WHEN COALESCE(is_virtual, false) = true THEN 'electronic'
+      ELSE 'hybrid'
+    END
+    WHERE meeting_format IS NULL OR trim(meeting_format) = '';
+  ELSE
+    UPDATE public.meetings
+    SET meeting_format = 'hybrid'
+    WHERE meeting_format IS NULL OR trim(meeting_format) = '';
+  END IF;
+END $mf$;
+
+ALTER TABLE public.meetings ALTER COLUMN meeting_format SET DEFAULT 'hybrid';
+UPDATE public.meetings SET meeting_format = 'hybrid' WHERE meeting_format IS NULL;
+
+ALTER TABLE public.meetings DROP CONSTRAINT IF EXISTS meetings_meeting_format_check;
+ALTER TABLE public.meetings
+  ADD CONSTRAINT meetings_meeting_format_check
+  CHECK (meeting_format IN ('in_person', 'electronic', 'hybrid'));
+
+DO $mfn$
+BEGIN
+  ALTER TABLE public.meetings ALTER COLUMN meeting_format SET NOT NULL;
+EXCEPTION WHEN others THEN NULL;
+END $mfn$;
+
+-- ============================================================================
+-- 3) meeting_type / status → text + checks (only if still enum-backed)
+-- ============================================================================
+
+DO $mt$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'meetings'
+      AND column_name = 'meeting_type' AND udt_name = 'meeting_type'
+  ) THEN
+    ALTER TABLE public.meetings
+      ALTER COLUMN meeting_type TYPE text
+      USING (
+        CASE meeting_type::text
+          WHEN 'agm' THEN 'agm'
+          WHEN 'sgm' THEN 'sgm'
+          ELSE 'council'
+        END
+      );
+  END IF;
+END $mt$;
+
+ALTER TABLE public.meetings DROP CONSTRAINT IF EXISTS meetings_meeting_type_check;
+ALTER TABLE public.meetings
+  ADD CONSTRAINT meetings_meeting_type_check
+  CHECK (meeting_type IN ('agm', 'sgm', 'council'));
+
+DO $st$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'meetings'
+      AND column_name = 'status' AND udt_name = 'meeting_status'
+  ) THEN
+    ALTER TABLE public.meetings
+      ALTER COLUMN status TYPE text
+      USING (
+        CASE status::text
+          WHEN 'draft' THEN 'draft'
+          WHEN 'scheduled' THEN 'scheduled'
+          WHEN 'in_progress' THEN 'open'
+          WHEN 'completed' THEN 'closed'
+          WHEN 'cancelled' THEN 'archived'
+          ELSE 'draft'
+        END
+      );
+  END IF;
+END $st$;
+
+ALTER TABLE public.meetings DROP CONSTRAINT IF EXISTS meetings_status_check;
+ALTER TABLE public.meetings
+  ADD CONSTRAINT meetings_status_check
+  CHECK (status IN ('draft', 'scheduled', 'open', 'closed', 'archived'));
+
+ALTER TABLE public.meetings ALTER COLUMN title_en DROP NOT NULL;
+
+-- ============================================================================
+-- 4) property_id + fiscal_year backfill (columns guaranteed to exist)
+-- ============================================================================
+
+DO $bf$
+DECLARE
+  bcs_id uuid;
+  def_id uuid := '00000000-0000-4000-a000-000000000001'::uuid;
+  has_sched_date boolean;
+BEGIN
+  IF to_regclass('public.properties') IS NOT NULL THEN
+    SELECT p.id INTO bcs_id
+    FROM public.properties p
+    WHERE lower(trim(coalesce(p.property_code, ''))) = 'bcs3736'
+    LIMIT 1;
+
+    UPDATE public.meetings m
+    SET property_id = COALESCE(bcs_id, def_id)
+    WHERE m.property_id IS NULL;
+  END IF;
+
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'meetings' AND column_name = 'scheduled_date'
+  ) INTO has_sched_date;
+
+  IF has_sched_date THEN
+    UPDATE public.meetings m
+    SET fiscal_year = COALESCE(
+      m.fiscal_year,
+      EXTRACT(YEAR FROM COALESCE(m.scheduled_at, m.scheduled_date, m.created_at, now()))::integer
+    )
+    WHERE m.fiscal_year IS NULL;
+  ELSE
+    UPDATE public.meetings m
+    SET fiscal_year = COALESCE(
+      m.fiscal_year,
+      EXTRACT(YEAR FROM COALESCE(m.scheduled_at, m.created_at, now()))::integer
+    )
+    WHERE m.fiscal_year IS NULL;
+  END IF;
+END $bf$;
+
+-- ============================================================================
+-- 5) Legacy per-row votes → meeting_votes_legacy (only if legacy-shaped)
+-- ============================================================================
+
+DROP TRIGGER IF EXISTS meeting_quota_tracker_trigger ON public.meetings;
+
+DO $dv$
+BEGIN
+  IF to_regclass('public.meeting_votes') IS NOT NULL THEN
+    EXECUTE 'DROP TRIGGER IF EXISTS vote_count_trigger ON public.meeting_votes';
+  END IF;
+END $dv$;
 
 DO $rn$
 BEGIN
@@ -117,185 +257,37 @@ BEGIN
   END IF;
 END $tr$;
 
--- ---------------------------------------------------------------------------
--- 3) meetings — backfill + type migrations + constraints
--- ---------------------------------------------------------------------------
-
-DO $sd$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name = 'meetings' AND column_name = 'scheduled_date'
-  ) THEN
-    UPDATE public.meetings SET scheduled_at = COALESCE(scheduled_at, scheduled_date) WHERE scheduled_at IS NULL;
-  ELSE
-    UPDATE public.meetings SET scheduled_at = COALESCE(scheduled_at, created_at) WHERE scheduled_at IS NULL;
-  END IF;
-END $sd$;
-
-DO $mf$
-BEGIN
-  IF EXISTS (
-    SELECT 1
-    FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'meetings'
-      AND column_name = 'is_virtual'
-  ) THEN
-    UPDATE public.meetings
-    SET meeting_format = CASE
-      WHEN meeting_format IS NOT NULL AND trim(meeting_format) <> '' THEN meeting_format
-      WHEN COALESCE(is_virtual, false) = true THEN 'electronic'
-      ELSE 'hybrid'
-    END
-    WHERE meeting_format IS NULL OR trim(meeting_format) = '';
-  ELSE
-    UPDATE public.meetings
-    SET meeting_format = 'hybrid'
-    WHERE meeting_format IS NULL OR trim(meeting_format) = '';
-  END IF;
-END $mf$;
-
-ALTER TABLE public.meetings
-  ALTER COLUMN meeting_format SET DEFAULT 'hybrid';
-
-UPDATE public.meetings SET meeting_format = 'hybrid' WHERE meeting_format IS NULL;
-
-DO $mfn$
-BEGIN
-  ALTER TABLE public.meetings ALTER COLUMN meeting_format SET NOT NULL;
-EXCEPTION WHEN others THEN NULL;
-END $mfn$;
-
-DO $mt$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name = 'meetings'
-      AND column_name = 'meeting_type' AND udt_name = 'meeting_type'
-  ) THEN
-    ALTER TABLE public.meetings
-      ALTER COLUMN meeting_type TYPE text
-      USING (
-        CASE meeting_type::text
-          WHEN 'agm' THEN 'agm'
-          WHEN 'sgm' THEN 'sgm'
-          ELSE 'council'
-        END
-      );
-  END IF;
-END $mt$;
-
-ALTER TABLE public.meetings DROP CONSTRAINT IF EXISTS meetings_meeting_type_check;
-ALTER TABLE public.meetings
-  ADD CONSTRAINT meetings_meeting_type_check
-  CHECK (meeting_type IN ('agm', 'sgm', 'council'));
-
-DO $st$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name = 'meetings'
-      AND column_name = 'status' AND udt_name = 'meeting_status'
-  ) THEN
-    ALTER TABLE public.meetings
-      ALTER COLUMN status TYPE text
-      USING (
-        CASE status::text
-          WHEN 'draft' THEN 'draft'
-          WHEN 'scheduled' THEN 'scheduled'
-          WHEN 'in_progress' THEN 'open'
-          WHEN 'completed' THEN 'closed'
-          WHEN 'cancelled' THEN 'archived'
-          ELSE 'draft'
-        END
-      );
-  END IF;
-END $st$;
-
-ALTER TABLE public.meetings DROP CONSTRAINT IF EXISTS meetings_status_check;
-ALTER TABLE public.meetings
-  ADD CONSTRAINT meetings_status_check
-  CHECK (status IN ('draft', 'scheduled', 'open', 'closed', 'archived'));
-
-ALTER TABLE public.meetings DROP CONSTRAINT IF EXISTS meetings_meeting_format_check;
-ALTER TABLE public.meetings
-  ADD CONSTRAINT meetings_meeting_format_check
-  CHECK (meeting_format IN ('in_person', 'electronic', 'hybrid'));
-
-ALTER TABLE public.meetings
-  ALTER COLUMN title_en DROP NOT NULL;
-
--- BCS3736 / default property backfill for any orphan rows
-DO $bf$
-DECLARE
-  bcs_id uuid;
-  def_id uuid := '00000000-0000-4000-a000-000000000001'::uuid;
-  has_sched_date boolean;
-BEGIN
-  IF to_regclass('public.properties') IS NOT NULL THEN
-    SELECT p.id INTO bcs_id
-    FROM public.properties p
-    WHERE lower(trim(coalesce(p.property_code, ''))) = 'bcs3736'
-    LIMIT 1;
-
-    UPDATE public.meetings m
-    SET property_id = COALESCE(bcs_id, def_id)
-    WHERE m.property_id IS NULL;
-  END IF;
-
-  SELECT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name = 'meetings' AND column_name = 'scheduled_date'
-  ) INTO has_sched_date;
-
-  IF has_sched_date THEN
-    UPDATE public.meetings m
-    SET fiscal_year = COALESCE(
-      m.fiscal_year,
-      EXTRACT(YEAR FROM COALESCE(m.scheduled_at, m.scheduled_date, m.created_at, now()))::integer
-    )
-    WHERE m.fiscal_year IS NULL;
-  ELSE
-    UPDATE public.meetings m
-    SET fiscal_year = COALESCE(
-      m.fiscal_year,
-      EXTRACT(YEAR FROM COALESCE(m.scheduled_at, m.created_at, now()))::integer
-    )
-    WHERE m.fiscal_year IS NULL;
-  END IF;
-END $bf$;
-
-ALTER TABLE public.meetings DROP COLUMN IF EXISTS scheduled_date;
-
--- ---------------------------------------------------------------------------
--- 4) meeting_agenda_items — sort_order, vote_rule, nullable titles
--- ---------------------------------------------------------------------------
+-- ============================================================================
+-- 6) meeting_agenda_items — sort_order, vote_rule
+-- ============================================================================
 
 ALTER TABLE public.meeting_agenda_items
   ADD COLUMN IF NOT EXISTS sort_order integer,
   ADD COLUMN IF NOT EXISTS vote_rule text;
 
 UPDATE public.meeting_agenda_items
-SET sort_order = COALESCE(sort_order, item_number, 0);
+SET sort_order = COALESCE(sort_order, item_number, 0)
+WHERE sort_order IS NULL;
 
-ALTER TABLE public.meeting_agenda_items
-  ALTER COLUMN sort_order SET DEFAULT 0;
-
+ALTER TABLE public.meeting_agenda_items ALTER COLUMN sort_order SET DEFAULT 0;
 UPDATE public.meeting_agenda_items SET sort_order = 0 WHERE sort_order IS NULL;
-ALTER TABLE public.meeting_agenda_items ALTER COLUMN sort_order SET NOT NULL;
 
-ALTER TABLE public.meeting_agenda_items
-  ALTER COLUMN title_en DROP NOT NULL;
+DO $so$
+BEGIN
+  ALTER TABLE public.meeting_agenda_items ALTER COLUMN sort_order SET NOT NULL;
+EXCEPTION WHEN others THEN NULL;
+END $so$;
+
+ALTER TABLE public.meeting_agenda_items ALTER COLUMN title_en DROP NOT NULL;
 
 ALTER TABLE public.meeting_agenda_items DROP CONSTRAINT IF EXISTS meeting_agenda_items_vote_rule_check;
 ALTER TABLE public.meeting_agenda_items
   ADD CONSTRAINT meeting_agenda_items_vote_rule_check
   CHECK (vote_rule IS NULL OR vote_rule IN ('simple_majority', 'three_quarter', 'unanimous'));
 
--- ---------------------------------------------------------------------------
--- 5) New voting stack + invitations + resolutions (tables only; indexes later)
--- ---------------------------------------------------------------------------
+-- ============================================================================
+-- 7) New voting + invitations + resolutions tables
+-- ============================================================================
 
 CREATE TABLE IF NOT EXISTS public.meeting_votes (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -384,9 +376,9 @@ CREATE TABLE IF NOT EXISTS public.meeting_resolutions (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
--- ---------------------------------------------------------------------------
--- 6) Notice readiness + scheduled transition guard (meetings columns exist)
--- ---------------------------------------------------------------------------
+-- ============================================================================
+-- 8) Schedule guard trigger on meetings
+-- ============================================================================
 
 CREATE OR REPLACE FUNCTION public.meetings_enforce_schedule_readiness()
 RETURNS trigger
@@ -441,9 +433,12 @@ CREATE TRIGGER trg_meetings_schedule_guard
   FOR EACH ROW
   EXECUTE FUNCTION public.meetings_enforce_schedule_readiness();
 
--- ---------------------------------------------------------------------------
--- 7) Stats views (product quota = 8, not legal) — before indexes & RLS
--- ---------------------------------------------------------------------------
+-- Drop legacy scheduled_date after scheduled_at is populated (optional)
+ALTER TABLE public.meetings DROP COLUMN IF EXISTS scheduled_date;
+
+-- ============================================================================
+-- 9) Stats views — create before GRANT; before indexes that reference meetings
+-- ============================================================================
 
 CREATE OR REPLACE VIEW public.meeting_yearly_stats AS
 SELECT
@@ -469,16 +464,15 @@ SELECT
   END AS agm_status
 FROM public.meeting_yearly_stats y;
 
--- Grants must run after views exist (Postgres requires the relation).
 GRANT SELECT ON public.meeting_yearly_stats TO authenticated;
 GRANT SELECT ON public.meeting_dashboard_cards TO authenticated;
 
 COMMENT ON VIEW public.meeting_yearly_stats IS 'Derived meeting counts per property/year; replaces meeting_quota_tracker reads.';
 COMMENT ON VIEW public.meeting_dashboard_cards IS 'Dashboard card fields: product quota 8, AGM compliance hint.';
 
--- ---------------------------------------------------------------------------
--- 8) Indexes (after views; all meetings.property_id / fiscal_year refs safe)
--- ---------------------------------------------------------------------------
+-- ============================================================================
+-- 10) Indexes (after views; idempotent IF NOT EXISTS)
+-- ============================================================================
 
 CREATE INDEX IF NOT EXISTS idx_meetings_property_fiscal
   ON public.meetings(property_id, fiscal_year);
@@ -498,9 +492,9 @@ CREATE INDEX IF NOT EXISTS idx_meeting_votes_meeting_status
 CREATE INDEX IF NOT EXISTS idx_meeting_invitations_meeting_status
   ON public.meeting_invitations(meeting_id, delivery_status);
 
--- ---------------------------------------------------------------------------
--- 9) RLS — drop legacy meeting_votes policies (table renamed); add new stack
--- ---------------------------------------------------------------------------
+-- ============================================================================
+-- 11) RLS on new tables (idempotent policy names)
+-- ============================================================================
 
 ALTER TABLE public.meeting_votes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.meeting_vote_options ENABLE ROW LEVEL SECURITY;
@@ -508,7 +502,6 @@ ALTER TABLE public.meeting_ballots ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.meeting_invitations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.meeting_resolutions ENABLE ROW LEVEL SECURITY;
 
--- New meeting_votes policies (names distinct from legacy table policies)
 DROP POLICY IF EXISTS mvn_select_member ON public.meeting_votes;
 CREATE POLICY mvn_select_member
   ON public.meeting_votes FOR SELECT TO authenticated
@@ -579,7 +572,6 @@ CREATE POLICY mvn_delete_staff
     )
   );
 
--- Vote options
 DROP POLICY IF EXISTS mvopt_select_member ON public.meeting_vote_options;
 CREATE POLICY mvopt_select_member
   ON public.meeting_vote_options FOR SELECT TO authenticated
@@ -623,13 +615,10 @@ CREATE POLICY mvopt_write_staff
     )
   );
 
--- Ballots
 DROP POLICY IF EXISTS mb_select_member ON public.meeting_ballots;
 CREATE POLICY mb_select_member
   ON public.meeting_ballots FOR SELECT TO authenticated
-  USING (
-    property_id IN (SELECT public.user_property_ids())
-  );
+  USING (property_id IN (SELECT public.user_property_ids()));
 
 DROP POLICY IF EXISTS mb_insert_own_open ON public.meeting_ballots;
 CREATE POLICY mb_insert_own_open
@@ -639,8 +628,7 @@ CREATE POLICY mb_insert_own_open
     AND property_id IN (SELECT public.user_property_ids())
     AND EXISTS (
       SELECT 1 FROM public.meeting_votes v
-      WHERE v.id = meeting_ballots.vote_id
-        AND v.status = 'open'
+      WHERE v.id = meeting_ballots.vote_id AND v.status = 'open'
     )
   );
 
@@ -652,8 +640,7 @@ CREATE POLICY mb_update_own
     voter_user_id = (SELECT auth.uid())
     AND EXISTS (
       SELECT 1 FROM public.meeting_votes v
-      WHERE v.id = meeting_ballots.vote_id
-        AND v.status = 'open'
+      WHERE v.id = meeting_ballots.vote_id AND v.status = 'open'
     )
   );
 
@@ -662,23 +649,20 @@ CREATE POLICY mb_delete_staff
   ON public.meeting_ballots FOR DELETE TO authenticated
   USING (
     EXISTS (
-      SELECT 1
-      FROM public.property_members pm
+      SELECT 1 FROM public.property_members pm
       WHERE pm.property_id = meeting_ballots.property_id
         AND pm.user_id = (SELECT auth.uid())
         AND pm.role IN ('admin', 'council', 'manager', 'property_admin')
     )
   );
 
--- Invitations
 DROP POLICY IF EXISTS minv_select ON public.meeting_invitations;
 CREATE POLICY minv_select
   ON public.meeting_invitations FOR SELECT TO authenticated
   USING (
     recipient_user_id = (SELECT auth.uid())
     OR EXISTS (
-      SELECT 1
-      FROM public.property_members pm
+      SELECT 1 FROM public.property_members pm
       WHERE pm.property_id = meeting_invitations.property_id
         AND pm.user_id = (SELECT auth.uid())
         AND pm.role IN ('admin', 'council', 'manager', 'property_admin')
@@ -690,8 +674,7 @@ CREATE POLICY minv_write_staff
   ON public.meeting_invitations FOR INSERT TO authenticated
   WITH CHECK (
     EXISTS (
-      SELECT 1
-      FROM public.property_members pm
+      SELECT 1 FROM public.property_members pm
       WHERE pm.property_id = meeting_invitations.property_id
         AND pm.user_id = (SELECT auth.uid())
         AND pm.role IN ('admin', 'council', 'manager', 'property_admin')
@@ -703,8 +686,7 @@ CREATE POLICY minv_update_staff
   ON public.meeting_invitations FOR UPDATE TO authenticated
   USING (
     EXISTS (
-      SELECT 1
-      FROM public.property_members pm
+      SELECT 1 FROM public.property_members pm
       WHERE pm.property_id = meeting_invitations.property_id
         AND pm.user_id = (SELECT auth.uid())
         AND pm.role IN ('admin', 'council', 'manager', 'property_admin')
@@ -712,8 +694,7 @@ CREATE POLICY minv_update_staff
   )
   WITH CHECK (
     EXISTS (
-      SELECT 1
-      FROM public.property_members pm
+      SELECT 1 FROM public.property_members pm
       WHERE pm.property_id = meeting_invitations.property_id
         AND pm.user_id = (SELECT auth.uid())
         AND pm.role IN ('admin', 'council', 'manager', 'property_admin')
@@ -726,14 +707,12 @@ CREATE POLICY minv_update_recipient_opened
   USING (recipient_user_id = (SELECT auth.uid()))
   WITH CHECK (recipient_user_id = (SELECT auth.uid()));
 
--- Resolutions
 DROP POLICY IF EXISTS mres_select ON public.meeting_resolutions;
 CREATE POLICY mres_select
   ON public.meeting_resolutions FOR SELECT TO authenticated
   USING (
     EXISTS (
-      SELECT 1
-      FROM public.meetings mt
+      SELECT 1 FROM public.meetings mt
       JOIN public.property_members pm
         ON pm.property_id = mt.property_id
        AND pm.user_id = (SELECT auth.uid())
@@ -746,8 +725,7 @@ CREATE POLICY mres_write_staff
   ON public.meeting_resolutions FOR ALL TO authenticated
   USING (
     EXISTS (
-      SELECT 1
-      FROM public.meetings mt
+      SELECT 1 FROM public.meetings mt
       JOIN public.property_members pm
         ON pm.property_id = mt.property_id
        AND pm.user_id = (SELECT auth.uid())
@@ -757,8 +735,7 @@ CREATE POLICY mres_write_staff
   )
   WITH CHECK (
     EXISTS (
-      SELECT 1
-      FROM public.meetings mt
+      SELECT 1 FROM public.meetings mt
       JOIN public.property_members pm
         ON pm.property_id = mt.property_id
        AND pm.user_id = (SELECT auth.uid())
