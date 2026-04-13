@@ -12,7 +12,7 @@ import {
   GUEST_PROPERTY_STORAGE_KEY,
   clearPublicDemoLocalStorage,
 } from '../contexts/PropertyContext';
-import { logPropertyEntrySubmitResult } from '../lib/propertyEntryGateLog';
+import { submitUnifiedPropertyEntry } from '../lib/propertyEntryUnified';
 
 function persistCurrentPropertyId(propertyId: string) {
   try {
@@ -231,7 +231,8 @@ export function Auth() {
           const moveInRaw = moveInDateRef.current?.value?.trim() || '';
           const propertyId = await resolveSignupPropertyIdAsync();
 
-          const { data: joinData, error: joinErr } = await supabase.rpc('submit_join_request', {
+          const entryResult = await submitUnifiedPropertyEntry(supabase, {
+            userId: user.id,
             p_property_id: propertyId,
             p_requested_role: 'owner',
             p_unit_number: unitNumber.trim(),
@@ -247,32 +248,34 @@ export function Auth() {
             p_language_pref: languagePref,
           });
 
-          logPropertyEntrySubmitResult({
-            userId: user.id,
-            email: email.trim().toLowerCase(),
-            propertyId,
-            unitNo: unitNumber.trim(),
-            data: joinData,
-            error: joinErr,
-          });
-
-          if (joinErr) {
-            throw joinErr;
+          if (entryResult.kind === 'rpc_error') {
+            const dup =
+              entryResult.error.code === '23505' ||
+              (entryResult.error.message ?? '').toLowerCase().includes('duplicate') ||
+              (entryResult.error.message ?? '').includes('uniq_pending_request');
+            if (dup) {
+              navigate('/join/pending', { replace: true });
+              return;
+            }
+            throw new Error(entryResult.error.message);
           }
 
-          const jr = joinData as {
-            ok?: boolean;
-            success?: boolean;
+          const jr = entryResult.raw as {
             error?: string;
             message?: string;
             message_zh?: string;
-            entry_path?: string;
             property_id?: string;
           } | null;
 
-          const jrOk = jr != null && (jr.ok === true || jr.success === true);
-
-          if (!jrOk) {
+          if (entryResult.kind === 'business_reject') {
+            if (
+              entryResult.errorKey === 'already_pending' ||
+              entryResult.message === 'PENDING_EXISTS' ||
+              entryResult.errorKey === 'pending_exists'
+            ) {
+              navigate('/join/pending', { replace: true });
+              return;
+            }
             if (jr?.error === 'property_closed' || jr?.message_zh?.includes('公开')) {
               throw new Error(
                 language === 'zh'
@@ -285,8 +288,9 @@ export function Auth() {
                 language === 'zh' ? '物业无效或不存在。' : 'Invalid or unknown property.',
               );
             }
-            if (jr?.error === 'already_member') {
-              if (jr.property_id) persistCurrentPropertyId(String(jr.property_id));
+            if (jr?.error === 'already_member' || entryResult.errorKey === 'already_member') {
+              const pid = jr?.property_id != null ? String(jr.property_id) : propertyId;
+              if (pid) persistCurrentPropertyId(pid);
               const demoClaimed = await claimPublicDemoPropertyAfterSignUp();
               if (demoClaimed) {
                 navigate('/', { replace: true });
@@ -309,61 +313,43 @@ export function Auth() {
             }
             throw new Error(
               language === 'zh'
-                ? (jr?.message_zh as string) || '无法完成加入申请，请稍后再试。'
-                : (jr?.message as string) || 'Could not complete your join request. Please try again.',
+                ? (jr?.message_zh as string) || entryResult.message_zh || '无法完成加入申请，请稍后再试。'
+                : (jr?.message as string) || entryResult.message || 'Could not complete your join request. Please try again.',
             );
           }
 
-          if (jr.entry_path === 'auto_approved' && jr.property_id) {
-            persistCurrentPropertyId(String(jr.property_id));
+          const afterJoinHome = async () => {
             const demoClaimed = await claimPublicDemoPropertyAfterSignUp();
             if (demoClaimed) {
               navigate('/', { replace: true });
-              return;
+              return true;
             }
             const guestClaimed = await claimGuestStoredPropertyAfterSignUp();
             if (guestClaimed) {
               navigate('/', { replace: true });
-              return;
+              return true;
             }
             const claimedId = await claimPropertyFromUrlIfPresent();
             if (claimedId) {
               persistCurrentPropertyId(claimedId);
               navigate('/', { replace: true });
-              return;
+              return true;
             }
-            if (safeRedirectAfterAuth()) return;
+            if (safeRedirectAfterAuth()) return true;
             navigate('/', { replace: true });
+            return true;
+          };
+
+          if (entryResult.kind === 'auto_approved' && entryResult.propertyId) {
+            persistCurrentPropertyId(String(entryResult.propertyId));
+            await afterJoinHome();
             return;
           }
 
-          if (jr.entry_path === 'pending_submitted') {
+          if (entryResult.kind === 'pending_submitted') {
             navigate('/join/pending', { replace: true });
             return;
           }
-
-          if (jr.property_id) {
-            persistCurrentPropertyId(String(jr.property_id));
-          }
-          const demoClaimed = await claimPublicDemoPropertyAfterSignUp();
-          if (demoClaimed) {
-            navigate('/', { replace: true });
-            return;
-          }
-          const guestClaimed = await claimGuestStoredPropertyAfterSignUp();
-          if (guestClaimed) {
-            navigate('/', { replace: true });
-            return;
-          }
-          const claimedId = await claimPropertyFromUrlIfPresent();
-          if (claimedId) {
-            persistCurrentPropertyId(claimedId);
-            navigate('/', { replace: true });
-            return;
-          }
-          if (safeRedirectAfterAuth()) return;
-          navigate('/join/pending', { replace: true });
-          return;
         }
       }
     } catch (err) {

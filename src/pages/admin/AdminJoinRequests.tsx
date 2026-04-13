@@ -8,8 +8,10 @@ import { canReviewJoinRequestsAsStaff } from '../../lib/propertyPermissions';
 import { samePropertyId } from '../../lib/propertyIdMatch';
 import type { UserRole } from '../../lib/supabase';
 import { supabase } from '../../lib/supabase';
+import { dedupePendingJoinRequestsByPropertyEmail } from '../../lib/joinRequestGuards';
 import { sendJoinDecisionEmail } from '../../lib/sendJoinDecisionEmail';
 import { logPropertyEntryApproveResult } from '../../lib/propertyEntryGateLog';
+import { approveJoinRequestFinal, joinRpcErrorCode, rejectJoinRequest } from '../../lib/propertyEntryUnified';
 import { BackButton } from '../../components/BackButton';
 
 /**
@@ -68,19 +70,37 @@ function friendlyReviewFailure(code: string | undefined, en: boolean): string {
       'No user account matches this email yet.',
       '未找到与该邮箱对应的用户账号（需先注册并完成邮箱验证）。',
     ],
+    missing_email: ['This request has no email on file.', '该申请缺少邮箱。'],
+    property_mismatch: [
+      'This request does not belong to the property you are reviewing.',
+      '该申请不属于当前正在审核的物业。',
+    ],
+    user_mismatch: ['The applicant user does not match the email profile.', '申请用户与邮箱对应账号不一致。'],
+    profile_missing: ['Account has no profile row.', '缺少 profiles 记录。'],
   };
   const row = table[c];
   if (row) return en ? row[0] : row[1];
   return en ? 'Something went wrong. Please try again.' : '操作失败，请稍后重试。';
 }
 
-function rpcSucceeded(data: unknown): boolean {
-  const row = data as { success?: boolean; ok?: boolean } | null;
-  return row != null && (row.success === true || row.ok === true);
-}
-
-function rpcErrorCode(data: unknown): string | undefined {
-  return (data as { error?: string } | null)?.error;
+/** 审批 RPC 失败时的可读文案（含 PostgREST 传输错误与 jsonb 内 message）。 */
+function joinApproveUserMessage(
+  data: unknown,
+  code: string | undefined,
+  transportError: { message: string; code?: string } | null,
+  en: boolean,
+): string {
+  if (transportError) {
+    const bits = [transportError.message, transportError.code].filter(Boolean);
+    if (bits.length) return bits.join(' ');
+    return en ? 'Request failed.' : '请求失败';
+  }
+  const row = data as { message?: string; message_zh?: string; hint?: string; detail?: string } | null;
+  if (!en && row?.message_zh) return String(row.message_zh);
+  if (row?.message) return String(row.message);
+  if (row?.detail) return String(row.detail);
+  if (row?.hint) return String(row.hint);
+  return friendlyReviewFailure(code, en);
 }
 
 export default function AdminJoinRequests() {
@@ -102,6 +122,8 @@ export default function AdminJoinRequests() {
   const canReview = canReviewJoinRequestsAsStaff(reviewRole);
 
   const [rows, setRows] = useState<JoinRequestRow[]>([]);
+  /** 同一物业 + 邮箱去重展示（与库 unique partial 索引一致；历史重复数据仍只显示一条） */
+  const pendingRows = useMemo(() => dedupePendingJoinRequestsByPropertyEmail(rows), [rows]);
   /** 数据加载：初始 true；任意路径必须在 finally 中 setLoading(false) */
   const [loading, setLoading] = useState(true);
   const [actingId, setActingId] = useState<string | null>(null);
@@ -110,6 +132,14 @@ export default function AdminJoinRequests() {
   const [unitOverride, setUnitOverride] = useState<Record<string, string>>({});
   const [pageError, setPageError] = useState<string | null>(null);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
+  /** 底部短时提示（成功 / 失败均展示具体文案） */
+  const [toast, setToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
   /** 仅负责请求 join_requests；调用方已保证 ready / currentPropertyId / canReview。finally 必执行。 */
   const loadJoinRequests = useCallback(async (): Promise<void> => {
@@ -169,30 +199,44 @@ export default function AdminJoinRequests() {
     void loadJoinRequests();
   }, [ready, memberships.length, currentPropertyId, canReview, loadJoinRequests]);
 
-  const approve = async (id: string) => {
+  const approve = async (id: string, unitFromRequest: string | null) => {
     if (!user?.id) {
-      setPageError(en ? 'Please sign in again.' : '请重新登录后再试。');
+      const msg = en ? 'Please sign in again.' : '请重新登录后再试。';
+      setPageError(msg);
+      setToast({ kind: 'error', text: msg });
       return;
     }
     setActingId(id);
     setPageError(null);
     setSuccessBanner(null);
-    const unit = unitOverride[id]?.trim() || null;
-    const { data, error } = await supabase.rpc('approve_join_request', {
-      p_join_request_id: id,
-      p_reviewer_id: user.id,
-      p_unit_number: unit,
+    const effectiveUnit = unitOverride[id]?.trim() || unitFromRequest?.trim() || null;
+    if (!currentPropertyId) {
+      const msg = en ? 'No property selected.' : '未选择物业。';
+      setPageError(msg);
+      setToast({ kind: 'error', text: msg });
+      setActingId(null);
+      return;
+    }
+
+    const { ok, data, error } = await approveJoinRequestFinal(supabase, {
+      requestId: id,
+      propertyId: currentPropertyId,
+      defaultUnitNo: effectiveUnit,
     });
     setActingId(null);
     if (error) {
-      console.error('approve_join_request error:', error);
-      setPageError(en ? 'Could not complete approval. Please try again.' : '操作失败，请稍后重试。');
+      console.error('approve_join_request_final RPC error:', error, 'data:', data);
+      const msg = joinApproveUserMessage(data, undefined, error, en);
+      setPageError(msg);
+      setToast({ kind: 'error', text: msg });
       return;
     }
-    if (!rpcSucceeded(data)) {
-      const code = rpcErrorCode(data);
-      console.error('approve_join_request unexpected:', data);
-      setPageError(friendlyReviewFailure(code, en));
+    if (!ok) {
+      const code = joinRpcErrorCode(data);
+      console.error('approve_join_request_final business error:', JSON.stringify(data, null, 2));
+      const msg = joinApproveUserMessage(data, code, null, en);
+      setPageError(msg);
+      setToast({ kind: 'error', text: msg });
       return;
     }
     const row = data as {
@@ -208,29 +252,32 @@ export default function AdminJoinRequests() {
     logPropertyEntryApproveResult({
       reviewerId: user.id,
       data,
-      unitNoFallback: unit,
+      unitNoFallback: effectiveUnit,
     });
 
+    const successToastZh = '审批通过，用户已加入物业';
+    const successToastEn = 'Approved. The user has been added to this property.';
     if (row.membership_created === true) {
-      setSuccessBanner(
-        en
-          ? 'Approved. The user now has access to this property.'
-          : '已通过申请，用户已获得物业访问权限',
-      );
+      const banner = en
+        ? 'Approved. The user now has access to this property.'
+        : '已通过申请，用户已获得物业访问权限';
+      setSuccessBanner(banner);
+      setToast({ kind: 'success', text: en ? successToastEn : successToastZh });
     } else if (row.user_linked === false) {
-      setSuccessBanner(
-        en
-          ? 'Approved, but no account was found for this email yet.'
-          : '已通过申请，但用户尚未完成账号绑定',
-      );
+      const banner = en
+        ? 'Approved, but no account was found for this email yet.'
+        : '已通过申请，但用户尚未完成账号绑定';
+      setSuccessBanner(banner);
+      setToast({ kind: 'success', text: banner });
     } else if ((row.message as string | undefined) === 'already_member') {
-      setSuccessBanner(
-        en
-          ? 'Approved. The user was already a member (membership updated).'
-          : '已通过申请（用户已是该物业成员，未重复添加）',
-      );
+      const banner = en
+        ? 'Approved. The user was already a member (membership updated).'
+        : '已通过申请（用户已是该物业活跃成员，信息已更新）';
+      setSuccessBanner(banner);
+      setToast({ kind: 'success', text: banner });
     } else {
       setSuccessBanner(en ? 'Application approved.' : '已通过申请');
+      setToast({ kind: 'success', text: en ? successToastEn : successToastZh });
     }
     void loadJoinRequests();
     void refreshMemberships();
@@ -254,27 +301,33 @@ export default function AdminJoinRequests() {
     setActingId(rejectFor);
     setPageError(null);
     setSuccessBanner(null);
-    const { data, error } = await supabase.rpc('reject_join_request', {
-      p_join_request_id: rejectFor,
-      p_reviewer_id: user.id,
-      p_rejection_reason: rejectReason.trim() || null,
+    const { ok, data, error } = await rejectJoinRequest(supabase, {
+      joinRequestId: rejectFor,
+      reviewerId: user.id,
+      rejectionReason: rejectReason.trim() || null,
     });
     setActingId(null);
     if (error) {
-      console.error('reject_join_request error:', error);
-      setPageError(en ? 'Could not complete rejection. Please try again.' : '操作失败，请稍后重试。');
+      console.error('reject_join_request error:', error, data);
+      const msg = joinApproveUserMessage(data, undefined, error, en);
+      setPageError(msg);
+      setToast({ kind: 'error', text: msg });
       return;
     }
-    if (!rpcSucceeded(data)) {
-      const code = rpcErrorCode(data);
+    if (!ok) {
+      const code = joinRpcErrorCode(data);
       console.error('reject_join_request unexpected:', data);
-      setPageError(friendlyReviewFailure(code, en));
+      const msg = joinApproveUserMessage(data, code, null, en);
+      setPageError(msg);
+      setToast({ kind: 'error', text: msg });
       return;
     }
     const rejectedId = rejectFor;
     setRejectFor(null);
     setRejectReason('');
-    setSuccessBanner(en ? 'Application rejected.' : '已拒绝申请');
+    const rejMsg = en ? 'Application rejected.' : '已拒绝申请';
+    setSuccessBanner(rejMsg);
+    setToast({ kind: 'success', text: rejMsg });
     void loadJoinRequests();
     void sendJoinDecisionEmail({
       joinRequestId: rejectedId,
@@ -380,6 +433,23 @@ export default function AdminJoinRequests() {
         </div>
       )}
 
+      {toast && (
+        <div
+          className={`fixed bottom-6 left-1/2 z-[60] max-w-md -translate-x-1/2 px-4 w-[min(100%,28rem)]`}
+          role="status"
+        >
+          <div
+            className={`rounded-xl border px-4 py-3 text-sm shadow-lg ${
+              toast.kind === 'success'
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-950'
+                : 'border-red-200 bg-red-50 text-red-950'
+            }`}
+          >
+            {toast.text}
+          </div>
+        </div>
+      )}
+
       {(reviewRole === 'admin' || reviewRole === 'council') && (
         <div className="mb-4 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950">
           {en ? (
@@ -407,13 +477,13 @@ export default function AdminJoinRequests() {
         <div className="flex justify-center py-16">
           <Loader2 className="w-10 h-10 text-[#1D9E75] animate-spin" aria-hidden />
         </div>
-      ) : rows.length === 0 ? (
+      ) : pendingRows.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-10 text-center text-gray-500 text-sm">
           {t('join_requests_empty_pending')}
         </div>
       ) : (
         <ul className="space-y-4">
-          {rows.map((r) => (
+          {pendingRows.map((r) => (
             <li
               key={r.id}
               className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 sm:p-5"
@@ -473,7 +543,7 @@ export default function AdminJoinRequests() {
                   <button
                     type="button"
                     disabled={actingId === r.id || !user?.id}
-                    onClick={() => void approve(r.id)}
+                    onClick={() => void approve(r.id, r.unit_number)}
                     className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#1D9E75] text-white text-sm font-semibold hover:bg-[#178a66] disabled:opacity-50"
                   >
                     {actingId === r.id ? (

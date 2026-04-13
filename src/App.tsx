@@ -48,6 +48,7 @@ import { JoinAccessGate } from './pages/JoinAccessGate';
 import { PostLoginPropertyRedirect } from './components/PostLoginPropertyRedirect';
 import { DemoDashboardRoute } from './components/DemoDashboardRoute';
 import { PropertyDemoEntry } from './pages/PropertyDemoEntry';
+import { QrPropertyEntryPage } from './pages/entry/QrPropertyEntryPage';
 import { canManagePropertyInvites, canReviewJoinRequestsAsStaff } from './lib/propertyPermissions';
 import type { UserRole } from './lib/supabase';
 import { useHasActivePropertyMembership } from './hooks/useHasActivePropertyMembership';
@@ -268,6 +269,7 @@ function AppContent() {
     <>
       <PostLoginPropertyRedirect />
       <Routes>
+      <Route path="/entry" element={<QrPropertyEntryPage />} />
       <Route path="/demo/:propertyCode" element={<PropertyDemoEntry />} />
       <Route
         path="/demo-home"

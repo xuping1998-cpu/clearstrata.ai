@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Building2, Loader2, CheckCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useProperty } from '../contexts/PropertyContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { supabase } from '../lib/supabase';
+import { submitUnifiedPropertyEntry } from '../lib/propertyEntryUnified';
 
 type InviteRow = {
   id: string;
@@ -210,15 +211,20 @@ export function JoinInvitePage() {
     !alreadyMember &&
     !hasPendingRequest;
 
+  const submitInviteLockRef = useRef(false);
+
   const submitJoinRequest = async () => {
     if (!cleanCode || !session) {
       setMsg(translateInviteError('NOT_AUTHENTICATED', en));
       return;
     }
+    if (submitting || submitInviteLockRef.current) return;
+    submitInviteLockRef.current = true;
     setSubmitting(true);
     setMsg(null);
     try {
-      const { data, error } = await supabase.rpc('submit_join_request', {
+      const result = await submitUnifiedPropertyEntry(supabase, {
+        userId: session.user.id,
         p_property_id: null,
         p_requested_role: 'owner',
         p_unit_number: null,
@@ -227,27 +233,38 @@ export function JoinInvitePage() {
         p_email: null,
         p_phone: null,
         p_invite_code: cleanCode,
+        p_direct_invite_id: null,
+        p_inferred_role: null,
+        p_inferred_unit_number: null,
+        p_move_in_date: null,
+        p_language_pref: en ? 'en' : 'zh',
       });
-      if (error) {
+
+      if (result.kind === 'rpc_error') {
         setMsg(friendlySubmitFailure(en));
-        setSubmitting(false);
         return;
       }
-      const row = data as {
-        success?: boolean;
-        property_id?: string;
-        role?: string;
-        message?: string;
-      };
-      if (row?.success && row.property_id && row.message === 'PENDING_APPROVAL') {
+
+      if (result.kind === 'business_reject') {
+        setMsg(translateInviteError(result.message ?? result.errorKey, en));
+        return;
+      }
+
+      if (result.kind === 'auto_approved') {
+        setSuccess(true);
+        await loadInvite();
+        return;
+      }
+
+      if (result.kind === 'pending_submitted') {
         setMyLatestRequest({ status: 'pending', rejection_reason: null });
         setSuccess(true);
         return;
       }
-      setMsg(translateInviteError(row?.message, en));
     } catch {
       setMsg(translateInviteError('UNKNOWN', en));
     } finally {
+      submitInviteLockRef.current = false;
       setSubmitting(false);
     }
   };

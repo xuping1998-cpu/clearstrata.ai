@@ -4,6 +4,11 @@ export function logPropertyEntryGate(stage: string, payload: Record<string, unkn
   console.log(`[property-entry:${stage}]`, payload);
 }
 
+/** Structured one-line logs for `propertyEntryUnified` (auto / pending / approve / reject). */
+export function logUnifiedPropertyEntryLine(stage: string, payload: Record<string, unknown>) {
+  console.log(`[property-entry-unified:${stage}]`, payload);
+}
+
 export function logPropertyEntrySubmitResult(opts: {
   userId: string | null | undefined;
   email: string | null | undefined;
@@ -40,20 +45,26 @@ export function logPropertyEntryApproveResult(opts: {
   const row = (opts.data ?? null) as Record<string, unknown> | null;
   const email = (row?.target_email as string | null | undefined) ?? null;
   const unit = (row?.unit_no as string | null | undefined) ?? opts.unitNoFallback ?? null;
+  const profileId = (row?.target_user_id as string | null | undefined) ?? null;
   console.log('property entry approve — reviewer id', opts.reviewerId ?? null);
   console.log('approve email', email ?? '—');
+  console.log('resolved profile id', profileId ?? '—');
   console.log('unit_no', unit ?? '—');
   console.log('property entry — approve result', row ?? null);
-  console.log('property entry — property_members upsert', row?.property_members_inserted ?? null);
-  console.log('property_members inserted', row?.property_members_inserted === true);
+  const pmUpsert = row?.property_members_upserted ?? row?.property_members_inserted;
+  console.log('property entry — property_members upsert result', pmUpsert ?? null);
+  console.log('property entry — join_request status update result', row?.join_request_status_updated ?? null);
+  console.log('property entry — final success', row?.success === true || row?.ok === true);
   const resOutcome = row?.residents_outcome;
   const resLabel =
     resOutcome === 'created'
-      ? 'residents created'
+      ? 'residents insert: created'
       : resOutcome === 'matched_bound' || resOutcome === 'matched_already_bound'
-        ? `residents matched (${String(resOutcome)})`
-        : resOutcome != null
-          ? `residents outcome: ${String(resOutcome)}`
-          : 'residents outcome: —';
+        ? `residents update: matched (${String(resOutcome)})`
+        : resOutcome === 'updated_by_email_unit_changed'
+          ? 'residents update: matched by email, unit updated'
+          : resOutcome != null
+            ? `residents outcome: ${String(resOutcome)}`
+            : 'residents outcome: —';
   console.log(resLabel);
 }

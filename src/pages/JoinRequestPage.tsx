@@ -5,10 +5,10 @@ import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useProperty } from '../contexts/PropertyContext';
 import { supabase } from '../lib/supabase';
-import { logPropertyEntrySubmitResult } from '../lib/propertyEntryGateLog';
 import type { UserRole } from '../lib/supabase';
 import { samePropertyId } from '../lib/propertyIdMatch';
 import { resolveJoinCodeFromProperties } from '../lib/joinCodeResolve';
+import { submitUnifiedPropertyEntry } from '../lib/propertyEntryUnified';
 
 /** Align with DB `properties`: use `code` (not legacy `property_code` in some migrations). */
 type OpenProperty = {
@@ -206,6 +206,7 @@ export function JoinRequestPage() {
   const [urlResolveError, setUrlResolveError] = useState<string | null>(null);
 
   const selectedPropertyIdRef = useRef(selectedPropertyId);
+  const submitLockRef = useRef(false);
   useEffect(() => {
     selectedPropertyIdRef.current = selectedPropertyId;
   }, [selectedPropertyId]);
@@ -483,6 +484,8 @@ export function JoinRequestPage() {
   };
 
   const submit = async () => {
+    if (loading || submitLockRef.current) return;
+
     let id: string;
     if (deepLinkLocked) {
       const v = verifiedDeepLinkPropertyRef.current;
@@ -511,10 +514,13 @@ export function JoinRequestPage() {
       setMsg(en ? 'Full name and email are required.' : '请填写姓名与邮箱。');
       return;
     }
+
+    submitLockRef.current = true;
     setLoading(true);
     setMsg(null);
     try {
-      const { data, error } = await supabase.rpc('submit_join_request', {
+      const result = await submitUnifiedPropertyEntry(supabase, {
+        userId: session.user.id,
         p_property_id: id,
         p_requested_role: requestedRole,
         p_unit_number: unitNumber.trim() || null,
@@ -532,30 +538,16 @@ export function JoinRequestPage() {
         p_language_pref: en ? 'en' : 'zh',
       });
 
-      logPropertyEntrySubmitResult({
-        userId: session.user.id,
-        email: email.trim().toLowerCase(),
-        propertyId: id,
-        unitNo: unitNumber.trim() || null,
-        data,
-        error,
-      });
-
-      if (error) {
-        setMsg(error.message || (en ? 'Submit failed.' : '提交失败'));
-        return;
-      }
-
-      const row = data as {
+      const row = result.raw as {
         ok?: boolean;
         success?: boolean;
         error?: string;
         message?: string;
         message_zh?: string;
         join_request_id?: string;
+        property_id?: string;
+        entry_path?: string;
       } | null;
-
-      const succeeded = row != null && (row.ok === true || row.success === true);
 
       const rpcFriendlyText = (fallbackEn: string, fallbackZh: string) => {
         if (en) {
@@ -566,10 +558,27 @@ export function JoinRequestPage() {
         return fallbackZh;
       };
 
-      if (!succeeded) {
-        console.error('unexpected rpc result:', data);
-        const errKey = row?.error;
-        const rawMsg = row?.message;
+      if (result.kind === 'rpc_error') {
+        const dup =
+          result.error.code === '23505' ||
+          (result.error.message ?? '').toLowerCase().includes('duplicate') ||
+          (result.error.message ?? '').includes('uniq_pending_request');
+        if (dup) {
+          setMsg(
+            en
+              ? 'A pending request for this property already exists. Please wait for review.'
+              : '该物业下已有待审核申请（可能刚由其他窗口提交），请等待审核。',
+          );
+          return;
+        }
+        setMsg(result.error.message || (en ? 'Submit failed.' : '提交失败'));
+        return;
+      }
+
+      if (result.kind === 'business_reject') {
+        console.error('submit join business_reject:', result.raw);
+        const errKey = result.errorKey;
+        const rawMsg = result.message;
         if (rawMsg === 'INVITE_LIMIT_REACHED' || rawMsg === 'INVALID_INVITE') {
           setMsg(
             rpcFriendlyText(
@@ -606,8 +615,8 @@ export function JoinRequestPage() {
 
       setCodeMatchHint(null);
 
-      if (row?.entry_path === 'auto_approved' && row.property_id) {
-        const pid = canonicalPropertyId(properties, row.property_id);
+      if (result.kind === 'auto_approved' && result.propertyId) {
+        const pid = canonicalPropertyId(properties, result.propertyId);
         persistCurrentPropertyId(pid);
         setCurrentPropertyId(pid);
         await refreshMemberships();
@@ -621,6 +630,7 @@ export function JoinRequestPage() {
       console.error('submit join request catch:', err);
       setMsg(err instanceof Error ? err.message : en ? 'Request failed.' : '请求失败');
     } finally {
+      submitLockRef.current = false;
       setLoading(false);
     }
   };
