@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useLocation } from 'react-router-dom';
-import { User, Receipt, FileText, UserCog, Megaphone } from 'lucide-react';
+import { User, Receipt, FileText, UserCog, Megaphone, Users } from 'lucide-react';
 import { useProperty } from '../contexts/PropertyContext';
 import { BackButton } from '../components/BackButton';
 import { MyProfileTab } from './owner-info/MyProfileTab';
@@ -10,7 +10,7 @@ import { UserManagementTab } from './owner-info/UserManagementTab';
 import { OwnerNotificationsSection } from './owner-info/OwnerNotificationsSection';
 import { AnnouncementList } from '../components/AnnouncementList';
 
-type TabType = 'profile' | 'ledger' | 'forms' | 'users' | 'announcements';
+type TabType = 'profile' | 'members' | 'ledger' | 'forms' | 'users' | 'announcements';
 
 interface TabConfig {
   key: TabType;
@@ -21,6 +21,7 @@ interface TabConfig {
 
 const tabs: TabConfig[] = [
   { key: 'profile', label: '我的资料', icon: <User size={18} /> },
+  { key: 'members', label: '本物业成员', icon: <Users size={18} /> },
   { key: 'ledger', label: '账务记录', icon: <Receipt size={18} /> },
   { key: 'forms', label: '表单', icon: <FileText size={18} /> },
   { key: 'announcements', label: '公告', icon: <Megaphone size={18} /> },
@@ -28,7 +29,7 @@ const tabs: TabConfig[] = [
 ];
 
 export function OwnerInfo() {
-  const { currentRole, isDemoMode } = useProperty();
+  const { currentRole, currentPropertyId, isDemoMode } = useProperty();
   const [searchParams] = useSearchParams();
   const location = useLocation();
   const canManageRestrictedTabs =
@@ -64,7 +65,11 @@ export function OwnerInfo() {
     return () => window.clearTimeout(timer);
   }, [location.pathname, location.hash]);
 
-  const visibleTabs = tabs.filter((tab) => !tab.councilOnly || canManageRestrictedTabs);
+  const visibleTabs = tabs.filter((tab) => {
+    if (tab.key === 'members' && canManageRestrictedTabs) return false;
+    if (tab.councilOnly && !canManageRestrictedTabs) return false;
+    return true;
+  });
 
   if (isDemoMode) {
     return (
@@ -106,10 +111,13 @@ export function OwnerInfo() {
       </div>
 
       {activeTab === 'profile' && <MyProfileTab />}
+      {activeTab === 'members' && currentPropertyId && <UserManagementTab readOnly />}
       {activeTab === 'ledger' && <LedgerTab />}
       {activeTab === 'forms' && <FormsTab />}
       {activeTab === 'announcements' && <OwnerNotificationsSection />}
-      {activeTab === 'users' && canManageRestrictedTabs && <UserManagementTab />}
+      {activeTab === 'users' && canManageRestrictedTabs && currentPropertyId && (
+        <UserManagementTab readOnly={false} />
+      )}
     </div>
   );
 }

@@ -152,7 +152,9 @@ export function MeetingListView({ variant }: Props) {
                   {stats.used} / {stats.quota}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
-                  {en ? `Remaining (product default): ${stats.remaining}` : `剩余（产品默认配额）：${stats.remaining}`}
+                  {en
+                    ? `Remaining (product default): ${Number(stats.remaining ?? 0)}`
+                    : `剩余（产品默认配额）：${Number(stats.remaining ?? 0)}`}
                 </p>
               </div>
               <div className="h-10 w-px bg-gray-200 hidden sm:block" />
@@ -194,11 +196,10 @@ export function MeetingListView({ variant }: Props) {
             <div className="p-12 text-center text-gray-600">{en ? 'No meetings yet.' : '暂无会议。'}</div>
           ) : (
             meetings.map((m) => (
-              <button
+              <Link
                 key={m.id}
-                type="button"
-                onClick={() => navigate(`/voting/${m.id}`)}
-                className="w-full text-left p-6 hover:bg-gray-50 transition-colors flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
+                to={variant === 'voting' ? `/voting/${m.id}` : `/meetings/${m.id}`}
+                className="w-full text-left p-6 hover:bg-gray-50 transition-colors flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between block focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1D9E75]"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2 mb-1">
@@ -231,7 +232,7 @@ export function MeetingListView({ variant }: Props) {
                       ? 'No schedule'
                       : '未排期'}
                 </div>
-              </button>
+              </Link>
             ))
           )}
         </div>
@@ -239,7 +240,7 @@ export function MeetingListView({ variant }: Props) {
         {variant === 'meetings' && (
           <p className="text-sm text-gray-500 text-center">
             <Link to="/voting" className="text-emerald-700 hover:underline">
-              {en ? 'Open voting hub' : '前往会议投票'}
+              {en ? 'Open meetings & voting hub' : '前往会议与投票'}
             </Link>
           </p>
         )}

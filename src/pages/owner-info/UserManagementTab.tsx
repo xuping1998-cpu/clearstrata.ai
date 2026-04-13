@@ -4,6 +4,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useProperty } from '../../contexts/PropertyContext';
 import { supabase, type UserRole, type ProfileAccountStatus } from '../../lib/supabase';
+import { withProperty } from '../../lib/supabaseTenant';
 import { invokeUpdateUserRole } from '../../lib/invokeUpdateUserRole';
 import { type AppMetadataRole, profileRoleToMetadataRole } from '../../lib/userRoleMetadata';
 import { UserCard } from '../../components/UserCard';
@@ -36,6 +37,12 @@ interface ResidentBrief {
   updated_at?: string;
 }
 
+/** Per-property membership (role/status) from `property_members`. */
+interface PropertyMemberMeta {
+  role: UserRole;
+  status: string;
+}
+
 /** Lowercase canonical UUID string, or null if invalid (avoids PostgREST 400 on bad filter values). */
 function normalizeUuid(value: unknown): string | null {
   if (value == null) return null;
@@ -51,10 +58,12 @@ function alertThenReload(message: string) {
   window.location.reload();
 }
 
-export function UserManagementTab() {
+export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) {
   const { language, t } = useLanguage();
-  const { profile, refreshProfile } = useAuth();
+  const { profile, user, refreshProfile } = useAuth();
+  const { currentPropertyId, roleInProperty: currentRole } = useProperty();
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [memberMetaByUserId, setMemberMetaByUserId] = useState<Record<string, PropertyMemberMeta>>({});
   const [residentByUserId, setResidentByUserId] = useState<Record<string, ResidentBrief>>({});
   const [ownerInfos, setOwnerInfos] = useState<OwnerInfoRecord[]>([]);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
@@ -62,34 +71,90 @@ export function UserManagementTab() {
   const [updating, setUpdating] = useState<string | null>(null);
   const [activationBusy, setActivationBusy] = useState<string | null>(null);
 
-  const canSelectRoles = profile?.role === 'admin' || currentRole === 'property_admin';
-  const canModerateActivation = profile?.role === 'admin';
+  const canSelectRoles =
+    !readOnly && (profile?.role === 'admin' || currentRole === 'property_admin');
+  const canModerateActivation = !readOnly && profile?.role === 'admin';
 
   const loadData = useCallback(async () => {
     if (!currentPropertyId) return;
 
-    const { data: pm } = await supabase
-      .from('property_members')
-      .select('user_id')
-      .eq('property_id', currentPropertyId)
-      .eq('status', 'active');
-    const userIds = [...new Set((pm ?? []).map((p) => p.user_id as string))];
+    const uid = user?.id ?? profile?.id ?? null;
+    console.log('[UserManagementTab] loadData', {
+      currentPropertyId,
+      currentUserId: uid,
+      readOnly,
+    });
+
+    const { data: pm, error: pmErr } = await withProperty(
+      supabase.from('property_members').select('user_id, role, status') as any,
+      currentPropertyId,
+    );
+
+    if (pmErr) {
+      console.error('[UserManagementTab] property_members error', pmErr);
+    }
+    const pmRowsRaw = (pm ?? []) as Array<{ user_id: string; role: string; status: string }>;
+    const pmRows = readOnly
+      ? pmRowsRaw.filter((r) => String(r.status).toLowerCase() !== 'suspended')
+      : pmRowsRaw;
+    console.log('[UserManagementTab] property_members count', pmRows.length, pmErr ?? '');
+
+    const meta: Record<string, PropertyMemberMeta> = {};
+    for (const row of pmRows) {
+      if (!row.user_id) continue;
+      meta[row.user_id] = { role: row.role as UserRole, status: String(row.status ?? '') };
+    }
+    setMemberMetaByUserId(meta);
+
+    const userIds = [...new Set(pmRows.map((p) => p.user_id).filter(Boolean))];
     if (userIds.length === 0) {
       setProfiles([]);
       setOwnerInfos([]);
       setResidentByUserId({});
+      console.log('[UserManagementTab] no member user_ids after property_members query');
       return;
     }
 
-    const [{ data: profileData }, { data: ownerData }, { data: resData }] = await Promise.all([
+    const [profRes, ownRes, resRes] = await Promise.all([
       supabase.from('profiles').select('*').in('id', userIds).order('full_name_en'),
-      supabase.from('owner_info').select('user_id, unit_number').eq('property_id', currentPropertyId).order('unit_number'),
-      supabase.from('residents').select('id, user_id, status, unit_no, updated_at').eq('property_id', currentPropertyId),
+      withProperty(
+        supabase.from('owner_info').select('user_id, unit_number').order('unit_number') as any,
+        currentPropertyId,
+      ),
+      withProperty(
+        supabase.from('residents').select('id, user_id, status, unit_no, updated_at') as any,
+        currentPropertyId,
+      ),
     ]);
-    setProfiles(profileData || []);
-    setOwnerInfos(ownerData || []);
+
+    if (profRes.error) {
+      console.error('[UserManagementTab] profiles error', profRes.error);
+    }
+    if (ownRes.error) {
+      console.error('[UserManagementTab] owner_info error', ownRes.error);
+    }
+    if (resRes.error) {
+      console.error('[UserManagementTab] residents error', resRes.error);
+    }
+
+    const profileData = profRes.data ?? [];
+    const ownerData = ownRes.data ?? [];
+    const resData = resRes.data ?? [];
+
+    console.log('[UserManagementTab] fetched counts', {
+      profiles: profileData.length,
+      owner_info: ownerData.length,
+      residents: resData.length,
+    });
+
+    const merged = profileData.map((row: Profile) => ({
+      ...row,
+      role: (meta[row.id]?.role as UserRole) ?? row.role,
+    }));
+    setProfiles(merged);
+    setOwnerInfos(ownerData as OwnerInfoRecord[]);
     const rmap: Record<string, ResidentBrief> = {};
-    for (const row of resData || []) {
+    for (const row of resData as ResidentBrief[]) {
       rmap[row.user_id] = {
         id: row.id,
         user_id: row.user_id,
@@ -99,7 +164,8 @@ export function UserManagementTab() {
       };
     }
     setResidentByUserId(rmap);
-  }, [currentPropertyId]);
+    console.log('[UserManagementTab] final merged users count', merged.length);
+  }, [currentPropertyId, user?.id, profile?.id, readOnly]);
 
   useEffect(() => {
     if (profile && currentPropertyId) void loadData();
@@ -123,9 +189,16 @@ export function UserManagementTab() {
       const act = activationText(p.id);
       const r = residentByUserId[p.id];
       const unit = r?.unit_no ? ` · ${t('user_mgmt_unit')} ${r.unit_no}` : '';
-      return `${roleName} · ${act}${unit}`;
+      const pm = memberMetaByUserId[p.id];
+      const membership =
+        pm?.status && language === 'en'
+          ? ` · Membership: ${pm.status}`
+          : pm?.status
+            ? ` · 成员状态: ${pm.status}`
+            : '';
+      return `${roleName} · ${act}${unit}${membership}`;
     },
-    [activationText, residentByUserId, t],
+    [activationText, residentByUserId, memberMetaByUserId, t, language],
   );
 
   const sortedProfiles = useMemo(() => {
@@ -142,6 +215,7 @@ export function UserManagementTab() {
   }, [profiles, residentByUserId]);
 
   const startEdit = (user: Profile) => {
+    if (readOnly) return;
     setEditingUserId(user.id);
     setEditForm({
       full_name_en: user.full_name_en,
@@ -156,6 +230,7 @@ export function UserManagementTab() {
   };
 
   const saveEdit = async (userId: string) => {
+    if (readOnly) return;
     setUpdating(userId);
     const { error } = await supabase
       .from('profiles')
@@ -184,7 +259,7 @@ export function UserManagementTab() {
   const canShowRoleSelector = (user: Profile) => canSelectRoles && user.role !== 'admin';
 
   const updateUserRole = async (userId: string, metaRole: AppMetadataRole) => {
-    if (!canSelectRoles) return;
+    if (readOnly || !canSelectRoles) return;
     const current = profiles.find((p) => p.id === userId);
     if (current && profileRoleToMetadataRole(current.role) === metaRole) return;
 
@@ -220,6 +295,7 @@ export function UserManagementTab() {
   };
 
   const approveActivation = async (residentId: string, profileUserId: string) => {
+    if (readOnly) return;
     const rid = normalizeUuid(residentId);
     const uid = normalizeUuid(profileUserId);
     if (!rid || !uid) {
@@ -284,6 +360,7 @@ export function UserManagementTab() {
   };
 
   const rejectActivation = async (residentId: string, profileUserId: string) => {
+    if (readOnly) return;
     const rid = normalizeUuid(residentId);
     const uid = normalizeUuid(profileUserId);
     if (!rid || !uid) {
@@ -349,20 +426,31 @@ export function UserManagementTab() {
 
   const printUserList = async () => {
     try {
+      console.log('[UserManagementTab] printUserList', {
+        currentPropertyId,
+        currentUserId: user?.id ?? profile?.id,
+        profilesCount: profiles.length,
+      });
       const usersWithDetails: UserWithDetails[] = await Promise.all(
         profiles.map(async (user) => {
           const ownerInfo = ownerInfos.find((info) => info.user_id === user.id);
           let balance: number | undefined;
 
           if (user.role === 'owner') {
-            const { data: latestTransaction } = await supabase
+            let q = supabase
               .from('ledger_transactions')
               .select('balance')
               .eq('user_id', user.id)
               .order('transaction_date', { ascending: false })
-              .limit(1)
-              .maybeSingle();
-            balance = latestTransaction?.balance;
+              .limit(1);
+            if (currentPropertyId) {
+              q = q.eq('property_id', currentPropertyId);
+            }
+            const { data: latestTransaction, error: ledgerErr } = await q.maybeSingle();
+            if (ledgerErr) {
+              console.warn('[UserManagementTab] print ledger row', user.id, ledgerErr);
+            }
+            balance = latestTransaction?.balance as number | undefined;
           }
 
           return { ...user, unit_number: ownerInfo?.unit_number, balance };
@@ -521,12 +609,25 @@ export function UserManagementTab() {
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">
-            {language === 'en' ? 'User Management' : '用户管理'}
+            {readOnly
+              ? language === 'en'
+                ? 'Property members'
+                : '本物业成员'
+              : language === 'en'
+                ? 'User Management'
+                : '用户管理'}
           </h2>
-          <p className="text-gray-600 text-sm mt-1 max-w-2xl">{t('user_mgmt_subtitle')}</p>
+          <p className="text-gray-600 text-sm mt-1 max-w-2xl">
+            {readOnly
+              ? language === 'en'
+                ? 'Members and profiles for the current property (read-only).'
+                : '当前物业下的成员与资料（只读）。'
+              : t('user_mgmt_subtitle')}
+          </p>
         </div>
         <button
-          onClick={printUserList}
+          type="button"
+          onClick={() => void printUserList()}
           className="flex items-center gap-2 px-4 py-2 bg-[#1D9E75] text-white rounded-lg hover:bg-[#178a66] transition-colors shrink-0"
         >
           <Printer size={20} />
@@ -592,6 +693,7 @@ export function UserManagementTab() {
                   phone: user.phone,
                   roleLabel: cardRoleLabel(user),
                 }}
+                readOnly={readOnly}
                 language={language}
                 isEditing={editingUserId === user.id}
                 editForm={editForm}

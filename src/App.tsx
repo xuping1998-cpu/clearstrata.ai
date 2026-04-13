@@ -213,6 +213,7 @@ function AuthenticatedRoutes() {
       <Route path="/meetings/create" element={<Navigate to="/meetings/new" replace />} />
       <Route path="/meetings/new" element={<MeetingEditor />} />
       <Route path="/meetings/:meetingId/edit" element={<MeetingEditor />} />
+      <Route path="/meetings/:meetingId" element={<MeetingDetail />} />
       <Route path="/finance" element={<Finance />} />
       <Route path="/hiring" element={<Hiring />} />
       <Route path="/owner-info" element={<OwnerInfo />} />
@@ -289,6 +290,14 @@ function AppContent() {
         element={
           <DemoDashboardRoute>
             <Meetings />
+          </DemoDashboardRoute>
+        }
+      />
+      <Route
+        path="/demo/voting/:meetingId"
+        element={
+          <DemoDashboardRoute>
+            <MeetingDetail />
           </DemoDashboardRoute>
         }
       />

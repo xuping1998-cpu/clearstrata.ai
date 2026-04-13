@@ -25,6 +25,8 @@ interface UserCardProps {
   actions?: React.ReactNode;
   /** Role dropdown etc.; only rendered when parent allows (e.g. council / admin). */
   roleSelector?: React.ReactNode;
+  /** When true, hides edit controls (directory / read-only lists). */
+  readOnly?: boolean;
   className?: string;
 }
 
@@ -40,6 +42,7 @@ export function UserCard({
   onFormChange,
   actions,
   roleSelector,
+  readOnly = false,
   className = '',
 }: UserCardProps) {
   if (isEditing) {
@@ -123,14 +126,17 @@ export function UserCard({
         {user.phone && <div className="text-sm text-gray-500">{user.phone}</div>}
       </div>
       <div className="flex flex-wrap items-center gap-2 justify-end">
-        {roleSelector}
-        <button
-          onClick={onStartEdit}
-          className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-          title={language === 'en' ? 'Edit User' : '编辑用户'}
-        >
-          <Edit2 size={18} />
-        </button>
+        {!readOnly && roleSelector}
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={onStartEdit}
+            className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            title={language === 'en' ? 'Edit User' : '编辑用户'}
+          >
+            <Edit2 size={18} />
+          </button>
+        )}
         {actions}
       </div>
     </div>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Mail, RefreshCw, Users } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useProperty } from '../../contexts/PropertyContext';
@@ -12,7 +12,6 @@ import {
   fetchMeetingCore,
   fetchMeetingExtras,
   invitationSummary,
-  markInvitationsSent,
   meetingTitleZhFirst,
   resetFailedInvitations,
   sendMeetingInvitations,
@@ -23,8 +22,6 @@ import {
   type MeetingVoteRow,
 } from '../../features/meetings/api';
 import { labelFormat, labelMeetingType, labelStatus, labelVoteRule, labelVoteStatus, meetingUiStrings } from '../../features/meetings/labels';
-
-type TabKey = 'agenda' | 'invites' | 'resolutions';
 
 const initialBundle = (): MeetingDetailBundle => ({
   meeting: null,
@@ -37,17 +34,23 @@ const initialBundle = (): MeetingDetailBundle => ({
 });
 
 export function MeetingDetail() {
-  const { id: meetingId } = useParams<{ id: string }>();
+  const { meetingId: meetingIdParam, id: legacyVotingId } = useParams<{ meetingId?: string; id?: string }>();
+  const meetingId = meetingIdParam ?? legacyVotingId;
   const { user } = useAuth();
   const { currentPropertyId, roleInProperty } = useProperty();
   const { language } = useLanguage();
   const en = language === 'en';
   const navigate = useNavigate();
+  const location = useLocation();
+  const listBackPath = location.pathname.includes('/demo/voting')
+    ? '/demo/voting'
+    : location.pathname.startsWith('/voting')
+      ? '/voting'
+      : '/meetings';
 
   const [bundle, setBundle] = useState<MeetingDetailBundle>(initialBundle);
   const [coreDone, setCoreDone] = useState(false);
   const [extrasLoading, setExtrasLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabKey>('agenda');
   const [actionErr, setActionErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [newAgendaZh, setNewAgendaZh] = useState('');
@@ -73,17 +76,17 @@ export function MeetingDetail() {
     setCoreDone(false);
     setBundle(initialBundle());
 
-    const { meeting: m } = await fetchMeetingCore(meetingId);
+    const { meeting: m } = await fetchMeetingCore(meetingId, currentPropertyId || undefined);
     setBundle((prev) => ({ ...prev, meeting: m }));
     setCoreDone(true);
 
     if (!m) return;
 
     setExtrasLoading(true);
-    const ex = await fetchMeetingExtras(meetingId);
+    const ex = await fetchMeetingExtras(meetingId, m.property_id);
     setBundle((prev) => (prev.meeting ? { ...prev, ...ex } : prev));
     setExtrasLoading(false);
-  }, [meetingId, user]);
+  }, [meetingId, user, currentPropertyId]);
 
   useEffect(() => {
     void load();
@@ -104,6 +107,7 @@ export function MeetingDetail() {
     setBusy(true);
     setActionErr(null);
     const { voteId, error } = await createVote({
+      propertyId: meeting.property_id,
       meetingId: meeting.id,
       agendaItemId: agenda.id,
       voteRule: (agenda.vote_rule as 'simple_majority' | 'three_quarter' | 'unanimous' | null) || 'simple_majority',
@@ -119,28 +123,36 @@ export function MeetingDetail() {
   }
 
   async function handleOpenVote(voteId: string) {
+    if (!meeting) return;
     setBusy(true);
     setActionErr(null);
-    const { error } = await updateVote(voteId, { status: 'open', opens_at: new Date().toISOString() });
+    const { error } = await updateVote(voteId, meeting.property_id, {
+      status: 'open',
+      opens_at: new Date().toISOString(),
+    });
     if (error) setActionErr(error.message);
     setBusy(false);
     await load();
   }
 
   async function handleCloseVote(voteId: string) {
+    if (!meeting) return;
     setBusy(true);
     setActionErr(null);
-    const { error } = await updateVote(voteId, { status: 'closed', closes_at: new Date().toISOString() });
+    const { error } = await updateVote(voteId, meeting.property_id, {
+      status: 'closed',
+      closes_at: new Date().toISOString(),
+    });
     if (error) setActionErr(error.message);
     setBusy(false);
     await load();
   }
 
   async function handleBallot(voteId: string, optionKey: string) {
-    if (!user) return;
+    if (!user || !meeting) return;
     setBusy(true);
     setActionErr(null);
-    const { error } = await castBallot(voteId, optionKey);
+    const { error } = await castBallot(voteId, optionKey, meeting.property_id);
     if (error && 'message' in error) setActionErr(String(error.message));
     setBusy(false);
     await load();
@@ -181,10 +193,6 @@ export function MeetingDetail() {
     setActionErr(null);
     const { error } = await sendMeetingInvitations(meeting.id, meeting.property_id);
     if (error) setActionErr(error.message);
-    else {
-      const r = await markInvitationsSent(meeting.id, meeting.property_id);
-      if (r.error) setActionErr(r.error.message);
-    }
     setBusy(false);
     await load();
   }
@@ -214,7 +222,7 @@ export function MeetingDetail() {
   if (!meeting) {
     return (
       <div className="min-h-screen bg-gray-50 p-6">
-        <button type="button" onClick={() => navigate('/voting')} className="text-emerald-800 flex items-center gap-1 mb-4">
+        <button type="button" onClick={() => navigate(listBackPath)} className="text-emerald-800 flex items-center gap-1 mb-4">
           <ArrowLeft size={18} /> {en ? 'Back' : '返回'}
         </button>
         <p className="text-center text-gray-700 text-lg">{en ? meetingUiStrings.notFound.en : meetingUiStrings.notFound.zh}</p>
@@ -224,24 +232,11 @@ export function MeetingDetail() {
 
   const inv = invitationSummary(bundle.invitations);
 
-  const tabBtn = (key: TabKey, zh: string, eng: string) => (
-    <button
-      key={key}
-      type="button"
-      onClick={() => setActiveTab(key)}
-      className={`flex-1 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-        activeTab === key ? 'border-[#1D9E75] text-[#1D9E75]' : 'border-transparent text-gray-600 hover:text-gray-900'
-      }`}
-    >
-      {en ? eng : zh}
-    </button>
-  );
-
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       <div className="bg-gradient-to-r from-[#1D9E75] to-[#178a66] text-white p-6">
         <div className="max-w-5xl mx-auto flex items-start gap-3">
-          <button type="button" onClick={() => navigate('/voting')} className="hover:bg-white/20 p-2 rounded-lg shrink-0">
+          <button type="button" onClick={() => navigate(listBackPath)} className="hover:bg-white/20 p-2 rounded-lg shrink-0">
             <ArrowLeft size={22} />
           </button>
           <div className="min-w-0">
@@ -270,23 +265,14 @@ export function MeetingDetail() {
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-4">
-        <div className="bg-white rounded-t-xl border border-gray-200 border-b-0 flex overflow-x-auto">
-          {tabBtn('agenda', '议程 & 投票', 'Agenda & voting')}
-          {tabBtn('invites', '邀请管理', 'Invitations')}
-          {tabBtn('resolutions', '决议', 'Resolutions')}
-        </div>
-      </div>
-
-      <div className="max-w-5xl mx-auto p-4 sm:p-6">
+      <div className="max-w-5xl mx-auto p-4 sm:p-6 space-y-8">
         {actionErr ? <p className="text-sm text-red-600 mb-4">{actionErr}</p> : null}
         {extrasLoading ? (
           <p className="text-xs text-gray-500 mb-4">{en ? 'Loading agenda, votes, and invitations…' : '正在加载议程、投票与邀请…'}</p>
         ) : null}
 
-        {activeTab === 'agenda' && (
-          <div className="space-y-6">
-            <section className="bg-white rounded-b-xl sm:rounded-xl border border-gray-200 p-6 shadow-sm">
+        {/* Layer 1 — meeting core */}
+        <section className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
               <h2 className="text-lg font-semibold text-gray-900 mb-4 border-b pb-2">
                 {en ? meetingUiStrings.sectionInfo.en : meetingUiStrings.sectionInfo.zh}
               </h2>
@@ -308,9 +294,10 @@ export function MeetingDetail() {
                   <dd>{meeting.notice_sent_at ? new Date(meeting.notice_sent_at).toLocaleString() : '—'}</dd>
                 </div>
               </dl>
-            </section>
+        </section>
 
-            <section className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+        {/* Layer 2 — agenda & voting */}
+        <section className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
               <h2 className="text-lg font-semibold text-gray-900 mb-4 border-b pb-2">
                 {en ? meetingUiStrings.sectionAgenda.en : meetingUiStrings.sectionAgenda.zh}
               </h2>
@@ -425,7 +412,9 @@ export function MeetingDetail() {
                   );
                 })}
                 {bundle.agendaItems.length === 0 && (
-                  <p className="text-gray-600 text-sm">{en ? 'No agenda items.' : '暂无议程。'}</p>
+                  <p className="text-gray-600 text-sm">
+                    {en ? 'No agenda items yet. Add items below when you have access.' : '暂无议程。有权限时可在下方添加。'}
+                  </p>
                 )}
 
                 {isStaff && propertyIdForAgenda && (
@@ -466,16 +455,22 @@ export function MeetingDetail() {
                   </form>
                 )}
               </div>
-            </section>
-          </div>
-        )}
+        </section>
 
-        {activeTab === 'invites' && (
-          <section className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+        {/* Layer 3 — invitations & resolutions */}
+        <section className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm space-y-8">
+          <div>
             <h2 className="text-lg font-semibold text-gray-900 mb-4 border-b pb-2 flex items-center gap-2">
               <Mail size={18} />
               {en ? meetingUiStrings.sectionInvite.en : meetingUiStrings.sectionInvite.zh}
             </h2>
+            {bundle.invitations.length === 0 ? (
+              <p className="text-sm text-gray-600 mb-4">
+                {en
+                  ? 'No invitations recorded for this meeting yet. Summary below will update when invites exist.'
+                  : '暂无邀请记录。有邀请后下方统计会更新。'}
+              </p>
+            ) : null}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm mb-4">
               <div>
                 <p className="text-gray-500">{en ? 'Total' : '邀请数'}</p>
@@ -518,14 +513,14 @@ export function MeetingDetail() {
                 )}
               </div>
             )}
-          </section>
-        )}
+          </div>
 
-        {activeTab === 'resolutions' && (
-          <section className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+          <div className="border-t border-gray-100 pt-8">
             <h2 className="text-lg font-semibold text-gray-900 mb-4 border-b pb-2">{en ? 'Resolutions' : '决议'}</h2>
             {bundle.resolutions.length === 0 ? (
-              <p className="text-sm text-gray-600">{en ? 'No resolutions yet.' : '暂无决议（可后续接入）。'}</p>
+              <p className="text-sm text-gray-600">
+                {en ? 'No resolutions recorded yet.' : '暂无决议记录。'}
+              </p>
             ) : (
               <ul className="space-y-3 text-sm">
                 {bundle.resolutions.map((r) => (
@@ -539,8 +534,8 @@ export function MeetingDetail() {
                 ))}
               </ul>
             )}
-          </section>
-        )}
+          </div>
+        </section>
       </div>
     </div>
   );

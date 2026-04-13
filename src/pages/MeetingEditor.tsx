@@ -49,7 +49,7 @@ export function MeetingEditor() {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      const bundle = await getMeetingDetail(meetingId);
+      const bundle = await getMeetingDetail(meetingId, currentPropertyId);
       if (cancelled) return;
       const m = bundle.meeting;
       if (!m) {
@@ -125,7 +125,7 @@ export function MeetingEditor() {
         setErr(error?.message ?? (en ? 'Create failed.' : '创建失败。'));
         return;
       }
-      navigate(`/voting/${id}`);
+      navigate(`/meetings/${id}`);
       return;
     }
 
@@ -144,7 +144,7 @@ export function MeetingEditor() {
       setErr(error.message);
       return;
     }
-    navigate(`/voting/${meetingId}`);
+    navigate(`/meetings/${meetingId}`);
   }
 
   if (!user) {
@@ -165,7 +165,7 @@ export function MeetingEditor() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
-      <Link to="/voting" className="mb-6 inline-flex items-center gap-1 text-sm font-medium text-emerald-800 hover:underline">
+      <Link to="/meetings" className="mb-6 inline-flex items-center gap-1 text-sm font-medium text-emerald-800 hover:underline">
         <ChevronLeft className="size-4" />
         {en ? 'Meetings' : '会议'}
       </Link>
