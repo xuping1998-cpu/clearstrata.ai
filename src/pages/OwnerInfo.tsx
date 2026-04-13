@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams, useLocation } from 'react-router-dom';
 import { User, Receipt, FileText, UserCog, Megaphone, Users } from 'lucide-react';
 import { useProperty } from '../contexts/PropertyContext';
+import { canEditPropertyMemberRoles } from '../lib/propertyPermissions';
+import { useLanguage } from '../contexts/LanguageContext';
 import { BackButton } from '../components/BackButton';
 import { MyProfileTab } from './owner-info/MyProfileTab';
 import { LedgerTab } from './owner-info/LedgerTab';
@@ -16,6 +18,7 @@ interface TabConfig {
   key: TabType;
   label: string;
   icon: React.ReactNode;
+  /** Management tabs: only for staff (non-owner roles in this property). */
   councilOnly?: boolean;
 }
 
@@ -29,14 +32,13 @@ const tabs: TabConfig[] = [
 ];
 
 export function OwnerInfo() {
-  const { currentRole, currentPropertyId, isDemoMode } = useProperty();
+  const { language } = useLanguage();
+  const { currentRole, currentPropertyId, isDemoMode, propertyHasManagementStaff } = useProperty();
   const [searchParams] = useSearchParams();
   const location = useLocation();
-  const canManageRestrictedTabs =
-    currentRole === 'council' ||
-    currentRole === 'admin' ||
-    currentRole === 'property_admin' ||
-    currentRole === 'manager';
+  const isStaffInProperty = canManageUsersOnProperty(currentRole);
+
+  const canManageRestrictedTabs = isStaffInProperty;
 
   const tabKeys = useMemo(() => tabs.map((x) => x.key), []);
   const [activeTab, setActiveTab] = useState<TabType>('profile');
@@ -89,6 +91,18 @@ export function OwnerInfo() {
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-gray-900">业主信息</h1>
         <p className="text-gray-600 mt-2">管理您的资料、单元信息和账户详情</p>
+        {currentPropertyId &&
+          propertyHasManagementStaff === false &&
+          !isStaffForUserMgmt && (
+            <div
+              role="alert"
+              className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+            >
+              {language === 'en'
+                ? 'This property has no management role assigned (no admin, council, or manager in property members). Ask your strata to restore roles in the database or promote staff under User Management.'
+                : '系统无管理角色：当前物业在成员表中没有管理员、业委会或物业经理。请联系业委会或通过数据库恢复角色，或由已有权限人员在「用户管理」中提升职员。'}
+            </div>
+          )}
       </div>
 
       <div className="mb-6 border-b border-gray-200 overflow-x-auto">

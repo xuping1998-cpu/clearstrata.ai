@@ -9,6 +9,7 @@ import { samePropertyId } from '../../lib/propertyIdMatch';
 import type { UserRole } from '../../lib/supabase';
 import { supabase } from '../../lib/supabase';
 import { sendJoinDecisionEmail } from '../../lib/sendJoinDecisionEmail';
+import { logPropertyEntryApproveResult } from '../../lib/propertyEntryGateLog';
 import { BackButton } from '../../components/BackButton';
 
 /**
@@ -55,6 +56,18 @@ function friendlyReviewFailure(code: string | undefined, en: boolean): string {
     forbidden: ['You do not have permission to do this.', '您没有权限执行此操作。'],
     not_authenticated: ['Please sign in again.', '请重新登录。'],
     invalid_reviewer: ['Session mismatch. Please sign in again.', '登录状态异常，请重新登录后再试。'],
+    unit_already_bound: [
+      'This unit is already linked to another account.',
+      '该房号已绑定其他用户，无法重复绑定。',
+    ],
+    missing_unit_number: [
+      'A unit number is required before approval.',
+      '审批前请填写房号（或在申请中提供房号）。',
+    ],
+    applicant_not_found: [
+      'No user account matches this email yet.',
+      '未找到与该邮箱对应的用户账号（需先注册并完成邮箱验证）。',
+    ],
   };
   const row = table[c];
   if (row) return en ? row[0] : row[1];
@@ -75,7 +88,7 @@ export default function AdminJoinRequests() {
   const { language, t } = useLanguage();
   const en = language === 'en';
   const location = useLocation();
-  const { ready, currentPropertyId, roleInProperty, memberships } = useProperty();
+  const { ready, currentPropertyId, roleInProperty, memberships, refreshMemberships } = useProperty();
 
   /** samePropertyId 对齐 PropertyContext，避免 UUID 大小写导致角色丢失 */
   const effectiveRole: UserRole | null = useMemo(() => {
@@ -84,7 +97,7 @@ export default function AdminJoinRequests() {
     return hit?.role ?? null;
   }, [currentPropertyId, memberships]);
 
-  /** 审核权限：以当前物业角色为准（优先 roleInProperty，其次 membership 命中） */
+  /** 审核权限：仅 `property_members.role`（优先 roleInProperty，其次 membership 命中） */
   const reviewRole: UserRole | null = roleInProperty ?? effectiveRole;
   const canReview = canReviewJoinRequestsAsStaff(reviewRole);
 
@@ -170,8 +183,6 @@ export default function AdminJoinRequests() {
       p_reviewer_id: user.id,
       p_unit_number: unit,
     });
-    console.log('approve_join_request data:', data);
-    console.log('approve_join_request error:', error);
     setActingId(null);
     if (error) {
       console.error('approve_join_request error:', error);
@@ -188,7 +199,18 @@ export default function AdminJoinRequests() {
       membership_created?: boolean;
       user_linked?: boolean;
       message?: string;
+      target_email?: string | null;
+      unit_no?: string | null;
+      residents_outcome?: string | null;
+      property_members_inserted?: boolean;
+      property_id?: string | null;
     };
+    logPropertyEntryApproveResult({
+      reviewerId: user.id,
+      data,
+      unitNoFallback: unit,
+    });
+
     if (row.membership_created === true) {
       setSuccessBanner(
         en
@@ -211,6 +233,7 @@ export default function AdminJoinRequests() {
       setSuccessBanner(en ? 'Application approved.' : '已通过申请');
     }
     void loadJoinRequests();
+    void refreshMemberships();
     void sendJoinDecisionEmail({
       joinRequestId: id,
       decision: 'approved',
@@ -354,6 +377,29 @@ export default function AdminJoinRequests() {
       {successBanner && (
         <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
           {successBanner}
+        </div>
+      )}
+
+      {(reviewRole === 'admin' || reviewRole === 'council') && (
+        <div className="mb-4 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950">
+          {en ? (
+            <>
+              Pending{' '}
+              <span className="font-medium">property_members</span> approvals (new owners) are on{' '}
+              <Link to="/owner-info?tab=users" className="font-medium text-[#1D9E75] hover:underline">
+                Owner info → User management
+              </Link>
+              .
+            </>
+          ) : (
+            <>
+              在{' '}
+              <Link to="/owner-info?tab=users" className="font-medium text-[#1D9E75] hover:underline">
+                业主信息 → 用户管理
+              </Link>{' '}
+              处理 <span className="font-medium">property_members</span> 待审批（pending）成员。
+            </>
+          )}
         </div>
       )}
 

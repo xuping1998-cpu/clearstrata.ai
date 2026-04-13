@@ -12,6 +12,10 @@ import { useLocation, useSearchParams } from 'react-router-dom';
 import { supabase, type UserRole } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 import { samePropertyId } from '../lib/propertyIdMatch';
+import {
+  canEditPropertyMemberRoles,
+  canReviewJoinRequestsAsStaff,
+} from '../lib/propertyPermissions';
 
 /** Primary storage key (existing installs). */
 const STORAGE_KEY = 'clearstrata-current-property-id';
@@ -136,12 +140,17 @@ interface PropertyContextValue {
   isDemoMode: boolean;
   /** Set when isDemoMode (e.g. BCS3736). */
   guestPropertyCode: string | null;
+  /**
+   * Whether the current property has any active staff (admin/council/manager/property_admin).
+   * `null` if unknown (loading or RPC error). Filled only for logged-in, non-demo context.
+   */
+  propertyHasManagementStaff: boolean | null;
 }
 
 const PropertyContext = createContext<PropertyContextValue | undefined>(undefined);
 
 export function PropertyProvider({ children }: { children: ReactNode }) {
-  const { user, session } = useAuth();
+  const { user, session, profile } = useAuth();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const guestQuery = searchParams.get('guest');
@@ -166,12 +175,14 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
   const [isGuest, setIsGuest] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(() => Boolean(readDemoLocalState()));
   const [guestPropertyCode, setGuestPropertyCodeState] = useState<string | null>(() => readDemoLocalState()?.code ?? null);
+  const [propertyHasManagementStaff, setPropertyHasManagementStaff] = useState<boolean | null>(null);
 
   const loadMemberships = useCallback(async () => {
     if (!user?.id) {
       setMemberships([]);
       setCurrentPropertyIdState(null);
       setNeedsPropertyChoice(false);
+      setPropertyHasManagementStaff(null);
       setReady(true);
       return;
     }
@@ -187,6 +198,7 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
       setMemberships([]);
       setCurrentPropertyIdState(null);
       setNeedsPropertyChoice(false);
+      setPropertyHasManagementStaff(null);
       setReady(true);
       return;
     }
@@ -220,6 +232,7 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
     if (mems.length === 0) {
       setCurrentPropertyIdState(null);
       setNeedsPropertyChoice(false);
+      setPropertyHasManagementStaff(null);
       setReady(true);
       return;
     }
@@ -235,6 +248,21 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
       membershipsCount: mems.length,
       userId: user.id,
     });
+
+    if (chosen) {
+      const { data: staffOk, error: staffRpcErr } = await supabase.rpc('property_has_management_staff', {
+        p_property_id: chosen,
+      });
+      if (staffRpcErr) {
+        console.warn('property_has_management_staff', staffRpcErr);
+        setPropertyHasManagementStaff(null);
+      } else {
+        setPropertyHasManagementStaff(staffOk === true);
+      }
+    } else {
+      setPropertyHasManagementStaff(null);
+    }
+
     setReady(true);
   }, [user?.id]);
 
@@ -254,6 +282,7 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
         setIsDemoMode(true);
         setIsGuest(false);
         setNeedsPropertyChoice(false);
+        setPropertyHasManagementStaff(null);
         setReady(true);
         return;
       }
@@ -270,6 +299,7 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
         setIsGuest(false);
       }
       setNeedsPropertyChoice(false);
+      setPropertyHasManagementStaff(null);
       setReady(true);
       return;
     }
@@ -351,6 +381,20 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
     return hit?.role ?? null;
   }, [currentPropertyId, memberships]);
 
+  useEffect(() => {
+    const currentRole = roleInProperty;
+    const canReview = canReviewJoinRequestsAsStaff(roleInProperty);
+    const canManageUsers = canEditPropertyMemberRoles(roleInProperty);
+    console.log('current role:', currentRole);
+    console.log('property permission debug', {
+      currentPropertyId,
+      currentUserEmail: profile?.email ?? null,
+      currentRole,
+      canReview,
+      canManageUsers,
+    });
+  }, [roleInProperty, currentPropertyId, profile?.email]);
+
   const value = useMemo<PropertyContextValue>(
     () => ({
       ready,
@@ -366,6 +410,7 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
       isGuest,
       isDemoMode,
       guestPropertyCode,
+      propertyHasManagementStaff,
     }),
     [
       ready,
@@ -378,6 +423,7 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
       isGuest,
       isDemoMode,
       guestPropertyCode,
+      propertyHasManagementStaff,
     ],
   );
 

@@ -68,13 +68,43 @@ export function canReviewJoinRequestsFromContext(
   return memberships.some((m) => canReviewJoinRequests(m.role));
 }
 
-/** Core nav “审核申请”: property_admin, council, manager only (reuses canReviewJoinRequests, excludes legacy admin). */
-const JOIN_REVIEW_NAV_ROLES: ReadonlySet<string> = new Set(['property_admin', 'council', 'manager']);
+/**
+ * Core nav “审核申请”: `property_members.role` only — admin, council, property_admin, manager.
+ * (Admin on the property must see the same entry as council.)
+ */
+const JOIN_REVIEW_NAV_ROLES: ReadonlySet<string> = new Set([
+  'admin',
+  'council',
+  'property_admin',
+  'manager',
+]);
 
 export function canShowJoinRequestReviewNav(role: UserRole | null | undefined): boolean {
   if (!canReviewJoinRequests(role)) return false;
   const r = normalizeRoleKey(role);
   return JOIN_REVIEW_NAV_ROLES.has(r);
+}
+
+/**
+ * User directory / owner-info “用户管理”：可审核、改角色、成员管理（非 owner）。
+ * Based solely on `property_members.role`.
+ */
+export function canManageUsersOnProperty(role: UserRole | null | undefined): boolean {
+  const r = normalizeRoleKey(role);
+  return (
+    r === 'admin' ||
+    r === 'council' ||
+    r === 'property_admin' ||
+    r === 'manager'
+  );
+}
+
+/**
+ * 用户目录中的「审核 / 修改角色 / 用户管理」Tab：仅 admin、council、物业管理员（不含 manager，与 Edge 限制一致）。
+ */
+export function canEditPropertyMemberRoles(role: UserRole | null | undefined): boolean {
+  const r = normalizeRoleKey(role);
+  return r === 'admin' || r === 'council' || r === 'property_admin';
 }
 
 export function canShowJoinRequestReviewNavFromContext(

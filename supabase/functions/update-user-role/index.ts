@@ -11,6 +11,8 @@ const corsHeaders = {
 type Body = {
   user_id?: string;
   role?: string;
+  /** Required: role change is applied to this row only (`property_id` + `user_id`). */
+  property_id?: string;
 };
 
 type ProfileRole = "owner" | "council" | "admin" | "manager";
@@ -23,6 +25,16 @@ function mapToProfileRole(meta: string): ProfileRole {
   if (meta === "manager") return "manager";
   return "owner";
 }
+
+/** `property_members.role` (must match public.user_role). */
+function mapMetaToPropertyMemberRole(meta: string): string {
+  if (meta === "council") return "council";
+  if (meta === "admin") return "admin";
+  if (meta === "manager") return "manager";
+  return "owner";
+}
+
+type PmRole = string;
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -67,11 +79,23 @@ Deno.serve(async (req: Request) => {
 
   const userId = body.user_id?.trim();
   const metaRole = body.role?.trim();
-  if (!userId || !metaRole || !META_ROLES.has(metaRole)) {
+  const propertyId = body.property_id?.trim();
+
+  if (!userId) {
+    return new Response(JSON.stringify({ error: "user_id is required" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  if (!metaRole || !META_ROLES.has(metaRole)) {
     return new Response(
-      JSON.stringify({
-        error: "user_id and valid role (user|council|admin|manager) required",
-      }),
+      JSON.stringify({ error: "valid role (user|council|admin|manager) required" }),
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+  if (!propertyId) {
+    return new Response(
+      JSON.stringify({ error: "property_id is required (property_members update is scoped by property + user)" }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
@@ -89,21 +113,112 @@ Deno.serve(async (req: Request) => {
   }
 
   const adminClient = createClient(supabaseUrl, serviceKey);
+  const callerUid = userData.user.id;
 
-  const { data: caller, error: callerErr } = await adminClient
+  const { data: callerProfile, error: callerProfErr } = await adminClient
     .from("profiles")
     .select("role")
-    .eq("id", userData.user.id)
+    .eq("id", callerUid)
     .maybeSingle();
 
-  if (callerErr || !caller?.role) {
+  if (callerProfErr || !callerProfile?.role) {
     return new Response(JSON.stringify({ error: "Forbidden" }), {
       status: 403,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 
-  if (caller.role !== "council" && caller.role !== "admin") {
+  const { data: callerPm, error: callerPmErr } = await adminClient
+    .from("property_members")
+    .select("role")
+    .eq("property_id", propertyId)
+    .eq("user_id", callerUid)
+    .eq("status", "active")
+    .maybeSingle();
+
+  if (callerPmErr) {
+    console.error("[update-user-role] callerPm", callerPmErr);
+    return new Response(JSON.stringify({ error: "Forbidden" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const callerPmRole = callerPm?.role as PmRole | undefined;
+  const isGlobalAdmin = callerProfile.role === "admin";
+
+  const callerMayManageProperty =
+    isGlobalAdmin ||
+    callerPmRole === "admin" ||
+    callerPmRole === "property_admin" ||
+    callerPmRole === "council" ||
+    callerPmRole === "manager";
+
+  if (!callerMayManageProperty) {
+    return new Response(JSON.stringify({ error: "Forbidden" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const { data: targetPm, error: targetPmErr } = await adminClient
+    .from("property_members")
+    .select("role")
+    .eq("property_id", propertyId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (targetPmErr || !targetPm?.role) {
+    return new Response(JSON.stringify({ error: "User is not a member of this property" }), {
+      status: 404,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const targetPmRole = targetPm.role as PmRole;
+  const nextPmRole = mapMetaToPropertyMemberRole(metaRole);
+
+  if (callerPmRole === "manager" && !isGlobalAdmin) {
+    return new Response(JSON.stringify({ error: "Forbidden" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  if (isGlobalAdmin || callerPmRole === "admin") {
+    // property-scoped admin or global admin: full role control on this property
+  } else if (callerPmRole === "property_admin") {
+    if (metaRole === "admin") {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (metaRole === "manager") {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+  } else if (callerPmRole === "council") {
+    const councilMayAssignManager = metaRole === "manager" && targetPmRole === "owner";
+    if (metaRole !== "user" && metaRole !== "council" && !councilMayAssignManager) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (
+      targetPmRole === "admin" ||
+      targetPmRole === "manager" ||
+      targetPmRole === "property_admin"
+    ) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+  } else if (callerPmRole === "manager") {
     return new Response(JSON.stringify({ error: "Forbidden" }), {
       status: 403,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -123,29 +238,19 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  if (caller.role === "council") {
-    if (metaRole !== "user" && metaRole !== "council") {
-      return new Response(JSON.stringify({ error: "Forbidden" }), {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-    if (targetProfile.role === "admin" || targetProfile.role === "manager") {
-      return new Response(JSON.stringify({ error: "Forbidden" }), {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-  }
-
-  if (metaRole === "admin" && caller.role !== "admin") {
+  if (metaRole === "admin" && !isGlobalAdmin) {
     return new Response(JSON.stringify({ error: "Forbidden" }), {
       status: 403,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 
-  if (metaRole === "manager" && caller.role !== "admin") {
+  const councilPromotingOwnerToManager =
+    metaRole === "manager" &&
+    callerPmRole === "council" &&
+    targetPmRole === "owner";
+
+  if (metaRole === "manager" && !isGlobalAdmin && !councilPromotingOwnerToManager) {
     return new Response(JSON.stringify({ error: "Forbidden" }), {
       status: 403,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -190,6 +295,20 @@ Deno.serve(async (req: Request) => {
   if (profErr) {
     console.error("[update-user-role] profile update failed:", profErr);
     return new Response(JSON.stringify({ error: profErr.message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const { error: pmErr } = await adminClient
+    .from("property_members")
+    .update({ role: nextPmRole })
+    .eq("property_id", propertyId)
+    .eq("user_id", userId);
+
+  if (pmErr) {
+    console.error("[update-user-role] property_members update failed:", pmErr);
+    return new Response(JSON.stringify({ error: pmErr.message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

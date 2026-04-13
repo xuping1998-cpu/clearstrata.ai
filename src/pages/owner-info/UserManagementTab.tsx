@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { Printer, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -8,6 +9,7 @@ import { withProperty } from '../../lib/supabaseTenant';
 import { invokeUpdateUserRole } from '../../lib/invokeUpdateUserRole';
 import { type AppMetadataRole, profileRoleToMetadataRole } from '../../lib/userRoleMetadata';
 import { UserCard } from '../../components/UserCard';
+import { canEditPropertyMemberRoles } from '../../lib/propertyPermissions';
 
 interface Profile {
   id: string;
@@ -17,11 +19,6 @@ interface Profile {
   phone?: string;
   role: UserRole;
   status?: ProfileAccountStatus;
-}
-
-interface OwnerInfoRecord {
-  user_id: string;
-  unit_number: string;
 }
 
 interface UserWithDetails extends Profile {
@@ -34,13 +31,31 @@ interface ResidentBrief {
   user_id: string;
   status: string;
   unit_no: string;
+  name_en?: string | null;
+  name_zh?: string | null;
   updated_at?: string;
+}
+
+/** Display name: profiles zh/en first, then residents name fields, then email. */
+function resolveDirectoryDisplayName(
+  p: Profile | null | undefined,
+  r: ResidentBrief | null | undefined,
+  emailFallback: string,
+): string {
+  const fromProfile =
+    (p?.full_name_zh && String(p.full_name_zh).trim()) ||
+    (p?.full_name_en && String(p.full_name_en).trim()) ||
+    '';
+  const fromResident =
+    (r?.name_zh && String(r.name_zh).trim()) || (r?.name_en && String(r.name_en).trim()) || '';
+  return fromProfile || fromResident || (emailFallback && emailFallback.trim()) || '—';
 }
 
 /** Per-property membership (role/status) from `property_members`. */
 interface PropertyMemberMeta {
   role: UserRole;
   status: string;
+  unit_number?: string | null;
 }
 
 /** Lowercase canonical UUID string, or null if invalid (avoids PostgREST 400 on bad filter values). */
@@ -61,19 +76,24 @@ function alertThenReload(message: string) {
 export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) {
   const { language, t } = useLanguage();
   const { profile, user, refreshProfile } = useAuth();
-  const { currentPropertyId, roleInProperty: currentRole } = useProperty();
+  const { currentPropertyId, roleInProperty: currentRole, refreshMemberships } = useProperty();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [memberMetaByUserId, setMemberMetaByUserId] = useState<Record<string, PropertyMemberMeta>>({});
   const [residentByUserId, setResidentByUserId] = useState<Record<string, ResidentBrief>>({});
-  const [ownerInfos, setOwnerInfos] = useState<OwnerInfoRecord[]>([]);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<Profile>>({});
   const [updating, setUpdating] = useState<string | null>(null);
   const [activationBusy, setActivationBusy] = useState<string | null>(null);
+  const [membershipReviewBusy, setMembershipReviewBusy] = useState<string | null>(null);
 
-  const canSelectRoles =
-    !readOnly && (profile?.role === 'admin' || currentRole === 'property_admin');
-  const canModerateActivation = !readOnly && profile?.role === 'admin';
+  /** All gates use `property_members.role` for this property (`currentRole`). */
+  const canEditMembers = canEditPropertyMemberRoles(currentRole);
+  const canSelectRoles = !readOnly && canEditMembers;
+  const canModerateActivation = !readOnly && canEditMembers;
+  const canShowStaffToolbar = !readOnly && canEditMembers;
+  /** Pending membership approval: admin / council only (not property_admin). */
+  const canReviewPending =
+    !readOnly && (currentRole === 'admin' || currentRole === 'council');
 
   const loadData = useCallback(async () => {
     if (!currentPropertyId) return;
@@ -86,86 +106,141 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
     });
 
     const { data: pm, error: pmErr } = await withProperty(
-      supabase.from('property_members').select('user_id, role, status') as any,
+      supabase.from('property_members').select('user_id, role, status, unit_number') as any,
       currentPropertyId,
     );
 
     if (pmErr) {
       console.error('[UserManagementTab] property_members error', pmErr);
     }
-    const pmRowsRaw = (pm ?? []) as Array<{ user_id: string; role: string; status: string }>;
-    const pmRows = readOnly
-      ? pmRowsRaw.filter((r) => String(r.status).toLowerCase() !== 'suspended')
-      : pmRowsRaw;
-    console.log('[UserManagementTab] property_members count', pmRows.length, pmErr ?? '');
+    const pmRowsRaw = (pm ?? []) as Array<{
+      user_id: string;
+      role: string;
+      status: string;
+      unit_number?: string | null;
+    }>;
+    console.log('[UserManagementTab] property_members count (raw)', pmRowsRaw.length, pmErr ?? '');
 
-    const meta: Record<string, PropertyMemberMeta> = {};
-    for (const row of pmRows) {
+    const metaFull: Record<string, PropertyMemberMeta> = {};
+    for (const row of pmRowsRaw) {
       if (!row.user_id) continue;
-      meta[row.user_id] = { role: row.role as UserRole, status: String(row.status ?? '') };
+      metaFull[row.user_id] = {
+        role: row.role as UserRole,
+        status: String(row.status ?? ''),
+        unit_number: row.unit_number ?? null,
+      };
     }
-    setMemberMetaByUserId(meta);
+    setMemberMetaByUserId(metaFull);
 
-    const userIds = [...new Set(pmRows.map((p) => p.user_id).filter(Boolean))];
-    if (userIds.length === 0) {
-      setProfiles([]);
-      setOwnerInfos([]);
-      setResidentByUserId({});
-      console.log('[UserManagementTab] no member user_ids after property_members query');
-      return;
-    }
+    const resRes = await withProperty(
+      supabase
+        .from('residents')
+        .select('id, user_id, status, unit_no, name_en, name_zh, updated_at') as any,
+      currentPropertyId,
+    );
 
-    const [profRes, ownRes, resRes] = await Promise.all([
-      supabase.from('profiles').select('*').in('id', userIds).order('full_name_en'),
-      withProperty(
-        supabase.from('owner_info').select('user_id, unit_number').order('unit_number') as any,
-        currentPropertyId,
-      ),
-      withProperty(
-        supabase.from('residents').select('id, user_id, status, unit_no, updated_at') as any,
-        currentPropertyId,
-      ),
-    ]);
-
-    if (profRes.error) {
-      console.error('[UserManagementTab] profiles error', profRes.error);
-    }
-    if (ownRes.error) {
-      console.error('[UserManagementTab] owner_info error', ownRes.error);
-    }
     if (resRes.error) {
       console.error('[UserManagementTab] residents error', resRes.error);
     }
 
-    const profileData = profRes.data ?? [];
-    const ownerData = ownRes.data ?? [];
-    const resData = resRes.data ?? [];
+    const resData = (resRes.data ?? []) as ResidentBrief[];
 
-    console.log('[UserManagementTab] fetched counts', {
-      profiles: profileData.length,
-      owner_info: ownerData.length,
-      residents: resData.length,
-    });
-
-    const merged = profileData.map((row: Profile) => ({
-      ...row,
-      role: (meta[row.id]?.role as UserRole) ?? row.role,
-    }));
-    setProfiles(merged);
-    setOwnerInfos(ownerData as OwnerInfoRecord[]);
     const rmap: Record<string, ResidentBrief> = {};
-    for (const row of resData as ResidentBrief[]) {
+    for (const row of resData) {
       rmap[row.user_id] = {
         id: row.id,
         user_id: row.user_id,
         status: row.status,
         unit_no: row.unit_no,
+        name_en: row.name_en,
+        name_zh: row.name_zh,
         updated_at: row.updated_at,
       };
     }
+
+    /** Member list is driven only by `property_members` (trigger keeps it aligned with residents). */
+    const pmUserIds = new Set(
+      pmRowsRaw
+        .filter((row) => {
+          if (!row.user_id) return false;
+          if (readOnly && String(row.status).toLowerCase() === 'suspended') return false;
+          return true;
+        })
+        .map((row) => row.user_id),
+    );
+    const userIds = [...pmUserIds];
+
+    if (userIds.length === 0) {
+      setProfiles([]);
+      setResidentByUserId({});
+      console.log('[UserManagementTab] merged user id set empty');
+      return;
+    }
+
+    const profRes = await supabase
+      .from('profiles')
+      .select(
+        'id, full_name_en, full_name_zh, email, phone, role, status, preferred_language, created_at, updated_at',
+      )
+      .in('id', userIds)
+      .order('full_name_en');
+    if (profRes.error) {
+      console.error('[UserManagementTab] profiles error', profRes.error);
+    }
+    const profileData = (profRes.data ?? []) as Profile[];
+    const profileById = new Map(profileData.map((row) => [row.id, row]));
+
+    const merged: Profile[] = userIds.map((uid) => {
+      const p = profileById.get(uid);
+      const r = rmap[uid];
+      const m = metaFull[uid];
+      const email = (p?.email ?? '').trim();
+      const fzh = (p?.full_name_zh?.trim() || r?.name_zh?.trim() || '') as string;
+      const fen = (p?.full_name_en?.trim() || r?.name_en?.trim() || '') as string;
+      const fallback = resolveDirectoryDisplayName(p, r, email);
+      let full_name_zh = fzh;
+      let full_name_en = fen;
+      if (!fzh && !fen) {
+        full_name_zh = fallback;
+        full_name_en = fallback;
+      }
+      const base: Profile = p
+        ? {
+            ...p,
+            full_name_zh,
+            full_name_en,
+            role: (m?.role as UserRole) ?? p.role,
+          }
+        : {
+            id: uid,
+            full_name_zh,
+            full_name_en,
+            email: email || '—',
+            phone: '',
+            role: (m?.role as UserRole) ?? 'owner',
+          };
+      return base;
+    });
+
+    setProfiles(merged);
     setResidentByUserId(rmap);
-    console.log('[UserManagementTab] final merged users count', merged.length);
-  }, [currentPropertyId, user?.id, profile?.id, readOnly]);
+    console.log('[UserManagementTab] fetched counts', {
+      property_members: pmRowsRaw.length,
+      profiles: profileData.length,
+      residents: resData.length,
+      merged_users: merged.length,
+    });
+
+    const pendingPmCount = pmRowsRaw.filter(
+      (r) => String(r.status ?? '').toLowerCase() === 'pending',
+    ).length;
+    if (!readOnly && (currentRole === 'admin' || currentRole === 'council')) {
+      console.log('[PropertyMemberReview]', {
+        currentRole,
+        pendingUsersCount: pendingPmCount,
+      });
+    }
+  }, [currentPropertyId, user?.id, profile?.id, readOnly, currentRole]);
 
   useEffect(() => {
     if (profile && currentPropertyId) void loadData();
@@ -190,29 +265,102 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
       const r = residentByUserId[p.id];
       const unit = r?.unit_no ? ` · ${t('user_mgmt_unit')} ${r.unit_no}` : '';
       const pm = memberMetaByUserId[p.id];
-      const membership =
+      const memberStatusLabel =
         pm?.status && language === 'en'
-          ? ` · Membership: ${pm.status}`
+          ? `Status: ${pm.status}`
           : pm?.status
-            ? ` · 成员状态: ${pm.status}`
-            : '';
-      return `${roleName} · ${act}${unit}${membership}`;
+            ? `状态: ${pm.status}`
+            : language === 'en'
+              ? 'Status: —'
+              : '状态: —';
+      return `${roleName} · ${memberStatusLabel} · ${act}${unit}`;
     },
     [activationText, residentByUserId, memberMetaByUserId, t, language],
   );
 
+  const pendingMembershipProfiles = useMemo(
+    () =>
+      profiles.filter(
+        (p) => String(memberMetaByUserId[p.id]?.status ?? '').toLowerCase() === 'pending',
+      ),
+    [profiles, memberMetaByUserId],
+  );
+
   const sortedProfiles = useMemo(() => {
-    const copy = [...profiles];
+    let copy = [...profiles];
+    if (canReviewPending) {
+      copy = copy.filter(
+        (p) => String(memberMetaByUserId[p.id]?.status ?? '').toLowerCase() !== 'pending',
+      );
+    }
     copy.sort((a, b) => {
       const sa = residentByUserId[a.id]?.status;
       const sb = residentByUserId[b.id]?.status;
       const pa = sa === 'pending' ? 0 : 1;
       const pb = sb === 'pending' ? 0 : 1;
       if (pa !== pb) return pa - pb;
-      return a.full_name_en.localeCompare(b.full_name_en);
+      const da = resolveDirectoryDisplayName(a, residentByUserId[a.id], a.email);
+      const db = resolveDirectoryDisplayName(b, residentByUserId[b.id], b.email);
+      return da.localeCompare(db);
     });
     return copy;
-  }, [profiles, residentByUserId]);
+  }, [profiles, residentByUserId, canReviewPending, memberMetaByUserId]);
+
+  const reviewMembership = async (userId: string, action: 'approve' | 'suspend' | 'remove') => {
+    if (!canReviewPending || !currentPropertyId) return;
+    const uid = normalizeUuid(userId);
+    if (!uid) {
+      alert(language === 'en' ? 'Invalid user id.' : '用户 ID 无效。');
+      return;
+    }
+
+    const pendingCount = profiles.filter(
+      (p) => String(memberMetaByUserId[p.id]?.status ?? '').toLowerCase() === 'pending',
+    ).length;
+
+    setMembershipReviewBusy(uid);
+    console.log('[PropertyMemberReview]', {
+      currentRole,
+      pendingUsersCount: pendingCount,
+      approveTargetUserId: uid,
+    });
+
+    const pAction = action === 'approve' ? 'approve' : action === 'suspend' ? 'suspend' : 'remove';
+    const { data, error } = await supabase.rpc('review_property_member_membership' as any, {
+      p_property_id: currentPropertyId,
+      p_user_id: uid,
+      p_action: pAction,
+    });
+
+    console.log('[PropertyMemberReview] approve result', data);
+    if (error) {
+      console.error('[PropertyMemberReview] approve error', error);
+    }
+
+    setMembershipReviewBusy(null);
+
+    if (error) {
+      alert(
+        language === 'en'
+          ? `Request failed: ${error.message}`
+          : `操作失败：${error.message}`,
+      );
+      return;
+    }
+
+    const row = data as { ok?: boolean; error?: string } | null;
+    if (!row?.ok) {
+      alert(
+        language === 'en'
+          ? `Could not complete: ${row?.error ?? 'unknown'}`
+          : `无法完成：${row?.error ?? 'unknown'}`,
+      );
+      return;
+    }
+
+    await loadData();
+    await refreshMemberships();
+  };
 
   const startEdit = (user: Profile) => {
     if (readOnly) return;
@@ -264,7 +412,13 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
     if (current && profileRoleToMetadataRole(current.role) === metaRole) return;
 
     setUpdating(userId);
-    const { data, error } = await invokeUpdateUserRole(userId, metaRole);
+    if (!currentPropertyId) {
+      alert(language === 'en' ? 'No property selected.' : '未选择物业。');
+      setUpdating(null);
+      return;
+    }
+
+    const { data, error } = await invokeUpdateUserRole(userId, metaRole, currentPropertyId);
 
     if (error) {
       console.error('[UserManagementTab] update-user-role:', error);
@@ -285,6 +439,7 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
     }
 
     await loadData();
+    await refreshMemberships();
     if (profile?.id === userId) await refreshProfile();
     setUpdating(null);
   };
@@ -433,7 +588,7 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
       });
       const usersWithDetails: UserWithDetails[] = await Promise.all(
         profiles.map(async (user) => {
-          const ownerInfo = ownerInfos.find((info) => info.user_id === user.id);
+          const resRow = residentByUserId[user.id];
           let balance: number | undefined;
 
           if (user.role === 'owner') {
@@ -453,7 +608,7 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
             balance = latestTransaction?.balance as number | undefined;
           }
 
-          return { ...user, unit_number: ownerInfo?.unit_number, balance };
+          return { ...user, unit_number: resRow?.unit_no, balance };
         }),
       );
 
@@ -502,7 +657,11 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
       };
 
       const tableRows = usersWithDetails
-        .sort((a, b) => a.full_name_en.localeCompare(b.full_name_en))
+        .sort((a, b) =>
+          resolveDirectoryDisplayName(a, residentByUserId[a.id], a.email).localeCompare(
+            resolveDirectoryDisplayName(b, residentByUserId[b.id], b.email),
+          ),
+        )
         .map(
           (user) =>
             '<tr>' +
@@ -624,6 +783,22 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
                 : '当前物业下的成员与资料（只读）。'
               : t('user_mgmt_subtitle')}
           </p>
+          {canShowStaffToolbar && (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <Link
+                to="/admin/join-requests"
+                className="inline-flex items-center rounded-lg border border-[#1D9E75] bg-white px-3 py-1.5 text-sm font-medium text-[#1D9E75] hover:bg-emerald-50"
+              >
+                {language === 'en' ? 'Review' : '审核'}
+              </Link>
+              <span className="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm font-medium text-gray-700">
+                {language === 'en' ? 'Edit roles' : '修改角色'}
+              </span>
+              <span className="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm font-medium text-gray-700">
+                {language === 'en' ? 'Member admin' : '成员管理'}
+              </span>
+            </div>
+          )}
         </div>
         <button
           type="button"
@@ -634,10 +809,118 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
           {language === 'en' ? 'Print User List' : '打印用户列表'}
         </button>
       </div>
+
+      {pendingMembershipProfiles.length > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-4 space-y-3">
+          <h3 className="text-lg font-semibold text-amber-950">
+            {language === 'en' ? 'Pending members (property)' : '待审批成员（物业成员）'}
+          </h3>
+          <p className="text-sm text-amber-900/90">
+            {language === 'en'
+              ? 'These users have membership status pending on this property (property_members).'
+              : '以下用户在当前物业的 property_members 表中为待审批（pending）状态。'}
+          </p>
+          <div className="overflow-x-auto rounded-lg border border-amber-100 bg-white">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 bg-gray-50 text-left">
+                  <th className="px-3 py-2 font-medium text-gray-700">
+                    {language === 'en' ? 'Name' : '姓名'}
+                  </th>
+                  <th className="px-3 py-2 font-medium text-gray-700">
+                    {language === 'en' ? 'Email' : '邮箱'}
+                  </th>
+                  <th className="px-3 py-2 font-medium text-gray-700">
+                    {language === 'en' ? 'Unit' : '单元号'}
+                  </th>
+                  <th className="px-3 py-2 font-medium text-gray-700">
+                    {language === 'en' ? 'Role' : '角色'}
+                  </th>
+                  <th className="px-3 py-2 font-medium text-gray-700">
+                    {language === 'en' ? 'Status' : '状态'}
+                  </th>
+                  {canReviewPending && (
+                    <th className="px-3 py-2 font-medium text-gray-700">
+                      {language === 'en' ? 'Actions' : '操作'}
+                    </th>
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {pendingMembershipProfiles.map((row) => {
+                  const meta = memberMetaByUserId[row.id];
+                  const res = residentByUserId[row.id];
+                  const unit =
+                    (meta?.unit_number && String(meta.unit_number).trim()) ||
+                    (res?.unit_no && String(res.unit_no).trim()) ||
+                    '—';
+                  const displayName = resolveDirectoryDisplayName(row, res, row.email);
+                  const busy = membershipReviewBusy === row.id;
+                  return (
+                    <tr key={row.id} className="border-b border-gray-100 last:border-0">
+                      <td className="px-3 py-2 text-gray-900">{displayName}</td>
+                      <td className="px-3 py-2 text-gray-700">{row.email || '—'}</td>
+                      <td className="px-3 py-2 text-gray-700">{unit}</td>
+                      <td className="px-3 py-2 text-gray-700">{t(row.role)}</td>
+                      <td className="px-3 py-2 text-gray-700">{meta?.status ?? 'pending'}</td>
+                      {canReviewPending && (
+                        <td className="px-3 py-2">
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => void reviewMembership(row.id, 'approve')}
+                              className="inline-flex items-center gap-1 rounded-lg bg-green-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                            >
+                              {busy ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />}
+                              {language === 'en' ? 'Approve' : '审批通过'}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => void reviewMembership(row.id, 'suspend')}
+                              className="inline-flex items-center gap-1 rounded-lg bg-amber-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-amber-800 disabled:opacity-50"
+                            >
+                              {language === 'en' ? 'Reject (suspend)' : '拒绝（暂停）'}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => {
+                                const ok =
+                                  language === 'en'
+                                    ? window.confirm(
+                                        'Remove this pending membership? The user will lose access to this property.',
+                                      )
+                                    : window.confirm(
+                                        '确定移除该待审批成员？用户将失去本物业访问权限。',
+                                      );
+                                if (ok) void reviewMembership(row.id, 'remove');
+                              }}
+                              className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                            >
+                              <XCircle size={12} />
+                              {language === 'en' ? 'Reject (remove)' : '拒绝（移除）'}
+                            </button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       <div className="space-y-4">
         {sortedProfiles.map((user) => {
           const res = residentByUserId[user.id];
           const pending = res?.status === 'pending';
+          const pmPending =
+            String(memberMetaByUserId[user.id]?.status ?? '').toLowerCase() === 'pending';
+          const hideResidentActivationStrip = canReviewPending && pmPending;
           const busyResidentId = res?.id != null ? normalizeUuid(res.id) : null;
 
           return (
@@ -645,7 +928,7 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
               key={user.id}
               className="rounded-xl border border-gray-200 overflow-hidden bg-white shadow-sm"
             >
-              {pending && (
+              {pending && !hideResidentActivationStrip && (
                 <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-amber-50 border-b border-amber-100">
                   <span className="text-sm font-medium text-amber-900">
                     {t('user_mgmt_activation_pending')}
@@ -722,7 +1005,9 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
                         <option value="council">
                           {language === 'en' ? 'Council' : '业委会成员'}
                         </option>
-                        {profile?.role === 'admin' && (
+                        {(currentRole === 'admin' ||
+                          currentRole === 'property_admin' ||
+                          currentRole === 'council') && (
                           <option value="manager">
                             {language === 'en' ? 'Property Manager' : '物业经理'}
                           </option>

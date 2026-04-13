@@ -12,6 +12,7 @@ import {
   GUEST_PROPERTY_STORAGE_KEY,
   clearPublicDemoLocalStorage,
 } from '../contexts/PropertyContext';
+import { logPropertyEntrySubmitResult } from '../lib/propertyEntryGateLog';
 
 function persistCurrentPropertyId(propertyId: string) {
   try {
@@ -20,6 +21,44 @@ function persistCurrentPropertyId(propertyId: string) {
   } catch {
     /* ignore */
   }
+}
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Property for roster bind: URL propertyId → guest scan → propertyCode resolve → default. */
+async function resolveSignupPropertyIdAsync(): Promise<string> {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const pid = params.get('propertyId')?.trim();
+    if (pid && UUID_RE.test(pid)) return pid.toLowerCase();
+  } catch {
+    /* ignore */
+  }
+  try {
+    const gid = localStorage.getItem(GUEST_PROPERTY_STORAGE_KEY);
+    const g = gid?.trim();
+    if (g && UUID_RE.test(g)) return g.toLowerCase();
+  } catch {
+    /* ignore */
+  }
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('propertyCode')?.trim();
+    if (code) {
+      const { data, error } = await supabase.rpc('resolve_property_for_join_request', {
+        p_code: code,
+      });
+      if (!error && data != null) {
+        const rows = Array.isArray(data) ? data : [data];
+        const id = (rows[0] as { id?: string } | undefined)?.id;
+        if (id && UUID_RE.test(String(id))) return String(id).toLowerCase();
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return DEFAULT_PROPERTY_ID;
 }
 
 /** After scan-as-guest signup: bind stored property via invite (RLS-safe). */
@@ -190,21 +229,122 @@ export function Auth() {
           await supabase.from('profiles').update({ phone }).eq('id', user.id);
 
           const moveInRaw = moveInDateRef.current?.value?.trim() || '';
+          const propertyId = await resolveSignupPropertyIdAsync();
 
-          await supabase.from('residents').insert({
-            property_id: DEFAULT_PROPERTY_ID,
-            user_id: user.id,
-            unit_no: unitNumber,
-            name_en: fullNameEn,
-            name_zh: fullNameZh || null,
-            email,
-            phone,
-            move_in_date: moveInRaw || null,
-            language_pref: languagePref,
-            role: 'owner',
-            status: 'pending',
-            strata_fee_status: 'current',
+          const { data: joinData, error: joinErr } = await supabase.rpc('submit_join_request', {
+            p_property_id: propertyId,
+            p_requested_role: 'owner',
+            p_unit_number: unitNumber.trim(),
+            p_note: null,
+            p_full_name: fullNameEn.trim(),
+            p_email: email.trim().toLowerCase(),
+            p_phone: phone.trim() || null,
+            p_invite_code: null,
+            p_direct_invite_id: null,
+            p_inferred_role: null,
+            p_inferred_unit_number: null,
+            p_move_in_date: moveInRaw || null,
+            p_language_pref: languagePref,
           });
+
+          logPropertyEntrySubmitResult({
+            userId: user.id,
+            email: email.trim().toLowerCase(),
+            propertyId,
+            unitNo: unitNumber.trim(),
+            data: joinData,
+            error: joinErr,
+          });
+
+          if (joinErr) {
+            throw joinErr;
+          }
+
+          const jr = joinData as {
+            ok?: boolean;
+            success?: boolean;
+            error?: string;
+            message?: string;
+            message_zh?: string;
+            entry_path?: string;
+            property_id?: string;
+          } | null;
+
+          const jrOk = jr != null && (jr.ok === true || jr.success === true);
+
+          if (!jrOk) {
+            if (jr?.error === 'property_closed' || jr?.message_zh?.includes('公开')) {
+              throw new Error(
+                language === 'zh'
+                  ? '该物业当前不接受公开加入申请，请联系物业或业委会获取邀请。'
+                  : 'This property is not open for public join requests. Ask your strata for an invite.',
+              );
+            }
+            if (jr?.error === 'bad_property') {
+              throw new Error(
+                language === 'zh' ? '物业无效或不存在。' : 'Invalid or unknown property.',
+              );
+            }
+            if (jr?.error === 'already_member') {
+              if (jr.property_id) persistCurrentPropertyId(String(jr.property_id));
+              const demoClaimed = await claimPublicDemoPropertyAfterSignUp();
+              if (demoClaimed) {
+                navigate('/', { replace: true });
+                return;
+              }
+              const guestClaimed = await claimGuestStoredPropertyAfterSignUp();
+              if (guestClaimed) {
+                navigate('/', { replace: true });
+                return;
+              }
+              const claimedId = await claimPropertyFromUrlIfPresent();
+              if (claimedId) {
+                persistCurrentPropertyId(claimedId);
+                navigate('/', { replace: true });
+                return;
+              }
+              if (safeRedirectAfterAuth()) return;
+              navigate('/', { replace: true });
+              return;
+            }
+            throw new Error(
+              language === 'zh'
+                ? (jr?.message_zh as string) || '无法完成加入申请，请稍后再试。'
+                : (jr?.message as string) || 'Could not complete your join request. Please try again.',
+            );
+          }
+
+          if (jr.entry_path === 'auto_approved' && jr.property_id) {
+            persistCurrentPropertyId(String(jr.property_id));
+            const demoClaimed = await claimPublicDemoPropertyAfterSignUp();
+            if (demoClaimed) {
+              navigate('/', { replace: true });
+              return;
+            }
+            const guestClaimed = await claimGuestStoredPropertyAfterSignUp();
+            if (guestClaimed) {
+              navigate('/', { replace: true });
+              return;
+            }
+            const claimedId = await claimPropertyFromUrlIfPresent();
+            if (claimedId) {
+              persistCurrentPropertyId(claimedId);
+              navigate('/', { replace: true });
+              return;
+            }
+            if (safeRedirectAfterAuth()) return;
+            navigate('/', { replace: true });
+            return;
+          }
+
+          if (jr.entry_path === 'pending_submitted') {
+            navigate('/join/pending', { replace: true });
+            return;
+          }
+
+          if (jr.property_id) {
+            persistCurrentPropertyId(String(jr.property_id));
+          }
           const demoClaimed = await claimPublicDemoPropertyAfterSignUp();
           if (demoClaimed) {
             navigate('/', { replace: true });
@@ -222,6 +362,8 @@ export function Auth() {
             return;
           }
           if (safeRedirectAfterAuth()) return;
+          navigate('/join/pending', { replace: true });
+          return;
         }
       }
     } catch (err) {

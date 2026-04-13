@@ -23,9 +23,9 @@ export function Admin() {
   const { language, t } = useLanguage();
   const navigate = useNavigate();
   const { profile } = useAuth();
-  const { currentPropertyId, currentRole } = useProperty();
+  const { currentPropertyId, currentRole, refreshMemberships } = useProperty();
   const canManageRoles =
-    profile?.role === 'admin' || currentRole === 'admin' || currentRole === 'property_admin';
+    currentRole === 'admin' || currentRole === 'council' || currentRole === 'property_admin';
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [pendingResidents, setPendingResidents] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -164,10 +164,20 @@ export function Admin() {
       return;
     }
 
+    if (!currentPropertyId) {
+      alert(
+        language === 'en'
+          ? 'Select a property first (property-scoped role updates).'
+          : '请先选择物业（角色按物业更新）。',
+      );
+      setUpdating(null);
+      return;
+    }
+
     setUpdating(userId);
 
     const metaRole = profileRoleToMetadataRole(newRole);
-    const { data, error } = await invokeUpdateUserRole(userId, metaRole);
+    const { data, error } = await invokeUpdateUserRole(userId, metaRole, currentPropertyId);
 
     if (error) {
       console.error('Error updating role:', error);
@@ -182,6 +192,7 @@ export function Admin() {
         alert(payload.error);
       } else {
         await loadProfiles();
+        await refreshMemberships();
       }
     }
 
@@ -193,7 +204,10 @@ export function Admin() {
   };
 
   const canAccessAdminPage =
-    currentRole === 'council' || currentRole === 'admin' || currentRole === 'property_admin';
+    currentRole === 'council' ||
+    currentRole === 'admin' ||
+    currentRole === 'property_admin' ||
+    currentRole === 'manager';
 
   useEffect(() => {
     if (!canAccessAdminPage) return;
@@ -215,8 +229,8 @@ export function Admin() {
         </p>
         <p className="text-gray-500 mt-2">
           {language === 'en'
-            ? 'Only council members or property administrators can access this page.'
-            : '只有理事会成员或物业管理员才能访问此页面。'}
+            ? 'Only council, property administrators, managers, or admins can access this page.'
+            : '只有理事会成员、物业管理员、物业经理或系统管理员可访问此页面。'}
         </p>
       </div>
     );

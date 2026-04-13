@@ -3,7 +3,9 @@ import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-do
 import { Building2, Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useProperty } from '../contexts/PropertyContext';
 import { supabase } from '../lib/supabase';
+import { logPropertyEntrySubmitResult } from '../lib/propertyEntryGateLog';
 import type { UserRole } from '../lib/supabase';
 import { samePropertyId } from '../lib/propertyIdMatch';
 import { resolveJoinCodeFromProperties } from '../lib/joinCodeResolve';
@@ -62,6 +64,15 @@ function matchPropertyByCode(list: OpenProperty[], inputCode: string): OpenPrope
 function canonicalPropertyId(list: OpenProperty[], id: string): string {
   const hit = list.find((p) => samePropertyId(p.id, id));
   return hit?.id ?? id;
+}
+
+function persistCurrentPropertyId(propertyId: string) {
+  try {
+    localStorage.setItem('currentPropertyId', propertyId);
+    localStorage.setItem('clearstrata-current-property-id', propertyId);
+  } catch {
+    /* ignore */
+  }
 }
 
 function parseInviteLinkRpc(data: unknown): OpenProperty | null {
@@ -146,6 +157,7 @@ export function JoinRequestPage() {
   const { session, profile } = useAuth();
   const { language } = useLanguage();
   const en = language === 'en';
+  const { refreshMemberships, setCurrentPropertyId } = useProperty();
   const enRef = useRef(en);
   enRef.current = en;
 
@@ -516,11 +528,18 @@ export function JoinRequestPage() {
           directInviteId || !publicInviteCodeForSubmit ? null : String(requestedRole),
         p_inferred_unit_number:
           directInviteId || !publicInviteCodeForSubmit ? null : unitNumber.trim() || null,
+        p_move_in_date: null,
+        p_language_pref: en ? 'en' : 'zh',
       });
 
-      console.log('submit_join_request data:', data);
-      console.log('submit_join_request error:', error);
-      console.log('selectedPropertyId:', selectedPropertyId);
+      logPropertyEntrySubmitResult({
+        userId: session.user.id,
+        email: email.trim().toLowerCase(),
+        propertyId: id,
+        unitNo: unitNumber.trim() || null,
+        data,
+        error,
+      });
 
       if (error) {
         setMsg(error.message || (en ? 'Submit failed.' : '提交失败'));
@@ -586,6 +605,16 @@ export function JoinRequestPage() {
       }
 
       setCodeMatchHint(null);
+
+      if (row?.entry_path === 'auto_approved' && row.property_id) {
+        const pid = canonicalPropertyId(properties, row.property_id);
+        persistCurrentPropertyId(pid);
+        setCurrentPropertyId(pid);
+        await refreshMemberships();
+        navigate('/', { replace: true });
+        return;
+      }
+
       navigate('/join/pending', { replace: true });
       return;
     } catch (err) {
