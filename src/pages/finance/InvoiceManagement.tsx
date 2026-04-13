@@ -1235,8 +1235,8 @@ export function InvoiceManagement({
         </div>
       ) : null}
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-        <div className="p-4 sm:p-6 border-b border-gray-200 space-y-4">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 min-w-0">
+        <div className="p-3 sm:p-4 border-b border-gray-200 space-y-4">
           <div className="flex flex-col xl:flex-row xl:items-end gap-4">
             <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <div className="relative">
@@ -1339,37 +1339,37 @@ export function InvoiceManagement({
         ) : (
           <>
             <div className="hidden md:block overflow-x-auto">
-              <table className="w-full min-w-[1020px]">
+              <table className="w-full min-w-[900px]">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase sm:px-3 sm:py-2.5">
                       {l ? 'Vendor' : '供应商'}
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase sm:px-3 sm:py-2.5">
                       {l ? 'Invoice #' : '发票号'}
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase sm:px-3 sm:py-2.5">
                       {l ? 'Date' : '日期'}
                     </th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                    <th className="px-2 py-2 text-right text-xs font-medium text-gray-500 uppercase sm:px-3 sm:py-2.5">
                       {l ? 'Total' : '总计'}
                     </th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase max-w-[120px]">
+                    <th className="px-2 py-2 text-center text-xs font-medium text-gray-500 uppercase max-w-[100px] sm:px-3 sm:py-2.5">
                       {l ? 'Quote Δ' : '报价对比'}
                     </th>
-                    <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase w-14">
+                    <th className="px-2 py-2 text-center text-xs font-medium text-gray-500 uppercase w-12 sm:w-14 sm:px-2 sm:py-2.5">
                       AI
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase sm:px-3 sm:py-2.5">
                       {l ? 'Category' : '分类'}
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase sm:px-3 sm:py-2.5">
                       {l ? 'Source' : '来源'}
                     </th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">
+                    <th className="px-2 py-2 text-center text-xs font-medium text-gray-500 uppercase sm:px-3 sm:py-2.5">
                       {l ? 'Status' : '状态'}
                     </th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">
+                    <th className="w-28 whitespace-nowrap px-2 py-2 text-center text-xs font-medium text-gray-500 uppercase sm:w-32 sm:px-2 sm:py-2.5">
                       {l ? 'Actions' : '操作'}
                     </th>
                   </tr>
@@ -1386,7 +1386,7 @@ export function InvoiceManagement({
                         }`}
                         onClick={() => setSelectedInvoice(inv)}
                       >
-                        <td className="px-4 py-3 text-sm">
+                        <td className="px-2 py-2 text-sm sm:px-3 sm:py-2.5">
                           <div className="font-medium text-gray-900">{inv.vendor_name}</div>
                           {inv.hst_number && (
                             <div className="text-xs text-gray-500">HST: {inv.hst_number}</div>
@@ -1411,14 +1411,14 @@ export function InvoiceManagement({
                             </div>
                           ) : null}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{inv.invoice_number || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700">
+                        <td className="px-2 py-2 text-sm text-gray-700 sm:px-3 sm:py-2.5">{inv.invoice_number || '-'}</td>
+                        <td className="px-2 py-2 text-sm text-gray-700 sm:px-3 sm:py-2.5">
                           {new Date(inv.invoice_date).toLocaleDateString(l ? 'en-CA' : 'zh-CN')}
                         </td>
-                        <td className="px-4 py-3 text-sm text-right font-semibold text-gray-900">
+                        <td className="px-2 py-2 text-sm text-right font-semibold text-gray-900 sm:px-3 sm:py-2.5">
                           ${Number(inv.total_amount).toFixed(2)}
                         </td>
-                        <td className="px-4 py-3 text-center text-xs">
+                        <td className="px-2 py-2 text-center text-xs sm:px-3 sm:py-2.5">
                           {qv ? (
                             <span
                               className={`inline-flex px-2 py-0.5 rounded-full font-medium ${quoteVarianceBadgeClass(qv)}`}
@@ -1430,15 +1430,15 @@ export function InvoiceManagement({
                             <span className="text-gray-400">—</span>
                           )}
                         </td>
-                        <td className="px-3 py-3 text-center text-xs">
+                        <td className="px-2 py-2 text-center text-xs sm:px-2 sm:py-2.5">
                           {aiAuditListMap[inv.id] ? (
                             <AiListRiskBadge level={aiAuditListMap[inv.id].risk_level} l={l} />
                           ) : (
                             <span className="text-gray-300">—</span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{catLabel(inv.category)}</td>
-                        <td className="px-4 py-3 text-sm max-w-[180px]" onClick={(e) => e.stopPropagation()}>
+                        <td className="px-2 py-2 text-sm text-gray-700 sm:px-3 sm:py-2.5">{catLabel(inv.category)}</td>
+                        <td className="px-2 py-2 text-sm max-w-[140px] sm:max-w-[160px] sm:px-3 sm:py-2.5" onClick={(e) => e.stopPropagation()}>
                           {invoiceTaskSource[inv.id] ? (
                             <Link
                               to={`/property-admin/tasks/${invoiceTaskSource[inv.id].taskId}`}
@@ -1451,41 +1451,43 @@ export function InvoiceManagement({
                             <span className="text-gray-400">—</span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                        <td className="px-2 py-2 text-center sm:px-3 sm:py-2.5" onClick={(e) => e.stopPropagation()}>
                           <span
-                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${st.className}`}
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium sm:px-2.5 sm:py-1 ${st.className}`}
                           >
                             {inv.has_anomalies && <AlertTriangle size={12} aria-hidden />}
                             {inv.is_abnormal && <ShieldAlert size={12} className="text-amber-700" aria-hidden />}
                             {l ? st.labelEn : st.labelZh}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex flex-wrap items-center justify-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => setSelectedInvoice(inv)}
-                              className="p-1.5 text-gray-500 hover:text-[#1D9E75] hover:bg-green-50 rounded-lg"
-                              title={l ? 'Details' : '详情'}
-                            >
-                              <Eye size={16} />
-                            </button>
-                            {canDeleteInvoice(roleInProperty, profile?.id, inv.uploaded_by) && (
+                        <td className="w-28 px-1.5 py-2 text-center align-top sm:w-32 sm:px-2 sm:py-2.5" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex flex-col items-stretch gap-1">
+                            <div className="flex flex-wrap items-center justify-center gap-0.5">
                               <button
                                 type="button"
-                                onClick={() => setDeleteConfirm(inv)}
-                                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
-                                title={l ? 'Delete' : '删除'}
+                                onClick={() => setSelectedInvoice(inv)}
+                                className="p-1.5 text-gray-500 hover:text-[#1D9E75] hover:bg-green-50 rounded-lg"
+                                title={l ? 'Details' : '详情'}
                               >
-                                <Trash2 size={16} />
+                                <Eye size={16} />
                               </button>
-                            )}
+                              {canDeleteInvoice(roleInProperty, profile?.id, inv.uploaded_by) && (
+                                <button
+                                  type="button"
+                                  onClick={() => setDeleteConfirm(inv)}
+                                  className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                                  title={l ? 'Delete' : '删除'}
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              )}
+                            </div>
                             {canAudit && inv.status === 'pending_review' && (
-                              <>
+                              <div className="flex flex-col gap-1">
                                 <button
                                   type="button"
                                   onClick={() => void approveInvoiceFromList(inv)}
-                                  className="px-2 py-1 text-xs font-medium rounded-lg bg-[#1D9E75] text-white hover:bg-[#178a66]"
+                                  className="px-2 py-1 text-[11px] font-medium leading-tight rounded-md bg-[#1D9E75] text-white hover:bg-[#178a66] sm:px-2.5 sm:text-xs"
                                 >
                                   {l ? 'Approve' : '审核通过'}
                                 </button>
@@ -1495,17 +1497,17 @@ export function InvoiceManagement({
                                     setRejectTarget(inv);
                                     setRejectNote('');
                                   }}
-                                  className="px-2 py-1 text-xs font-medium rounded-lg bg-red-600 text-white hover:bg-red-700"
+                                  className="px-2 py-1 text-[11px] font-medium leading-tight rounded-md bg-red-600 text-white hover:bg-red-700 sm:px-2.5 sm:text-xs"
                                 >
                                   {l ? 'Reject' : '驳回'}
                                 </button>
-                              </>
+                              </div>
                             )}
                             {canAudit && inv.status === 'approved' && (
                               <button
                                 type="button"
                                 onClick={() => void markPaid(inv.id)}
-                                className="px-2 py-1 text-xs font-medium rounded-lg bg-cyan-600 text-white hover:bg-cyan-700"
+                                className="px-2 py-1 text-[11px] font-medium leading-tight rounded-md bg-cyan-600 text-white hover:bg-cyan-700 sm:px-2.5 sm:text-xs"
                               >
                                 {l ? 'Mark paid' : '标记已付款'}
                               </button>
@@ -1624,7 +1626,7 @@ export function InvoiceManagement({
           </>
         )}
 
-        <div className="px-4 py-3 border-t border-gray-200 text-sm text-gray-500">
+        <div className="border-t border-gray-200 px-3 py-2 text-sm text-gray-500 sm:px-4 sm:py-2.5">
           {filtered.length} / {invoices.length} {l ? 'invoices' : '张发票'}
         </div>
       </div>
@@ -2062,9 +2064,9 @@ function InvoiceDetailModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-3 sm:p-4 z-50 overflow-y-auto">
-      <div className="bg-white rounded-xl max-w-3xl w-full max-h-[min(92vh,900px)] overflow-y-auto shadow-xl my-4">
-        <div className="p-4 sm:p-6 border-b border-gray-200 flex items-start justify-between gap-3 sticky top-0 bg-white z-10">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/50 p-2 sm:items-center sm:p-3 md:p-4">
+      <div className="my-3 w-full min-w-0 max-w-[min(48rem,calc(100vw-1rem))] max-h-[min(92vh,900px)] overflow-y-auto overflow-x-hidden rounded-xl bg-white shadow-xl sm:my-4 sm:max-w-3xl">
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-2 border-b border-gray-200 bg-white p-3 sm:gap-3 sm:p-4 md:p-5">
           <div className="min-w-0">
             <h2 className="text-lg sm:text-xl font-bold text-gray-900 truncate">{invoice.vendor_name}</h2>
             <p className="text-sm text-gray-500 mt-1 truncate">
@@ -2105,7 +2107,7 @@ function InvoiceDetailModal({
           </div>
         ) : null}
 
-        <div className="p-4 sm:p-6 space-y-6">
+        <div className="min-w-0 space-y-6 p-3 sm:p-4 md:p-5">
           {/* 1. 发票基本信息 */}
           <section aria-labelledby="inv-basic-heading">
             <h3 id="inv-basic-heading" className="text-sm font-semibold text-gray-900 mb-3">
@@ -2510,11 +2512,11 @@ function InvoiceDetailModal({
                       aria-invalid={missingDangerNote}
                       aria-required={requiresApprovalReason}
                     />
-                    <div className="flex flex-col sm:flex-row flex-wrap gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                       <button
                         type="button"
                         onClick={handleApproveClick}
-                        className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-[#1D9E75] text-white rounded-lg text-sm font-medium hover:bg-[#178a66]"
+                        className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#1D9E75] px-3 py-2 text-sm font-medium text-white hover:bg-[#178a66] sm:w-auto sm:px-3.5 sm:py-2.5"
                       >
                         <Check size={16} />
                         {l ? 'Approve' : '审核通过'}
@@ -2522,7 +2524,7 @@ function InvoiceDetailModal({
                       <button
                         type="button"
                         onClick={() => onReject(invoice)}
-                        className="px-4 py-2.5 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700"
+                        className="w-full rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 sm:w-auto sm:px-3.5 sm:py-2.5"
                       >
                         {l ? 'Reject' : '拒绝'}
                       </button>

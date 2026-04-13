@@ -10,6 +10,7 @@ import { invokeUpdateUserRole } from '../../lib/invokeUpdateUserRole';
 import { type AppMetadataRole, profileRoleToMetadataRole } from '../../lib/userRoleMetadata';
 import { UserCard } from '../../components/UserCard';
 import { canEditPropertyMemberRoles } from '../../lib/propertyPermissions';
+import { approvePendingUser, type PendingApplicant } from '../../lib/approvePendingUser';
 
 interface Profile {
   id: string;
@@ -19,6 +20,7 @@ interface Profile {
   phone?: string;
   role: UserRole;
   status?: ProfileAccountStatus;
+  preferred_language?: string | null;
 }
 
 interface UserWithDetails extends Profile {
@@ -85,6 +87,7 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
   const [updating, setUpdating] = useState<string | null>(null);
   const [activationBusy, setActivationBusy] = useState<string | null>(null);
   const [membershipReviewBusy, setMembershipReviewBusy] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
 
   /** All gates use `property_members.role` for this property (`currentRole`). */
   const canEditMembers = canEditPropertyMemberRoles(currentRole);
@@ -246,6 +249,12 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
     if (profile && currentPropertyId) void loadData();
   }, [profile, currentPropertyId, loadData]);
 
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 4200);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
   const activationText = useCallback(
     (userId: string) => {
       const r = residentByUserId[userId];
@@ -306,7 +315,86 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
     return copy;
   }, [profiles, residentByUserId, canReviewPending, memberMetaByUserId]);
 
-  const reviewMembership = async (userId: string, action: 'approve' | 'suspend' | 'remove') => {
+  const approvePendingMember = async (row: Profile) => {
+    if (!canReviewPending || !currentPropertyId) return;
+    const uid = normalizeUuid(row.id);
+    if (!uid) {
+      setToast({
+        kind: 'error',
+        message: language === 'en' ? 'Invalid user id.' : '用户 ID 无效。',
+      });
+      return;
+    }
+    const meta = memberMetaByUserId[row.id];
+    const res = residentByUserId[row.id];
+    const unitRaw =
+      (meta?.unit_number && String(meta.unit_number).trim()) ||
+      (res?.unit_no && String(res.unit_no).trim()) ||
+      '';
+    const email = (row.email ?? '').trim();
+    if (!email || email === '—') {
+      setToast({
+        kind: 'error',
+        message: language === 'en' ? 'Applicant email is required.' : '申请人邮箱不能为空。',
+      });
+      return;
+    }
+
+    setMembershipReviewBusy(uid);
+    try {
+      const applicant: PendingApplicant = {
+        email,
+        unit_no: unitRaw,
+        name_en: row.full_name_en ?? null,
+        name_zh: row.full_name_zh ?? null,
+        phone: row.phone ?? null,
+        language_pref: row.preferred_language ?? 'en',
+      };
+
+      const { data, error } = await approvePendingUser(supabase, {
+        userId: uid,
+        propertyId: currentPropertyId,
+        applicant,
+        context: { currentPropertyId, currentRole },
+      });
+
+      if (error) {
+        console.error('[approvePendingMember]', error);
+        setToast({
+          kind: 'error',
+          message:
+            language === 'en'
+              ? `Approval failed: ${error.message}`
+              : `审批失败：${error.message}`,
+        });
+        return;
+      }
+
+      const rpcRow = data as { ok?: boolean; error?: string } | null;
+      if (!rpcRow?.ok) {
+        console.error('[approvePendingMember] rpc', data);
+        setToast({
+          kind: 'error',
+          message:
+            language === 'en'
+              ? `Could not approve: ${rpcRow?.error ?? 'unknown'}`
+              : `无法完成审批：${rpcRow?.error ?? 'unknown'}`,
+        });
+        return;
+      }
+
+      await loadData();
+      await refreshMemberships();
+      setToast({
+        kind: 'success',
+        message: language === 'en' ? 'Approved — user is now on the property.' : '审批通过，用户已加入物业',
+      });
+    } finally {
+      setMembershipReviewBusy(null);
+    }
+  };
+
+  const reviewMembership = async (userId: string, action: 'suspend' | 'remove') => {
     if (!canReviewPending || !currentPropertyId) return;
     const uid = normalizeUuid(userId);
     if (!uid) {
@@ -325,7 +413,7 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
       approveTargetUserId: uid,
     });
 
-    const pAction = action === 'approve' ? 'approve' : action === 'suspend' ? 'suspend' : 'remove';
+    const pAction = action === 'suspend' ? 'suspend' : 'remove';
     const { data, error } = await supabase.rpc('review_property_member_membership' as any, {
       p_property_id: currentPropertyId,
       p_user_id: uid,
@@ -764,7 +852,7 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">
@@ -869,7 +957,7 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
                             <button
                               type="button"
                               disabled={busy}
-                              onClick={() => void reviewMembership(row.id, 'approve')}
+                              onClick={() => void approvePendingMember(row)}
                               className="inline-flex items-center gap-1 rounded-lg bg-green-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
                             >
                               {busy ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />}
@@ -1021,6 +1109,19 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
           );
         })}
       </div>
+
+      {toast && (
+        <div
+          role="status"
+          className={`fixed bottom-6 left-1/2 z-[100] max-w-md -translate-x-1/2 rounded-xl px-4 py-3 text-sm font-medium shadow-lg ${
+            toast.kind === 'success'
+              ? 'border border-emerald-200 bg-emerald-50 text-emerald-950'
+              : 'border border-red-200 bg-red-50 text-red-900'
+          }`}
+        >
+          {toast.message}
+        </div>
+      )}
     </div>
   );
 }

@@ -27,6 +27,7 @@ import {
 import { useLanguage, LANGUAGE_USER_STORAGE_KEY } from '../contexts/LanguageContext';
 import { samePropertyId } from '../lib/propertyIdMatch';
 import { PWAInstallButton } from './PWAInstallButton';
+import { SidebarPromoCard } from './SidebarPromoCard';
 import { UserNotificationToast } from './UserNotificationToast';
 
 interface LayoutProps {
@@ -367,10 +368,10 @@ export function Layout({ children }: LayoutProps) {
           fixed lg:sticky top-16 left-0 h-[calc(100vh-4rem)]
           w-52 shrink-0 border-r border-gray-200 bg-white
           transition-transform duration-200 ease-in-out
-          z-30 overflow-hidden max-lg:overflow-y-auto
+          z-30 overflow-x-hidden overflow-y-hidden max-lg:overflow-y-auto
         `}
         >
-          <div className="flex h-full min-h-0 flex-col lg:min-h-0">
+          <div className="flex h-full min-h-0 flex-col">
             <div
               className={`shrink-0 px-2.5 sm:px-3 lg:pb-0 ${
                 isDashboardHome ? 'pt-2 pb-0 lg:pt-3' : 'pt-3 pb-0 lg:pt-5'
@@ -391,17 +392,18 @@ export function Layout({ children }: LayoutProps) {
               </button>
             </div>
 
-            <div className="shrink-0 px-2.5 pt-1 sm:px-3 lg:pt-2">
-              <div className="space-y-0.5 lg:space-y-1">
-                {quickModules.map((m) => renderModuleCard(m.path, m.icon, m.label, m.iconBg))}
-                {showJoinRequestReviewCoreNav && !isDemoMode && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigate('/admin/join-requests');
-                      setMobileMenuOpen(false);
-                    }}
-                    className={`
+            <div className="min-h-0 flex-1 overflow-x-hidden overscroll-y-contain [scrollbar-width:thin] max-lg:flex-none max-lg:overflow-y-visible lg:min-h-0 lg:overflow-y-auto">
+              <div className="shrink-0 px-2.5 pt-1 sm:px-3 lg:pt-2">
+                <div className="space-y-0.5 lg:space-y-1">
+                  {quickModules.map((m) => renderModuleCard(m.path, m.icon, m.label, m.iconBg))}
+                  {showJoinRequestReviewCoreNav && !isDemoMode && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigate('/admin/join-requests');
+                        setMobileMenuOpen(false);
+                      }}
+                      className={`
                       flex min-h-[54px] w-full items-center gap-2 rounded-2xl border px-3 py-2 text-left shadow-sm transition-all
                       ${
                         location.pathname === '/admin/join-requests'
@@ -409,47 +411,34 @@ export function Layout({ children }: LayoutProps) {
                           : 'border-gray-200 bg-white hover:border-emerald-200 hover:shadow-sm'
                       }
                     `}
-                  >
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500">
-                      <ClipboardList className="h-4 w-4 text-white" size={16} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[15px] font-semibold leading-snug text-gray-900">
-                        {t('nav_review_applications')}
+                    >
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500">
+                        <ClipboardList className="h-4 w-4 text-white" size={16} />
                       </div>
-                    </div>
-                  </button>
-                )}
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[15px] font-semibold leading-snug text-gray-900">
+                          {t('nav_review_applications')}
+                        </div>
+                      </div>
+                    </button>
+                  )}
+                </div>
               </div>
+
+              {showSystemSection ? (
+                <div className="mt-1.5 border-t border-gray-100 px-2.5 pt-2.5 sm:px-3 lg:mt-2 lg:pt-3">
+                  <p className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                    {t('nav_group_system')}
+                  </p>
+                  <div className="space-y-0.5 pb-1">
+                    {systemNavItems.map((item) => renderSystemNavButton(item.path, item.icon, item.label))}
+                  </div>
+                </div>
+              ) : null}
             </div>
 
-            {showSystemSection ? (
-              <div className="mt-1.5 min-h-0 flex-1 overflow-y-auto border-t border-gray-100 px-2.5 pt-2.5 sm:px-3 max-lg:flex-none lg:mt-2 lg:pt-3">
-                <p className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
-                  {t('nav_group_system')}
-                </p>
-                <div className="space-y-0.5">
-                  {systemNavItems.map((item) => renderSystemNavButton(item.path, item.icon, item.label))}
-                </div>
-              </div>
-            ) : (
-              <div className="min-h-0 flex-1 max-lg:flex-none" aria-hidden />
-            )}
-
-            <div className="mt-2 shrink-0 px-3 pb-3 pt-1 lg:mt-auto lg:pb-4 lg:pt-2">
-              <div className="rounded-2xl border border-gray-200 bg-white p-3 lg:p-4">
-                <div className="mb-1.5 text-center text-base font-medium leading-snug text-gray-900 lg:mb-2">
-                  {language === 'en' ? 'Scan to view spending' : '扫码查看支出'}
-                </div>
-                <img
-                  src="/qr-code.png"
-                  alt=""
-                  className="mx-auto h-28 w-28 object-contain"
-                />
-                <div className="mt-1.5 text-center text-xs text-gray-500 lg:mt-2">
-                  {language === 'en' ? 'Make every expense transparent' : '让每一笔支出透明'}
-                </div>
-              </div>
+            <div className="shrink-0 px-3 pt-2 pb-3 lg:px-3 lg:pt-1.5 lg:pb-4">
+              <SidebarPromoCard language={language} />
             </div>
           </div>
         </aside>
@@ -462,10 +451,10 @@ export function Layout({ children }: LayoutProps) {
         )}
 
         <main
-          className={`min-w-0 w-full max-w-7xl flex-1 ${
+          className={`min-w-0 w-full flex-1 ${
             isDashboardHome
-              ? 'px-3 pb-5 pt-0 sm:px-4 sm:pb-6 lg:pb-6 lg:pl-2 lg:pr-5 lg:pt-0'
-              : 'px-3 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8'
+              ? 'max-w-7xl px-3 pb-5 pt-0 sm:px-4 sm:pb-6 lg:pb-6 lg:pl-2 lg:pr-5 lg:pt-0'
+              : 'max-w-none px-3 py-4 sm:px-4 sm:py-5 lg:pl-3 lg:pr-4 lg:py-6 xl:pl-4 xl:pr-5'
           }`}
         >
           <UserNotificationToast />
