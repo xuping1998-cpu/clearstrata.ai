@@ -1,8 +1,8 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, Component, type ErrorInfo, type ReactNode } from 'react';
 import { useSearchParams, useLocation } from 'react-router-dom';
 import { User, Receipt, FileText, UserCog, Megaphone, Users } from 'lucide-react';
 import { useProperty } from '../contexts/PropertyContext';
-import { canEditPropertyMemberRoles } from '../lib/propertyPermissions';
+import { canManageUsersOnProperty } from '../lib/propertyPermissions';
 import { useLanguage } from '../contexts/LanguageContext';
 import { BackButton } from '../components/BackButton';
 import { MyProfileTab } from './owner-info/MyProfileTab';
@@ -31,12 +31,40 @@ const tabs: TabConfig[] = [
   { key: 'users', label: '用户管理', icon: <UserCog size={18} />, councilOnly: true },
 ];
 
+/** 隔离子 Tab 运行时错误，避免整页白屏（「我的资料」等仍可用）。 */
+class OwnerInfoSectionErrorBoundary extends Component<
+  { children: ReactNode; title: string },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError(): { hasError: boolean } {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('[owner-info tab]', error, info.componentStack);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950" role="alert">
+          <p className="font-medium">{this.props.title}</p>
+          <p className="mt-1 text-amber-900/90">请刷新页面或稍后再试。若问题持续，请联系技术支持。</p>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export function OwnerInfo() {
   const { language } = useLanguage();
   const { currentRole, currentPropertyId, isDemoMode, propertyHasManagementStaff } = useProperty();
   const [searchParams] = useSearchParams();
   const location = useLocation();
-  const isStaffInProperty = canManageUsersOnProperty(currentRole);
+  const isStaffInProperty = Boolean(canManageUsersOnProperty(currentRole));
 
   const canManageRestrictedTabs = isStaffInProperty;
 
@@ -93,7 +121,7 @@ export function OwnerInfo() {
         <p className="text-gray-600 mt-2">管理您的资料、单元信息和账户详情</p>
         {currentPropertyId &&
           propertyHasManagementStaff === false &&
-          !isStaffForUserMgmt && (
+          !isStaffInProperty && (
             <div
               role="alert"
               className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950"
@@ -124,13 +152,23 @@ export function OwnerInfo() {
         </nav>
       </div>
 
-      {activeTab === 'profile' && <MyProfileTab />}
-      {activeTab === 'members' && currentPropertyId && <UserManagementTab readOnly />}
+      {activeTab === 'profile' && (
+        <OwnerInfoSectionErrorBoundary title={language === 'en' ? 'Could not load profile tab.' : '「我的资料」加载失败。'}>
+          <MyProfileTab />
+        </OwnerInfoSectionErrorBoundary>
+      )}
+      {activeTab === 'members' && currentPropertyId && (
+        <OwnerInfoSectionErrorBoundary title={language === 'en' ? 'Could not load member list.' : '「本物业成员」加载失败。'}>
+          <UserManagementTab readOnly />
+        </OwnerInfoSectionErrorBoundary>
+      )}
       {activeTab === 'ledger' && <LedgerTab />}
       {activeTab === 'forms' && <FormsTab />}
       {activeTab === 'announcements' && <OwnerNotificationsSection />}
       {activeTab === 'users' && canManageRestrictedTabs && currentPropertyId && (
-        <UserManagementTab readOnly={false} />
+        <OwnerInfoSectionErrorBoundary title={language === 'en' ? 'Could not load user management.' : '「用户管理」加载失败。'}>
+          <UserManagementTab readOnly={false} />
+        </OwnerInfoSectionErrorBoundary>
       )}
     </div>
   );

@@ -1,5 +1,18 @@
 import { supabase } from './supabase';
 
+function warnIfInvoiceAiAuditResultsMissing(context: string, error: { message?: string; code?: string } | null) {
+  const msg = (error?.message ?? '').toLowerCase();
+  const missing =
+    error?.code === 'PGRST205' ||
+    msg.includes('invoice_ai_audit_results') ||
+    msg.includes('could not find the table');
+  if (missing) {
+    console.warn(`[${context}] invoice_ai_audit_results not available; skipping.`, error?.message ?? '');
+    return;
+  }
+  if (error?.message) console.warn(`[${context}]`, error.message);
+}
+
 export type GenerateCouncilReportResult = {
   report_id: string;
   title?: string;
@@ -41,6 +54,7 @@ export async function getFirstHighRiskInvoiceId(
     .in('risk_level', ['high', 'critical']);
 
   if (error || !results?.length) {
+    if (error) warnIfInvoiceAiAuditResultsMissing('getFirstHighRiskInvoiceId', error);
     return null;
   }
 
@@ -88,6 +102,7 @@ export async function generateMeetingPack(
     .in('risk_level', ['high', 'critical']);
 
   if (error || !results?.length) {
+    if (error) warnIfInvoiceAiAuditResultsMissing('generateMeetingPack', error);
     return { report_ids: [], errors: [error?.message ?? 'NO_RESULTS'] };
   }
 

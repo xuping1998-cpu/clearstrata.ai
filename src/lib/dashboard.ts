@@ -7,6 +7,27 @@ import type {
 import { fetchDashboardBudgetSummary, formatCurrency, type DashboardBudgetSummary } from './budget/dashboardApi';
 import { supabase } from './supabase';
 
+/** PostgREST: schema missing / table not exposed — do not treat as fatal. */
+function isInvoiceAiAuditResultsUnavailable(error: { message?: string; code?: string } | null | undefined): boolean {
+  const msg = (error?.message ?? '').toLowerCase();
+  return (
+    error?.code === 'PGRST205' ||
+    msg.includes('invoice_ai_audit_results') ||
+    msg.includes('could not find the table')
+  );
+}
+
+function warnInvoiceAiAuditResultsMissing(context: string, error: { message?: string; code?: string } | null) {
+  if (isInvoiceAiAuditResultsUnavailable(error)) {
+    console.warn(
+      `[${context}] invoice_ai_audit_results is not available (deploy migrations or reload schema). Skipping.`,
+      error?.message ?? '',
+    );
+    return;
+  }
+  if (error?.message) console.warn(`[${context}]`, error.message);
+}
+
 function isThisCalendarMonth(isoDate: string): boolean {
   const d = new Date(isoDate);
   if (Number.isNaN(d.getTime())) return false;
@@ -66,7 +87,7 @@ export async function fetchDashboardAiRiskSummary(
       .eq('property_id', propertyId);
 
     if (error) {
-      console.warn('[fetchDashboardAiRiskSummary]', error.message);
+      warnInvoiceAiAuditResultsMissing('fetchDashboardAiRiskSummary', error);
       return null;
     }
 
@@ -313,7 +334,7 @@ export async function fetchRecentAiAuditInvoices(
       .limit(120);
 
     if (rErr || !results?.length) {
-      if (rErr) console.warn('[fetchRecentAiAuditInvoices]', rErr.message);
+      if (rErr) warnInvoiceAiAuditResultsMissing('fetchRecentAiAuditInvoices', rErr);
       return { items: [] };
     }
 

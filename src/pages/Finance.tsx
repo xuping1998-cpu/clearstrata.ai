@@ -95,7 +95,7 @@ export function Finance() {
   }
 
   return (
-    <div className="min-w-0">
+    <div className="mx-0 min-w-0 w-full max-w-none">
       <BackButton />
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-gray-900">
@@ -113,13 +113,13 @@ export function Finance() {
       </div>
 
       {visibleTabs.length > 1 && (
-        <div className="mb-6 border-b border-gray-200 overflow-x-auto">
-          <nav className="flex gap-1 min-w-max">
+        <div className="mb-6 max-w-full overflow-x-auto border-b border-gray-200 [scrollbar-width:thin]">
+          <nav className="flex min-w-0 flex-wrap gap-1 sm:min-w-max sm:flex-nowrap">
             {visibleTabs.map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
-                className={`pb-3 px-4 border-b-2 font-medium transition-colors flex items-center gap-2 text-sm whitespace-nowrap ${
+                className={`flex items-center gap-1.5 whitespace-nowrap border-b-2 px-2.5 pb-3 text-sm font-medium transition-colors sm:gap-2 sm:px-4 ${
                   activeTab === tab.key
                     ? 'border-[#1D9E75] text-[#1D9E75]'
                     : 'border-transparent text-gray-500 hover:text-gray-700'

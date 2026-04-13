@@ -241,10 +241,10 @@ function aiRiskShortLabel(level: string, l: boolean): string {
 function AiListRiskBadge({ level, l }: { level: string; l: boolean }) {
   return (
     <span
-      className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${riskLevelBadgeClass(level)}`}
+      className={`inline-flex max-w-full items-center gap-0.5 rounded-full px-1 py-0.5 text-[9px] font-semibold sm:text-[10px] ${riskLevelBadgeClass(level)}`}
       title={l ? `AI: ${level}` : `AI：${riskLevelLabel(level, false)}`}
     >
-      <Sparkles className="size-3 shrink-0 opacity-80" aria-hidden />
+      <Sparkles className="size-2.5 shrink-0 opacity-80 sm:size-3" aria-hidden />
       {aiRiskShortLabel(level, l)}
     </span>
   );
@@ -553,7 +553,9 @@ export function InvoiceManagement({
         .in('invoice_id', ids);
       if (cancelled) return;
       if (error) {
-        console.warn('[invoices] hybrid audit flags', error.message);
+        if (import.meta.env.DEV) {
+          console.warn('[invoices] hybrid audit flags', error.message);
+        }
         setHybridAuditByInvoiceId({});
         return;
       }
@@ -1130,7 +1132,7 @@ export function InvoiceManagement({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="mx-0 min-w-0 w-full max-w-none space-y-6">
       {dangerFilterOnly && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 flex flex-wrap items-center gap-2 justify-between">
           <span>
@@ -1179,7 +1181,7 @@ export function InvoiceManagement({
           </Link>
         </div>
       )}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
         <SummaryCard
           label={l ? 'Pending review' : '待审核'}
           value={statusCounts['pending_review'] || 0}
@@ -1207,14 +1209,16 @@ export function InvoiceManagement({
           type="button"
           onClick={() => void handleExportMeetingPackPdf()}
           disabled={exportingMeetingPack || !currentPropertyId}
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex max-w-full items-center gap-2 rounded-lg bg-gray-900 px-3 py-2 text-xs font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 sm:px-4 sm:py-2.5 sm:text-sm"
         >
           {exportingMeetingPack ? (
-            <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
           ) : (
             <FileDown className="h-4 w-4 shrink-0" />
           )}
-          <span>{l ? 'Export monthly meeting pack (PDF)' : '导出本月异常发票会议包 PDF'}</span>
+          <span className="min-w-0 text-left leading-snug">
+            {l ? 'Export monthly meeting pack (PDF)' : '导出本月异常发票会议包 PDF'}
+          </span>
         </button>
       </div>
 
@@ -1235,89 +1239,87 @@ export function InvoiceManagement({
         </div>
       ) : null}
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 min-w-0">
-        <div className="p-3 sm:p-4 border-b border-gray-200 space-y-4">
-          <div className="flex flex-col xl:flex-row xl:items-end gap-4">
-            <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              <div className="relative">
-                <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder={l ? 'Search vendor, invoice #...' : '搜索供应商、发票号...'}
-                  className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] text-sm"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <Filter size={16} className="text-gray-400 shrink-0" />
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1D9E75]"
-                >
-                  <option value="all">{l ? 'All statuses' : '全部状态'}</option>
-                  {(
-                    [
-                      'pending_upload',
-                      'ai_processing',
-                      'pending_review',
-                      'approved',
-                      'paid',
-                      'flagged',
-                      'rejected',
-                      'ai_extraction_failed',
-                    ] as const
-                  ).map((key) => (
-                    <option key={key} value={key}>
-                      {l ? statusStyle(key).labelEn : statusStyle(key).labelZh}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex items-center gap-2">
-                <Calendar size={16} className="text-gray-400 shrink-0" />
-                <input
-                  type="date"
-                  value={dateFrom}
-                  onChange={(e) => setDateFrom(e.target.value)}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1D9E75]"
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <Calendar size={16} className="text-gray-400 shrink-0 opacity-0 sm:opacity-100 w-4" />
-                <input
-                  type="date"
-                  value={dateTo}
-                  onChange={(e) => setDateTo(e.target.value)}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1D9E75]"
-                  placeholder={l ? 'To' : '结束日期'}
-                />
-              </div>
+      <div className="min-w-0 rounded-xl border border-gray-100 bg-white shadow-sm">
+        <div className="border-b border-gray-200 p-2.5 sm:p-3 md:p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative w-full shrink-0 md:w-[220px] lg:w-[240px]">
+              <Search size={16} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder={l ? 'Search vendor, invoice #...' : '搜索供应商、发票号...'}
+                className="w-full rounded-lg border border-gray-300 py-1.5 pl-9 pr-2 text-sm focus:ring-2 focus:ring-[#1D9E75] md:py-2 md:pl-9 md:pr-3"
+              />
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex min-w-0 shrink-0 items-center gap-1.5">
+              <Filter size={16} className="shrink-0 text-gray-400" aria-hidden />
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="w-[150px] max-w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#1D9E75] md:px-3 md:py-2"
+              >
+                <option value="all">{l ? 'All statuses' : '全部状态'}</option>
+                {(
+                  [
+                    'pending_upload',
+                    'ai_processing',
+                    'pending_review',
+                    'approved',
+                    'paid',
+                    'flagged',
+                    'rejected',
+                    'ai_extraction_failed',
+                  ] as const
+                ).map((key) => (
+                  <option key={key} value={key}>
+                    {l ? statusStyle(key).labelEn : statusStyle(key).labelZh}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <Calendar size={16} className="shrink-0 text-gray-400" aria-hidden />
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="w-[145px] max-w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#1D9E75] md:py-2"
+              />
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <Calendar size={16} className="w-4 shrink-0 text-gray-400 opacity-0 sm:opacity-100" aria-hidden />
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="w-[145px] max-w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#1D9E75] md:py-2"
+                title={l ? 'To' : '结束日期'}
+              />
+            </div>
+            <div className="flex w-full flex-wrap items-center gap-2 md:ml-auto md:w-auto md:justify-end">
               <button
                 type="button"
                 onClick={() => exportRows(false)}
-                className="inline-flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 sm:gap-2 sm:px-3 sm:py-2 sm:text-sm"
               >
-                <FileText size={16} />
+                <FileText size={14} />
                 CSV
               </button>
               <button
                 type="button"
                 onClick={() => exportRows(true)}
-                className="inline-flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 sm:gap-2 sm:px-3 sm:py-2 sm:text-sm"
               >
-                <FileSpreadsheet size={16} />
+                <FileSpreadsheet size={14} />
                 Excel
               </button>
               <label
-                className={`inline-flex items-center gap-2 px-4 py-2 bg-[#1D9E75] text-white rounded-lg cursor-pointer text-sm font-medium transition-colors ${
-                  uploading ? 'opacity-50 pointer-events-none' : 'hover:bg-[#178a66]'
+                className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[#1D9E75] px-2.5 py-1.5 text-xs font-medium text-white transition-colors sm:gap-2 sm:px-3 sm:py-2 sm:text-sm ${
+                  uploading ? 'pointer-events-none opacity-50' : 'hover:bg-[#178a66]'
                 }`}
               >
-                <Upload size={18} />
+                <Upload size={16} className="sm:h-[18px] sm:w-[18px]" />
                 {uploading ? (l ? 'Working…' : '处理中…') : l ? 'Upload' : '上传发票'}
                 <input
                   type="file"
@@ -1338,38 +1340,62 @@ export function InvoiceManagement({
           </div>
         ) : (
           <>
-            <div className="hidden md:block overflow-x-auto">
-              <table className="w-full min-w-[900px]">
-                <thead className="bg-gray-50 border-b border-gray-200">
+            <div className="hidden max-w-full overflow-x-auto md:block [scrollbar-width:thin]">
+              <table className="w-full min-w-0 max-w-full table-fixed border-collapse text-xs">
+                <colgroup>
+                  <col style={{ width: '17%' }} />
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '74px' }} />
+                  <col style={{ width: '9%' }} />
+                  <col style={{ width: '7%' }} />
+                  <col style={{ width: '36px' }} />
+                  <col style={{ width: '7%' }} />
+                  <col style={{ width: '7%' }} />
+                  <col style={{ width: '88px' }} />
+                  <col style={{ width: '88px' }} />
+                </colgroup>
+                <thead className="border-b border-gray-200 bg-gray-50">
                   <tr>
-                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase sm:px-3 sm:py-2.5">
+                    <th className="min-w-0 px-1 py-1.5 text-left text-[10px] font-medium uppercase tracking-wide text-gray-500 sm:px-1.5 sm:py-2">
                       {l ? 'Vendor' : '供应商'}
                     </th>
-                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase sm:px-3 sm:py-2.5">
+                    <th className="min-w-0 px-1 py-1.5 text-left text-[10px] font-medium uppercase tracking-wide text-gray-500 sm:px-1.5 sm:py-2">
                       {l ? 'Invoice #' : '发票号'}
                     </th>
-                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase sm:px-3 sm:py-2.5">
+                    <th className="whitespace-nowrap px-1 py-1.5 text-left text-[10px] font-medium uppercase tracking-wide text-gray-500 sm:px-1.5 sm:py-2">
                       {l ? 'Date' : '日期'}
                     </th>
-                    <th className="px-2 py-2 text-right text-xs font-medium text-gray-500 uppercase sm:px-3 sm:py-2.5">
+                    <th className="min-w-0 px-1 py-1.5 text-right text-[10px] font-medium uppercase tracking-wide text-gray-500 sm:px-1.5 sm:py-2">
                       {l ? 'Total' : '总计'}
                     </th>
-                    <th className="px-2 py-2 text-center text-xs font-medium text-gray-500 uppercase max-w-[100px] sm:px-3 sm:py-2.5">
-                      {l ? 'Quote Δ' : '报价对比'}
+                    <th
+                      className="min-w-0 truncate px-0.5 py-1.5 text-center text-[10px] font-medium uppercase tracking-wide text-gray-500 sm:py-2"
+                      title={l ? 'Quote variance' : '报价对比'}
+                    >
+                      {l ? 'Quote' : '报价'}
                     </th>
-                    <th className="px-2 py-2 text-center text-xs font-medium text-gray-500 uppercase w-12 sm:w-14 sm:px-2 sm:py-2.5">
+                    <th className="px-0 py-1.5 text-center text-[10px] font-medium uppercase tracking-wide text-gray-500 sm:py-2">
                       AI
                     </th>
-                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase sm:px-3 sm:py-2.5">
+                    <th
+                      className="min-w-0 max-w-[72px] truncate px-1 py-1.5 text-left text-[10px] font-medium uppercase tracking-wide text-gray-500 sm:px-1.5 sm:py-2"
+                      title={l ? 'Category' : '分类'}
+                    >
                       {l ? 'Category' : '分类'}
                     </th>
-                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase sm:px-3 sm:py-2.5">
+                    <th
+                      className="min-w-0 max-w-[72px] truncate px-1 py-1.5 text-left text-[10px] font-medium uppercase tracking-wide text-gray-500 sm:px-1.5 sm:py-2"
+                      title={l ? 'Source task' : '来源任务'}
+                    >
                       {l ? 'Source' : '来源'}
                     </th>
-                    <th className="px-2 py-2 text-center text-xs font-medium text-gray-500 uppercase sm:px-3 sm:py-2.5">
+                    <th
+                      className="min-w-0 max-w-[88px] truncate px-1 py-1.5 text-center text-[10px] font-medium uppercase tracking-wide text-gray-500 sm:px-1.5 sm:py-2"
+                      title={l ? 'Status' : '状态'}
+                    >
                       {l ? 'Status' : '状态'}
                     </th>
-                    <th className="w-28 whitespace-nowrap px-2 py-2 text-center text-xs font-medium text-gray-500 uppercase sm:w-32 sm:px-2 sm:py-2.5">
+                    <th className="w-[88px] min-w-[88px] max-w-[88px] whitespace-nowrap px-0.5 py-1.5 text-center text-[10px] font-medium uppercase tracking-wide text-gray-500 sm:py-2">
                       {l ? 'Actions' : '操作'}
                     </th>
                   </tr>
@@ -1386,42 +1412,54 @@ export function InvoiceManagement({
                         }`}
                         onClick={() => setSelectedInvoice(inv)}
                       >
-                        <td className="px-2 py-2 text-sm sm:px-3 sm:py-2.5">
-                          <div className="font-medium text-gray-900">{inv.vendor_name}</div>
+                        <td className="min-w-0 max-w-[160px] overflow-hidden px-1 py-1.5 align-top sm:px-1.5 sm:py-2">
+                          <div className="truncate text-xs font-medium text-gray-900" title={inv.vendor_name}>
+                            {inv.vendor_name}
+                          </div>
                           {inv.hst_number && (
-                            <div className="text-xs text-gray-500">HST: {inv.hst_number}</div>
+                            <div className="truncate text-[10px] text-gray-500" title={`HST: ${inv.hst_number}`}>
+                              HST: {inv.hst_number}
+                            </div>
                           )}
                           {hybridAuditByInvoiceId[inv.id] ? (
-                            <div className="mt-1 flex flex-wrap gap-1">
+                            <div className="mt-0.5 flex max-w-full flex-wrap gap-0.5">
                               {hybridAuditByInvoiceId[inv.id].over_budget ? (
-                                <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-800">
-                                  {l ? '🔴 Over budget' : '🔴 超预算'}
+                                <span className="rounded bg-red-100 px-1 py-px text-[9px] font-semibold leading-tight text-red-800">
+                                  {l ? 'Budget' : '超预算'}
                                 </span>
                               ) : null}
                               {hybridAuditByInvoiceId[inv.id].bypass_approval ? (
-                                <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold text-red-800">
-                                  {l ? '🔴 No approval' : '🔴 未审批执行'}
+                                <span className="rounded bg-red-100 px-1 py-px text-[9px] font-semibold leading-tight text-red-800">
+                                  {l ? 'Bypass' : '未批'}
                                 </span>
                               ) : null}
                               {hybridAuditByInvoiceId[inv.id].ai_high ? (
-                                <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-950">
-                                  {l ? '🟡 AI risk' : '🟡 AI异常'}
+                                <span className="rounded bg-amber-100 px-1 py-px text-[9px] font-semibold leading-tight text-amber-950">
+                                  AI
                                 </span>
                               ) : null}
                             </div>
                           ) : null}
                         </td>
-                        <td className="px-2 py-2 text-sm text-gray-700 sm:px-3 sm:py-2.5">{inv.invoice_number || '-'}</td>
-                        <td className="px-2 py-2 text-sm text-gray-700 sm:px-3 sm:py-2.5">
-                          {new Date(inv.invoice_date).toLocaleDateString(l ? 'en-CA' : 'zh-CN')}
+                        <td className="min-w-0 max-w-[120px] overflow-hidden px-1 py-1.5 sm:px-1.5 sm:py-2">
+                          <div className="truncate whitespace-nowrap text-xs text-gray-700" title={inv.invoice_number || undefined}>
+                            {inv.invoice_number || '-'}
+                          </div>
                         </td>
-                        <td className="px-2 py-2 text-sm text-right font-semibold text-gray-900 sm:px-3 sm:py-2.5">
+                        <td className="whitespace-nowrap px-1 py-1.5 text-xs text-gray-700 sm:px-1.5 sm:py-2">
+                          {new Date(inv.invoice_date).toLocaleDateString(l ? 'en-CA' : 'zh-CN', {
+                            year: '2-digit',
+                            month: 'numeric',
+                            day: 'numeric',
+                          })}
+                        </td>
+                        <td className="min-w-0 whitespace-nowrap px-1 py-1.5 text-right text-xs font-semibold tabular-nums text-gray-900 sm:px-1.5 sm:py-2">
                           ${Number(inv.total_amount).toFixed(2)}
                         </td>
-                        <td className="px-2 py-2 text-center text-xs sm:px-3 sm:py-2.5">
+                        <td className="min-w-0 overflow-hidden px-0.5 py-1.5 text-center sm:py-2">
                           {qv ? (
                             <span
-                              className={`inline-flex px-2 py-0.5 rounded-full font-medium ${quoteVarianceBadgeClass(qv)}`}
+                              className={`inline-flex max-w-full truncate rounded-full px-1 py-0.5 text-[10px] font-medium ${quoteVarianceBadgeClass(qv)}`}
                               title={l ? qv.messageEn : qv.message}
                             >
                               {quoteVarianceShortLabel(qv, l)}
@@ -1430,19 +1468,27 @@ export function InvoiceManagement({
                             <span className="text-gray-400">—</span>
                           )}
                         </td>
-                        <td className="px-2 py-2 text-center text-xs sm:px-2 sm:py-2.5">
+                        <td className="overflow-hidden px-0 py-1.5 text-center sm:py-2">
                           {aiAuditListMap[inv.id] ? (
                             <AiListRiskBadge level={aiAuditListMap[inv.id].risk_level} l={l} />
                           ) : (
                             <span className="text-gray-300">—</span>
                           )}
                         </td>
-                        <td className="px-2 py-2 text-sm text-gray-700 sm:px-3 sm:py-2.5">{catLabel(inv.category)}</td>
-                        <td className="px-2 py-2 text-sm max-w-[140px] sm:max-w-[160px] sm:px-3 sm:py-2.5" onClick={(e) => e.stopPropagation()}>
+                        <td className="min-w-0 max-w-[72px] overflow-hidden px-1 py-1.5 sm:px-1.5 sm:py-2">
+                          <div className="truncate whitespace-nowrap text-xs text-gray-700" title={catLabel(inv.category)}>
+                            {catLabel(inv.category)}
+                          </div>
+                        </td>
+                        <td
+                          className="min-w-0 max-w-[72px] overflow-hidden px-1 py-1.5 sm:px-1.5 sm:py-2"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           {invoiceTaskSource[inv.id] ? (
                             <Link
                               to={`/property-admin/tasks/${invoiceTaskSource[inv.id].taskId}`}
-                              className="font-medium text-[#1D9E75] hover:underline line-clamp-2"
+                              className="block truncate text-xs font-medium text-[#1D9E75] hover:underline"
+                              title={invoiceTaskSource[inv.id].title}
                               onClick={(e) => e.stopPropagation()}
                             >
                               {invoiceTaskSource[inv.id].title}
@@ -1451,34 +1497,40 @@ export function InvoiceManagement({
                             <span className="text-gray-400">—</span>
                           )}
                         </td>
-                        <td className="px-2 py-2 text-center sm:px-3 sm:py-2.5" onClick={(e) => e.stopPropagation()}>
+                        <td className="min-w-0 max-w-[88px] overflow-hidden px-0.5 py-1.5 text-center sm:py-2" onClick={(e) => e.stopPropagation()}>
                           <span
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium sm:px-2.5 sm:py-1 ${st.className}`}
+                            className={`inline-flex max-w-full items-center gap-0.5 truncate rounded-full px-1 py-0.5 text-[10px] font-medium ${st.className}`}
+                            title={l ? st.labelEn : st.labelZh}
                           >
-                            {inv.has_anomalies && <AlertTriangle size={12} aria-hidden />}
-                            {inv.is_abnormal && <ShieldAlert size={12} className="text-amber-700" aria-hidden />}
-                            {l ? st.labelEn : st.labelZh}
+                            {inv.has_anomalies && <AlertTriangle size={10} className="shrink-0" aria-hidden />}
+                            {inv.is_abnormal && (
+                              <ShieldAlert size={10} className="shrink-0 text-amber-700" aria-hidden />
+                            )}
+                            <span className="truncate">{l ? st.labelEn : st.labelZh}</span>
                           </span>
                         </td>
-                        <td className="w-28 px-1.5 py-2 text-center align-top sm:w-32 sm:px-2 sm:py-2.5" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex flex-col items-stretch gap-1">
-                            <div className="flex flex-wrap items-center justify-center gap-0.5">
+                        <td
+                          className="w-[88px] min-w-[88px] max-w-[88px] overflow-visible px-0.5 py-1.5 text-center align-top sm:py-2"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="flex w-full flex-col items-stretch gap-1">
+                            <div className="flex items-center justify-center gap-0.5">
                               <button
                                 type="button"
                                 onClick={() => setSelectedInvoice(inv)}
-                                className="p-1.5 text-gray-500 hover:text-[#1D9E75] hover:bg-green-50 rounded-lg"
+                                className="rounded-md p-1 text-gray-500 hover:bg-green-50 hover:text-[#1D9E75]"
                                 title={l ? 'Details' : '详情'}
                               >
-                                <Eye size={16} />
+                                <Eye size={14} />
                               </button>
                               {canDeleteInvoice(roleInProperty, profile?.id, inv.uploaded_by) && (
                                 <button
                                   type="button"
                                   onClick={() => setDeleteConfirm(inv)}
-                                  className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                                  className="rounded-md p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
                                   title={l ? 'Delete' : '删除'}
                                 >
-                                  <Trash2 size={16} />
+                                  <Trash2 size={14} />
                                 </button>
                               )}
                             </div>
@@ -1487,7 +1539,7 @@ export function InvoiceManagement({
                                 <button
                                   type="button"
                                   onClick={() => void approveInvoiceFromList(inv)}
-                                  className="px-2 py-1 text-[11px] font-medium leading-tight rounded-md bg-[#1D9E75] text-white hover:bg-[#178a66] sm:px-2.5 sm:text-xs"
+                                  className="rounded-md bg-[#1D9E75] px-2 py-1.5 text-xs font-medium leading-none text-white hover:bg-[#178a66]"
                                 >
                                   {l ? 'Approve' : '审核通过'}
                                 </button>
@@ -1497,7 +1549,7 @@ export function InvoiceManagement({
                                     setRejectTarget(inv);
                                     setRejectNote('');
                                   }}
-                                  className="px-2 py-1 text-[11px] font-medium leading-tight rounded-md bg-red-600 text-white hover:bg-red-700 sm:px-2.5 sm:text-xs"
+                                  className="rounded-md bg-red-600 px-2 py-1.5 text-xs font-medium leading-none text-white hover:bg-red-700"
                                 >
                                   {l ? 'Reject' : '驳回'}
                                 </button>
@@ -1507,9 +1559,10 @@ export function InvoiceManagement({
                               <button
                                 type="button"
                                 onClick={() => void markPaid(inv.id)}
-                                className="px-2 py-1 text-[11px] font-medium leading-tight rounded-md bg-cyan-600 text-white hover:bg-cyan-700 sm:px-2.5 sm:text-xs"
+                                className="rounded-md bg-cyan-600 px-2 py-1.5 text-xs font-medium leading-none text-white hover:bg-cyan-700"
+                                title={l ? 'Mark as paid' : '标记已付款'}
                               >
-                                {l ? 'Mark paid' : '标记已付款'}
+                                {l ? 'Paid' : '已付'}
                               </button>
                             )}
                           </div>
@@ -1723,9 +1776,9 @@ export function InvoiceManagement({
 
 function SummaryCard({ label, value, className }: { label: string; value: number; className: string }) {
   return (
-    <div className={`rounded-xl p-4 sm:p-5 ${className}`}>
-      <div className="text-xs sm:text-sm text-gray-600 mb-1">{label}</div>
-      <div className="text-2xl sm:text-3xl font-bold text-gray-900">{value}</div>
+    <div className={`min-w-0 rounded-xl p-3 sm:p-4 xl:p-5 ${className}`}>
+      <div className="mb-1 truncate text-xs text-gray-600 sm:text-sm">{label}</div>
+      <div className="text-xl font-bold tabular-nums text-gray-900 sm:text-2xl xl:text-3xl">{value}</div>
     </div>
   );
 }

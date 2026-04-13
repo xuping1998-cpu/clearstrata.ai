@@ -254,7 +254,9 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
         p_property_id: chosen,
       });
       if (staffRpcErr) {
-        console.warn('property_has_management_staff', staffRpcErr);
+        if (import.meta.env.DEV) {
+          console.warn('property_has_management_staff', staffRpcErr);
+        }
         setPropertyHasManagementStaff(null);
       } else {
         setPropertyHasManagementStaff(staffOk === true);
