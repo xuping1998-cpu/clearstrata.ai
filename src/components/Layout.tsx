@@ -3,6 +3,7 @@ import type { LucideIcon } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Home,
+  ShoppingCart,
   Vote,
   DollarSign,
   Users,
@@ -36,6 +37,9 @@ interface LayoutProps {
 function isModulePathActive(location: ReturnType<typeof useLocation>, path: string): boolean {
   if (path === '/meetings') {
     return location.pathname === '/meetings' || location.pathname.startsWith('/meetings/');
+  }
+  if (path === '/procurement') {
+    return location.pathname === '/procurement' || location.pathname.startsWith('/procurement/');
   }
   if (path === '/manager-tasks') {
     return location.pathname === '/manager-tasks';
@@ -149,6 +153,7 @@ export function Layout({ children }: LayoutProps) {
     return [
       { path: '/owner-info', icon: Users, label: t('nav_owner_info'), iconBg: 'bg-sky-500' },
       { path: '/manager-tasks', icon: Briefcase, label: t('nav_disputes'), iconBg: 'bg-teal-600' },
+      { path: '/procurement', icon: ShoppingCart, label: t('nav_procurement'), iconBg: 'bg-blue-500' },
       { path: '/compliance', icon: FileText, label: t('nav_help_compliance'), iconBg: 'bg-indigo-500' },
       { path: '/finance', icon: DollarSign, label: t('nav_finance'), iconBg: 'bg-green-500' },
       { path: '/meetings', icon: CalendarDays, label: t('nav_meetings_records'), iconBg: 'bg-violet-600' },
