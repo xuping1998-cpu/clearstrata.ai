@@ -49,7 +49,7 @@ import { PostLoginPropertyRedirect } from './components/PostLoginPropertyRedirec
 import { DemoDashboardRoute } from './components/DemoDashboardRoute';
 import { PropertyDemoEntry } from './pages/PropertyDemoEntry';
 import { QrPropertyEntryPage } from './pages/entry/QrPropertyEntryPage';
-import { canManagePropertyInvites, canReviewJoinRequestsAsStaff } from './lib/propertyPermissions';
+import { canApproveJoinRequest, canManagePropertyInvites } from './lib/propertyPermissions';
 import type { UserRole } from './lib/supabase';
 import { useHasActivePropertyMembership } from './hooks/useHasActivePropertyMembership';
 import { samePropertyId } from './lib/propertyIdMatch';
@@ -158,7 +158,7 @@ function PropertyInviteAnalyticsRoute() {
 
 function AdminJoinRequestsRoute() {
   return (
-    <AdminStaffRoute canAccess={canReviewJoinRequestsAsStaff}>
+    <AdminStaffRoute canAccess={canApproveJoinRequest}>
       <AdminJoinRequests />
     </AdminStaffRoute>
   );

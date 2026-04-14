@@ -10,19 +10,28 @@ import {
   hasPendingJoinRequestForPropertyEmail,
   normalizeJoinRequestEmail,
 } from './joinRequestGuards';
-import {
-  logPropertyEntryApproveResult,
-  logPropertyEntrySubmitResult,
-  logUnifiedPropertyEntryLine,
-} from './propertyEntryGateLog';
+import { logPropertyEntrySubmitResult, logUnifiedPropertyEntryLine } from './propertyEntryGateLog';
+
+/** PostgREST 有时把 `RETURNS jsonb` 的 RPC 包成单元素数组，必须先解包再读字段（旧版审批 RPC 等）。 */
+export function firstRpcJsonRow(data: unknown): Record<string, unknown> | null {
+  if (data == null) return null;
+  if (Array.isArray(data)) {
+    const el = data[0];
+    if (el != null && typeof el === 'object' && !Array.isArray(el)) return el as Record<string, unknown>;
+    return null;
+  }
+  if (typeof data === 'object') return data as Record<string, unknown>;
+  return null;
+}
 
 function rpcRowSucceeded(data: unknown): boolean {
-  const row = data as { success?: boolean; ok?: boolean } | null;
+  const row = firstRpcJsonRow(data);
   return row != null && (row.success === true || row.ok === true);
 }
 
 function rpcRowErrorCode(data: unknown): string | undefined {
-  return (data as { error?: string } | null)?.error;
+  const row = firstRpcJsonRow(data);
+  return row?.error != null ? String(row.error) : undefined;
 }
 
 export type SubmitUnifiedPropertyEntryInput = {
@@ -70,7 +79,7 @@ export type SubmitUnifiedPropertyEntryResult =
     };
 
 function parseSubmitUnifiedResult(raw: unknown): SubmitUnifiedPropertyEntryResult {
-  const row = raw as Record<string, unknown> | null;
+  const row = firstRpcJsonRow(raw);
   const entryPath = row?.entry_path != null ? String(row.entry_path) : '';
   const ok = row != null && (row.ok === true || row.success === true);
   if (!ok) {
@@ -208,139 +217,17 @@ export async function submitUnifiedPropertyEntry(
   return parsed;
 }
 
-/** 扫码进楼专用 `tryAutoJoinProperty` / `createPendingJoinRequest` 见 `qrPropertyEntry.ts`。 */
-
-export type ApproveJoinRequestInput = {
-  joinRequestId: string;
-  reviewerId: string;
-  unitNumberOverride: string | null;
-};
-
-/** 管理端「最终审批」：单 RPC，库内完成 residents / property_members / join_requests。 */
-export type ApproveJoinRequestFinalInput = {
-  requestId: string;
-  propertyId: string;
-  defaultUnitNo: string | null;
-};
-
-export async function approveJoinRequestFinal(
-  client: SupabaseClient,
-  input: ApproveJoinRequestFinalInput,
-): Promise<{ ok: boolean; data: unknown; error: { message: string; code?: string } | null }> {
-  logUnifiedPropertyEntryLine('approve_final:start', {
-    p_request_id: input.requestId,
-    p_property_id: input.propertyId,
-    p_default_unit_no: input.defaultUnitNo,
-  });
-
-  const { data, error } = await client.rpc('approve_join_request_final', {
-    p_request_id: input.requestId,
-    p_property_id: input.propertyId,
-    p_default_unit_no: input.defaultUnitNo,
-  });
-
-  if (error) {
-    logUnifiedPropertyEntryLine('approve_final:rpc_error', {
-      message: error.message,
-      code: error.code,
-      raw: data,
-    });
-    return { ok: false, data, error: { message: error.message, code: error.code } };
-  }
-
-  const ok = rpcRowSucceeded(data);
-  const row = (data ?? null) as Record<string, unknown> | null;
-  logPropertyEntryApproveResult({
-    reviewerId: null,
-    data,
-    unitNoFallback: input.defaultUnitNo,
-  });
-  logUnifiedPropertyEntryLine('approve_final:result', {
-    ok,
-    error_code: rpcRowErrorCode(data),
-    approve_email: row?.target_email ?? null,
-    resolved_profile_id: row?.target_user_id ?? null,
-    residents_outcome: row?.residents_outcome ?? null,
-    property_members_upsert: row?.property_members_upserted ?? row?.property_members_inserted ?? null,
-    join_request_status_updated: row?.join_request_status_updated ?? null,
-    unit_no: row?.unit_no ?? null,
-  });
-
-  return { ok, data, error: null };
-}
-
-/** @deprecated 使用 `approveJoinRequestFinal`；仍调用旧 RPC `approve_join_request`。 */
-export async function approveJoinRequest(
-  client: SupabaseClient,
-  input: ApproveJoinRequestInput,
-): Promise<{ ok: boolean; data: unknown; error: { message: string; code?: string } | null }> {
-  logUnifiedPropertyEntryLine('approve:start', {
-    join_request_id: input.joinRequestId,
-    reviewer_id: input.reviewerId,
-    unit_override: input.unitNumberOverride,
-  });
-
-  const { data, error } = await client.rpc('approve_join_request', {
-    p_join_request_id: input.joinRequestId,
-    p_reviewer_id: input.reviewerId,
-    p_unit_number: input.unitNumberOverride,
-  });
-
-  if (error) {
-    logUnifiedPropertyEntryLine('approve:rpc_error', { message: error.message, code: error.code });
-    return { ok: false, data, error: { message: error.message, code: error.code } };
-  }
-
-  const ok = rpcRowSucceeded(data);
-  const row = (data ?? null) as Record<string, unknown> | null;
-  logPropertyEntryApproveResult({
-    reviewerId: input.reviewerId,
-    data,
-    unitNoFallback: input.unitNumberOverride,
-  });
-  logUnifiedPropertyEntryLine('approve:result', {
-    ok,
-    error_code: rpcRowErrorCode(data),
-    approve_email: row?.target_email ?? null,
-    resolved_profile_id: row?.target_user_id ?? null,
-    residents_outcome: row?.residents_outcome ?? null,
-    property_members_upsert: row?.property_members_upserted ?? row?.property_members_inserted ?? null,
-    join_request_status_updated: row?.join_request_status_updated ?? null,
-    unit_no: row?.unit_no ?? null,
-  });
-
-  return { ok, data, error: null };
-}
-
-export type RejectJoinRequestInput = {
-  joinRequestId: string;
-  reviewerId: string;
-  rejectionReason: string | null;
-};
-
-export async function rejectJoinRequest(
-  client: SupabaseClient,
-  input: RejectJoinRequestInput,
-): Promise<{ ok: boolean; data: unknown; error: { message: string; code?: string } | null }> {
-  logUnifiedPropertyEntryLine('reject:start', {
-    join_request_id: input.joinRequestId,
-    reviewer_id: input.reviewerId,
-  });
-
-  const { data, error } = await client.rpc('reject_join_request', {
-    p_join_request_id: input.joinRequestId,
-    p_reviewer_id: input.reviewerId,
-    p_rejection_reason: input.rejectionReason,
-  });
-
-  if (error) {
-    logUnifiedPropertyEntryLine('reject:rpc_error', { message: error.message, code: error.code });
-    return { ok: false, data, error: { message: error.message, code: error.code } };
-  }
-
-  const ok = rpcRowSucceeded(data);
-  logUnifiedPropertyEntryLine('reject:result', { ok, raw: data });
-  return { ok, data, error: null };
-}
+/** 审批 / 拒绝 / 扫码自动进楼实现见 `unifiedPropertyEntry.ts`（避免与 submit 循环依赖）。 */
+export type {
+  ApproveJoinRequestInput,
+  ApproveJoinRequestFinalInput,
+  RejectJoinRequestInput,
+} from './unifiedPropertyEntry';
+export {
+  approveJoinRequestFinalSucceeded,
+  approveJoinRequestFinal,
+  approveJoinRequest,
+  rejectJoinRequest,
+} from './unifiedPropertyEntry';
 
 export { rpcRowSucceeded as joinRpcSucceeded, rpcRowErrorCode as joinRpcErrorCode };

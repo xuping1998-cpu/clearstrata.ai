@@ -4,14 +4,19 @@ import { Check, Loader2, X, ClipboardList } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useProperty } from '../../contexts/PropertyContext';
-import { canReviewJoinRequestsAsStaff } from '../../lib/propertyPermissions';
+import { canApproveJoinRequest } from '../../lib/propertyPermissions';
 import { samePropertyId } from '../../lib/propertyIdMatch';
 import type { UserRole } from '../../lib/supabase';
 import { supabase } from '../../lib/supabase';
 import { dedupePendingJoinRequestsByPropertyEmail } from '../../lib/joinRequestGuards';
 import { sendJoinDecisionEmail } from '../../lib/sendJoinDecisionEmail';
 import { logPropertyEntryApproveResult } from '../../lib/propertyEntryGateLog';
-import { approveJoinRequestFinal, joinRpcErrorCode, rejectJoinRequest } from '../../lib/propertyEntryUnified';
+import { firstRpcJsonRow, joinRpcErrorCode } from '../../lib/propertyEntryUnified';
+import {
+  approveJoinRequest,
+  rejectJoinRequest,
+  CLEARSTRATA_PROPERTY_MEMBERS_CHANGED,
+} from '../../lib/unifiedPropertyEntry';
 import { BackButton } from '../../components/BackButton';
 
 /**
@@ -48,6 +53,14 @@ function roleLabel(role: string | undefined, en: boolean): string {
   };
   const pair = labels[role] ?? [role, role];
   return en ? pair[0] : pair[1];
+}
+
+/** Postgres `RAISE EXCEPTION 'code'` / PostgREST 错误文案中嵌入的业务码 */
+function extractJoinApproveBusinessCode(msg: string | undefined): string | undefined {
+  if (!msg) return undefined;
+  const re =
+    /\b(not_authenticated|forbidden|not_found|already_processed|missing_email|missing_unit_number|applicant_not_found|profile_missing|user_mismatch|property_mismatch|unit_already_bound)\b/;
+  return msg.match(re)?.[1];
 }
 
 function friendlyReviewFailure(code: string | undefined, en: boolean): string {
@@ -91,11 +104,18 @@ function joinApproveUserMessage(
   en: boolean,
 ): string {
   if (transportError) {
+    const bc = extractJoinApproveBusinessCode(transportError.message);
+    if (bc) return friendlyReviewFailure(bc, en);
     const bits = [transportError.message, transportError.code].filter(Boolean);
     if (bits.length) return bits.join(' ');
     return en ? 'Request failed.' : '请求失败';
   }
-  const row = data as { message?: string; message_zh?: string; hint?: string; detail?: string } | null;
+  const row = firstRpcJsonRow(data) as {
+    message?: string;
+    message_zh?: string;
+    hint?: string;
+    detail?: string;
+  } | null;
   if (!en && row?.message_zh) return String(row.message_zh);
   if (row?.message) return String(row.message);
   if (row?.detail) return String(row.detail);
@@ -119,7 +139,7 @@ export default function AdminJoinRequests() {
 
   /** 审核权限：仅 `property_members.role`（优先 roleInProperty，其次 membership 命中） */
   const reviewRole: UserRole | null = roleInProperty ?? effectiveRole;
-  const canReview = canReviewJoinRequestsAsStaff(reviewRole);
+  const canReview = canApproveJoinRequest(reviewRole);
 
   const [rows, setRows] = useState<JoinRequestRow[]>([]);
   /** 同一物业 + 邮箱去重展示（与库 unique partial 索引一致；历史重复数据仍只显示一条） */
@@ -141,43 +161,58 @@ export default function AdminJoinRequests() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
-  /** 仅负责请求 join_requests；调用方已保证 ready / currentPropertyId / canReview。finally 必执行。 */
-  const loadJoinRequests = useCallback(async (): Promise<void> => {
-    setPageError(null);
-    setSuccessBanner(null);
-    setLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('join_requests')
-        .select(JOIN_REQUESTS_SELECT_PENDING)
-        .eq('property_id', currentPropertyId as string)
-        .eq('status', 'pending')
-        .order('created_at', { ascending: false });
+  /**
+   * 加载 pending join_requests。
+   * @param opts.preserveSuccessBanner 为 true 时不清空顶部成功横幅（审批通过后刷新列表用）。
+   * @param opts.silent 为 true 时列表失败不写入 pageError（避免审批已成功却被「加载失败」盖住）。
+   */
+  const loadJoinRequests = useCallback(
+    async (opts?: { preserveSuccessBanner?: boolean; silent?: boolean }): Promise<void> => {
+      if (!opts?.silent) setPageError(null);
+      if (!opts?.preserveSuccessBanner) setSuccessBanner(null);
+      setLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('join_requests')
+          .select(JOIN_REQUESTS_SELECT_PENDING)
+          .eq('property_id', currentPropertyId as string)
+          .eq('status', 'pending')
+          .order('created_at', { ascending: false });
 
-      if (error) {
+        if (error) {
+          setRows([]);
+          const msg = [error.message, error.code ? `(${error.code})` : '', error.details ? String(error.details) : '']
+            .filter(Boolean)
+            .join(' ');
+          if (opts?.silent) {
+            console.warn('[AdminJoinRequests] loadJoinRequests failed (silent)', msg);
+          } else {
+            setPageError(
+              en
+                ? `Could not load requests: ${msg}`
+                : `无法加载申请列表（可能被 RLS 拦截）：${msg}`,
+            );
+          }
+          return;
+        }
+        setRows((data as JoinRequestRow[]) ?? []);
+      } catch (e) {
         setRows([]);
-        const msg = [error.message, error.code ? `(${error.code})` : '', error.details ? String(error.details) : '']
-          .filter(Boolean)
-          .join(' ');
-        setPageError(
-          en
-            ? `Could not load requests: ${msg}`
-            : `无法加载申请列表（可能被 RLS 拦截）：${msg}`,
-        );
-        return;
+        if (opts?.silent) {
+          console.warn('[AdminJoinRequests] loadJoinRequests catch (silent)', e);
+        } else {
+          setPageError(
+            en
+              ? `Unexpected error: ${e instanceof Error ? e.message : String(e)}`
+              : `加载异常：${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
+      } finally {
+        setLoading(false);
       }
-      setRows((data as JoinRequestRow[]) ?? []);
-    } catch (e) {
-      setRows([]);
-      setPageError(
-        en
-          ? `Unexpected error: ${e instanceof Error ? e.message : String(e)}`
-          : `加载异常：${e instanceof Error ? e.message : String(e)}`,
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [currentPropertyId, en]);
+    },
+    [currentPropertyId, en],
+  );
 
   useEffect(() => {
     if (!ready) {
@@ -218,69 +253,63 @@ export default function AdminJoinRequests() {
       return;
     }
 
-    const { ok, data, error } = await approveJoinRequestFinal(supabase, {
-      requestId: id,
+    const jrRow = pendingRows.find((r) => r.id === id) ?? rows.find((r) => r.id === id);
+    const result = await approveJoinRequest(supabase, {
+      joinRequestId: id,
       propertyId: currentPropertyId,
-      defaultUnitNo: effectiveUnit,
+      unitNumberOverride: effectiveUnit,
     });
     setActingId(null);
-    if (error) {
-      console.error('approve_join_request_final RPC error:', error, 'data:', data);
-      const msg = joinApproveUserMessage(data, undefined, error, en);
+
+    const rpcRow = firstRpcJsonRow(result.data);
+    console.info('[AdminJoinRequests] approve_join_request_final', {
+      requestId: id,
+      propertyId: currentPropertyId,
+      effectiveUnit,
+      targetEmail: (rpcRow?.email as string | undefined) ?? jrRow?.email ?? null,
+      resolvedProfileId: (rpcRow?.user_id as string | undefined) ?? null,
+      rpcData: result.data,
+      rpcError: result.error,
+    });
+
+    if (!result.ok) {
+      const code = result.error?.code ?? joinRpcErrorCode(result.data);
+      const msg =
+        result.error?.message ||
+        joinApproveUserMessage(result.data, code, result.error ? { message: result.error.message, code: result.error.code } : null, en);
+      console.error('approve_join_request_final failed:', result.data, result.error);
       setPageError(msg);
       setToast({ kind: 'error', text: msg });
       return;
     }
-    if (!ok) {
-      const code = joinRpcErrorCode(data);
-      console.error('approve_join_request_final business error:', JSON.stringify(data, null, 2));
-      const msg = joinApproveUserMessage(data, code, null, en);
-      setPageError(msg);
-      setToast({ kind: 'error', text: msg });
-      return;
-    }
-    const row = data as {
-      membership_created?: boolean;
-      user_linked?: boolean;
-      message?: string;
-      target_email?: string | null;
-      unit_no?: string | null;
-      residents_outcome?: string | null;
-      property_members_inserted?: boolean;
-      property_id?: string | null;
-    };
+
     logPropertyEntryApproveResult({
       reviewerId: user.id,
-      data,
+      data: result.data,
       unitNoFallback: effectiveUnit,
     });
 
-    const successToastZh = '审批通过，用户已加入物业';
-    const successToastEn = 'Approved. The user has been added to this property.';
-    if (row.membership_created === true) {
-      const banner = en
-        ? 'Approved. The user now has access to this property.'
-        : '已通过申请，用户已获得物业访问权限';
-      setSuccessBanner(banner);
-      setToast({ kind: 'success', text: en ? successToastEn : successToastZh });
-    } else if (row.user_linked === false) {
-      const banner = en
-        ? 'Approved, but no account was found for this email yet.'
-        : '已通过申请，但用户尚未完成账号绑定';
-      setSuccessBanner(banner);
-      setToast({ kind: 'success', text: banner });
-    } else if ((row.message as string | undefined) === 'already_member') {
-      const banner = en
-        ? 'Approved. The user was already a member (membership updated).'
-        : '已通过申请（用户已是该物业活跃成员，信息已更新）';
-      setSuccessBanner(banner);
-      setToast({ kind: 'success', text: banner });
-    } else {
-      setSuccessBanner(en ? 'Application approved.' : '已通过申请');
-      setToast({ kind: 'success', text: en ? successToastEn : successToastZh });
+    const successZh = '审批通过，用户已加入物业';
+    const successEn = 'Approved. The user has been added to this property.';
+    setPageError(null);
+    setSuccessBanner(en ? successEn : successZh);
+    setToast({ kind: 'success', text: en ? successEn : successZh });
+
+    try {
+      await loadJoinRequests({ preserveSuccessBanner: true, silent: true });
+    } catch (e) {
+      console.warn('[AdminJoinRequests] refresh join list after approve', e);
     }
-    void loadJoinRequests();
-    void refreshMemberships();
+    try {
+      await refreshMemberships();
+    } catch (e) {
+      console.warn('[AdminJoinRequests] refreshMemberships after approve', e);
+    }
+    try {
+      window.dispatchEvent(new CustomEvent(CLEARSTRATA_PROPERTY_MEMBERS_CHANGED));
+    } catch {
+      /* ignore */
+    }
     void sendJoinDecisionEmail({
       joinRequestId: id,
       decision: 'approved',

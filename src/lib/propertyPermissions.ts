@@ -1,5 +1,26 @@
 import type { UserRole } from './supabase';
 
+/**
+ * 加入申请「通过/拒绝」审核页：仅业委会 / 管理员（与 `approve_join_request_final` RPC 一致）。
+ */
+export function canApproveJoinRequest(role: UserRole | null | undefined): boolean {
+  const r = normalizeRoleKey(role);
+  return r === 'admin' || r === 'council';
+}
+
+/** 用户管理（业委会视角）：与审核同一组核心角色（不含 property_admin / manager）。 */
+export function canManageUsersCouncilOrAdmin(role: UserRole | null | undefined): boolean {
+  return canApproveJoinRequest(role);
+}
+
+export function canApproveJoinRequestFromContext(
+  roleInProperty: UserRole | null | undefined,
+  memberships: { role: UserRole }[],
+): boolean {
+  if (roleInProperty != null) return canApproveJoinRequest(roleInProperty);
+  return memberships.some((m) => canApproveJoinRequest(m.role));
+}
+
 /** Primary staff roles for invites + join-request review (matches DB `user_role`). */
 const STAFF_INVITE_JOIN_ROLES: ReadonlySet<string> = new Set([
   'property_admin',

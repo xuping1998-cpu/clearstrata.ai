@@ -8,8 +8,8 @@ import { supabase } from '../../lib/supabase';
 import {
   createPendingJoinRequest,
   tryAutoJoinProperty,
+  type CreatePendingJoinRequestResult,
 } from '../../lib/qrPropertyEntry';
-import type { SubmitUnifiedPropertyEntryResult } from '../../lib/propertyEntryUnified';
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -40,7 +40,10 @@ function persistCurrentPropertyId(propertyId: string) {
   }
 }
 
-function pendingMessageFromResult(result: SubmitUnifiedPropertyEntryResult, en: boolean): string {
+function pendingMessageFromResult(result: CreatePendingJoinRequestResult, en: boolean): string {
+  if (result.kind === 'already_pending') {
+    return en ? 'You already have a pending request for this property.' : '已有待审核申请，请等待处理。';
+  }
   if (result.kind === 'business_reject') {
     if (result.errorKey === 'already_pending' || result.message === 'PENDING_EXISTS') {
       return en ? 'You already have a pending request for this property.' : '已有待审核申请，请等待处理。';
@@ -178,7 +181,7 @@ export function QrPropertyEntryPage() {
           phone: null,
           languagePref: lang,
         });
-        if (pending.kind === 'pending_submitted' || pending.kind === 'auto_approved') {
+        if (pending.kind === 'created' || pending.kind === 'auto_approved') {
           setToast({
             kind: 'success',
             text: en ? 'Could not verify profile; submitted for review.' : '无法校验资料，已提交人工审核。',
@@ -225,7 +228,7 @@ export function QrPropertyEntryPage() {
         languagePref: prof.preferred_language === 'zh' ? 'zh' : lang,
       });
 
-      if (pending.kind === 'pending_submitted') {
+      if (pending.kind === 'created') {
         setToast({
           kind: 'success',
           text: en ? 'Could not auto-match; a review request was submitted.' : '未能自动匹配，已提交审核申请。',

@@ -43,9 +43,15 @@ export function logPropertyEntryApproveResult(opts: {
   unitNoFallback?: string | null;
 }) {
   const row = (opts.data ?? null) as Record<string, unknown> | null;
-  const email = (row?.target_email as string | null | undefined) ?? null;
+  const email =
+    (row?.email as string | null | undefined) ??
+    (row?.target_email as string | null | undefined) ??
+    null;
   const unit = (row?.unit_no as string | null | undefined) ?? opts.unitNoFallback ?? null;
-  const profileId = (row?.target_user_id as string | null | undefined) ?? null;
+  const profileId =
+    (row?.user_id as string | null | undefined) ??
+    (row?.target_user_id as string | null | undefined) ??
+    null;
   console.log('property entry approve — reviewer id', opts.reviewerId ?? null);
   console.log('approve email', email ?? '—');
   console.log('resolved profile id', profileId ?? '—');

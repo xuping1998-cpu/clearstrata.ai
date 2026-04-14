@@ -2,7 +2,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useProperty } from '../../contexts/PropertyContext';
-import { canManagePropertyAdmin, canReviewJoinRequests, canManagePropertyInvites } from '../../lib/propertyPermissions';
+import {
+  canManagePropertyAdmin,
+  canReviewJoinRequests,
+  canManagePropertyInvites,
+  canApproveJoinRequest,
+} from '../../lib/propertyPermissions';
 
 type Tab = 'members' | 'requests' | 'settings';
 
@@ -18,7 +23,7 @@ export function PropertyAdminHub() {
   }
 
   const showAdmin = canManagePropertyAdmin(currentRole);
-  const showReview = canReviewJoinRequests(currentRole);
+  const showReview = canApproveJoinRequest(currentRole);
   const showInvitesLink = canManagePropertyInvites(currentRole);
 
   return (

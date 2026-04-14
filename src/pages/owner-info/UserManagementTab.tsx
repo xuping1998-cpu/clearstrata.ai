@@ -10,6 +10,7 @@ import { invokeUpdateUserRole } from '../../lib/invokeUpdateUserRole';
 import { type AppMetadataRole, profileRoleToMetadataRole } from '../../lib/userRoleMetadata';
 import { UserCard } from '../../components/UserCard';
 import { canEditPropertyMemberRoles } from '../../lib/propertyPermissions';
+import { CLEARSTRATA_PROPERTY_MEMBERS_CHANGED } from '../../lib/unifiedPropertyEntry';
 import { approvePendingUser, type PendingApplicant } from '../../lib/approvePendingUser';
 
 interface Profile {
@@ -248,6 +249,12 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
   useEffect(() => {
     if (profile && currentPropertyId) void loadData();
   }, [profile, currentPropertyId, loadData]);
+
+  useEffect(() => {
+    const on = () => void loadData();
+    window.addEventListener(CLEARSTRATA_PROPERTY_MEMBERS_CHANGED, on);
+    return () => window.removeEventListener(CLEARSTRATA_PROPERTY_MEMBERS_CHANGED, on);
+  }, [loadData]);
 
   useEffect(() => {
     if (!toast) return;

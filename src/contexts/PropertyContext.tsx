@@ -12,10 +12,7 @@ import { useLocation, useSearchParams } from 'react-router-dom';
 import { supabase, type UserRole } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 import { samePropertyId } from '../lib/propertyIdMatch';
-import {
-  canEditPropertyMemberRoles,
-  canReviewJoinRequestsAsStaff,
-} from '../lib/propertyPermissions';
+import { canEditPropertyMemberRoles } from '../lib/propertyPermissions';
 
 /** Primary storage key (existing installs). */
 const STORAGE_KEY = 'clearstrata-current-property-id';
@@ -382,20 +379,6 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
     const hit = memberships.find((m) => samePropertyId(m.propertyId, currentPropertyId));
     return hit?.role ?? null;
   }, [currentPropertyId, memberships]);
-
-  useEffect(() => {
-    const currentRole = roleInProperty;
-    const canReview = canReviewJoinRequestsAsStaff(roleInProperty);
-    const canManageUsers = canEditPropertyMemberRoles(roleInProperty);
-    console.log('current role:', currentRole);
-    console.log('property permission debug', {
-      currentPropertyId,
-      currentUserEmail: profile?.email ?? null,
-      currentRole,
-      canReview,
-      canManageUsers,
-    });
-  }, [roleInProperty, currentPropertyId, profile?.email]);
 
   const value = useMemo<PropertyContextValue>(
     () => ({
