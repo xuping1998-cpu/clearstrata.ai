@@ -212,19 +212,19 @@ export function Layout({ children }: LayoutProps) {
             setMobileMenuOpen(false);
           }}
           className={`
-            flex min-h-[54px] w-full items-center gap-2 rounded-2xl border px-3 py-2 text-left shadow-sm transition-all
+            flex min-h-[48px] w-full items-center gap-2.5 rounded-[10px] border px-[14px] py-[10px] text-left transition-colors
             ${
               active
-                ? 'border-emerald-300 bg-emerald-50/80 ring-1 ring-emerald-200'
-                : 'border-gray-200 bg-white hover:border-emerald-200 hover:shadow-sm'
+                ? 'border-emerald-200 bg-emerald-50/90'
+                : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50/80'
             }
           `}
         >
-          <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${iconBg}`}>
-            <Icon className="h-4 w-4 text-white" size={16} />
+          <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${iconBg}`}>
+            <Icon className="text-white" size={18} strokeWidth={2} />
           </div>
-          <div className="min-w-0 flex-1">
-            <div className="text-[15px] font-semibold leading-snug text-gray-900">{label}</div>
+          <div className="min-w-0 flex-1 text-left">
+            <span className="text-base font-semibold leading-none text-gray-900">{label}</span>
           </div>
         </button>
       );
@@ -436,27 +436,23 @@ export function Layout({ children }: LayoutProps) {
                         setMobileMenuOpen(false);
                       }}
                       className={`
-                        flex min-h-[4.25rem] w-full items-center gap-3 rounded-2xl border px-4 py-3.5 text-left shadow-sm transition-all
-                        sm:min-h-[4.5rem] sm:gap-3.5 sm:px-4 sm:py-4
+                        flex h-14 w-full items-center gap-2.5 rounded-xl px-4 text-left text-[18px] font-semibold transition-colors
                         ${
                           homeActive
-                            ? 'border-emerald-300 bg-emerald-50/90 ring-2 ring-emerald-200/80'
-                            : 'border-gray-200 bg-white hover:border-emerald-200 hover:shadow-md'
+                            ? 'bg-[#1D9E75] text-white hover:bg-[#22b384]'
+                            : 'bg-gray-100 text-gray-800 hover:bg-[#e8ebea]'
                         }
                       `}
                     >
-                      <div
-                        className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl sm:h-[3.25rem] sm:w-[3.25rem] ${
-                          homeActive ? 'bg-[#1D9E75]' : 'bg-emerald-600'
-                        }`}
-                      >
-                        <Home className="h-7 w-7 text-white" strokeWidth={2.25} size={28} />
-                      </div>
-                      <span className="text-[1.375rem] font-extrabold leading-tight tracking-tight text-gray-900 sm:text-[1.625rem]">
-                        {t('nav_dashboard')}
-                      </span>
+                      <Home
+                        className="shrink-0 text-current"
+                        size={20}
+                        strokeWidth={2}
+                        aria-hidden
+                      />
+                      <span className="leading-none">{t('nav_dashboard')}</span>
                     </button>
-                    <div className="mt-3 space-y-1.5 pb-2">
+                    <div className="mt-2 space-y-2 pb-2">
                       {quickModules.map((m) => renderModuleCard(m.path, m.icon, m.label, m.iconBg))}
                     </div>
                   </div>
