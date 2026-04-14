@@ -1,7 +1,11 @@
 /**
- * 统一入楼（单一路径）：全部走数据库 `submit_join_request` / `approve_join_request` / `reject_join_request`。
- * 库内已实现「普通 owner 先试自动进楼（白名单房号 + 信息完整），失败再写 pending」；
- * 前端不拆两次 RPC，避免竞态与双流程冲突。
+ * 统一入楼 — **提交与预检**层（`src/lib/unifiedPropertyEntry.ts` 为对外入口的补充）。
+ *
+ * - **提交 / 自动失败转 pending**：单 RPC `submit_join_request`（库内先尝试自动 owner 进楼，失败写 `join_requests`）。
+ * - **拒绝 pending**：`reject_join_request`（仅 `join_requests`）。
+ * - **管理端通过**：不在此文件；请使用 `unifiedPropertyEntry.approveJoinRequest` → `approve_join_request`。
+ *
+ * 旧的 `approve_join_request`（非 `_final`）已从 `authenticated` 撤销 EXECUTE（见迁移 `20260728120000_*`）。
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { UserRole } from './supabase';
@@ -222,12 +226,14 @@ export type {
   ApproveJoinRequestInput,
   ApproveJoinRequestFinalInput,
   RejectJoinRequestInput,
+  EnterPropertyByInviteInput,
 } from './unifiedPropertyEntry';
 export {
   approveJoinRequestFinalSucceeded,
   approveJoinRequestFinal,
   approveJoinRequest,
   rejectJoinRequest,
+  enterPropertyByInvite,
 } from './unifiedPropertyEntry';
 
 export { rpcRowSucceeded as joinRpcSucceeded, rpcRowErrorCode as joinRpcErrorCode };

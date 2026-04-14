@@ -1,11 +1,10 @@
 import type { UserRole } from './supabase';
 
 /**
- * 加入申请「通过/拒绝」审核页：仅业委会 / 管理员（与 `approve_join_request_final` RPC 一致）。
+ * 加入申请「通过」：仅业委会（与 `approve_join_request` RPC 的 council gate 一致）。
  */
 export function canApproveJoinRequest(role: UserRole | null | undefined): boolean {
-  const r = normalizeRoleKey(role);
-  return r === 'admin' || r === 'council';
+  return normalizeRoleKey(role) === 'council';
 }
 
 /** 用户管理（业委会视角）：与审核同一组核心角色（不含 property_admin / manager）。 */
@@ -126,6 +125,11 @@ export function canManageUsersOnProperty(role: UserRole | null | undefined): boo
 export function canEditPropertyMemberRoles(role: UserRole | null | undefined): boolean {
   const r = normalizeRoleKey(role);
   return r === 'admin' || r === 'council' || r === 'property_admin';
+}
+
+/** 成员管理（property_members）：仅业委会可改角色 / 冻结 / 踢出（与 RLS `property_members_council_update` 一致）。 */
+export function canCouncilManagePropertyMembers(role: UserRole | null | undefined): boolean {
+  return normalizeRoleKey(role) === 'council';
 }
 
 export function canShowJoinRequestReviewNavFromContext(

@@ -1,17 +1,15 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Link } from 'react-router-dom';
 import { Printer, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useProperty } from '../../contexts/PropertyContext';
 import { supabase, type UserRole, type ProfileAccountStatus } from '../../lib/supabase';
 import { withProperty } from '../../lib/supabaseTenant';
-import { invokeUpdateUserRole } from '../../lib/invokeUpdateUserRole';
-import { type AppMetadataRole, profileRoleToMetadataRole } from '../../lib/userRoleMetadata';
 import { UserCard } from '../../components/UserCard';
-import { canEditPropertyMemberRoles } from '../../lib/propertyPermissions';
-import { CLEARSTRATA_PROPERTY_MEMBERS_CHANGED } from '../../lib/unifiedPropertyEntry';
-import { approvePendingUser, type PendingApplicant } from '../../lib/approvePendingUser';
+import { canCouncilManagePropertyMembers, canEditPropertyMemberRoles } from '../../lib/propertyPermissions';
+import { JoinRequestsReviewPanel } from '../../features/join-requests/JoinRequestsReviewPanel';
+import { MembersList } from './MembersList';
+import { OwnerInviteCodesPanel } from './OwnerInviteCodesPanel';
 
 interface Profile {
   id: string;
@@ -54,12 +52,13 @@ function resolveDirectoryDisplayName(
   return fromProfile || fromResident || (emailFallback && emailFallback.trim()) || '—';
 }
 
-/** Per-property membership (role/status) from `property_members`. */
+/** Per-property membership (role/status) from `property_members`. Unit lives on `residents.unit_no`. */
 interface PropertyMemberMeta {
   role: UserRole;
   status: string;
-  unit_number?: string | null;
 }
+
+type StaffTab = 'review' | 'members' | 'invites';
 
 /** Lowercase canonical UUID string, or null if invalid (avoids PostgREST 400 on bad filter values). */
 function normalizeUuid(value: unknown): string | null {
@@ -87,17 +86,14 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
   const [editForm, setEditForm] = useState<Partial<Profile>>({});
   const [updating, setUpdating] = useState<string | null>(null);
   const [activationBusy, setActivationBusy] = useState<string | null>(null);
-  const [membershipReviewBusy, setMembershipReviewBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
+  const [staffTab, setStaffTab] = useState<StaffTab>('review');
 
   /** All gates use `property_members.role` for this property (`currentRole`). */
   const canEditMembers = canEditPropertyMemberRoles(currentRole);
   const canSelectRoles = !readOnly && canEditMembers;
   const canModerateActivation = !readOnly && canEditMembers;
   const canShowStaffToolbar = !readOnly && canEditMembers;
-  /** Pending membership approval: admin / council only (not property_admin). */
-  const canReviewPending =
-    !readOnly && (currentRole === 'admin' || currentRole === 'council');
 
   const loadData = useCallback(async () => {
     if (!currentPropertyId) return;
@@ -110,7 +106,7 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
     });
 
     const { data: pm, error: pmErr } = await withProperty(
-      supabase.from('property_members').select('user_id, role, status, unit_number') as any,
+      supabase.from('property_members').select('user_id, role, status') as any,
       currentPropertyId,
     );
 
@@ -121,7 +117,6 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
       user_id: string;
       role: string;
       status: string;
-      unit_number?: string | null;
     }>;
     console.log('[UserManagementTab] property_members count (raw)', pmRowsRaw.length, pmErr ?? '');
 
@@ -131,7 +126,6 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
       metaFull[row.user_id] = {
         role: row.role as UserRole,
         status: String(row.status ?? ''),
-        unit_number: row.unit_number ?? null,
       };
     }
     setMemberMetaByUserId(metaFull);
@@ -235,26 +229,11 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
       merged_users: merged.length,
     });
 
-    const pendingPmCount = pmRowsRaw.filter(
-      (r) => String(r.status ?? '').toLowerCase() === 'pending',
-    ).length;
-    if (!readOnly && (currentRole === 'admin' || currentRole === 'council')) {
-      console.log('[PropertyMemberReview]', {
-        currentRole,
-        pendingUsersCount: pendingPmCount,
-      });
-    }
   }, [currentPropertyId, user?.id, profile?.id, readOnly, currentRole]);
 
   useEffect(() => {
     if (profile && currentPropertyId) void loadData();
   }, [profile, currentPropertyId, loadData]);
-
-  useEffect(() => {
-    const on = () => void loadData();
-    window.addEventListener(CLEARSTRATA_PROPERTY_MEMBERS_CHANGED, on);
-    return () => window.removeEventListener(CLEARSTRATA_PROPERTY_MEMBERS_CHANGED, on);
-  }, [loadData]);
 
   useEffect(() => {
     if (!toast) return;
@@ -294,21 +273,8 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
     [activationText, residentByUserId, memberMetaByUserId, t, language],
   );
 
-  const pendingMembershipProfiles = useMemo(
-    () =>
-      profiles.filter(
-        (p) => String(memberMetaByUserId[p.id]?.status ?? '').toLowerCase() === 'pending',
-      ),
-    [profiles, memberMetaByUserId],
-  );
-
   const sortedProfiles = useMemo(() => {
-    let copy = [...profiles];
-    if (canReviewPending) {
-      copy = copy.filter(
-        (p) => String(memberMetaByUserId[p.id]?.status ?? '').toLowerCase() !== 'pending',
-      );
-    }
+    const copy = [...profiles];
     copy.sort((a, b) => {
       const sa = residentByUserId[a.id]?.status;
       const sb = residentByUserId[b.id]?.status;
@@ -320,142 +286,7 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
       return da.localeCompare(db);
     });
     return copy;
-  }, [profiles, residentByUserId, canReviewPending, memberMetaByUserId]);
-
-  const approvePendingMember = async (row: Profile) => {
-    if (!canReviewPending || !currentPropertyId) return;
-    const uid = normalizeUuid(row.id);
-    if (!uid) {
-      setToast({
-        kind: 'error',
-        message: language === 'en' ? 'Invalid user id.' : '用户 ID 无效。',
-      });
-      return;
-    }
-    const meta = memberMetaByUserId[row.id];
-    const res = residentByUserId[row.id];
-    const unitRaw =
-      (meta?.unit_number && String(meta.unit_number).trim()) ||
-      (res?.unit_no && String(res.unit_no).trim()) ||
-      '';
-    const email = (row.email ?? '').trim();
-    if (!email || email === '—') {
-      setToast({
-        kind: 'error',
-        message: language === 'en' ? 'Applicant email is required.' : '申请人邮箱不能为空。',
-      });
-      return;
-    }
-
-    setMembershipReviewBusy(uid);
-    try {
-      const applicant: PendingApplicant = {
-        email,
-        unit_no: unitRaw,
-        name_en: row.full_name_en ?? null,
-        name_zh: row.full_name_zh ?? null,
-        phone: row.phone ?? null,
-        language_pref: row.preferred_language ?? 'en',
-      };
-
-      const { data, error } = await approvePendingUser(supabase, {
-        userId: uid,
-        propertyId: currentPropertyId,
-        applicant,
-        context: { currentPropertyId, currentRole },
-      });
-
-      if (error) {
-        console.error('[approvePendingMember]', error);
-        setToast({
-          kind: 'error',
-          message:
-            language === 'en'
-              ? `Approval failed: ${error.message}`
-              : `审批失败：${error.message}`,
-        });
-        return;
-      }
-
-      const rpcRow = data as { ok?: boolean; error?: string } | null;
-      if (!rpcRow?.ok) {
-        console.error('[approvePendingMember] rpc', data);
-        setToast({
-          kind: 'error',
-          message:
-            language === 'en'
-              ? `Could not approve: ${rpcRow?.error ?? 'unknown'}`
-              : `无法完成审批：${rpcRow?.error ?? 'unknown'}`,
-        });
-        return;
-      }
-
-      await loadData();
-      await refreshMemberships();
-      setToast({
-        kind: 'success',
-        message: language === 'en' ? 'Approved — user is now on the property.' : '审批通过，用户已加入物业',
-      });
-    } finally {
-      setMembershipReviewBusy(null);
-    }
-  };
-
-  const reviewMembership = async (userId: string, action: 'suspend' | 'remove') => {
-    if (!canReviewPending || !currentPropertyId) return;
-    const uid = normalizeUuid(userId);
-    if (!uid) {
-      alert(language === 'en' ? 'Invalid user id.' : '用户 ID 无效。');
-      return;
-    }
-
-    const pendingCount = profiles.filter(
-      (p) => String(memberMetaByUserId[p.id]?.status ?? '').toLowerCase() === 'pending',
-    ).length;
-
-    setMembershipReviewBusy(uid);
-    console.log('[PropertyMemberReview]', {
-      currentRole,
-      pendingUsersCount: pendingCount,
-      approveTargetUserId: uid,
-    });
-
-    const pAction = action === 'suspend' ? 'suspend' : 'remove';
-    const { data, error } = await supabase.rpc('review_property_member_membership' as any, {
-      p_property_id: currentPropertyId,
-      p_user_id: uid,
-      p_action: pAction,
-    });
-
-    console.log('[PropertyMemberReview] approve result', data);
-    if (error) {
-      console.error('[PropertyMemberReview] approve error', error);
-    }
-
-    setMembershipReviewBusy(null);
-
-    if (error) {
-      alert(
-        language === 'en'
-          ? `Request failed: ${error.message}`
-          : `操作失败：${error.message}`,
-      );
-      return;
-    }
-
-    const row = data as { ok?: boolean; error?: string } | null;
-    if (!row?.ok) {
-      alert(
-        language === 'en'
-          ? `Could not complete: ${row?.error ?? 'unknown'}`
-          : `无法完成：${row?.error ?? 'unknown'}`,
-      );
-      return;
-    }
-
-    await loadData();
-    await refreshMemberships();
-  };
+  }, [profiles, residentByUserId]);
 
   const startEdit = (user: Profile) => {
     if (readOnly) return;
@@ -497,46 +328,6 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
 
   const updateEditForm = (field: string, value: string) => {
     setEditForm({ ...editForm, [field]: value });
-  };
-
-  const canShowRoleSelector = (user: Profile) => canSelectRoles && user.role !== 'admin';
-
-  const updateUserRole = async (userId: string, metaRole: AppMetadataRole) => {
-    if (readOnly || !canSelectRoles) return;
-    const current = profiles.find((p) => p.id === userId);
-    if (current && profileRoleToMetadataRole(current.role) === metaRole) return;
-
-    setUpdating(userId);
-    if (!currentPropertyId) {
-      alert(language === 'en' ? 'No property selected.' : '未选择物业。');
-      setUpdating(null);
-      return;
-    }
-
-    const { data, error } = await invokeUpdateUserRole(userId, metaRole, currentPropertyId);
-
-    if (error) {
-      console.error('[UserManagementTab] update-user-role:', error);
-      alert(
-        language === 'en'
-          ? 'Failed to update role. Deploy the update-user-role Edge Function and apply DB migrations, or try again.'
-          : '更新角色失败。请部署 update-user-role 边缘函数并执行数据库迁移，或稍后重试。',
-      );
-      setUpdating(null);
-      return;
-    }
-
-    const payload = data as { error?: string } | null;
-    if (payload?.error) {
-      alert(payload.error);
-      setUpdating(null);
-      return;
-    }
-
-    await loadData();
-    await refreshMemberships();
-    if (profile?.id === userId) await refreshProfile();
-    setUpdating(null);
   };
 
   const formatDbError = (err: { message: string; hint?: string | null }) => {
@@ -880,18 +671,51 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
           </p>
           {canShowStaffToolbar && (
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <Link
-                to="/admin/join-requests"
-                className="inline-flex items-center rounded-lg border border-[#1D9E75] bg-white px-3 py-1.5 text-sm font-medium text-[#1D9E75] hover:bg-emerald-50"
+              <div
+                className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5"
+                role="tablist"
+                aria-label={language === 'en' ? 'User management sections' : '用户管理分区'}
               >
-                {language === 'en' ? 'Review' : '审核'}
-              </Link>
-              <span className="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm font-medium text-gray-700">
-                {language === 'en' ? 'Edit roles' : '修改角色'}
-              </span>
-              <span className="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm font-medium text-gray-700">
-                {language === 'en' ? 'Member admin' : '成员管理'}
-              </span>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={staffTab === 'review'}
+                  onClick={() => setStaffTab('review')}
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                    staffTab === 'review'
+                      ? 'bg-white text-[#1D9E75] shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  {language === 'en' ? 'Review (join_requests)' : '审核（join_requests）'}
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={staffTab === 'members'}
+                  onClick={() => setStaffTab('members')}
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                    staffTab === 'members'
+                      ? 'bg-white text-[#1D9E75] shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  {language === 'en' ? 'Members (property_members)' : '成员管理（property_members）'}
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={staffTab === 'invites'}
+                  onClick={() => setStaffTab('invites')}
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                    staffTab === 'invites'
+                      ? 'bg-white text-[#1D9E75] shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  {language === 'en' ? 'Invite codes' : '邀请码管理'}
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -905,216 +729,105 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
         </button>
       </div>
 
-      {pendingMembershipProfiles.length > 0 && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-4 space-y-3">
-          <h3 className="text-lg font-semibold text-amber-950">
-            {language === 'en' ? 'Pending members (property)' : '待审批成员（物业成员）'}
-          </h3>
-          <p className="text-sm text-amber-900/90">
-            {language === 'en'
-              ? 'These users have membership status pending on this property (property_members).'
-              : '以下用户在当前物业的 property_members 表中为待审批（pending）状态。'}
-          </p>
-          <div className="overflow-x-auto rounded-lg border border-amber-100 bg-white">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-200 bg-gray-50 text-left">
-                  <th className="px-3 py-2 font-medium text-gray-700">
-                    {language === 'en' ? 'Name' : '姓名'}
-                  </th>
-                  <th className="px-3 py-2 font-medium text-gray-700">
-                    {language === 'en' ? 'Email' : '邮箱'}
-                  </th>
-                  <th className="px-3 py-2 font-medium text-gray-700">
-                    {language === 'en' ? 'Unit' : '单元号'}
-                  </th>
-                  <th className="px-3 py-2 font-medium text-gray-700">
-                    {language === 'en' ? 'Role' : '角色'}
-                  </th>
-                  <th className="px-3 py-2 font-medium text-gray-700">
-                    {language === 'en' ? 'Status' : '状态'}
-                  </th>
-                  {canReviewPending && (
-                    <th className="px-3 py-2 font-medium text-gray-700">
-                      {language === 'en' ? 'Actions' : '操作'}
-                    </th>
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {pendingMembershipProfiles.map((row) => {
-                  const meta = memberMetaByUserId[row.id];
-                  const res = residentByUserId[row.id];
-                  const unit =
-                    (meta?.unit_number && String(meta.unit_number).trim()) ||
-                    (res?.unit_no && String(res.unit_no).trim()) ||
-                    '—';
-                  const displayName = resolveDirectoryDisplayName(row, res, row.email);
-                  const busy = membershipReviewBusy === row.id;
-                  return (
-                    <tr key={row.id} className="border-b border-gray-100 last:border-0">
-                      <td className="px-3 py-2 text-gray-900">{displayName}</td>
-                      <td className="px-3 py-2 text-gray-700">{row.email || '—'}</td>
-                      <td className="px-3 py-2 text-gray-700">{unit}</td>
-                      <td className="px-3 py-2 text-gray-700">{t(row.role)}</td>
-                      <td className="px-3 py-2 text-gray-700">{meta?.status ?? 'pending'}</td>
-                      {canReviewPending && (
-                        <td className="px-3 py-2">
-                          <div className="flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              disabled={busy}
-                              onClick={() => void approvePendingMember(row)}
-                              className="inline-flex items-center gap-1 rounded-lg bg-green-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
-                            >
-                              {busy ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />}
-                              {language === 'en' ? 'Approve' : '审批通过'}
-                            </button>
-                            <button
-                              type="button"
-                              disabled={busy}
-                              onClick={() => void reviewMembership(row.id, 'suspend')}
-                              className="inline-flex items-center gap-1 rounded-lg bg-amber-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-amber-800 disabled:opacity-50"
-                            >
-                              {language === 'en' ? 'Reject (suspend)' : '拒绝（暂停）'}
-                            </button>
-                            <button
-                              type="button"
-                              disabled={busy}
-                              onClick={() => {
-                                const ok =
-                                  language === 'en'
-                                    ? window.confirm(
-                                        'Remove this pending membership? The user will lose access to this property.',
-                                      )
-                                    : window.confirm(
-                                        '确定移除该待审批成员？用户将失去本物业访问权限。',
-                                      );
-                                if (ok) void reviewMembership(row.id, 'remove');
-                              }}
-                              className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
-                            >
-                              <XCircle size={12} />
-                              {language === 'en' ? 'Reject (remove)' : '拒绝（移除）'}
-                            </button>
-                          </div>
-                        </td>
-                      )}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+      {canShowStaffToolbar && currentPropertyId && staffTab === 'review' && (
+        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+          <JoinRequestsReviewPanel embedded />
         </div>
       )}
 
-      <div className="space-y-4">
-        {sortedProfiles.map((user) => {
-          const res = residentByUserId[user.id];
-          const pending = res?.status === 'pending';
-          const pmPending =
-            String(memberMetaByUserId[user.id]?.status ?? '').toLowerCase() === 'pending';
-          const hideResidentActivationStrip = canReviewPending && pmPending;
-          const busyResidentId = res?.id != null ? normalizeUuid(res.id) : null;
+      {canShowStaffToolbar && currentPropertyId && staffTab === 'members' && (
+        <div className="space-y-4">
+          <MembersList
+            propertyId={currentPropertyId}
+            language={language}
+            canOperate={canCouncilManagePropertyMembers(currentRole)}
+            currentUserId={user?.id ?? profile?.id}
+            onMembershipUpdated={async () => {
+              await loadData();
+              await refreshMemberships();
+              await refreshProfile();
+            }}
+          />
+        </div>
+      )}
 
-          return (
-            <div
-              key={user.id}
-              className="rounded-xl border border-gray-200 overflow-hidden bg-white shadow-sm"
-            >
-              {pending && !hideResidentActivationStrip && (
-                <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-amber-50 border-b border-amber-100">
-                  <span className="text-sm font-medium text-amber-900">
-                    {t('user_mgmt_activation_pending')}
-                    {res?.unit_no ? ` · ${t('user_mgmt_unit')} ${res.unit_no}` : ''}
-                  </span>
-                  {canModerateActivation && res && (
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => void approveActivation(res.id, user.id)}
-                        disabled={busyResidentId != null && activationBusy === busyResidentId}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
-                      >
-                        {busyResidentId != null && activationBusy === busyResidentId ? (
-                          <Loader2 size={14} className="animate-spin" />
-                        ) : (
-                          <CheckCircle size={14} />
-                        )}
-                        {t('user_mgmt_approve')}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void rejectActivation(res.id, user.id)}
-                        disabled={busyResidentId != null && activationBusy === busyResidentId}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50"
-                      >
-                        <XCircle size={14} />
-                        {t('user_mgmt_reject')}
-                      </button>
-                    </div>
-                  )}
-                  {!canModerateActivation && pending && (
-                    <span className="text-xs text-amber-800">
-                      {language === 'en' ? 'Awaiting admin activation' : '待管理员激活'}
+      {canShowStaffToolbar && currentPropertyId && staffTab === 'invites' && (
+        <OwnerInviteCodesPanel propertyId={currentPropertyId} language={language} />
+      )}
+
+      <div className="space-y-4">
+        {(!canShowStaffToolbar || staffTab === 'members') &&
+          sortedProfiles.map((user) => {
+            const res = residentByUserId[user.id];
+            const pending = res?.status === 'pending';
+            const busyResidentId = res?.id != null ? normalizeUuid(res.id) : null;
+
+            return (
+              <div
+                key={user.id}
+                className="rounded-xl border border-gray-200 overflow-hidden bg-white shadow-sm"
+              >
+                {pending && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-amber-50 border-b border-amber-100">
+                    <span className="text-sm font-medium text-amber-900">
+                      {t('user_mgmt_activation_pending')}
+                      {res?.unit_no ? ` · ${t('user_mgmt_unit')} ${res.unit_no}` : ''}
                     </span>
-                  )}
-                </div>
-              )}
-              <UserCard
-                user={{
-                  id: user.id,
-                  full_name_en: user.full_name_en,
-                  full_name_zh: user.full_name_zh,
-                  email: user.email,
-                  phone: user.phone,
-                  roleLabel: cardRoleLabel(user),
-                }}
-                readOnly={readOnly}
-                language={language}
-                isEditing={editingUserId === user.id}
-                editForm={editForm}
-                updating={updating === user.id}
-                onStartEdit={() => startEdit(user)}
-                onCancelEdit={cancelEdit}
-                onSaveEdit={() => saveEdit(user.id)}
-                onFormChange={updateEditForm}
-                roleSelector={
-                  canShowRoleSelector(user) ? (
-                    <label className="flex items-center gap-2 text-sm text-gray-700">
-                      <span className="whitespace-nowrap text-xs font-medium text-gray-500">
-                        {language === 'en' ? 'Role' : '角色'}
+                    {canModerateActivation && res && (
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void approveActivation(res.id, user.id)}
+                          disabled={busyResidentId != null && activationBusy === busyResidentId}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+                        >
+                          {busyResidentId != null && activationBusy === busyResidentId ? (
+                            <Loader2 size={14} className="animate-spin" />
+                          ) : (
+                            <CheckCircle size={14} />
+                          )}
+                          {t('user_mgmt_approve')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void rejectActivation(res.id, user.id)}
+                          disabled={busyResidentId != null && activationBusy === busyResidentId}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50"
+                        >
+                          <XCircle size={14} />
+                          {t('user_mgmt_reject')}
+                        </button>
+                      </div>
+                    )}
+                    {!canModerateActivation && pending && (
+                      <span className="text-xs text-amber-800">
+                        {language === 'en' ? 'Awaiting admin activation' : '待管理员激活'}
                       </span>
-                      <select
-                        value={profileRoleToMetadataRole(user.role)}
-                        onChange={(e) =>
-                          updateUserRole(user.id, e.target.value as AppMetadataRole)
-                        }
-                        disabled={updating === user.id}
-                        className="min-w-[140px] px-2 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#1D9E75] disabled:opacity-50"
-                      >
-                        <option value="user">
-                          {language === 'en' ? 'Owner' : '业主'}
-                        </option>
-                        <option value="council">
-                          {language === 'en' ? 'Council' : '业委会成员'}
-                        </option>
-                        {(currentRole === 'admin' ||
-                          currentRole === 'property_admin' ||
-                          currentRole === 'council') && (
-                          <option value="manager">
-                            {language === 'en' ? 'Property Manager' : '物业经理'}
-                          </option>
-                        )}
-                      </select>
-                    </label>
-                  ) : undefined
-                }
-              />
-            </div>
-          );
-        })}
+                    )}
+                  </div>
+                )}
+                <UserCard
+                  user={{
+                    id: user.id,
+                    full_name_en: user.full_name_en,
+                    full_name_zh: user.full_name_zh,
+                    email: user.email,
+                    phone: user.phone,
+                    roleLabel: cardRoleLabel(user),
+                  }}
+                  readOnly={readOnly}
+                  language={language}
+                  isEditing={editingUserId === user.id}
+                  editForm={editForm}
+                  updating={updating === user.id}
+                  onStartEdit={() => startEdit(user)}
+                  onCancelEdit={cancelEdit}
+                  onSaveEdit={() => saveEdit(user.id)}
+                  onFormChange={updateEditForm}
+                />
+              </div>
+            );
+          })}
       </div>
 
       {toast && (

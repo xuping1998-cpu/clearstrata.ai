@@ -6,7 +6,6 @@ import {
   canManagePropertyAdmin,
   canReviewJoinRequests,
   canManagePropertyInvites,
-  canApproveJoinRequest,
 } from '../../lib/propertyPermissions';
 
 type Tab = 'members' | 'requests' | 'settings';
@@ -23,7 +22,7 @@ export function PropertyAdminHub() {
   }
 
   const showAdmin = canManagePropertyAdmin(currentRole);
-  const showReview = canApproveJoinRequest(currentRole);
+  const showReview = canReviewJoinRequests(currentRole);
   const showInvitesLink = canManagePropertyInvites(currentRole);
 
   return (
@@ -93,16 +92,31 @@ function TabBtn({
 
 function MembersSection({ propertyId }: { propertyId: string }) {
   const [rows, setRows] = useState<
-    { user_id: string; role: string; status: string; unit_number: string | null; email?: string; full_name_en?: string }[]
+    { user_id: string; role: string; status: string; unit_no: string | null; email?: string; full_name_en?: string }[]
   >([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     const { data: mems } = await supabase
       .from('property_members')
-      .select('user_id, role, status, unit_number')
+      .select('user_id, role, status')
       .eq('property_id', propertyId);
     const list = mems ?? [];
+
+    const { data: resRows } = await supabase
+      .from('residents')
+      .select('user_id, unit_no')
+      .eq('property_id', propertyId)
+      .not('user_id', 'is', null);
+
+    const unitByUserId = new Map<string, string>();
+    for (const row of resRows ?? []) {
+      const uid = row.user_id as string | null | undefined;
+      if (!uid) continue;
+      const u = String(row.unit_no ?? '').trim();
+      if (u) unitByUserId.set(uid, u);
+    }
+
     const ids = list.map((m) => m.user_id as string);
     let profById: Record<string, { email: string; full_name_en: string }> = {};
     if (ids.length > 0) {
@@ -112,11 +126,17 @@ function MembersSection({ propertyId }: { propertyId: string }) {
       }
     }
     setRows(
-      list.map((m) => ({
-        ...m,
-        email: profById[m.user_id as string]?.email,
-        full_name_en: profById[m.user_id as string]?.full_name_en,
-      })) as typeof rows,
+      list.map((m) => {
+        const uid = m.user_id as string;
+        return {
+          user_id: uid,
+          role: String(m.role ?? ''),
+          status: String(m.status ?? ''),
+          unit_no: unitByUserId.get(uid) ?? null,
+          email: profById[uid]?.email,
+          full_name_en: profById[uid]?.full_name_en,
+        };
+      }),
     );
     setLoading(false);
   }, [propertyId]);
@@ -144,7 +164,7 @@ function MembersSection({ propertyId }: { propertyId: string }) {
               <td className="px-4 py-2">{r.full_name_en || r.email || r.user_id}</td>
               <td className="px-4 py-2">{r.role}</td>
               <td className="px-4 py-2">{r.status}</td>
-              <td className="px-4 py-2">{r.unit_number ?? '—'}</td>
+              <td className="px-4 py-2">{r.unit_no?.trim() ? r.unit_no.trim() : '—'}</td>
             </tr>
           ))}
         </tbody>

@@ -7,8 +7,8 @@ import { useProperty } from '../contexts/PropertyContext';
 import { resolveUserPropertyAccess } from '../lib/resolveUserPropertyAccess';
 
 /**
- * No active property_members: redirect to /join/pending or /join/rejected when applicable,
- * else show invite / public apply CTAs.
+ * No active `property_members` membership: may redirect using `join_requests` / invite flow,
+ * or show invite / public apply CTAs. Staff join approvals: `/admin/join-requests` (`join_requests`).
  */
 export function JoinAccessGate() {
   const { user } = useAuth();

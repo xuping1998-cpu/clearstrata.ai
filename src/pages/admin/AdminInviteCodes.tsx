@@ -67,7 +67,10 @@ export function AdminInviteCodes() {
   }, [load]);
 
   const openQrModal = (row: InviteCodeRow) => {
-    const url = `${inviteBase}?code=${encodeURIComponent(row.code)}`;
+    const pid = currentPropertyId ?? '';
+    const url = pid
+      ? `${typeof window !== 'undefined' ? window.location.origin : ''}/entry?propertyId=${encodeURIComponent(pid)}&inviteCode=${encodeURIComponent(row.code)}&source=qr`
+      : `${inviteBase}?code=${encodeURIComponent(row.code)}`;
     setQrPayload({
       title: row.label?.trim() || row.code,
       url,

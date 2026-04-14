@@ -56,7 +56,7 @@ const translations: Record<string, Record<Language, string>> = {
   nav_maintenance: { en: 'Maintenance', zh: '维修申请' },
   nav_finance: { en: 'Financial Reports', zh: '财务报表' },
   nav_owner_info: { en: 'Owner Information', zh: '业主信息' },
-  nav_review_applications: { en: 'Review applications', zh: '审核申请' },
+  nav_review_applications: { en: 'Join requests (join_requests)', zh: '加入申请审核（join_requests）' },
   nav_communication: { en: 'Dispute Resolution', zh: '纠纷调解' },
   nav_disputes: { en: 'Property manager', zh: '物业经理' },
   nav_hiring: { en: 'Property Manager', zh: '物业经理' },
@@ -66,7 +66,7 @@ const translations: Record<string, Record<Language, string>> = {
   nav_group_help: { en: 'Help', zh: '帮助中心' },
   nav_help_compliance: { en: 'Laws & regulations', zh: '法律法规' },
   nav_invite_codes: { en: 'Invite codes', zh: '邀请码管理' },
-  nav_join_requests: { en: 'Join requests', zh: '加入审核' },
+  nav_join_requests: { en: 'Join requests (join_requests)', zh: '加入申请审核（join_requests）' },
   nav_property_admin_sidebar: { en: 'Property admin', zh: '物业后台' },
 
   current_property_not_loaded: {
@@ -79,7 +79,10 @@ const translations: Record<string, Record<Language, string>> = {
   },
   select_property: { en: 'Select property', zh: '选择物业' },
   loading_property_context: { en: 'Loading property context…', zh: '正在加载物业上下文…' },
-  join_requests_empty_pending: { en: 'No pending requests.', zh: '暂无待审核申请' },
+  join_requests_empty_pending: {
+    en: 'No pending join_requests for this property.',
+    zh: '本物业暂无待审核的 join_requests。',
+  },
 
   hero_badge: { en: 'ClearStrata.ai', zh: 'ClearStrata.ai' },
   hero_title_1: { en: 'Your community property fees,', zh: '你的小區物業費，' },

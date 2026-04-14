@@ -1,4 +1,4 @@
-/** Console diagnostics for unified 入楼分流 (`submit_join_request` + `approve_join_request`). */
+/** Console diagnostics for unified 入楼：`submit_join_request` / `reject_join_request`；审批见 `approve_join_request`。 */
 
 export function logPropertyEntryGate(stage: string, payload: Record<string, unknown>) {
   console.log(`[property-entry:${stage}]`, payload);

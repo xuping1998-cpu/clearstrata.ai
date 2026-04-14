@@ -1,10 +1,20 @@
 /**
- * 最终统一入楼：自动进楼 → 失败则 pending；审批仅 RPC `approve_join_request_final`。
- * 不循环依赖 `propertyEntryUnified` 的 re-export（本文件单向 import 其 submit 工具）。
+ * # 系统级统一入楼（对外主入口）
+ *
+ * | 场景 | 前端 API | 数据库 |
+ * |------|-----------|--------|
+ * | Demo / 扫码（含公开邀请码） | `tryAutoJoinProperty` | 有码：`enter_property_by_invite`；无码：`try_auto_join_property_from_qr` |
+ * | 自动失败 → 待审核 | `createPendingJoinRequest` | `submit_join_request`（内含自动逻辑，失败写 `join_requests` pending） |
+ * | 邀请码 / 表单进楼 | `submitUnifiedPropertyEntry`（`propertyEntryUnified`） | 同上 `submit_join_request` |
+ * | 管理端「通过」 | `approveJoinRequest` | **`approve_join_request`（内部调用 `approve_join_request_final`）** |
+ * | 管理端「拒绝」 | `rejectJoinRequest` | `reject_join_request` |
+ *
+ * **防重复 pending**：`joinRequestGuards` 预检 + 库唯一索引 `uniq_pending_request`（见迁移 `20260724130000_*`）。
+ * **residents / property_members 写入**：仅发生在上述 RPC 内（幂等 upsert）；前端禁止直接 `insert` 这两张表。房号仅 `residents.unit_no`。
+ *
+ * 本文件单向依赖 `propertyEntryUnified` 的 `submitUnifiedPropertyEntry` / `firstRpcJsonRow`，避免与 re-export 循环引用。
  */
 
-/** 审批通过后广播，便于「用户管理」等页刷新 `property_members`。 */
-export const CLEARSTRATA_PROPERTY_MEMBERS_CHANGED = 'clearstrata-property-members-changed';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { UserRole } from './supabase';
 import {
@@ -23,6 +33,41 @@ import {
   logUnifiedPropertyEntryLine,
 } from './propertyEntryGateLog';
 
+// --- enterPropertyByInvite (public invite code + roster bind) ---------------
+
+export type EnterPropertyByInviteInput = {
+  propertyId: string;
+  inviteCode: string;
+  /** 若邀请码未绑定具体房号，则必填；与 `property_invite_codes.unit_no` 不一致时会由 RPC 拒绝 */
+  unitNo?: string | null;
+  languagePref?: 'en' | 'zh';
+};
+
+/**
+ * 扫码 / 公开邀请码入楼：RPC `enter_property_by_invite`（校验 `property_invite_codes`，写 `residents` + `property_members`，`used_count+1`）。
+ */
+export async function enterPropertyByInvite(client: SupabaseClient, input: EnterPropertyByInviteInput) {
+  const pid = input.propertyId?.trim() ?? '';
+  const code = input.inviteCode?.trim() ?? '';
+  const lang = input.languagePref === 'zh' ? 'zh' : 'en';
+  const unit = input.unitNo?.trim() || null;
+  logUnifiedPropertyEntryLine('enter_property_by_invite:start', {
+    property_id: pid,
+    invite_code: code,
+    unit_input: unit,
+  });
+  const { data, error } = await client.rpc('enter_property_by_invite', {
+    p_property_id: pid,
+    p_invite_code: code,
+    p_unit_no: unit,
+    p_language_pref: lang,
+  });
+  if (error) {
+    logUnifiedPropertyEntryLine('enter_property_by_invite:rpc_error', { message: error.message, code: error.code });
+  }
+  return { data, error };
+}
+
 // --- tryAutoJoinProperty ----------------------------------------------------
 
 export type TryAutoJoinPropertyInput = {
@@ -31,6 +76,8 @@ export type TryAutoJoinPropertyInput = {
   currentUserId: string;
   currentUserEmail: string;
   languagePref?: 'en' | 'zh';
+  /** Public `property_invite_codes` string when QR link includes a code (unit whitelist). */
+  inviteCode?: string | null;
 };
 
 export type TryAutoJoinPropertySuccess = {
@@ -89,11 +136,20 @@ export async function tryAutoJoinProperty(
     };
   }
 
-  const { data, error } = await client.rpc('try_auto_join_property_from_qr', {
-    p_property_id: pid,
-    p_unit_no: unit,
-    p_language_pref: lang,
-  });
+  const invite = (input.inviteCode ?? '').trim() || null;
+
+  const { data, error } = invite
+    ? await client.rpc('enter_property_by_invite', {
+        p_property_id: pid,
+        p_invite_code: invite,
+        p_unit_no: unit || null,
+        p_language_pref: lang,
+      })
+    : await client.rpc('try_auto_join_property_from_qr', {
+        p_property_id: pid,
+        p_unit_no: unit,
+        p_language_pref: lang,
+      });
 
   if (error) {
     logUnifiedPropertyEntryLine('try_auto_join:failed', {
@@ -154,6 +210,8 @@ export type CreatePendingJoinRequestInput = {
   email: string | null;
   phone: string | null;
   languagePref: 'en' | 'zh';
+  /** 扫码链接中的公开邀请码（`property_invite_codes`），写入 join_requests.invite_code。 */
+  inviteCode?: string | null;
   /** 与 submit 一致：默认做 pending 去重预检 */
   skipDuplicateCheck?: boolean;
 };
@@ -212,6 +270,8 @@ export async function createPendingJoinRequest(
     }
   }
 
+  const invite = (input.inviteCode ?? '').trim() || null;
+
   const sub = await submitUnifiedPropertyEntry(client, {
     userId: input.userId,
     p_property_id: pid,
@@ -221,7 +281,7 @@ export async function createPendingJoinRequest(
     p_full_name: input.fullName?.trim() || null,
     p_email: input.email?.trim().toLowerCase() || null,
     p_phone: input.phone?.trim() || null,
-    p_invite_code: null,
+    p_invite_code: invite,
     p_direct_invite_id: null,
     p_inferred_role: null,
     p_inferred_unit_number: null,
@@ -294,7 +354,7 @@ export function approveJoinRequestFinalSucceeded(
 }
 
 /**
- * 管理端审批唯一入口：仅 `approve_join_request_final`（不写 residents / property_members / join_requests）。
+ * 管理端审批：RPC `approve_join_request`（业委会 gate + 委托 `approve_join_request_final`）。
  */
 export async function approveJoinRequest(
   client: SupabaseClient,
@@ -308,7 +368,7 @@ export async function approveJoinRequest(
     p_unit_no: effectiveUnit,
   });
 
-  const { data, error } = await client.rpc('approve_join_request_final', {
+  const { data, error } = await client.rpc('approve_join_request', {
     p_request_id: input.joinRequestId,
     p_property_id: input.propertyId,
     p_unit_no: effectiveUnit,

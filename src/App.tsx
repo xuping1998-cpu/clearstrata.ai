@@ -33,6 +33,9 @@ import { Contact } from './pages/Contact';
 import { PropertyPicker } from './pages/PropertyPicker';
 import JoinWithCode from '@/pages/JoinWithCode';
 import { JoinRequestPage } from './pages/JoinRequestPage';
+import { JoinPathRouter } from './pages/scan-join/JoinPathRouter';
+import { BindUnitPage } from './pages/scan-join/BindUnitPage';
+import { WelcomeAfterJoinPage } from './pages/scan-join/WelcomeAfterJoinPage';
 import JoinPendingPage from './pages/join/JoinPendingPage';
 import JoinRejectedPage from './pages/join/JoinRejectedPage';
 import JoinInvalidPage from './pages/join/JoinInvalidPage';
@@ -49,7 +52,7 @@ import { PostLoginPropertyRedirect } from './components/PostLoginPropertyRedirec
 import { DemoDashboardRoute } from './components/DemoDashboardRoute';
 import { PropertyDemoEntry } from './pages/PropertyDemoEntry';
 import { QrPropertyEntryPage } from './pages/entry/QrPropertyEntryPage';
-import { canApproveJoinRequest, canManagePropertyInvites } from './lib/propertyPermissions';
+import { canManagePropertyInvites, canReviewJoinRequests } from './lib/propertyPermissions';
 import type { UserRole } from './lib/supabase';
 import { useHasActivePropertyMembership } from './hooks/useHasActivePropertyMembership';
 import { samePropertyId } from './lib/propertyIdMatch';
@@ -158,7 +161,7 @@ function PropertyInviteAnalyticsRoute() {
 
 function AdminJoinRequestsRoute() {
   return (
-    <AdminStaffRoute canAccess={canApproveJoinRequest}>
+    <AdminStaffRoute canAccess={canReviewJoinRequests}>
       <AdminJoinRequests />
     </AdminStaffRoute>
   );
@@ -243,10 +246,6 @@ function PropertyAdminLayoutRoute() {
   );
 }
 
-function JoinRequestRoute() {
-  return <JoinRequestPage />;
-}
-
 function SelectPropertyRoute() {
   const { session } = useAuth();
   const { memberships, currentPropertyId, ready } = useProperty();
@@ -327,10 +326,12 @@ function AppContent() {
       <Route path="/join/rejected" element={<JoinRejectedPage />} />
       <Route path="/join/invalid" element={<JoinInvalidPage />} />
       <Route path="/join/welcome" element={<JoinInviteLandingPage />} />
-      <Route path="/join" element={<JoinRequestRoute />} />
+      <Route path="/join" element={<JoinPathRouter />} />
+      <Route path="/bind-unit" element={<BindUnitPage />} />
+      <Route path="/welcome" element={<WelcomeAfterJoinPage />} />
       <Route path="/invite" element={<JoinWithCode />} />
       <Route path="/dashboard" element={<SessionDashboardRoute />} />
-      <Route path="/join-request" element={<JoinRequestRoute />} />
+      <Route path="/join-request" element={<JoinRequestPage />} />
       <Route path="/select-property" element={<SelectPropertyRoute />} />
       <Route path="/property-admin" element={<PropertyAdminLayoutRoute />} />
       <Route

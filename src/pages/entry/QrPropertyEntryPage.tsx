@@ -72,6 +72,17 @@ export function QrPropertyEntryPage() {
     [searchParams],
   );
   const propertyCodeParam = useMemo(() => (searchParams.get('propertyCode') || '').trim(), [searchParams]);
+  /** Public invite code (`property_invite_codes`). Prefer `inviteCode=`; when `propertyId` is set, `code=` is treated as invite (QR links). */
+  const inviteCodeParam = useMemo(() => {
+    const a = (searchParams.get('inviteCode') || searchParams.get('invite_code') || '').trim();
+    if (a) return a;
+    const pid = (searchParams.get('propertyId') || searchParams.get('property_id') || '').trim();
+    if (pid && UUID_RE.test(pid)) {
+      const c = (searchParams.get('code') || '').trim();
+      if (c) return c;
+    }
+    return '';
+  }, [searchParams]);
   const sourceParam = useMemo(() => (searchParams.get('source') || '').trim(), [searchParams]);
 
   const [resolved, setResolved] = useState<OpenProperty | null>(null);
@@ -180,6 +191,7 @@ export function QrPropertyEntryPage() {
           email: email || null,
           phone: null,
           languagePref: lang,
+          inviteCode: inviteCodeParam || null,
         });
         if (pending.kind === 'created' || pending.kind === 'auto_approved') {
           setToast({
@@ -201,6 +213,7 @@ export function QrPropertyEntryPage() {
         currentUserId: user.id,
         currentUserEmail: email,
         languagePref: prof.preferred_language === 'zh' ? 'zh' : lang,
+        inviteCode: inviteCodeParam || null,
       });
 
       if (auto.ok) {
@@ -226,6 +239,7 @@ export function QrPropertyEntryPage() {
         email: email || null,
         phone: typeof prof.phone === 'string' ? prof.phone : null,
         languagePref: prof.preferred_language === 'zh' ? 'zh' : lang,
+        inviteCode: inviteCodeParam || null,
       });
 
       if (pending.kind === 'created') {
@@ -361,6 +375,7 @@ export function QrPropertyEntryPage() {
         <p className="text-xs text-gray-400 text-center">
           property: {resolved.id.slice(0, 8)}…
           {propertyCodeParam ? ` · code: ${propertyCodeParam}` : ''}
+          {inviteCodeParam ? ` · invite: ${inviteCodeParam}` : ''}
         </p>
       </div>
     </div>

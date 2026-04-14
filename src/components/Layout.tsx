@@ -22,7 +22,7 @@ import {
   canManagePropertyAdminFromContext,
   canReviewJoinRequestsFromContext,
   canManagePropertyInvitesFromContext,
-  canApproveJoinRequestFromContext,
+  canReviewJoinRequestsFromContext,
 } from '../lib/propertyPermissions';
 import { useLanguage, LANGUAGE_USER_STORAGE_KEY } from '../contexts/LanguageContext';
 import { samePropertyId } from '../lib/propertyIdMatch';
@@ -87,8 +87,8 @@ export function Layout({ children }: LayoutProps) {
     canManagePropertyAdminFromContext(roleInProperty, memberships) ||
     canReviewJoinRequestsFromContext(roleInProperty, memberships);
   const showInviteCodesNav = canManagePropertyInvitesFromContext(roleInProperty, memberships);
-  const showJoinRequestsNav = canApproveJoinRequestFromContext(roleInProperty, memberships);
-  const showJoinRequestReviewCoreNav = canApproveJoinRequestFromContext(roleInProperty, memberships);
+  const showJoinRequestsNav = canReviewJoinRequestsFromContext(roleInProperty, memberships);
+  const showJoinRequestReviewCoreNav = canReviewJoinRequestsFromContext(roleInProperty, memberships);
 
   const isDashboardHome =
     location.pathname === '/' ||
