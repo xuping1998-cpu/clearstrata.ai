@@ -3,18 +3,17 @@ import type { LucideIcon } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Home,
-  ShoppingCart,
   Vote,
   DollarSign,
   Users,
-  Scale,
   Menu,
   X,
   LogOut,
   CircleUser as UserCircle,
   KeyRound,
-  ClipboardList,
   FileText,
+  Briefcase,
+  CalendarDays,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useProperty } from '../contexts/PropertyContext';
@@ -35,6 +34,12 @@ interface LayoutProps {
 }
 
 function isModulePathActive(location: ReturnType<typeof useLocation>, path: string): boolean {
+  if (path === '/meetings') {
+    return location.pathname === '/meetings' || location.pathname.startsWith('/meetings/');
+  }
+  if (path === '/manager-tasks') {
+    return location.pathname === '/manager-tasks';
+  }
   if (path === '/manager-tasks?task_type=dispute') {
     return (
       location.pathname === '/manager-tasks' &&
@@ -98,8 +103,6 @@ export function Layout({ children }: LayoutProps) {
     canManagePropertyAdminFromContext(roleInProperty, memberships) ||
     canReviewJoinRequestsFromContext(roleInProperty, memberships);
   const showInviteCodesNav = canManagePropertyInvitesFromContext(roleInProperty, memberships);
-  const showJoinRequestsNav = canReviewJoinRequestsFromContext(roleInProperty, memberships);
-  const showJoinRequestReviewCoreNav = canReviewJoinRequestsFromContext(roleInProperty, memberships);
 
   const isDashboardHome =
     location.pathname === '/' ||
@@ -144,26 +147,17 @@ export function Layout({ children }: LayoutProps) {
       ] as Array<{ path: string; icon: LucideIcon; label: string; iconBg: string }>;
     }
     return [
-      { path: '/procurement', icon: ShoppingCart, label: t('nav_procurement'), iconBg: 'bg-blue-500' },
-      { path: '/voting', icon: Vote, label: t('nav_voting'), iconBg: 'bg-purple-500' },
-      { path: '/finance', icon: DollarSign, label: t('nav_finance'), iconBg: 'bg-green-500' },
       { path: '/owner-info', icon: Users, label: t('nav_owner_info'), iconBg: 'bg-sky-500' },
-      {
-        path: '/manager-tasks?task_type=dispute',
-        icon: Scale,
-        label: t('nav_disputes'),
-        iconBg: 'bg-red-500',
-      },
+      { path: '/manager-tasks', icon: Briefcase, label: t('nav_disputes'), iconBg: 'bg-teal-600' },
       { path: '/compliance', icon: FileText, label: t('nav_help_compliance'), iconBg: 'bg-indigo-500' },
+      { path: '/finance', icon: DollarSign, label: t('nav_finance'), iconBg: 'bg-green-500' },
+      { path: '/meetings', icon: CalendarDays, label: t('nav_meetings_records'), iconBg: 'bg-violet-600' },
     ] as Array<{ path: string; icon: LucideIcon; label: string; iconBg: string }>;
   }, [t, isDemoMode, isDemoPropertyMock, location.pathname, language]);
 
   const systemNavItems = useMemo(
     () =>
       [
-        ...(showJoinRequestsNav && !showJoinRequestReviewCoreNav
-          ? [{ path: '/admin/join-requests', icon: ClipboardList, label: t('nav_join_requests') }]
-          : []),
         ...(showInviteCodesNav
           ? [{ path: '/admin/invites', icon: KeyRound, label: t('nav_invite_codes') }]
           : []),
@@ -171,20 +165,19 @@ export function Layout({ children }: LayoutProps) {
           ? [{ path: '/property-admin', icon: Users, label: t('nav_property_admin_sidebar') }]
           : []),
       ] as Array<{ path: string; icon: LucideIcon; label: string }>,
-    [
-      showJoinRequestsNav,
-      showJoinRequestReviewCoreNav,
-      showInviteCodesNav,
-      showPropertyAdmin,
-      t,
-    ],
+    [showInviteCodesNav, showPropertyAdmin, t],
   );
 
   const showSystemSection = !isDemoMode && !isDemoPropertyMock && systemNavItems.length > 0;
 
   const renderSystemNavButton = useCallback(
     (path: string, Icon: LucideIcon, label: string) => {
-      const active = location.pathname === path;
+      const active =
+        path === '/property-admin'
+          ? location.pathname === '/property-admin' || location.pathname.startsWith('/property-admin/')
+          : path === '/admin/invites'
+            ? location.pathname === '/admin/invites' || location.pathname.startsWith('/admin/invites/')
+            : location.pathname === path;
       return (
         <button
           key={path}
@@ -417,94 +410,115 @@ export function Layout({ children }: LayoutProps) {
         </div>
       )}
 
-      <div className="flex min-w-0 lg:items-start">
+      <div className="flex min-w-0 lg:items-stretch">
         <aside
           className={`
           ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
           lg:translate-x-0
           fixed lg:sticky top-16 left-0 h-[calc(100vh-4rem)]
-          w-52 shrink-0 border-r border-gray-200 bg-white
+          w-[15.5rem] shrink-0 border-r border-gray-200 bg-white sm:w-60 lg:w-64
           transition-transform duration-200 ease-in-out
-          z-30 overflow-x-hidden overflow-y-hidden max-lg:overflow-y-auto
+          z-30 overflow-hidden
         `}
         >
           <div className="flex h-full min-h-0 flex-col">
-            <div
-              className={`shrink-0 px-2.5 sm:px-3 lg:pb-0 ${
-                isDashboardHome ? 'pt-2 pb-0 lg:pt-3' : 'pt-3 pb-0 lg:pt-5'
-              }`}
-            >
-              <button
-                type="button"
-                onClick={() => {
-                  if (isDemoPropertyMock && location.pathname.startsWith('/demo-property')) {
-                    navigate('/demo-property');
-                  } else if (isDemoPropertyMock) {
-                    navigate('/?mode=demo');
-                  } else if (isDemoMode) {
-                    navigate('/demo-home');
-                  } else {
-                    navigate('/');
-                  }
-                  setMobileMenuOpen(false);
-                }}
-                className={`flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left transition-colors sm:gap-2.5 sm:px-3.5 ${
-                  homeActive ? 'bg-[#1D9E75] text-white shadow-md' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
-                }`}
-              >
-                <Home className="h-5 w-5 shrink-0" size={20} />
-                <span className="text-[15px] font-semibold sm:text-base">{t('nav_dashboard')}</span>
-              </button>
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-x-hidden overscroll-y-contain [scrollbar-width:thin] max-lg:flex-none max-lg:overflow-y-visible lg:min-h-0 lg:overflow-y-auto">
-              <div className="shrink-0 px-2.5 pt-1 sm:px-3 lg:pt-2">
-                <div className="space-y-0.5 lg:space-y-1">
-                  {quickModules.map((m) => renderModuleCard(m.path, m.icon, m.label, m.iconBg))}
-                  {showJoinRequestReviewCoreNav && !isDemoMode && !isDemoPropertyMock && (
+            {!isDemoMode && !isDemoPropertyMock ? (
+              <>
+                <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain [scrollbar-width:thin]">
+                  <div className="px-3 pt-4 pb-2">
+                    <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+                      {t('nav_group_primary')}
+                    </p>
                     <button
                       type="button"
                       onClick={() => {
-                        navigate('/admin/join-requests');
+                        navigate('/');
                         setMobileMenuOpen(false);
                       }}
                       className={`
-                      flex min-h-[54px] w-full items-center gap-2 rounded-2xl border px-3 py-2 text-left shadow-sm transition-all
-                      ${
-                        location.pathname === '/admin/join-requests'
-                          ? 'border-emerald-300 bg-emerald-50/80 ring-1 ring-emerald-200'
-                          : 'border-gray-200 bg-white hover:border-emerald-200 hover:shadow-sm'
-                      }
-                    `}
+                        flex min-h-[4.25rem] w-full items-center gap-3 rounded-2xl border px-4 py-3.5 text-left shadow-sm transition-all
+                        sm:min-h-[4.5rem] sm:gap-3.5 sm:px-4 sm:py-4
+                        ${
+                          homeActive
+                            ? 'border-emerald-300 bg-emerald-50/90 ring-2 ring-emerald-200/80'
+                            : 'border-gray-200 bg-white hover:border-emerald-200 hover:shadow-md'
+                        }
+                      `}
                     >
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500">
-                        <ClipboardList className="h-4 w-4 text-white" size={16} />
+                      <div
+                        className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl sm:h-[3.25rem] sm:w-[3.25rem] ${
+                          homeActive ? 'bg-[#1D9E75]' : 'bg-emerald-600'
+                        }`}
+                      >
+                        <Home className="h-7 w-7 text-white" strokeWidth={2.25} size={28} />
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-[15px] font-semibold leading-snug text-gray-900">
-                          {t('nav_review_applications')}
-                        </div>
-                      </div>
+                      <span className="text-[1.375rem] font-extrabold leading-tight tracking-tight text-gray-900 sm:text-[1.625rem]">
+                        {t('nav_dashboard')}
+                      </span>
                     </button>
-                  )}
-                </div>
-              </div>
+                    <div className="mt-3 space-y-1.5 pb-2">
+                      {quickModules.map((m) => renderModuleCard(m.path, m.icon, m.label, m.iconBg))}
+                    </div>
+                  </div>
 
-              {showSystemSection ? (
-                <div className="mt-1.5 border-t border-gray-100 px-2.5 pt-2.5 sm:px-3 lg:mt-2 lg:pt-3">
-                  <p className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
-                    {t('nav_group_system')}
-                  </p>
-                  <div className="space-y-0.5 pb-1">
-                    {systemNavItems.map((item) => renderSystemNavButton(item.path, item.icon, item.label))}
+                  {showSystemSection ? (
+                    <div className="border-t border-gray-200 px-3 py-5 pb-8">
+                      <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-400">
+                        {t('nav_group_system')}
+                      </p>
+                      <div className="space-y-1">
+                        {systemNavItems.map((item) => renderSystemNavButton(item.path, item.icon, item.label))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+                <div className="shrink-0 border-t border-gray-100 bg-white px-3 py-3">
+                  <SidebarPromoCard language={language} />
+                </div>
+              </>
+            ) : (
+              <>
+                <div
+                  className={`shrink-0 px-2.5 sm:px-3 lg:pb-0 ${
+                    isDashboardHome ? 'pt-2 pb-0 lg:pt-3' : 'pt-3 pb-0 lg:pt-5'
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isDemoPropertyMock && location.pathname.startsWith('/demo-property')) {
+                        navigate('/demo-property');
+                      } else if (isDemoPropertyMock) {
+                        navigate('/?mode=demo');
+                      } else if (isDemoMode) {
+                        navigate('/demo-home');
+                      } else {
+                        navigate('/');
+                      }
+                      setMobileMenuOpen(false);
+                    }}
+                    className={`flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left transition-colors sm:gap-2.5 sm:px-3.5 ${
+                      homeActive ? 'bg-[#1D9E75] text-white shadow-md' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+                    }`}
+                  >
+                    <Home className="h-5 w-5 shrink-0" size={20} />
+                    <span className="text-[15px] font-semibold sm:text-base">{t('nav_dashboard')}</span>
+                  </button>
+                </div>
+
+                <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain [scrollbar-width:thin] max-lg:max-h-[min(60vh,28rem)]">
+                  <div className="shrink-0 px-2.5 pt-1 sm:px-3 lg:pt-2">
+                    <div className="space-y-0.5 pb-3 lg:space-y-1">
+                      {quickModules.map((m) => renderModuleCard(m.path, m.icon, m.label, m.iconBg))}
+                    </div>
                   </div>
                 </div>
-              ) : null}
-            </div>
 
-            <div className="shrink-0 px-3 pt-2 pb-3 lg:px-3 lg:pt-1.5 lg:pb-4">
-              <SidebarPromoCard language={language} />
-            </div>
+                <div className="shrink-0 border-t border-gray-100 px-3 py-3 lg:px-3">
+                  <SidebarPromoCard language={language} />
+                </div>
+              </>
+            )}
           </div>
         </aside>
 
@@ -518,8 +532,8 @@ export function Layout({ children }: LayoutProps) {
         <main
           className={`min-w-0 w-full flex-1 ${
             isDashboardHome
-              ? 'max-w-7xl px-3 pb-5 pt-0 sm:px-4 sm:pb-6 lg:pb-6 lg:pl-2 lg:pr-5 lg:pt-0'
-              : 'max-w-none px-3 py-4 sm:px-4 sm:py-5 lg:pl-3 lg:pr-4 lg:py-6 xl:pl-4 xl:pr-5'
+              ? 'max-w-7xl px-4 pb-5 pt-0 sm:px-5 sm:pb-6 lg:pb-6 lg:pl-8 lg:pr-8 lg:pt-0'
+              : 'max-w-none px-4 py-4 sm:px-5 sm:py-5 lg:pl-8 lg:pr-8 lg:py-6'
           }`}
         >
           <UserNotificationToast />

@@ -62,12 +62,14 @@ const translations: Record<string, Record<Language, string>> = {
   nav_hiring: { en: 'Property Manager', zh: '物业经理' },
   nav_compliance: { en: 'Compliance & Insurance', zh: '法规保险' },
   nav_group_core: { en: 'Core', zh: '核心业务' },
+  nav_group_primary: { en: 'Main', zh: '主导航' },
   nav_group_system: { en: 'System', zh: '系统管理' },
   nav_group_help: { en: 'Help', zh: '帮助中心' },
   nav_help_compliance: { en: 'Laws & regulations', zh: '法律法规' },
   nav_invite_codes: { en: 'Invite codes', zh: '邀请码管理' },
   nav_join_requests: { en: 'Join requests (join_requests)', zh: '加入申请审核（join_requests）' },
   nav_property_admin_sidebar: { en: 'Property admin', zh: '物业后台' },
+  nav_meetings_records: { en: 'Meetings', zh: '会议记录' },
 
   current_property_not_loaded: {
     en: 'Current property context is not loaded',
