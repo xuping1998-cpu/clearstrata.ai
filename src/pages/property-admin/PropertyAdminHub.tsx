@@ -1,17 +1,21 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import { Link, Navigate, NavLink } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
+import { useDemoGeneratedDataOptional } from '../../contexts/DemoGeneratedDataContext';
+import { buildDemoGenerationSeed } from '../../lib/demoProperty/demoStorage';
+import { generateDemoData } from '../../lib/demoProperty/generateDemoData';
 import { useProperty } from '../../contexts/PropertyContext';
 import {
   canManagePropertyAdmin,
   canReviewJoinRequests,
   canManagePropertyInvites,
+  canManageUnitWhitelist,
 } from '../../lib/propertyPermissions';
 
 type Tab = 'members' | 'requests' | 'settings';
 
 export function PropertyAdminHub() {
-  const { currentPropertyId, currentRole } = useProperty();
+  const { currentPropertyId, currentRole, isDemoPropertyMock } = useProperty();
   const [tab, setTab] = useState<Tab>('members');
 
   if (
@@ -24,6 +28,7 @@ export function PropertyAdminHub() {
   const showAdmin = canManagePropertyAdmin(currentRole);
   const showReview = canReviewJoinRequests(currentRole);
   const showInvitesLink = canManagePropertyInvites(currentRole);
+  const showUnitWhitelist = canManageUnitWhitelist(currentRole);
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
@@ -48,12 +53,39 @@ export function PropertyAdminHub() {
               加入申请审批
             </Link>
           )}
+          {showUnitWhitelist && !isDemoPropertyMock && (
+            <Link to="/property-admin/unit-whitelist" className="font-medium text-[#1D9E75] hover:underline">
+              房号白名单
+            </Link>
+          )}
         </div>
       </div>
       <div className="flex flex-wrap gap-2 mb-6 border-b border-gray-200 pb-2">
         <TabBtn active={tab === 'members'} onClick={() => setTab('members')} label="成员" show={showAdmin || showReview} />
-        <TabBtn active={tab === 'requests'} onClick={() => setTab('requests')} label="加入申请" show={showReview} />
-        <TabBtn active={tab === 'settings'} onClick={() => setTab('settings')} label="物业设置" show={showAdmin} />
+        <TabBtn
+          active={tab === 'requests'}
+          onClick={() => setTab('requests')}
+          label="加入申请"
+          show={showReview && !isDemoPropertyMock}
+        />
+        <TabBtn
+          active={tab === 'settings'}
+          onClick={() => setTab('settings')}
+          label="物业设置"
+          show={showAdmin && !isDemoPropertyMock}
+        />
+        {showUnitWhitelist && !isDemoPropertyMock ? (
+          <NavLink
+            to="/property-admin/unit-whitelist"
+            className={({ isActive }) =>
+              `px-4 py-2 rounded-lg text-sm font-medium ${
+                isActive ? 'bg-[#1D9E75] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`
+            }
+          >
+            房号管理
+          </NavLink>
+        ) : null}
       </div>
 
       {tab === 'members' && (showAdmin || showReview) && (
@@ -91,10 +123,54 @@ function TabBtn({
 }
 
 function MembersSection({ propertyId }: { propertyId: string }) {
+  const { isDemoPropertyMock } = useProperty();
+  const demoGen = useDemoGeneratedDataOptional();
   const [rows, setRows] = useState<
     { user_id: string; role: string; status: string; unit_no: string | null; email?: string; full_name_en?: string }[]
   >([]);
   const [loading, setLoading] = useState(true);
+
+  if (isDemoPropertyMock) {
+    const src =
+      demoGen?.memberList ??
+      generateDemoData({
+        seed: buildDemoGenerationSeed(),
+        unitCount: 48,
+      }).memberList;
+    const mockRows = src.map((m) => ({
+      user_id: m.user_id,
+      role: m.role,
+      status: m.status,
+      unit_no: m.unit_no,
+      email: m.email,
+      full_name_en: m.full_name_en,
+    }));
+    return (
+      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+        <table className="min-w-full text-sm">
+          <thead className="bg-gray-50 text-left">
+            <tr>
+              <th className="px-4 py-2">用户</th>
+              <th className="px-4 py-2">角色</th>
+              <th className="px-4 py-2">状态</th>
+              <th className="px-4 py-2">房号</th>
+            </tr>
+          </thead>
+          <tbody>
+            {mockRows.map((r) => (
+              <tr key={r.user_id} className="border-t border-gray-100">
+                <td className="px-4 py-2">{r.full_name_en || r.email || r.user_id}</td>
+                <td className="px-4 py-2">{r.role}</td>
+                <td className="px-4 py-2">{r.status}</td>
+                <td className="px-4 py-2">{r.unit_no?.trim() ? r.unit_no.trim() : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="border-t border-gray-100 px-4 py-2 text-xs text-gray-500">演示成员数据 · propertyId: {propertyId}</p>
+      </div>
+    );
+  }
 
   const load = useCallback(async () => {
     const { data: mems, error: memErr } = await supabase

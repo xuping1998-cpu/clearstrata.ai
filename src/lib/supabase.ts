@@ -51,6 +51,8 @@ export interface Lead {
   id: string;
   name: string;
   email: string;
+  phone?: string | null;
+  property_id?: string | null;
   building: string | null;
   units: string | null;
   message: string | null;
@@ -63,7 +65,7 @@ export interface Database {
       leads: {
         Row: Lead;
         Insert: Pick<Lead, 'name' | 'email'> &
-          Partial<Pick<Lead, 'building' | 'units' | 'message'>>;
+          Partial<Pick<Lead, 'building' | 'units' | 'message' | 'phone' | 'property_id'>>;
         Update: never;
       };
       profiles: {

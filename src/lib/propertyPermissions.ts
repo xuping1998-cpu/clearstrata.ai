@@ -79,6 +79,12 @@ export function canManagePropertyAdmin(role: UserRole | null | undefined): boole
   return r === 'property_admin' || r === 'admin';
 }
 
+/** 房号白名单：仅物业内 admin / council（与 `unit_whitelist` RLS 一致） */
+export function canManageUnitWhitelist(role: UserRole | null | undefined): boolean {
+  const r = normalizeRoleKey(role);
+  return r === 'admin' || r === 'council';
+}
+
 /** When `roleInProperty` is null (e.g. multi-property before picker), infer from any membership. */
 export function canReviewJoinRequestsFromContext(
   roleInProperty: UserRole | null | undefined,

@@ -326,6 +326,8 @@ export type ApproveJoinRequestFinalInput = {
 
 export type ApproveJoinRpcRow = {
   ok?: boolean;
+  /** 部分 RPC / 历史返回使用 success 表示成功 */
+  success?: boolean;
   error?: string | null;
   email?: string | null;
   user_id?: string | null;

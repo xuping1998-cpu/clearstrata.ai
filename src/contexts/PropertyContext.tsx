@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -12,7 +13,7 @@ import { useLocation, useSearchParams } from 'react-router-dom';
 import { supabase, type UserRole } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 import { samePropertyId } from '../lib/propertyIdMatch';
-import { canEditPropertyMemberRoles } from '../lib/propertyPermissions';
+import { DEMO_PROPERTY_MOCK_ID } from '../lib/demoPropertyMockData';
 
 /** Primary storage key (existing installs). */
 const STORAGE_KEY = 'clearstrata-current-property-id';
@@ -57,6 +58,12 @@ function readGuestPropertyId(): string | null {
   } catch {
     return null;
   }
+}
+
+function readUrlDemoPropertyMock(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (window.location.pathname.startsWith('/demo-property')) return true;
+  return new URLSearchParams(window.location.search).get('mode') === 'demo';
 }
 
 function readStoredPropertyId(): string | null {
@@ -138,6 +145,10 @@ interface PropertyContextValue {
   /** Set when isDemoMode (e.g. BCS3736). */
   guestPropertyCode: string | null;
   /**
+   * 纯前端演示楼：`/demo-property/*` 或任意路由 `?mode=demo`。不请求 Supabase、不写库。
+   */
+  isDemoPropertyMock: boolean;
+  /**
    * Whether the current property has any active staff (admin/council/manager/property_admin).
    * `null` if unknown (loading or RPC error). Filled only for logged-in, non-demo context.
    */
@@ -147,15 +158,24 @@ interface PropertyContextValue {
 const PropertyContext = createContext<PropertyContextValue | undefined>(undefined);
 
 export function PropertyProvider({ children }: { children: ReactNode }) {
-  const { user, session, profile } = useAuth();
+  const { user, session } = useAuth();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const guestQuery = searchParams.get('guest');
   const searchParamsRef = useRef(searchParams);
   searchParamsRef.current = searchParams;
 
-  const [ready, setReady] = useState(!session);
+  const [ready, setReady] = useState(() => !session || readUrlDemoPropertyMock());
   const [memberships, setMemberships] = useState<PropertyMembership[]>(() => {
+    if (readUrlDemoPropertyMock()) {
+      return [
+        {
+          propertyId: DEMO_PROPERTY_MOCK_ID,
+          name: '演示楼（Demo Property）',
+          role: 'property_admin' as UserRole,
+        },
+      ];
+    }
     const d = readDemoLocalState();
     return d
       ? [
@@ -167,14 +187,23 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
         ]
       : [];
   });
-  const [currentPropertyId, setCurrentPropertyIdState] = useState<string | null>(() => readDemoLocalState()?.id ?? null);
+  const [currentPropertyId, setCurrentPropertyIdState] = useState<string | null>(() => {
+    if (readUrlDemoPropertyMock()) return DEMO_PROPERTY_MOCK_ID;
+    return readDemoLocalState()?.id ?? null;
+  });
   const [needsPropertyChoice, setNeedsPropertyChoice] = useState(false);
   const [isGuest, setIsGuest] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(() => Boolean(readDemoLocalState()));
   const [guestPropertyCode, setGuestPropertyCodeState] = useState<string | null>(() => readDemoLocalState()?.code ?? null);
   const [propertyHasManagementStaff, setPropertyHasManagementStaff] = useState<boolean | null>(null);
+  const [isDemoPropertyMock, setIsDemoPropertyMock] = useState(readUrlDemoPropertyMock);
+  const isDemoPropertyMockRef = useRef(readUrlDemoPropertyMock());
 
   const loadMemberships = useCallback(async () => {
+    if (isDemoPropertyMockRef.current) {
+      setReady(true);
+      return;
+    }
     if (!user?.id) {
       setMemberships([]);
       setCurrentPropertyIdState(null);
@@ -271,7 +300,35 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
     setReady(true);
   }, [user?.id]);
 
+  useLayoutEffect(() => {
+    const pathDemo = location.pathname.startsWith('/demo-property');
+    const queryDemo = searchParams.get('mode') === 'demo';
+    const demoPropertyMock = pathDemo || queryDemo;
+    isDemoPropertyMockRef.current = demoPropertyMock;
+    setIsDemoPropertyMock(demoPropertyMock);
+    if (demoPropertyMock) {
+      setMemberships([
+        {
+          propertyId: DEMO_PROPERTY_MOCK_ID,
+          name: '演示楼（Demo Property）',
+          role: 'property_admin',
+        },
+      ]);
+      setCurrentPropertyIdState(DEMO_PROPERTY_MOCK_ID);
+      setIsDemoMode(false);
+      setIsGuest(false);
+      setGuestPropertyCodeState(null);
+      setNeedsPropertyChoice(false);
+      setPropertyHasManagementStaff(true);
+      setReady(true);
+    }
+  }, [location.pathname, searchParams]);
+
   useEffect(() => {
+    if (location.pathname.startsWith('/demo-property') || searchParams.get('mode') === 'demo') {
+      return;
+    }
+
     if (!session) {
       const demo = readDemoLocalState();
       if (demo) {
@@ -310,11 +367,11 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
     }
     setReady(false);
     void loadMemberships();
-  }, [session, loadMemberships, guestQuery, location.pathname]);
+  }, [session, loadMemberships, guestQuery, location.pathname, searchParams]);
 
   /** URL 含有效 propertyId 且与 state 不一致时，以 URL 为准（扫码 / 前进后退 / 分享链接）。 */
   useEffect(() => {
-    if (!ready || memberships.length === 0 || isDemoMode) return;
+    if (!ready || memberships.length === 0 || isDemoMode || isDemoPropertyMock) return;
     const urlPid = getPropertyIdFromUrl(searchParams);
     if (!urlPid) return;
     const urlHit = memberships.find((m) => samePropertyId(m.propertyId, urlPid));
@@ -324,11 +381,11 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
       persistPropertyId(urlHit.propertyId);
       return urlHit.propertyId;
     });
-  }, [searchParams, memberships, ready, isDemoMode]);
+  }, [searchParams, memberships, ready, isDemoMode, isDemoPropertyMock]);
 
   /** current 不在 memberships 内时：仅单物业时回退到唯一物业；多物业未选择时不自动指定。 */
   useEffect(() => {
-    if (!ready || memberships.length === 0 || isDemoMode) return;
+    if (!ready || memberships.length === 0 || isDemoMode || isDemoPropertyMock) return;
     const valid =
       currentPropertyId &&
       memberships.some((m) => samePropertyId(m.propertyId, currentPropertyId));
@@ -341,11 +398,11 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
     setCurrentPropertyIdState(next);
     setNeedsPropertyChoice(false);
     persistPropertyId(next);
-  }, [memberships, ready, currentPropertyId, isDemoMode]);
+  }, [memberships, ready, currentPropertyId, isDemoMode, isDemoPropertyMock]);
 
   /** 缺失或无效 URL 时，把当前物业写回 query（与 state 对齐）。 */
   useEffect(() => {
-    if (!ready || !currentPropertyId || memberships.length === 0 || isDemoMode) return;
+    if (!ready || !currentPropertyId || memberships.length === 0 || isDemoMode || isDemoPropertyMock) return;
     const urlPid = getPropertyIdFromUrl(searchParams);
     if (urlPid && samePropertyId(urlPid, currentPropertyId)) return;
     if (urlPid) {
@@ -360,12 +417,13 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
       },
       { replace: true },
     );
-  }, [ready, currentPropertyId, memberships, searchParams, setSearchParams, isDemoMode]);
+  }, [ready, currentPropertyId, memberships, searchParams, setSearchParams, isDemoMode, isDemoPropertyMock]);
 
   const setCurrentPropertyId = useCallback(
     (id: string) => {
       setCurrentPropertyIdState(id);
       setNeedsPropertyChoice(false);
+      if (isDemoPropertyMockRef.current) return;
       persistPropertyId(id);
       if (isDemoMode) return;
       setSearchParams(
@@ -401,6 +459,7 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
       isGuest,
       isDemoMode,
       guestPropertyCode,
+      isDemoPropertyMock,
       propertyHasManagementStaff,
     }),
     [
@@ -414,6 +473,7 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
       isGuest,
       isDemoMode,
       guestPropertyCode,
+      isDemoPropertyMock,
       propertyHasManagementStaff,
     ],
   );

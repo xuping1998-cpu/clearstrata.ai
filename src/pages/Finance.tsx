@@ -9,6 +9,7 @@ import InvoiceInterpreter from './finance/InvoiceInterpreter';
 import { RevenueDashboard } from './finance/RevenueDashboard';
 import { MonthlySummary } from './finance/MonthlySummary';
 import { FinanceBudgetTab } from './finance/FinanceBudgetTab';
+import { DemoPropertyMockFinancePanel } from '@/components/demoProperty/DemoPropertyMockFinancePanel';
 
 type FinanceTab = 'invoices' | 'budget' | 'interpreter' | 'revenue' | 'summary';
 
@@ -29,8 +30,17 @@ const allTabs: TabConfig[] = [
 
 export function Finance() {
   const { language } = useLanguage();
-  const { currentRole, isDemoMode } = useProperty();
+  const { currentRole, isDemoMode, isDemoPropertyMock } = useProperty();
   const l = language === 'en';
+
+  if (isDemoPropertyMock) {
+    return (
+      <div className="mx-0 min-w-0 w-full max-w-none">
+        <BackButton />
+        <DemoPropertyMockFinancePanel />
+      </div>
+    );
+  }
 
   const [searchParams] = useSearchParams();
   const financeFullAccess =

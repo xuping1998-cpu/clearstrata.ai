@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation, useSearchParams } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useSearchParams, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { PropertyProvider, useProperty } from './contexts/PropertyContext';
@@ -37,10 +37,14 @@ import { JoinPathRouter } from './pages/scan-join/JoinPathRouter';
 import { BindUnitPage } from './pages/scan-join/BindUnitPage';
 import { WelcomeAfterJoinPage } from './pages/scan-join/WelcomeAfterJoinPage';
 import JoinPendingPage from './pages/join/JoinPendingPage';
+import { JoinCodeScanPage } from './pages/join/JoinCodeScanPage';
+import { DemoOverviewPage } from './pages/demo-overview/DemoOverviewPage';
+import { PosterLandingPage } from './pages/marketing/PosterLandingPage';
 import JoinRejectedPage from './pages/join/JoinRejectedPage';
 import JoinInvalidPage from './pages/join/JoinInvalidPage';
 import JoinInviteLandingPage from './pages/join/JoinInviteLandingPage';
 import { PropertyAdminHub } from './pages/property-admin/PropertyAdminHub';
+import { UnitWhitelistPage } from './pages/property-admin/UnitWhitelistPage';
 import { PropertyAdminInvites } from './pages/property-admin/PropertyAdminInvites';
 import { PropertyInviteAnalytics } from './pages/property-admin/PropertyInviteAnalytics';
 import { PropertyTaskDetail } from './pages/property-admin/PropertyTaskDetail';
@@ -52,7 +56,11 @@ import { PostLoginPropertyRedirect } from './components/PostLoginPropertyRedirec
 import { DemoDashboardRoute } from './components/DemoDashboardRoute';
 import { PropertyDemoEntry } from './pages/PropertyDemoEntry';
 import { QrPropertyEntryPage } from './pages/entry/QrPropertyEntryPage';
-import { canManagePropertyInvites, canReviewJoinRequests } from './lib/propertyPermissions';
+import {
+  canManagePropertyInvites,
+  canManageUnitWhitelist,
+  canReviewJoinRequests,
+} from './lib/propertyPermissions';
 import type { UserRole } from './lib/supabase';
 import { useHasActivePropertyMembership } from './hooks/useHasActivePropertyMembership';
 import { samePropertyId } from './lib/propertyIdMatch';
@@ -159,6 +167,14 @@ function PropertyInviteAnalyticsRoute() {
   );
 }
 
+function PropertyUnitWhitelistRoute() {
+  return (
+    <AdminStaffRoute canAccess={canManageUnitWhitelist}>
+      <UnitWhitelistPage />
+    </AdminStaffRoute>
+  );
+}
+
 function AdminJoinRequestsRoute() {
   return (
     <AdminStaffRoute canAccess={canReviewJoinRequests}>
@@ -246,6 +262,15 @@ function PropertyAdminLayoutRoute() {
   );
 }
 
+/** 演示楼：无需登录；子路由 `/demo-property/*` 使用纯 mock，不写库。 */
+function DemoPropertyLayout() {
+  return (
+    <Layout>
+      <Outlet />
+    </Layout>
+  );
+}
+
 function SelectPropertyRoute() {
   const { session } = useAuth();
   const { memberships, currentPropertyId, ready } = useProperty();
@@ -326,6 +351,15 @@ function AppContent() {
       <Route path="/join/rejected" element={<JoinRejectedPage />} />
       <Route path="/join/invalid" element={<JoinInvalidPage />} />
       <Route path="/join/welcome" element={<JoinInviteLandingPage />} />
+      <Route path="/demo-property" element={<DemoPropertyLayout />}>
+        <Route index element={<Dashboard />} />
+        <Route path="finance" element={<Finance />} />
+        <Route path="members" element={<PropertyAdminHub />} />
+        <Route path="invoices" element={<Navigate to="/demo-property/finance" replace />} />
+      </Route>
+      <Route path="/join/:code" element={<JoinCodeScanPage />} />
+      <Route path="/demo-overview" element={<DemoOverviewPage />} />
+      <Route path="/marketing/poster/:code" element={<PosterLandingPage />} />
       <Route path="/join" element={<JoinPathRouter />} />
       <Route path="/bind-unit" element={<BindUnitPage />} />
       <Route path="/welcome" element={<WelcomeAfterJoinPage />} />
@@ -347,6 +381,14 @@ function AppContent() {
         element={
           <SessionLayoutGate>
             <PropertyInviteAnalyticsRoute />
+          </SessionLayoutGate>
+        }
+      />
+      <Route
+        path="/property-admin/unit-whitelist"
+        element={
+          <SessionLayoutGate>
+            <PropertyUnitWhitelistRoute />
           </SessionLayoutGate>
         }
       />
@@ -400,10 +442,14 @@ function AppMain() {
   const { session, loading, user } = useAuth();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const { ready: propertyReady, currentPropertyId, memberships, isGuest } = useProperty();
+  const { ready: propertyReady, currentPropertyId, isGuest, isDemoPropertyMock } = useProperty();
   const hasActiveMembership = useHasActivePropertyMembership(user?.id, propertyReady);
 
-  if (loading || (session && !propertyReady) || (session && hasActiveMembership === null)) {
+  if (
+    loading ||
+    (session && !isDemoPropertyMock && !propertyReady) ||
+    (session && !isDemoPropertyMock && hasActiveMembership === null)
+  ) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -432,9 +478,9 @@ function AppMain() {
   return (
     <>
       {session ? (
-        hasActiveMembership === false ? (
+        hasActiveMembership === false && !isDemoPropertyMock ? (
           <JoinAccessGate />
-        ) : !currentPropertyId ? (
+        ) : !currentPropertyId && !isDemoPropertyMock ? (
           <Navigate to="/select-property" replace />
         ) : (
           <Layout>

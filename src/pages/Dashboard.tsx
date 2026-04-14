@@ -2,12 +2,17 @@ import { useNavigate } from 'react-router-dom';
 import { useLanguage } from '../contexts/LanguageContext';
 import { GUEST_PROPERTY_STORAGE_KEY, useProperty } from '../contexts/PropertyContext';
 import HomeBudgetPanel from '@/components/dashboard/HomeBudgetPanel';
+import { DemoPropertyMockHomePanel } from '@/components/demoProperty/DemoPropertyMockHomePanel';
 
 export function Dashboard() {
   const { language } = useLanguage();
   const en = language === 'en';
   const navigate = useNavigate();
-  const { isGuest, isDemoMode, guestPropertyCode } = useProperty();
+  const { isGuest, isDemoMode, guestPropertyCode, isDemoPropertyMock } = useProperty();
+
+  if (isDemoPropertyMock) {
+    return <DemoPropertyMockHomePanel />;
+  }
 
   if (isDemoMode && guestPropertyCode) {
     return (

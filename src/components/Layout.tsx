@@ -22,13 +22,13 @@ import {
   canManagePropertyAdminFromContext,
   canReviewJoinRequestsFromContext,
   canManagePropertyInvitesFromContext,
-  canReviewJoinRequestsFromContext,
 } from '../lib/propertyPermissions';
 import { useLanguage, LANGUAGE_USER_STORAGE_KEY } from '../contexts/LanguageContext';
 import { samePropertyId } from '../lib/propertyIdMatch';
 import { PWAInstallButton } from './PWAInstallButton';
 import { SidebarPromoCard } from './SidebarPromoCard';
 import { UserNotificationToast } from './UserNotificationToast';
+import { DemoGeneratedDataProvider } from '../contexts/DemoGeneratedDataContext';
 
 interface LayoutProps {
   children: ReactNode;
@@ -41,6 +41,16 @@ function isModulePathActive(location: ReturnType<typeof useLocation>, path: stri
       new URLSearchParams(location.search).get('task_type') === 'dispute'
     );
   }
+  if (path.includes('?')) {
+    const [p, query] = path.split('?');
+    if (location.pathname !== p) return false;
+    const want = new URLSearchParams(query);
+    const have = new URLSearchParams(location.search);
+    for (const [k, v] of want.entries()) {
+      if (have.get(k) !== v) return false;
+    }
+    return true;
+  }
   return location.pathname === path;
 }
 
@@ -48,7 +58,7 @@ export function Layout({ children }: LayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { profile, signOut } = useAuth();
+  const { profile, signOut, session } = useAuth();
   const {
     memberships,
     currentPropertyId,
@@ -56,6 +66,7 @@ export function Layout({ children }: LayoutProps) {
     roleInProperty,
     isDemoMode,
     guestPropertyCode,
+    isDemoPropertyMock,
   } = useProperty();
   const { t, language, toggleLanguage, setLanguage } = useLanguage();
 
@@ -93,33 +104,59 @@ export function Layout({ children }: LayoutProps) {
   const isDashboardHome =
     location.pathname === '/' ||
     location.pathname === '/dashboard' ||
-    location.pathname === '/demo-home';
+    location.pathname === '/demo-home' ||
+    location.pathname === '/demo-property' ||
+    location.pathname === '/demo-property/' ||
+    (location.pathname === '/' && new URLSearchParams(location.search).get('mode') === 'demo');
   const homeActive = isDashboardHome;
 
-  const quickModules = useMemo(
-    () =>
-      isDemoMode
-        ? ([
-            { path: '/demo/voting', icon: Vote, label: t('nav_voting'), iconBg: 'bg-purple-500' },
-            { path: '/demo/finance', icon: DollarSign, label: t('nav_finance'), iconBg: 'bg-green-500' },
-            { path: '/demo/owner-info', icon: Users, label: t('nav_owner_info'), iconBg: 'bg-sky-500' },
-            { path: '/demo/compliance', icon: FileText, label: t('nav_help_compliance'), iconBg: 'bg-indigo-500' },
-          ] as Array<{ path: string; icon: LucideIcon; label: string; iconBg: string }>)
-        : ([
-            { path: '/procurement', icon: ShoppingCart, label: t('nav_procurement'), iconBg: 'bg-blue-500' },
-            { path: '/voting', icon: Vote, label: t('nav_voting'), iconBg: 'bg-purple-500' },
-            { path: '/finance', icon: DollarSign, label: t('nav_finance'), iconBg: 'bg-green-500' },
-            { path: '/owner-info', icon: Users, label: t('nav_owner_info'), iconBg: 'bg-sky-500' },
-            {
-              path: '/manager-tasks?task_type=dispute',
-              icon: Scale,
-              label: t('nav_disputes'),
-              iconBg: 'bg-red-500',
-            },
-            { path: '/compliance', icon: FileText, label: t('nav_help_compliance'), iconBg: 'bg-indigo-500' },
-          ] as Array<{ path: string; icon: LucideIcon; label: string; iconBg: string }>),
-    [t, isDemoMode],
-  );
+  const quickModules = useMemo(() => {
+    if (isDemoPropertyMock) {
+      if (location.pathname.startsWith('/demo-property')) {
+        return [
+          { path: '/demo-property', icon: Home, label: t('nav_dashboard'), iconBg: 'bg-emerald-500' },
+          { path: '/demo-property/finance', icon: DollarSign, label: t('nav_finance'), iconBg: 'bg-green-500' },
+          {
+            path: '/demo-property/members',
+            icon: Users,
+            label: language === 'en' ? 'Members' : '成员',
+            iconBg: 'bg-sky-500',
+          },
+        ] as Array<{ path: string; icon: LucideIcon; label: string; iconBg: string }>;
+      }
+      return [
+        { path: '/?mode=demo', icon: Home, label: t('nav_dashboard'), iconBg: 'bg-emerald-500' },
+        { path: '/finance?mode=demo', icon: DollarSign, label: t('nav_finance'), iconBg: 'bg-green-500' },
+        {
+          path: '/property-admin?mode=demo',
+          icon: Users,
+          label: language === 'en' ? 'Members' : '成员',
+          iconBg: 'bg-sky-500',
+        },
+      ] as Array<{ path: string; icon: LucideIcon; label: string; iconBg: string }>;
+    }
+    if (isDemoMode) {
+      return [
+        { path: '/demo/voting', icon: Vote, label: t('nav_voting'), iconBg: 'bg-purple-500' },
+        { path: '/demo/finance', icon: DollarSign, label: t('nav_finance'), iconBg: 'bg-green-500' },
+        { path: '/demo/owner-info', icon: Users, label: t('nav_owner_info'), iconBg: 'bg-sky-500' },
+        { path: '/demo/compliance', icon: FileText, label: t('nav_help_compliance'), iconBg: 'bg-indigo-500' },
+      ] as Array<{ path: string; icon: LucideIcon; label: string; iconBg: string }>;
+    }
+    return [
+      { path: '/procurement', icon: ShoppingCart, label: t('nav_procurement'), iconBg: 'bg-blue-500' },
+      { path: '/voting', icon: Vote, label: t('nav_voting'), iconBg: 'bg-purple-500' },
+      { path: '/finance', icon: DollarSign, label: t('nav_finance'), iconBg: 'bg-green-500' },
+      { path: '/owner-info', icon: Users, label: t('nav_owner_info'), iconBg: 'bg-sky-500' },
+      {
+        path: '/manager-tasks?task_type=dispute',
+        icon: Scale,
+        label: t('nav_disputes'),
+        iconBg: 'bg-red-500',
+      },
+      { path: '/compliance', icon: FileText, label: t('nav_help_compliance'), iconBg: 'bg-indigo-500' },
+    ] as Array<{ path: string; icon: LucideIcon; label: string; iconBg: string }>;
+  }, [t, isDemoMode, isDemoPropertyMock, location.pathname, language]);
 
   const systemNavItems = useMemo(
     () =>
@@ -143,7 +180,7 @@ export function Layout({ children }: LayoutProps) {
     ],
   );
 
-  const showSystemSection = !isDemoMode && systemNavItems.length > 0;
+  const showSystemSection = !isDemoMode && !isDemoPropertyMock && systemNavItems.length > 0;
 
   const renderSystemNavButton = useCallback(
     (path: string, Icon: LucideIcon, label: string) => {
@@ -224,7 +261,17 @@ export function Layout({ children }: LayoutProps) {
               </button>
               <button
                 type="button"
-                onClick={() => navigate(isDemoMode ? '/demo-home' : '/')}
+                onClick={() => {
+                  if (isDemoPropertyMock && location.pathname.startsWith('/demo-property')) {
+                    navigate('/demo-property');
+                  } else if (isDemoPropertyMock) {
+                    navigate('/?mode=demo');
+                  } else if (isDemoMode) {
+                    navigate('/demo-home');
+                  } else {
+                    navigate('/');
+                  }
+                }}
                 className="text-2xl font-bold text-[#1D9E75] transition-opacity hover:opacity-90"
               >
                 {language === 'en' ? 'clearstrata.ai' : '清涟.ai'}
@@ -233,7 +280,7 @@ export function Layout({ children }: LayoutProps) {
 
             <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:gap-3">
               <PWAInstallButton />
-              {isDemoMode && (
+              {(isDemoMode || (isDemoPropertyMock && !session)) && (
                 <div className="hidden shrink-0 items-center gap-2 sm:flex">
                   <button
                     type="button"
@@ -281,7 +328,7 @@ export function Layout({ children }: LayoutProps) {
                   )}
                 </div>
               )}
-              {!isDemoMode && (
+              {!isDemoMode && !isDemoPropertyMock && (
                 <>
                   <button
                     onClick={() => navigate('/profile')}
@@ -314,7 +361,7 @@ export function Layout({ children }: LayoutProps) {
               >
                 {language === 'en' ? '中文' : 'EN'}
               </button>
-              {!isDemoMode && (
+              {!isDemoMode && !isDemoPropertyMock && (
                 <button
                   onClick={handleLogout}
                   className="rounded-lg p-2 transition-colors hover:bg-gray-100"
@@ -328,7 +375,17 @@ export function Layout({ children }: LayoutProps) {
         </div>
       </header>
 
-      {isDemoMode && (
+      {isDemoPropertyMock && (
+        <div className="border-b border-amber-300 bg-amber-50">
+          <div className="mx-auto max-w-7xl px-4 py-2.5 text-center text-sm font-medium text-amber-950 sm:px-6 lg:px-8">
+            {language === 'en'
+              ? 'You are viewing the Demo Property — data is illustrative only, not real.'
+              : '当前为演示楼（Demo Property），非真实数据'}
+          </div>
+        </div>
+      )}
+
+      {isDemoMode && !isDemoPropertyMock && (
         <div className="border-b border-emerald-200 bg-emerald-50">
           <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2 px-4 py-2 text-xs text-emerald-950 sm:text-sm sm:px-6 lg:px-8">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -380,7 +437,15 @@ export function Layout({ children }: LayoutProps) {
               <button
                 type="button"
                 onClick={() => {
-                  navigate(isDemoMode ? '/demo-home' : '/');
+                  if (isDemoPropertyMock && location.pathname.startsWith('/demo-property')) {
+                    navigate('/demo-property');
+                  } else if (isDemoPropertyMock) {
+                    navigate('/?mode=demo');
+                  } else if (isDemoMode) {
+                    navigate('/demo-home');
+                  } else {
+                    navigate('/');
+                  }
                   setMobileMenuOpen(false);
                 }}
                 className={`flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left transition-colors sm:gap-2.5 sm:px-3.5 ${
@@ -396,7 +461,7 @@ export function Layout({ children }: LayoutProps) {
               <div className="shrink-0 px-2.5 pt-1 sm:px-3 lg:pt-2">
                 <div className="space-y-0.5 lg:space-y-1">
                   {quickModules.map((m) => renderModuleCard(m.path, m.icon, m.label, m.iconBg))}
-                  {showJoinRequestReviewCoreNav && !isDemoMode && (
+                  {showJoinRequestReviewCoreNav && !isDemoMode && !isDemoPropertyMock && (
                     <button
                       type="button"
                       onClick={() => {
@@ -458,7 +523,11 @@ export function Layout({ children }: LayoutProps) {
           }`}
         >
           <UserNotificationToast />
-          {children}
+          {isDemoPropertyMock ? (
+            <DemoGeneratedDataProvider>{children}</DemoGeneratedDataProvider>
+          ) : (
+            children
+          )}
         </main>
       </div>
     </div>
