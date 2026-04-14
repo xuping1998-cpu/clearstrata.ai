@@ -97,17 +97,32 @@ function MembersSection({ propertyId }: { propertyId: string }) {
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    const { data: mems } = await supabase
+    const { data: mems, error: memErr } = await supabase
       .from('property_members')
       .select('user_id, role, status')
       .eq('property_id', propertyId);
+    if (memErr) {
+      console.error('[property-admin] property_members load error', memErr);
+    }
     const list = mems ?? [];
 
-    const { data: resRows } = await supabase
-      .from('residents')
-      .select('user_id, unit_no')
-      .eq('property_id', propertyId)
-      .not('user_id', 'is', null);
+    const memberUserIds = list.map((m) => m.user_id as string).filter(Boolean);
+
+    let resRows: { user_id: string | null; unit_no: string | null }[] | null = null;
+    let resErr: { message?: string } | null = null;
+    if (memberUserIds.length === 0) {
+      resRows = [];
+    } else {
+      const res = await supabase
+        .from('residents')
+        .select('user_id, unit_no')
+        .in('user_id', memberUserIds);
+      resRows = res.data;
+      resErr = res.error;
+    }
+    if (resErr) {
+      console.error('[property-admin] residents load error (房号将无法合并)', resErr);
+    }
 
     const unitByUserId = new Map<string, string>();
     for (const row of resRows ?? []) {
@@ -117,27 +132,35 @@ function MembersSection({ propertyId }: { propertyId: string }) {
       if (u) unitByUserId.set(uid, u);
     }
 
-    const ids = list.map((m) => m.user_id as string);
+    const ids = memberUserIds;
     let profById: Record<string, { email: string; full_name_en: string }> = {};
     if (ids.length > 0) {
-      const { data: profs } = await supabase.from('profiles').select('id, email, full_name_en').in('id', ids);
+      const { data: profs, error: profErr } = await supabase.from('profiles').select('id, email, full_name_en').in('id', ids);
+      if (profErr) {
+        console.error('[property-admin] profiles load error', profErr);
+      }
       for (const p of profs ?? []) {
         profById[p.id as string] = { email: p.email as string, full_name_en: p.full_name_en as string };
       }
     }
-    setRows(
-      list.map((m) => {
-        const uid = m.user_id as string;
-        return {
-          user_id: uid,
-          role: String(m.role ?? ''),
-          status: String(m.status ?? ''),
-          unit_no: unitByUserId.get(uid) ?? null,
-          email: profById[uid]?.email,
-          full_name_en: profById[uid]?.full_name_en,
-        };
-      }),
-    );
+
+    const finalRows = list.map((m) => {
+      const uid = m.user_id as string;
+      return {
+        user_id: uid,
+        role: String(m.role ?? ''),
+        status: String(m.status ?? ''),
+        unit_no: unitByUserId.get(uid) ?? null,
+        email: profById[uid]?.email,
+        full_name_en: profById[uid]?.full_name_en,
+      };
+    });
+
+    console.log('[property-admin] mems =', mems);
+    console.log('[property-admin] resRows =', resRows);
+    console.log('[property-admin] finalRows =', finalRows);
+
+    setRows(finalRows);
     setLoading(false);
   }, [propertyId]);
 

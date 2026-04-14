@@ -247,16 +247,22 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
     });
 
     if (chosen) {
-      const { data: staffOk, error: staffRpcErr } = await supabase.rpc('property_has_management_staff', {
-        p_property_id: chosen,
-      });
-      if (staffRpcErr) {
+      // Prefer table read over RPC `property_has_management_staff` (avoids 404 when RPC not deployed).
+      // Semantics mirror the SQL function: any active staff role on this property.
+      const { data: staffRows, error: staffQErr } = await supabase
+        .from('property_members')
+        .select('user_id')
+        .eq('property_id', chosen)
+        .eq('status', 'active')
+        .in('role', ['admin', 'council', 'manager', 'property_admin'])
+        .limit(1);
+      if (staffQErr) {
         if (import.meta.env.DEV) {
-          console.warn('property_has_management_staff', staffRpcErr);
+          console.warn('[property] staff presence query (replaces property_has_management_staff)', staffQErr);
         }
         setPropertyHasManagementStaff(null);
       } else {
-        setPropertyHasManagementStaff(staffOk === true);
+        setPropertyHasManagementStaff((staffRows?.length ?? 0) > 0);
       }
     } else {
       setPropertyHasManagementStaff(null);
