@@ -16,7 +16,7 @@ WITH ranked AS (
       ORDER BY created_at DESC NULLS LAST, id DESC
     ) AS rn
   FROM public.join_requests
-  WHERE status = 'pending'::public.join_request_status
+  WHERE status::text = 'pending'
     AND coalesce(trim(email), '') <> ''
 )
 DELETE FROM public.join_requests jr
@@ -30,7 +30,7 @@ WHERE jr.id = r.id
 
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_pending_request
   ON public.join_requests (property_id, (lower(trim(email))))
-  WHERE status = 'pending'::public.join_request_status
+  WHERE status::text = 'pending'
     AND coalesce(trim(email), '') <> '';
 
 COMMENT ON INDEX public.uniq_pending_request IS

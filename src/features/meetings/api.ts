@@ -222,13 +222,11 @@ const emptyExtras = (): MeetingDetailExtras => ({
 });
 
 /**
- * Core row — `id` + `.single()`.
- * When `propertyId` is passed, adds `property_id` scope; otherwise relies on RLS only (e.g. before property context is ready).
+ * Core row — `id` + `.single()`, always scoped by `property_id` (defense in depth; not RLS-only).
  */
-export async function fetchMeetingCore(meetingId: string, propertyId?: string | null) {
+export async function fetchMeetingCore(meetingId: string, propertyId: string) {
   try {
-    const base = supabase.from('meetings').select('*');
-    const scoped = propertyId ? withProperty(base as any, propertyId) : base;
+    const scoped = withProperty(supabase.from('meetings').select('*') as any, propertyId);
     const { data, error } = await scoped.eq('id', meetingId).single();
 
     if (error || !data) {
@@ -267,7 +265,10 @@ export async function fetchMeetingExtras(meetingId: string, propertyId: string):
     const voteIds = voteRows.map((v) => v.id);
     const optionsByVote: Record<string, MeetingVoteOptionRow[]> = {};
     if (voteIds.length > 0) {
-      const optRes = await supabase.from('meeting_vote_options').select(VOTE_OPTION_COLUMNS).in('vote_id', voteIds);
+      const optRes = await withProperty(
+        supabase.from('meeting_vote_options').select(VOTE_OPTION_COLUMNS) as any,
+        propertyId,
+      ).in('vote_id', voteIds);
       if (!optRes.error && optRes.data) {
         for (const o of optRes.data as MeetingVoteOptionRow[]) {
           optionsByVote[o.vote_id] = optionsByVote[o.vote_id] ?? [];
@@ -309,7 +310,10 @@ export async function fetchMeetingExtras(meetingId: string, propertyId: string):
     if (!invRes.error && invRes.data) invitations = invRes.data as MeetingInvitationRow[];
 
     let resolutions: MeetingResolutionRow[] = [];
-    const resRes = await supabase.from('meeting_resolutions').select(RESOLUTION_DETAIL_COLUMNS).eq('meeting_id', meetingId);
+    const resRes = await withProperty(
+      supabase.from('meeting_resolutions').select(RESOLUTION_DETAIL_COLUMNS) as any,
+      propertyId,
+    ).eq('meeting_id', meetingId);
     if (!resRes.error && resRes.data) resolutions = resRes.data as MeetingResolutionRow[];
 
     return {
@@ -363,7 +367,10 @@ export async function getMeetingDetail(meetingId: string, propertyId: string): P
   const voteIds = voteRows.map((v) => v.id);
   const optionsByVote: Record<string, MeetingVoteOptionRow[]> = {};
   if (voteIds.length > 0) {
-    const optRes = await supabase.from('meeting_vote_options').select(VOTE_OPTION_COLUMNS).in('vote_id', voteIds);
+    const optRes = await withProperty(
+      supabase.from('meeting_vote_options').select(VOTE_OPTION_COLUMNS) as any,
+      propertyId,
+    ).in('vote_id', voteIds);
     if (!optRes.error && optRes.data) {
       for (const o of optRes.data as MeetingVoteOptionRow[]) {
         optionsByVote[o.vote_id] = optionsByVote[o.vote_id] ?? [];
@@ -405,7 +412,10 @@ export async function getMeetingDetail(meetingId: string, propertyId: string): P
   const invitations: MeetingInvitationRow[] =
     !invitationsError && invRes.data ? (invRes.data as MeetingInvitationRow[]) : [];
 
-  const resRes = await supabase.from('meeting_resolutions').select(RESOLUTION_DETAIL_COLUMNS).eq('meeting_id', meetingId);
+  const resRes = await withProperty(
+    supabase.from('meeting_resolutions').select(RESOLUTION_DETAIL_COLUMNS) as any,
+    propertyId,
+  ).eq('meeting_id', meetingId);
   const resolutionsError = resRes.error;
   const resolutions: MeetingResolutionRow[] =
     !resolutionsError && resRes.data ? (resRes.data as MeetingResolutionRow[]) : [];
@@ -472,7 +482,10 @@ export async function updateMeeting(
     voting_close_at: string | null;
   }>,
 ) {
-  const { data, error } = await withProperty(supabase.from('meetings').update(patch) as any, propertyId)
+  const { data, error } = await withProperty(
+    supabase.from('meetings').update({ ...patch, property_id: propertyId }) as any,
+    propertyId,
+  )
     .eq('id', meetingId)
     .select('id')
     .maybeSingle();
@@ -549,6 +562,7 @@ export async function createVote(input: {
   const voteId = vote.id as string;
   const rows = DEFAULT_OPTION_KEYS.map((o) => ({
     vote_id: voteId,
+    property_id: input.propertyId,
     option_key: o.key,
     label_en: o.label_en,
     label_zh: o.label_zh,
@@ -592,7 +606,7 @@ export async function castBallot(voteId: string, selectedOptionKey: string, prop
     .upsert(
       {
         vote_id: voteId,
-        property_id: mrow.property_id as string,
+        property_id: propertyId,
         voter_user_id: user.id,
         selected_option_key: selectedOptionKey,
       },
@@ -668,7 +682,7 @@ export async function sendMeetingInvitations(meetingId: string, propertyId: stri
 export async function markInvitationsSent(meetingId: string, propertyId: string) {
   const now = new Date().toISOString();
   const { error } = await withProperty(
-    supabase.from('meeting_invitations').update({ delivery_status: 'sent', sent_at: now }) as any,
+    supabase.from('meeting_invitations').update({ delivery_status: 'sent', sent_at: now, property_id: propertyId }) as any,
     propertyId,
   )
     .eq('meeting_id', meetingId)
@@ -679,7 +693,7 @@ export async function markInvitationsSent(meetingId: string, propertyId: string)
 
 export async function resetFailedInvitations(meetingId: string, propertyId: string) {
   return await withProperty(
-    supabase.from('meeting_invitations').update({ delivery_status: 'pending', sent_at: null }) as any,
+    supabase.from('meeting_invitations').update({ delivery_status: 'pending', sent_at: null, property_id: propertyId }) as any,
     propertyId,
   )
     .eq('meeting_id', meetingId)
@@ -710,5 +724,8 @@ export async function updateVote(
   propertyId: string,
   patch: Partial<{ status: VoteStatus; opens_at: string | null; closes_at: string | null }>,
 ) {
-  return await withProperty(supabase.from('meeting_votes').update(patch) as any, propertyId).eq('id', voteId);
+  return await withProperty(
+    supabase.from('meeting_votes').update({ ...patch, property_id: propertyId }) as any,
+    propertyId,
+  ).eq('id', voteId);
 }

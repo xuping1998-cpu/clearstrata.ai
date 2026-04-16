@@ -235,10 +235,15 @@ export function OwnerNotificationsSection() {
           return;
         }
       } else if (modal === 'edit' && editingId) {
+        if (!currentPropertyId) {
+          alert(en ? 'No property selected.' : '未选择物业。');
+          return;
+        }
         const { error } = await supabase
           .from('community_notifications')
           .update({ title: t, content: body, priority })
-          .eq('id', editingId);
+          .eq('id', editingId)
+          .eq('property_id', currentPropertyId);
         if (error) {
           alert(en ? `Save failed: ${error.message}` : `保存失败：${error.message}`);
           return;
@@ -255,9 +260,14 @@ export function OwnerNotificationsSection() {
   };
 
   const remove = async (row: CommunityNoticeRow) => {
+    if (!currentPropertyId) return;
     if (!confirm(en ? 'Delete this announcement? This cannot be undone.' : '确定删除此公告？此操作不可撤销。')) return;
     try {
-      const { error } = await supabase.from('community_notifications').delete().eq('id', row.id);
+      const { error } = await supabase
+        .from('community_notifications')
+        .delete()
+        .eq('id', row.id)
+        .eq('property_id', currentPropertyId);
       if (error) throw error;
       await load();
     } catch (e: unknown) {

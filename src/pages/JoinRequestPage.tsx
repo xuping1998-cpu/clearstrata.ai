@@ -9,6 +9,7 @@ import type { UserRole } from '../lib/supabase';
 import { samePropertyId } from '../lib/propertyIdMatch';
 import { resolveJoinCodeFromProperties } from '../lib/joinCodeResolve';
 import { submitUnifiedPropertyEntry } from '../lib/propertyEntryUnified';
+import { clearPropertyEntryDraft, readPropertyEntryDraft } from '@/lib/propertyEntryDraft';
 
 /** Align with DB `properties`: use `code` (not legacy `property_code` in some migrations). */
 type OpenProperty = {
@@ -385,6 +386,18 @@ export function JoinRequestPage() {
     }
   }, [profile]);
 
+  /** 首页「进入物业」暂存的姓名/邮箱/房号/strata，登录后继续 join-request 时预填 */
+  useEffect(() => {
+    const pid = searchParams.get('propertyId')?.trim() || searchParams.get('property_id')?.trim();
+    if (!pid) return;
+    const d = readPropertyEntryDraft();
+    if (!d || !samePropertyId(d.propertyId, pid)) return;
+    setFullName((v) => (v.trim() ? v : d.fullName));
+    setEmail((v) => (v.trim() ? v : d.email));
+    setUnitNumber((v) => (v.trim() ? v : d.unitNumber));
+    setNote((n) => (n.trim() ? n : `Strata plan: ${d.strataPlan}`));
+  }, [searchParams]);
+
   const fetchProperties = async () => {
     setLoadingList(true);
     const { data, error } = await supabase
@@ -514,6 +527,10 @@ export function JoinRequestPage() {
       setMsg(en ? 'Full name and email are required.' : '请填写姓名与邮箱。');
       return;
     }
+    if (!directInviteId && !publicInviteCodeForSubmit && !unitNumber.trim()) {
+      setMsg(en ? 'Unit number is required for this join path.' : '请填写房号 / 单元号。');
+      return;
+    }
 
     submitLockRef.current = true;
     setLoading(true);
@@ -616,6 +633,7 @@ export function JoinRequestPage() {
       setCodeMatchHint(null);
 
       if (result.kind === 'auto_approved' && result.propertyId) {
+        clearPropertyEntryDraft();
         const pid = canonicalPropertyId(properties, result.propertyId);
         persistCurrentPropertyId(pid);
         setCurrentPropertyId(pid);
@@ -624,6 +642,7 @@ export function JoinRequestPage() {
         return;
       }
 
+      clearPropertyEntryDraft();
       navigate('/join/pending', { replace: true });
       return;
     } catch (err) {

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Globe, Phone, ExternalLink, Search, RefreshCw, Loader2, MapPin, DollarSign, Calendar } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { useProperty } from '../../contexts/PropertyContext';
 
 interface SearchedVendor {
   company_name: string;
@@ -19,6 +20,7 @@ interface SavedVendor extends SearchedVendor {
 
 interface VendorSearchPanelProps {
   jobId: string;
+  propertyId: string;
   jobTitle: string;
   jobDescription: string;
   category: string;
@@ -27,12 +29,15 @@ interface VendorSearchPanelProps {
 
 export function VendorSearchPanel({
   jobId,
+  propertyId,
   jobTitle,
   jobDescription,
   category,
   language,
 }: VendorSearchPanelProps) {
+  const { currentPropertyId } = useProperty();
   const l = language === 'en';
+  const scopedPropertyId = currentPropertyId ?? propertyId;
   const [vendors, setVendors] = useState<SavedVendor[]>([]);
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -43,20 +48,27 @@ export function VendorSearchPanel({
   const searchedAt = hasSavedResults ? vendors[0].searched_at : null;
 
   useEffect(() => {
-    loadSavedResults();
-  }, [jobId]);
+    void loadSavedResults();
+  }, [jobId, scopedPropertyId]);
 
   const loadSavedResults = async () => {
     setInitialLoading(true);
     try {
+      if (!scopedPropertyId) {
+        setVendors([]);
+        return;
+      }
       const { data } = await supabase
         .from('vendor_search_results')
         .select('*')
+        .eq('property_id', scopedPropertyId)
         .eq('job_id', jobId)
         .order('created_at', { ascending: true });
 
       if (data && data.length > 0) {
         setVendors(data);
+      } else {
+        setVendors([]);
       }
     } finally {
       setInitialLoading(false);
@@ -64,6 +76,10 @@ export function VendorSearchPanel({
   };
 
   const searchVendors = async () => {
+    if (!scopedPropertyId) {
+      setError(l ? 'No property selected.' : '未选择物业。');
+      return;
+    }
     setLoading(true);
     setError('');
     setShowConfirm(false);
@@ -96,13 +112,16 @@ export function VendorSearchPanel({
   };
 
   const saveResults = async (newVendors: SearchedVendor[]) => {
+    if (!scopedPropertyId) return;
     await supabase
       .from('vendor_search_results')
       .delete()
+      .eq('property_id', scopedPropertyId)
       .eq('job_id', jobId);
 
     const now = new Date().toISOString();
     const rows = newVendors.map((v) => ({
+      property_id: scopedPropertyId,
       job_id: jobId,
       company_name: v.company_name,
       phone: v.phone || '',

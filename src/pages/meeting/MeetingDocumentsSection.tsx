@@ -55,10 +55,17 @@ export function MeetingDocumentsSection({ meetingId, isCouncil }: Props) {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const loadDocuments = useCallback(async () => {
+    if (!currentPropertyId) {
+      setDocuments([]);
+      setLoading(false);
+      return;
+    }
     try {
+      setLoading(true);
       const { data } = await supabase
         .from('meeting_documents')
         .select('*')
+        .eq('property_id', currentPropertyId)
         .eq('meeting_id', meetingId)
         .order('uploaded_at', { ascending: false });
 
@@ -68,7 +75,7 @@ export function MeetingDocumentsSection({ meetingId, isCouncil }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [meetingId]);
+  }, [meetingId, currentPropertyId]);
 
   useEffect(() => {
     loadDocuments();
@@ -101,6 +108,7 @@ export function MeetingDocumentsSection({ meetingId, isCouncil }: Props) {
       const { data, error } = await supabase
         .from('meeting_documents')
         .insert({
+          property_id: currentPropertyId,
           meeting_id: meetingId,
           document_type: newDoc.document_type,
           title_en: newDoc.title_en,

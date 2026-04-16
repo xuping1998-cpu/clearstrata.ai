@@ -192,6 +192,7 @@ function MembersSection({ propertyId }: { propertyId: string }) {
       const res = await supabase
         .from('residents')
         .select('user_id, unit_no')
+        .eq('property_id', propertyId)
         .in('user_id', memberUserIds);
       resRows = res.data;
       resErr = res.error;

@@ -2,6 +2,11 @@
   20260611120000_budget_package_fiscal_year_rpc.sql
   Budget package + fiscal year + dashboard RPC
   Compatible version for mixed legacy schemas
+
+  DEPRECATED: use property_id instead — Any ELSIF branch that checks column `strata_id`
+  or builds indexes on (strata_id, fiscal_year) exists ONLY for legacy databases that
+  predate property_id on invoices / annual_budgets / procurement_jobs. New environments
+  must use property_id; do not add new strata_id-based logic here (phase 1 freeze).
 */
 
 BEGIN;
@@ -150,6 +155,7 @@ BEGIN
       CREATE INDEX IF NOT EXISTS idx_procurement_jobs_property_year
       ON public.procurement_jobs(property_id, fiscal_year)
     ';
+  -- DEPRECATED: use property_id instead — legacy index branch only (strata phase 1 freeze).
   ELSIF EXISTS (
     SELECT 1
     FROM information_schema.columns
@@ -194,6 +200,7 @@ BEGIN
       CREATE INDEX IF NOT EXISTS idx_invoices_property_year
       ON public.invoices(property_id, fiscal_year)
     ';
+  -- DEPRECATED: use property_id instead — legacy index branch only.
   ELSIF EXISTS (
     SELECT 1
     FROM information_schema.columns
@@ -224,6 +231,7 @@ BEGIN
       CREATE INDEX IF NOT EXISTS idx_annual_budgets_property_year
       ON public.annual_budgets(property_id, fiscal_year)
     ';
+  -- DEPRECATED: use property_id instead — legacy index branch only.
   ELSIF EXISTS (
     SELECT 1
     FROM information_schema.columns
@@ -316,6 +324,7 @@ BEGIN
     $q$;
     EXECUTE v_sql INTO v_budget USING p_property_id, p_year;
 
+  -- DEPRECATED: use property_id instead — RPC branch for legacy annual_budgets.strata_id only.
   ELSIF EXISTS (
     SELECT 1 FROM information_schema.columns
     WHERE table_schema = 'public'
@@ -355,6 +364,7 @@ BEGIN
     $q$;
     EXECUTE v_sql INTO v_actual USING p_property_id, p_year;
 
+  -- DEPRECATED: use property_id instead — RPC branch for legacy invoices.strata_id only.
   ELSIF EXISTS (
     SELECT 1 FROM information_schema.columns
     WHERE table_schema = 'public'

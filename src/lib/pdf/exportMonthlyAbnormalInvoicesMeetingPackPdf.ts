@@ -138,7 +138,11 @@ export async function exportMonthlyAbnormalInvoicesMeetingPackPdf(opts: {
   }
 
   const quoteIds = [...new Set(list.map((i) => i.quote_id).filter(Boolean))] as string[];
-  const { data: quotes } = await supabase.from('procurement_quotes').select('id, quoted_amount').in('id', quoteIds);
+  const { data: quotes } = await supabase
+    .from('procurement_quotes')
+    .select('id, quoted_amount')
+    .eq('property_id', propertyId)
+    .in('id', quoteIds);
   const qMap = new Map((quotes ?? []).map((q) => [q.id, Number(q.quoted_amount)]));
 
   const abnormal: { inv: InvoiceRow; v: QuoteVarianceResult }[] = [];

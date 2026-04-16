@@ -1,6 +1,9 @@
 /*
   20260611123000_unify_property_id.sql
   SAFE VERSION: add property_id without assuming legacy columns
+
+  Strata → property phase 1: this migration intentionally does NOT use strata_id for
+  backfill (see note below). DEPRECATED: use property_id instead for all new work.
 */
 
 BEGIN;
@@ -11,7 +14,7 @@ BEGIN;
 ALTER TABLE public.procurement_jobs
 ADD COLUMN IF NOT EXISTS property_id uuid;
 
--- 不做回填（因为没有 strata_id）
+-- 不做回填（因为没有 strata_id）— DEPRECATED: use property_id instead; legacy strata_id not used here.
 
 CREATE INDEX IF NOT EXISTS idx_procurement_jobs_property
 ON public.procurement_jobs(property_id);

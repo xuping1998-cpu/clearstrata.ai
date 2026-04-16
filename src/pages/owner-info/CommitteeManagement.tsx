@@ -29,6 +29,7 @@ type FilterFee = 'all' | 'current' | 'overdue' | 'prepaid';
 
 export function CommitteeManagement() {
   const { t, language } = useLanguage();
+  const { currentPropertyId } = useProperty();
   const [residents, setResidents] = useState<Resident[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');

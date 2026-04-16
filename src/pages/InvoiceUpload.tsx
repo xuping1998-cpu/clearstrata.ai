@@ -183,7 +183,7 @@ export function InvoiceUpload() {
         console.error('invoice_ocr_raw', e);
       }
 
-      scheduleInvoiceAiAuditAfterInsert(invoiceId);
+      scheduleInvoiceAiAuditAfterInsert(invoiceId, currentPropertyId);
       setHint(en ? 'Done. Redirecting…' : '完成，正在跳转…');
       navigate(`/finance?tab=invoices&invoice=${encodeURIComponent(invoiceId)}`);
     } catch (e: unknown) {

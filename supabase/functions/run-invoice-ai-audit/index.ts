@@ -83,7 +83,7 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  let body: { invoice_id?: string };
+  let body: { invoice_id?: string; property_id?: string };
   try {
     body = await req.json();
   } catch {
@@ -94,8 +94,15 @@ Deno.serve(async (req: Request) => {
   }
 
   const invoiceId = typeof body.invoice_id === "string" ? body.invoice_id.trim() : "";
+  const propertyId = typeof body.property_id === "string" ? body.property_id.trim() : "";
   if (!invoiceId) {
     return new Response(JSON.stringify({ error: "invoice_id required" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  if (!propertyId) {
+    return new Response(JSON.stringify({ error: "property_id required" }), {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -111,9 +118,10 @@ Deno.serve(async (req: Request) => {
       "id, property_id, fiscal_year, budget_category_id, total_amount, status, approved, vendor_name, category, invoice_number",
     )
     .eq("id", invoiceId)
+    .eq("property_id", propertyId)
     .maybeSingle();
 
-  if (invErr || !inv?.id || !inv.property_id) {
+  if (invErr || !inv?.id || !inv.property_id || inv.property_id !== propertyId) {
     return new Response(JSON.stringify({ error: "FORBIDDEN_OR_NOT_FOUND" }), {
       status: 403,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -179,6 +187,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: contextJson, error: ctxErr } = await admin.rpc("invoice_ai_build_context", {
     p_invoice_id: invoiceId,
+    p_property_id: invFull.property_id,
   });
 
   if (ctxErr || contextJson == null) {

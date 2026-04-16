@@ -28,8 +28,8 @@ CREATE POLICY "property_members_council_update"
       FROM public.property_members pm
       WHERE pm.property_id = property_members.property_id
         AND pm.user_id = (SELECT auth.uid())
-        AND pm.status = 'active'::public.member_status
-        AND pm.role = 'council'::public.user_role
+        AND pm.status::text = 'active'
+        AND pm.role::text = 'council'
     )
   )
   WITH CHECK (
@@ -38,16 +38,16 @@ CREATE POLICY "property_members_council_update"
       FROM public.property_members pm
       WHERE pm.property_id = property_members.property_id
         AND pm.user_id = (SELECT auth.uid())
-        AND pm.status = 'active'::public.member_status
-        AND pm.role = 'council'::public.user_role
+        AND pm.status::text = 'active'
+        AND pm.role::text = 'council'
     )
-    AND role IN ('owner'::public.user_role, 'council'::public.user_role, 'manager'::public.user_role)
-    AND status IN (
-      'pending'::public.member_status,
-      'active'::public.member_status,
-      'suspended'::public.member_status,
-      'inactive'::public.member_status,
-      'removed'::public.member_status
+    AND role::text IN ('owner', 'council', 'manager')
+    AND status::text IN (
+      'pending',
+      'active',
+      'suspended',
+      'inactive',
+      'removed'
     )
   );
 
@@ -74,18 +74,18 @@ BEGIN
         HINT = 'Council cannot modify their own membership row from this flow.';
   END IF;
 
-  IF OLD.role = 'council'::public.user_role AND OLD.status = 'active'::public.member_status THEN
+  IF OLD.role::text = 'council' AND OLD.status::text = 'active' THEN
     IF NOT (
-      NEW.role = 'council'::public.user_role
-      AND NEW.status = 'active'::public.member_status
+      NEW.role::text = 'council'
+      AND NEW.status::text = 'active'
     ) THEN
       SELECT count(*)::int
       INTO v_others
       FROM public.property_members pm
       WHERE pm.property_id = OLD.property_id
         AND pm.user_id IS DISTINCT FROM OLD.user_id
-        AND pm.role = 'council'::public.user_role
-        AND pm.status = 'active'::public.member_status;
+        AND pm.role::text = 'council'
+        AND pm.status::text = 'active';
 
       IF coalesce(v_others, 0) < 1 THEN
         RAISE EXCEPTION 'property_members_guard:last_council'
@@ -114,8 +114,8 @@ SET search_path = public
 AS $fn2$
 BEGIN
   IF TG_OP = 'UPDATE'
-     AND NEW.status = 'removed'::public.member_status
-     AND OLD.status IS DISTINCT FROM 'removed'::public.member_status THEN
+     AND NEW.status::text = 'removed'
+     AND OLD.status::text IS DISTINCT FROM 'removed' THEN
     UPDATE public.residents r
     SET user_id = NULL,
         updated_at = now()

@@ -88,7 +88,11 @@ async function upsertOpenSignal(
   };
 
   if (existing?.id) {
-    const { error } = await supabase.from('vendor_risk_signals').update(row).eq('id', existing.id);
+    const { error } = await supabase
+      .from('vendor_risk_signals')
+      .update(row)
+      .eq('property_id', propertyId)
+      .eq('id', existing.id);
     return error ? { ok: false, error: error.message } : { ok: true };
   }
   const { error } = await supabase.from('vendor_risk_signals').insert(row);
@@ -141,6 +145,7 @@ export async function runVendorRiskScanForProperty(
     const { data: qData, error: qErr } = await supabase
       .from('procurement_quotes')
       .select('id, job_id, vendor_name, quoted_amount')
+      .eq('property_id', propertyId)
       .in('job_id', jobIds);
     if (qErr) errors.push(`quotes: ${qErr.message}`);
     else quotes = (qData ?? []) as typeof quotes;

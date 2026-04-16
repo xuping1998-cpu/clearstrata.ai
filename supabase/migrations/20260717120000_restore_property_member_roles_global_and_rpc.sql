@@ -30,7 +30,7 @@ BEGIN
     FROM public.property_members pm
     WHERE pm.property_id = p_property_id
       AND pm.user_id = (SELECT auth.uid())
-      AND pm.status = 'active'::public.member_status
+      AND pm.status::text = 'active'
   ) THEN
     RETURN false;
   END IF;
@@ -39,13 +39,8 @@ BEGIN
     SELECT 1
     FROM public.property_members pm
     WHERE pm.property_id = p_property_id
-      AND pm.status = 'active'::public.member_status
-      AND pm.role IN (
-        'admin'::public.user_role,
-        'council'::public.user_role,
-        'manager'::public.user_role,
-        'property_admin'::public.user_role
-      )
+      AND pm.status::text = 'active'
+      AND pm.role::text IN ('admin', 'council', 'manager', 'property_admin')
   );
 END;
 $$;
@@ -70,19 +65,17 @@ BEGIN
     SELECT DISTINCT ON (jr.property_id, jr.user_id)
       jr.property_id,
       jr.user_id,
-      CASE
-        WHEN jr.requested_role IN (
-          'admin'::public.user_role,
-          'council'::public.user_role,
-          'manager'::public.user_role,
-          'property_admin'::public.user_role
-        ) THEN jr.requested_role
+      CASE jr.requested_role::text
+        WHEN 'admin' THEN 'admin'::public.user_role
+        WHEN 'council' THEN 'council'::public.user_role
+        WHEN 'manager' THEN 'manager'::public.user_role
+        WHEN 'property_admin' THEN 'manager'::public.user_role
         ELSE NULL::public.user_role
       END AS staff_role,
       jr.reviewed_at,
       jr.created_at
     FROM public.join_requests jr
-    WHERE jr.status = 'approved'::public.join_request_status
+    WHERE jr.status::text = 'approved'
     ORDER BY
       jr.property_id,
       jr.user_id,
@@ -95,7 +88,7 @@ BEGIN
     FROM jr_best jb
     WHERE pm.property_id = jb.property_id
       AND pm.user_id = jb.user_id
-      AND pm.role = 'owner'::public.user_role
+      AND pm.role::text = 'owner'
       AND jb.staff_role IS NOT NULL
     RETURNING pm.user_id
   )
@@ -105,16 +98,19 @@ BEGIN
 
   WITH promoted AS (
     UPDATE public.property_members pm
-    SET role = p.role
+    SET role = (
+      CASE p.role::text
+        WHEN 'admin' THEN 'admin'
+        WHEN 'council' THEN 'council'
+        WHEN 'manager' THEN 'manager'
+        WHEN 'property_admin' THEN 'manager'
+        ELSE 'owner'
+      END
+    )::public.user_role
     FROM public.profiles p
     WHERE pm.user_id = p.id
-      AND pm.role = 'owner'::public.user_role
-      AND p.role IN (
-        'admin'::public.user_role,
-        'council'::public.user_role,
-        'manager'::public.user_role,
-        'property_admin'::public.user_role
-      )
+      AND pm.role::text = 'owner'
+      AND p.role::text IN ('admin', 'council', 'manager', 'property_admin')
     RETURNING pm.user_id
   )
   SELECT COUNT(*) INTO n_pf FROM promoted;

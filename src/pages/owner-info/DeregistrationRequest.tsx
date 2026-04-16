@@ -119,7 +119,7 @@ export function DeregistrationRequest() {
   };
 
   const reviewRequest = async (requestId: string, decision: 'approved' | 'rejected') => {
-    if (!profile) return;
+    if (!profile || !currentPropertyId) return;
 
     setReviewingId(requestId);
     const { error } = await supabase
@@ -130,7 +130,8 @@ export function DeregistrationRequest() {
         reviewed_at: new Date().toISOString(),
         review_notes: reviewNotes.trim() || null,
       })
-      .eq('id', requestId);
+      .eq('id', requestId)
+      .eq('property_id', currentPropertyId);
 
     if (!error && decision === 'approved') {
       const req = allRequests.find((r) => r.id === requestId);
@@ -138,7 +139,8 @@ export function DeregistrationRequest() {
         await supabase
           .from('residents')
           .update({ status: 'deregistered' })
-          .eq('id', req.resident_id);
+          .eq('id', req.resident_id)
+          .eq('property_id', currentPropertyId);
       }
     }
 

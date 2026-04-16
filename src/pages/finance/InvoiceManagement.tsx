@@ -432,6 +432,7 @@ export function InvoiceManagement({
       const { data: quotes } = await supabase
         .from('procurement_quotes')
         .select('id, quoted_amount, is_budget_exceeded')
+        .eq('property_id', currentPropertyId)
         .in('id', qids);
       if (cancelled) return;
       const qm = new Map((quotes ?? []).map((q) => [q.id, Number(q.quoted_amount)]));
@@ -823,7 +824,7 @@ export function InvoiceManagement({
         console.error('invoice_ocr_raw insert threw:', e);
       }
 
-      scheduleInvoiceAiAuditAfterInsert(invoiceId);
+      scheduleInvoiceAiAuditAfterInsert(invoiceId, currentPropertyId);
       setUploadAiHint(
         l ? 'AI audit will complete in the background. Open the invoice in a moment to see results.' : 'AI 审计稍后完成，可稍后打开发票详情查看。',
       );
@@ -857,8 +858,12 @@ export function InvoiceManagement({
     audit: { action: string; notes?: string; oldStatus: string; newStatus: string }
   ) => {
     const inv = invoices.find((i) => i.id === id);
-    if (!inv) return;
-    const { error } = await supabase.from('invoices').update(patch).eq('id', id);
+    if (!inv || !currentPropertyId) return;
+    const { error } = await supabase
+      .from('invoices')
+      .update({ ...patch, property_id: currentPropertyId })
+      .eq('property_id', currentPropertyId)
+      .eq('id', id);
     if (error) {
       alert(l ? 'Update failed: ' + error.message : '更新失败：' + error.message);
       return;
@@ -876,13 +881,14 @@ export function InvoiceManagement({
 
   const approveInvoice = async (id: string, approvalNotes?: string) => {
     const inv = invoices.find((i) => i.id === id);
-    if (!inv || !profile) return;
+    if (!inv || !profile || !currentPropertyId) return;
     let variance: QuoteVarianceResult | null = quoteVarianceByInvoiceId[inv.id] ?? null;
     let quoteOverBudget = inv.quote_id ? Boolean(quoteOverBudgetByInvoiceId[inv.id]) : false;
     if (inv.quote_id && (variance == null || !quoteOverBudget)) {
       const { data: q } = await supabase
         .from('procurement_quotes')
         .select('quoted_amount, is_budget_exceeded')
+        .eq('property_id', currentPropertyId)
         .eq('id', inv.quote_id)
         .maybeSingle();
       if (variance == null) {
@@ -913,12 +919,14 @@ export function InvoiceManagement({
 
   /** 列表快捷通过：红色预警或报价超预算必须先打开详情填写理由 */
   const approveInvoiceFromList = async (inv: Invoice) => {
+    if (!currentPropertyId) return;
     let v: QuoteVarianceResult | null = quoteVarianceByInvoiceId[inv.id] ?? null;
     let quoteOverBudget = inv.quote_id ? Boolean(quoteOverBudgetByInvoiceId[inv.id]) : false;
     if (inv.quote_id && (v == null || !quoteOverBudget)) {
       const { data: q } = await supabase
         .from('procurement_quotes')
         .select('quoted_amount, is_budget_exceeded')
+        .eq('property_id', currentPropertyId)
         .eq('id', inv.quote_id)
         .maybeSingle();
       if (v == null) {
@@ -982,9 +990,14 @@ export function InvoiceManagement({
   };
 
   const handleDelete = async (invoice: Invoice) => {
+    if (!currentPropertyId) return;
     setDeleting(true);
     try {
-      const { error } = await supabase.from('invoices').delete().eq('id', invoice.id);
+      const { error } = await supabase
+        .from('invoices')
+        .delete()
+        .eq('property_id', currentPropertyId)
+        .eq('id', invoice.id);
       if (error) throw error;
       await loadInvoicesQuiet();
       if (selectedInvoice?.id === invoice.id) setSelectedInvoice(null);
@@ -1834,10 +1847,25 @@ function InvoiceDetailModal({
   const aiData = invoice.ai_extracted_data as Record<string, unknown> | null;
 
   const loadAiAuditBundle = useCallback(async () => {
+    if (!currentPropertyId) {
+      setAiAudit(null);
+      setAiAuditContextRow(null);
+      setAiAuditLoading(false);
+      return;
+    }
     setAiAuditLoading(true);
     const [{ data: audits, error: auditErr }, { data: ctxRow }] = await Promise.all([
-      supabase.from('invoice_ai_audits').select('*').eq('invoice_id', invoice.id),
-      supabase.from('invoice_ai_audit_contexts').select('context_json').eq('invoice_id', invoice.id).maybeSingle(),
+      supabase
+        .from('invoice_ai_audits')
+        .select('*')
+        .eq('invoice_id', invoice.id)
+        .eq('property_id', currentPropertyId),
+      supabase
+        .from('invoice_ai_audit_contexts')
+        .select('context_json')
+        .eq('invoice_id', invoice.id)
+        .eq('property_id', currentPropertyId)
+        .maybeSingle(),
     ]);
     if (auditErr) {
       setAiAudit(null);
@@ -1851,7 +1879,7 @@ function InvoiceDetailModal({
       setAiAuditContextRow(null);
     }
     setAiAuditLoading(false);
-  }, [invoice.id]);
+  }, [invoice.id, currentPropertyId]);
 
   useEffect(() => {
     setEditCategory(invoice.category || 'general');
@@ -1890,6 +1918,10 @@ function InvoiceDetailModal({
     setAiRunLoading(true);
     setAuditBanner(null);
     try {
+      if (!currentPropertyId) {
+        setAuditBanner({ type: 'err', msg: l ? 'No property selected.' : '未选择物业。' });
+        return;
+      }
       const { data: sess } = await supabase.auth.getSession();
       const token = sess.session?.access_token;
       if (!token) {
@@ -1904,7 +1936,7 @@ function InvoiceDetailModal({
           Authorization: `Bearer ${token}`,
           apikey: import.meta.env.VITE_SUPABASE_ANON_KEY as string,
         },
-        body: JSON.stringify({ invoice_id: invoice.id }),
+        body: JSON.stringify({ invoice_id: invoice.id, property_id: currentPropertyId }),
       });
       const json = (await res.json()) as { success?: boolean; error?: string };
       if (!res.ok || !json.success) {
@@ -1976,7 +2008,7 @@ function InvoiceDetailModal({
 
   useEffect(() => {
     let cancelled = false;
-    if (!invoice.quote_id) {
+    if (!invoice.quote_id || !currentPropertyId) {
       setQuoteVarianceResult(null);
       setQuoteBudgetExceeded(false);
       return;
@@ -1985,6 +2017,7 @@ function InvoiceDetailModal({
       const { data } = await supabase
         .from('procurement_quotes')
         .select('quoted_amount, is_budget_exceeded')
+        .eq('property_id', currentPropertyId)
         .eq('id', invoice.quote_id)
         .maybeSingle();
       if (cancelled) return;
@@ -1998,7 +2031,7 @@ function InvoiceDetailModal({
     return () => {
       cancelled = true;
     };
-  }, [invoice.quote_id, invoice.total_amount]);
+  }, [invoice.quote_id, invoice.total_amount, currentPropertyId]);
 
   useEffect(() => {
     if (!invoice.related_task_id || !currentPropertyId) {
@@ -2037,10 +2070,12 @@ function InvoiceDetailModal({
       const { error } = await supabase
         .from('invoices')
         .update({
+          property_id: currentPropertyId,
           category: editCategory,
           notes: editNotes || null,
           updated_at: new Date().toISOString(),
         })
+        .eq('property_id', currentPropertyId)
         .eq('id', invoice.id);
       if (error) {
         alert(error.message);

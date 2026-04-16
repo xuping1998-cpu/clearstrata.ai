@@ -2,6 +2,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useDemoGeneratedData } from '@/contexts/DemoGeneratedDataContext';
 import { formatDemoCents, formatDemoCurrency } from '@/lib/demoPropertyMockData';
 import { DemoPropertyConvertBar } from './DemoPropertyConvertBar';
+import { DemoCreatePropertyCtaCard } from '@/components/onboarding/DemoCreatePropertyCta';
 
 /** 演示楼首页：使用确定性生成数据，不请求网络。 */
 export function DemoPropertyMockHomePanel() {
@@ -24,6 +25,7 @@ export function DemoPropertyMockHomePanel() {
 
       <div className="space-y-4">
         <DemoPropertyConvertBar />
+        <DemoCreatePropertyCtaCard />
       </div>
 
       <div>

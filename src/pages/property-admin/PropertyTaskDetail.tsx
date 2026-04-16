@@ -248,7 +248,11 @@ export function PropertyTaskDetail() {
       const qids = [...new Set((invsWithQuote ?? []).map((i) => i.quote_id).filter(Boolean))] as string[];
       const quoteAmt = new Map<string, number>();
       if (qids.length > 0) {
-        const { data: quotes } = await supabase.from('procurement_quotes').select('id, quoted_amount').in('id', qids);
+        const { data: quotes } = await supabase
+          .from('procurement_quotes')
+          .select('id, quoted_amount')
+          .eq('property_id', currentPropertyId)
+          .in('id', qids);
         for (const q of quotes ?? []) quoteAmt.set(q.id, Number(q.quoted_amount));
       }
       for (const row of invsWithQuote ?? []) {

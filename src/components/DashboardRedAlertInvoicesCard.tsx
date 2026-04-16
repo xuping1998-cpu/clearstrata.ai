@@ -69,7 +69,11 @@ export function DashboardRedAlertInvoicesCard() {
       }
 
       const quoteIds = [...new Set(list.map((i) => i.quote_id).filter(Boolean))] as string[];
-      const { data: quotes } = await supabase.from('procurement_quotes').select('id, quoted_amount').in('id', quoteIds);
+      const { data: quotes } = await supabase
+        .from('procurement_quotes')
+        .select('id, quoted_amount')
+        .eq('property_id', currentPropertyId)
+        .in('id', quoteIds);
       if (cancelled) return;
 
       const qMap = new Map((quotes ?? []).map((q) => [q.id, Number(q.quoted_amount)]));

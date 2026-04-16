@@ -56,7 +56,7 @@ BEGIN
       jr.created_at
     FROM public.join_requests jr
     WHERE jr.property_id = v_property
-      AND jr.status = 'approved'::public.join_request_status
+      AND jr.status::text = 'approved'
     ORDER BY jr.user_id, jr.reviewed_at DESC NULLS LAST, jr.created_at DESC
   ),
   src AS (
@@ -65,21 +65,13 @@ BEGIN
       r.user_id,
       COALESCE(
         CASE
-          WHEN jb.requested_role IN (
-            'admin'::public.user_role,
-            'council'::public.user_role,
-            'manager'::public.user_role,
-            'owner'::public.user_role
-          ) THEN jb.requested_role
-          WHEN jb.requested_role = 'property_admin'::public.user_role THEN 'manager'::public.user_role
+          WHEN jb.requested_role::text IN ('admin', 'council', 'manager', 'owner')
+            THEN jb.requested_role::public.user_role
+          WHEN jb.requested_role::text = 'property_admin' THEN 'manager'::public.user_role
           ELSE NULL::public.user_role
         END,
         CASE
-          WHEN p.role IN (
-            'admin'::public.user_role,
-            'council'::public.user_role,
-            'manager'::public.user_role
-          ) THEN p.role
+          WHEN p.role::text IN ('admin', 'council', 'manager') THEN p.role::public.user_role
           ELSE NULL::public.user_role
         END,
         'owner'::public.user_role
@@ -97,7 +89,7 @@ BEGIN
   ),
   ins AS (
     INSERT INTO public.property_members (property_id, user_id, role, status)
-    SELECT src.property_id, src.user_id, src.deduced_role, 'active'::public.member_status
+    SELECT src.property_id, src.user_id, src.deduced_role, 'active'
     FROM src
     RETURNING 1
   )
@@ -112,17 +104,14 @@ BEGIN
     SELECT DISTINCT ON (jr.user_id)
       jr.user_id,
       CASE
-        WHEN jr.requested_role IN (
-          'admin'::public.user_role,
-          'council'::public.user_role,
-          'manager'::public.user_role
-        ) THEN jr.requested_role
-        WHEN jr.requested_role = 'property_admin'::public.user_role THEN 'manager'::public.user_role
+        WHEN jr.requested_role::text IN ('admin', 'council', 'manager')
+          THEN jr.requested_role::public.user_role
+        WHEN jr.requested_role::text = 'property_admin' THEN 'manager'::public.user_role
         ELSE NULL::public.user_role
       END AS staff_role
     FROM public.join_requests jr
     WHERE jr.property_id = v_property
-      AND jr.status = 'approved'::public.join_request_status
+      AND jr.status::text = 'approved'
     ORDER BY jr.user_id, jr.reviewed_at DESC NULLS LAST, jr.created_at DESC
   ),
   promoted AS (
@@ -131,13 +120,9 @@ BEGIN
     FROM jr_best jb
     WHERE pm.property_id = v_property
       AND pm.user_id = jb.user_id
-      AND pm.role = 'owner'::public.user_role
+      AND pm.role::text = 'owner'
       AND jb.staff_role IS NOT NULL
-      AND jb.staff_role IN (
-        'admin'::public.user_role,
-        'council'::public.user_role,
-        'manager'::public.user_role
-      )
+      AND jb.staff_role::text IN ('admin', 'council', 'manager')
     RETURNING pm.user_id
   )
   SELECT COUNT(*) INTO n_up_jr FROM promoted;
@@ -149,16 +134,12 @@ BEGIN
   -- -------------------------------------------------------------------------
   WITH promoted AS (
     UPDATE public.property_members pm
-    SET role = p.role
+    SET role = p.role::public.user_role
     FROM public.profiles p
     WHERE pm.property_id = v_property
       AND pm.user_id = p.id
-      AND pm.role = 'owner'::public.user_role
-      AND p.role IN (
-        'admin'::public.user_role,
-        'council'::public.user_role,
-        'manager'::public.user_role
-      )
+      AND pm.role::text = 'owner'
+      AND p.role::text IN ('admin', 'council', 'manager')
     RETURNING pm.user_id
   )
   SELECT COUNT(*) INTO n_up_pf FROM promoted;

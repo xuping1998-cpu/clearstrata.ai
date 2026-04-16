@@ -2,23 +2,28 @@ import { useEffect, useState } from 'react';
 import { Phone, Building2, Users } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useProperty } from '../../contexts/PropertyContext';
 import { supabase } from '../../lib/supabase';
 
 export function EmergencyTab({ embedded = false }: { embedded?: boolean }) {
   const { language } = useLanguage();
   const { profile } = useAuth();
+  const { currentPropertyId } = useProperty();
   const [ownerInfo, setOwnerInfo] = useState<{ emergency_contact_name?: string; emergency_contact_phone?: string } | null>(null);
 
   useEffect(() => {
-    if (profile) {
+    if (profile && currentPropertyId) {
       supabase
         .from('owner_info')
         .select('emergency_contact_name, emergency_contact_phone')
         .eq('user_id', profile.id)
+        .eq('property_id', currentPropertyId)
         .maybeSingle()
         .then(({ data }) => setOwnerInfo(data));
+    } else {
+      setOwnerInfo(null);
     }
-  }, [profile]);
+  }, [profile, currentPropertyId]);
 
   const shellClass = embedded ? 'space-y-6' : 'bg-white rounded-xl shadow-sm p-8';
 

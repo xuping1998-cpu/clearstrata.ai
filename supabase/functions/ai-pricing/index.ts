@@ -16,6 +16,18 @@ interface PricingRequest {
   estimated_budget: number;
   floor_plan_base64?: string;
   floor_plan_text?: string;
+  /** Required unless job_id is provided (then property_id is derived from the job row). */
+  property_id?: string;
+  /** When provided with property_id, must match procurement_jobs.property_id. */
+  job_id?: string;
+}
+
+/** Light vendor name redaction for third-party model prompts (same-property rows only). */
+function redactVendorName(raw: unknown): string {
+  const s = typeof raw === "string" ? raw.trim() : "";
+  if (!s) return "—";
+  if (s.length <= 2) return "[vendor]";
+  return `${s[0]}***${s[s.length - 1]!}`;
 }
 
 function buildSystemPrompt(historyContext: string, hasFloorPlan: boolean): string {
@@ -148,6 +160,16 @@ Deno.serve(async (req: Request) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    let body: PricingRequest;
+    try {
+      body = await req.json() as PricingRequest;
+    } catch {
+      return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const {
       title,
       description,
@@ -156,19 +178,66 @@ Deno.serve(async (req: Request) => {
       estimated_budget,
       floor_plan_base64,
       floor_plan_text,
-    }: PricingRequest = await req.json();
+    } = body;
+
+    let resolvedPropertyId = typeof body.property_id === "string" ? body.property_id.trim() : "";
+    const jobId = typeof body.job_id === "string" ? body.job_id.trim() : "";
+
+    if (!resolvedPropertyId && jobId) {
+      const { data: jobRow, error: jobErr } = await supabase
+        .from("procurement_jobs")
+        .select("property_id")
+        .eq("id", jobId)
+        .maybeSingle();
+      if (jobErr || !jobRow?.property_id) {
+        return new Response(
+          JSON.stringify({ error: "job_id not found or missing property_id" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      resolvedPropertyId = String(jobRow.property_id);
+    }
+
+    if (resolvedPropertyId && jobId) {
+      const { data: jobCheck, error: jobCheckErr } = await supabase
+        .from("procurement_jobs")
+        .select("property_id")
+        .eq("id", jobId)
+        .maybeSingle();
+      if (jobCheckErr || !jobCheck?.property_id) {
+        return new Response(
+          JSON.stringify({ error: "job_id not found" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      if (String(jobCheck.property_id) !== resolvedPropertyId) {
+        return new Response(
+          JSON.stringify({ error: "property_id does not match job_id" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    }
+
+    if (!resolvedPropertyId) {
+      return new Response(
+        JSON.stringify({ error: "property_id is required (or pass job_id to derive it)" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
 
     const { data: historyData } = await supabase
       .from("price_history")
       .select("title, category, final_price, vendor_name, completed_at, job_type")
+      .eq("property_id", resolvedPropertyId)
       .order("completed_at", { ascending: false })
       .limit(50);
 
     let historyContext = "";
     if (historyData && historyData.length > 0) {
       historyContext = `\n\n## 清涟历史成交价格数据（共${historyData.length}条记录）：\n`;
-      historyData.forEach((record: any) => {
-        historyContext += `- 项目: ${record.title} | 类别: ${record.category || "未分类"} | 成交价: $${record.final_price} | 供应商: ${record.vendor_name || "未知"} | 完成时间: ${record.completed_at || "未知"}\n`;
+      historyData.forEach((record: Record<string, unknown>) => {
+        const vn = redactVendorName(record.vendor_name);
+        historyContext += `- 项目: ${record.title} | 类别: ${record.category || "未分类"} | 成交价: $${record.final_price} | 供应商: ${vn} | 完成时间: ${record.completed_at || "未知"}\n`;
       });
     } else {
       historyContext = "\n\n目前暂无历史成交数据，请完全基于温哥华市场数据进行估价。";

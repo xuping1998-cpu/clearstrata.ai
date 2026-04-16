@@ -635,22 +635,27 @@ export function ApproveQuoteModal({
     setSubmitting(true);
     try {
       const selectedQuote = selectedJob.quotes?.find(q => q.id === selectedQuoteId);
-      const { error } = await supabase.from('procurement_jobs').update({
-        status: 'pm_executing',
-        selected_quote_id: selectedQuoteId,
-        assigned_manager_id: selectedManagerId,
-        approved_by: profile.id,
-        approved_at: new Date().toISOString(),
-        approved_cost: selectedQuote?.quoted_amount,
-      }).eq('id', selectedJob.id);
+      const { error } = await supabase
+        .from('procurement_jobs')
+        .update({
+          status: 'pm_executing',
+          selected_quote_id: selectedQuoteId,
+          assigned_manager_id: selectedManagerId,
+          approved_by: profile.id,
+          approved_at: new Date().toISOString(),
+          approved_cost: selectedQuote?.quoted_amount,
+        })
+        .eq('property_id', currentPropertyId)
+        .eq('id', selectedJob.id);
 
       if (error) throw error;
 
       if (selectedJob.task_id) {
         await supabase
           .from('procurement_quotes')
-          .update({ task_id: selectedJob.task_id })
-          .eq('job_id', selectedJob.id);
+          .update({ task_id: selectedJob.task_id, property_id: currentPropertyId })
+          .eq('job_id', selectedJob.id)
+          .eq('property_id', currentPropertyId);
       }
 
       await supabase.from('procurement_quote_notifications').insert({
@@ -815,19 +820,25 @@ export function PMCompleteModal({
 }: {
   language: string; selectedJob: ProcurementJob; onClose: () => void; onCompleted: () => void;
 }) {
+  const { currentPropertyId } = useProperty();
   const l = language === 'en';
   const [notes, setNotes] = useState('');
   const [_photosUploaded, setPhotosUploaded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const handleComplete = async () => {
+    if (!currentPropertyId) return;
     setSubmitting(true);
     try {
-      const { error } = await supabase.from('procurement_jobs').update({
-        status: 'pending_inspection',
-        pm_completion_notes: notes,
-        pm_completed_at: new Date().toISOString(),
-      }).eq('id', selectedJob.id);
+      const { error } = await supabase
+        .from('procurement_jobs')
+        .update({
+          status: 'pending_inspection',
+          pm_completion_notes: notes,
+          pm_completed_at: new Date().toISOString(),
+        })
+        .eq('property_id', currentPropertyId)
+        .eq('id', selectedJob.id);
       if (error) throw error;
       onClose();
       onCompleted();
@@ -919,13 +930,17 @@ export function InspectionModal({
     setSubmitting(true);
     try {
       const newStatus = result === 'passed' ? 'inspection_passed' : 'inspection_failed';
-      const { error } = await supabase.from('procurement_jobs').update({
-        status: newStatus,
-        inspection_result: result,
-        inspection_notes: notes,
-        inspected_by: profile.id,
-        inspected_at: new Date().toISOString(),
-      }).eq('id', selectedJob.id);
+      const { error } = await supabase
+        .from('procurement_jobs')
+        .update({
+          status: newStatus,
+          inspection_result: result,
+          inspection_notes: notes,
+          inspected_by: profile.id,
+          inspected_at: new Date().toISOString(),
+        })
+        .eq('property_id', currentPropertyId)
+        .eq('id', selectedJob.id);
       if (error) throw error;
       onClose();
       onInspected();

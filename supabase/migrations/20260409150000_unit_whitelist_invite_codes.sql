@@ -1039,5 +1039,5 @@ DROP TRIGGER IF EXISTS join_requests_bump_public_invite_on_approve ON public.joi
 CREATE TRIGGER join_requests_bump_public_invite_on_approve
   AFTER UPDATE OF status ON public.join_requests
   FOR EACH ROW
-  WHEN (NEW.status = 'approved'::join_request_status AND OLD.status IS DISTINCT FROM NEW.status)
+  WHEN (NEW.status::text = 'approved' AND OLD.status::text IS DISTINCT FROM NEW.status::text)
   EXECUTE FUNCTION public.trg_join_requests_bump_public_invite_on_approve();

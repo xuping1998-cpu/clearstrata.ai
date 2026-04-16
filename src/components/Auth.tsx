@@ -13,6 +13,9 @@ import {
   clearPublicDemoLocalStorage,
 } from '../contexts/PropertyContext';
 import { submitUnifiedPropertyEntry } from '../lib/propertyEntryUnified';
+import { demoEntryPath, MARKETING_DEMO_PROPERTY_CODE } from '@/lib/propertyEntryRoutes';
+import { saveGuestExperienceDraft } from '@/lib/guestExperienceDraft';
+import { savePropertyEntryDraft } from '@/lib/propertyEntryDraft';
 
 function persistCurrentPropertyId(propertyId: string) {
   try {
@@ -128,7 +131,26 @@ async function claimPublicDemoPropertyAfterSignUp(): Promise<string | null> {
   return pid;
 }
 
+function isValidEmailBasic(s: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
+}
+
+type MainTab = 'guest' | 'property';
+type LegacyOpen = 'none' | 'login' | 'signup';
+
 export function Auth() {
+  const [mainTab, setMainTab] = useState<MainTab>('guest');
+  const [legacyOpen, setLegacyOpen] = useState<LegacyOpen>('none');
+  const [guestName, setGuestName] = useState('');
+  const [guestEmail, setGuestEmail] = useState('');
+  const [guestBusy, setGuestBusy] = useState(false);
+  const [epName, setEpName] = useState('');
+  const [epEmail, setEpEmail] = useState('');
+  const [epStrata, setEpStrata] = useState('');
+  const [epUnit, setEpUnit] = useState('');
+  const [epCode, setEpCode] = useState('');
+  const [epBusy, setEpBusy] = useState(false);
+
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -158,8 +180,95 @@ export function Auth() {
   useEffect(() => {
     if (searchParams.get('mode') === 'signup') {
       setIsLogin(false);
+      setLegacyOpen('signup');
+    }
+    const pc = searchParams.get('propertyCode')?.trim();
+    if (pc) {
+      setEpCode(pc);
+      setMainTab('property');
     }
   }, [searchParams]);
+
+  const handleGuestDemo = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setResetSuccess('');
+    const n = guestName.trim();
+    const em = guestEmail.trim().toLowerCase();
+    if (!n || !em) {
+      setError(language === 'zh' ? '请填写姓名与邮箱。' : 'Please enter your name and email.');
+      return;
+    }
+    if (!isValidEmailBasic(em)) {
+      setError(language === 'zh' ? '邮箱格式不正确。' : 'Please enter a valid email address.');
+      return;
+    }
+    setGuestBusy(true);
+    try {
+      saveGuestExperienceDraft({ name: n, email: em });
+      navigate(demoEntryPath(MARKETING_DEMO_PROPERTY_CODE), { replace: false });
+    } finally {
+      setGuestBusy(false);
+    }
+  };
+
+  const handlePropertyEnter = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setResetSuccess('');
+    const code = (epCode.trim() || searchParams.get('propertyCode')?.trim() || '').trim();
+    const n = epName.trim();
+    const em = epEmail.trim().toLowerCase();
+    const st = epStrata.trim();
+    const u = epUnit.trim();
+    if (!n || !em || !st || !u) {
+      setError(language === 'zh' ? '请填写姓名、邮箱、Strata Plan 与房号。' : 'Please fill in all required fields.');
+      return;
+    }
+    if (!isValidEmailBasic(em)) {
+      setError(language === 'zh' ? '邮箱格式不正确。' : 'Please enter a valid email address.');
+      return;
+    }
+    if (!code) {
+      setError(
+        language === 'zh'
+          ? '请填写物业代号，或使用物业专属入口链接（含 propertyCode）。'
+          : 'Enter your property code, or open your building’s dedicated link.',
+      );
+      return;
+    }
+    setEpBusy(true);
+    try {
+      const { data, error } = await supabase.rpc('resolve_property_for_join_request', { p_code: code });
+      if (error) {
+        console.warn('resolve_property_for_join_request', error);
+        setError(language === 'zh' ? '无法查询该物业，请稍后重试。' : 'Could not look up this property. Try again later.');
+        return;
+      }
+      const rows = Array.isArray(data) ? data : data != null ? [data] : [];
+      const row = rows[0] as { id?: string } | undefined;
+      const pid = row?.id != null ? String(row.id) : '';
+      if (!pid) {
+        setError(
+          language === 'zh'
+            ? '未找到该物业，或该物业未开放公开加入。请向业委会确认入口。'
+            : 'Property not found or not open for public join. Please confirm with your strata council.',
+        );
+        return;
+      }
+      savePropertyEntryDraft({
+        fullName: n,
+        email: em,
+        strataPlan: st,
+        unitNumber: u,
+        propertyId: pid,
+        propertyCode: code,
+      });
+      navigate(`/join-request?propertyId=${encodeURIComponent(pid)}`, { replace: false });
+    } finally {
+      setEpBusy(false);
+    }
+  };
 
   const safeRedirectAfterAuth = (): boolean => {
     const raw = searchParams.get('redirect');
@@ -359,23 +468,6 @@ export function Auth() {
     }
   };
 
-  const resetForm = () => {
-    setForgotMode(false);
-    setResetSuccess('');
-    setEmail('');
-    setPassword('');
-    setFullNameEn('');
-    setFullNameZh('');
-    setUnitNumber('');
-    setPhone('');
-    if (moveInDateRef.current) moveInDateRef.current.value = '';
-    setMoveInDateKey((k) => k + 1);
-    setLanguagePref('en');
-    setStep(1);
-    setError('');
-    setShowPassword(false);
-  };
-
   const passwordInputClass =
     'w-full pr-10 pl-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75]/20 focus:border-[#1D9E75] transition-colors';
 
@@ -392,7 +484,19 @@ export function Auth() {
               <Building2 className="size-7 sm:size-8" />
             </div>
             <h1 className="text-2xl font-bold tracking-tight text-gray-900">ClearStrata</h1>
-            <p className="mt-1 text-sm text-gray-500">{t('auth_slogan')}</p>
+            <div className="mt-3 space-y-1.5 text-center text-[15px] font-semibold leading-snug text-gray-800 sm:text-base">
+              {language === 'zh' ? (
+                <>
+                  <p>业主的监督工具</p>
+                  <p>业委会的智控管理</p>
+                  <p>物业经理的工作日志</p>
+                </>
+              ) : (
+                <p className="text-sm font-medium text-gray-700">
+                  Owner oversight · Council control · Manager work log
+                </p>
+              )}
+            </div>
             <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-sm">
               <Link to="/pricing" className="font-medium text-[#1D9E75] hover:underline">
                 {t('nav_pricing')}
@@ -406,38 +510,46 @@ export function Auth() {
           <div className="w-full max-w-md">
             <div className="overflow-visible rounded-2xl border border-gray-100 bg-white shadow-xl shadow-gray-200/60">
               <div className="flex border-b border-gray-100">
-            <button
-              type="button"
-              onClick={() => { setIsLogin(true); resetForm(); }}
-              className={`flex-1 py-3.5 text-sm font-semibold transition-colors ${
-                isLogin
-                  ? 'text-[#1D9E75] border-b-2 border-[#1D9E75] bg-emerald-50/40'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              {t('auth_login')}
-            </button>
-            <button
-              type="button"
-              onClick={() => { setIsLogin(false); resetForm(); }}
-              className={`flex-1 py-3.5 text-sm font-semibold transition-colors ${
-                !isLogin
-                  ? 'text-[#1D9E75] border-b-2 border-[#1D9E75] bg-emerald-50/40'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              {t('auth_signup')}
-            </button>
-            <button
-              type="button"
-              onClick={toggleLanguage}
-              className="px-4 py-3.5 text-sm font-medium text-gray-500 hover:text-gray-700 border-l border-gray-100 transition-colors"
-            >
-              {language === 'en' ? '中文' : 'EN'}
-            </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMainTab('guest');
+                    setError('');
+                    setResetSuccess('');
+                  }}
+                  className={`flex-1 py-3.5 text-sm font-semibold transition-colors ${
+                    mainTab === 'guest'
+                      ? 'border-b-2 border-[#1D9E75] bg-emerald-50/40 text-[#1D9E75]'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {language === 'zh' ? '游客体验' : 'Try demo'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMainTab('property');
+                    setError('');
+                    setResetSuccess('');
+                  }}
+                  className={`flex-1 py-3.5 text-sm font-semibold transition-colors ${
+                    mainTab === 'property'
+                      ? 'border-b-2 border-slate-800 bg-slate-50 text-slate-900'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {language === 'zh' ? '进入物业' : 'Join property'}
+                </button>
+                <button
+                  type="button"
+                  onClick={toggleLanguage}
+                  className="border-l border-gray-100 px-4 py-3.5 text-sm font-medium text-gray-500 transition-colors hover:text-gray-700"
+                >
+                  {language === 'en' ? '中文' : 'EN'}
+                </button>
               </div>
 
-              <form onSubmit={handleSubmit} className="space-y-4 p-6">
+              <div className="p-0">
             {passwordUpdated && (
               <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-900 text-sm flex justify-between gap-2 items-start">
                 <span>{t('auth_password_updated_banner')}</span>
@@ -455,87 +567,218 @@ export function Auth() {
                 </button>
               </div>
             )}
-            {isLogin ? (
-              <>
+            {mainTab === 'guest' ? (
+              <form onSubmit={handleGuestDemo} className="space-y-4 p-6">
+                <p className="text-xs text-gray-600">
+                  {language === 'zh'
+                    ? '仅进入演示样板，不会加入真实物业。'
+                    : 'Opens the read-only demo only — not a real property.'}
+                </p>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5" htmlFor="login-email">
-                    {t('auth_email')}
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="guest-name">
+                    {language === 'zh' ? '姓名' : 'Name'} <span className="text-red-500">*</span>
                   </label>
                   <input
-                    id="login-email"
+                    id="guest-name"
+                    type="text"
+                    value={guestName}
+                    onChange={(e) => setGuestName(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20"
+                    autoComplete="name"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="guest-email">
+                    {language === 'zh' ? '邮箱' : 'Email'} <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="guest-email"
                     type="email"
-                    name="email"
+                    value={guestEmail}
+                    onChange={(e) => setGuestEmail(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20"
                     autoComplete="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required={!forgotMode}
-                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75]/20 focus:border-[#1D9E75] transition-colors"
                     placeholder="name@example.com"
                   />
                 </div>
-                {!forgotMode && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5" htmlFor="login-password">
-                      {t('auth_password')}
-                    </label>
-                    <div className="relative">
-                      <input
-                        id="login-password"
-                        name="password"
-                        type={showPassword ? 'text' : 'password'}
-                        placeholder={t('auth_password_placeholder')}
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className={passwordInputClass}
-                        required
-                        minLength={6}
-                        autoComplete="current-password"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                        aria-label={showPassword ? 'Hide password' : 'Show password'}
-                      >
-                        {showPassword ? '🙈' : '👁️'}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </>
+                <button
+                  type="submit"
+                  disabled={guestBusy}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#1D9E75] py-3 font-semibold text-white transition-colors hover:bg-[#178a66] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {guestBusy ? <Loader2 size={18} className="animate-spin" /> : null}
+                  {language === 'zh' ? '进入演示' : 'Try demo'}
+                </button>
+              </form>
             ) : (
-              <>
-                {step === 1 ? (
-                  <>
+              <form onSubmit={(e) => void handlePropertyEnter(e)} className="space-y-4 p-6">
+                <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-800">
+                  {language === 'zh'
+                    ? '真实物业入口：提交后将前往加入申请页（非 Demo）。'
+                    : 'Real property path: you will continue on the join request page (not the demo).'}
+                </p>
+                {(epCode.trim() || searchParams.get('propertyCode')?.trim()) && (
+                  <p className="text-center text-sm font-bold text-slate-900">
+                    {language === 'zh' ? '正在进入：' : 'Joining: '}
+                    <span className="font-mono">{(epCode.trim() || searchParams.get('propertyCode') || '').toUpperCase()}</span>
+                  </p>
+                )}
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="ep-code">
+                    {language === 'zh' ? '物业代号' : 'Property code'} <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="ep-code"
+                    type="text"
+                    value={epCode}
+                    onChange={(e) => setEpCode(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 font-mono uppercase transition-colors focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20"
+                    placeholder="BCS3736"
+                    autoComplete="off"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    {language === 'zh' ? '请使用业委会提供的专属代号或链接。' : 'Use the code from your strata / manager.'}
+                  </p>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="ep-name">
+                    {language === 'zh' ? '姓名' : 'Name'} <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="ep-name"
+                    type="text"
+                    value={epName}
+                    onChange={(e) => setEpName(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="ep-email">
+                    {language === 'zh' ? '邮箱' : 'Email'} <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="ep-email"
+                    type="email"
+                    value={epEmail}
+                    onChange={(e) => setEpEmail(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20"
+                    placeholder="name@example.com"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="ep-strata">
+                    Strata plan <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    id="ep-strata"
+                    value={epStrata}
+                    onChange={(e) => setEpStrata(e.target.value)}
+                    rows={2}
+                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm transition-colors focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20"
+                    placeholder={language === 'zh' ? '计划类型或登记号' : 'Plan type or registration'}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="ep-unit">
+                    {language === 'zh' ? '房号 / 单元号' : 'Unit'} <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="ep-unit"
+                    type="text"
+                    value={epUnit}
+                    onChange={(e) => setEpUnit(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20"
+                    placeholder="1204"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={epBusy}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 py-3 font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {epBusy ? <Loader2 size={18} className="animate-spin" /> : null}
+                  {language === 'zh' ? '进入物业' : 'Continue to join'}
+                </button>
+              </form>
+            )}
+
+            <div className="border-t border-gray-100 bg-gray-50/60 px-6 py-4">
+              <p className="text-xs font-semibold text-gray-600">
+                {language === 'zh' ? '已有账号？' : 'Already have an account?'}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = legacyOpen === 'login' ? 'none' : 'login';
+                    setLegacyOpen(next);
+                    if (next === 'login') {
+                      setIsLogin(true);
+                      setForgotMode(false);
+                      setError('');
+                      setResetSuccess('');
+                    }
+                  }}
+                  className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-800 hover:bg-gray-50"
+                >
+                  {language === 'zh' ? '邮箱与密码登录' : 'Email & password'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = legacyOpen === 'signup' ? 'none' : 'signup';
+                    setLegacyOpen(next);
+                    if (next === 'signup') {
+                      setIsLogin(false);
+                      setStep(1);
+                      setError('');
+                      setResetSuccess('');
+                    }
+                  }}
+                  className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-800 hover:bg-gray-50"
+                >
+                  {language === 'zh' ? '业主完整注册' : 'Full owner signup'}
+                </button>
+              </div>
+
+              {legacyOpen === 'login' ? (
+                <form onSubmit={handleSubmit} className="mt-4 space-y-3">
+                  {resetSuccess && (
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{resetSuccess}</div>
+                  )}
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="login-email">
+                      {t('auth_email')}
+                    </label>
+                    <input
+                      id="login-email"
+                      type="email"
+                      name="email"
+                      autoComplete="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required={!forgotMode}
+                      className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20"
+                      placeholder="name@example.com"
+                    />
+                  </div>
+                  {!forgotMode && (
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5" htmlFor="signup-email">
-                        {t('auth_email')} <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        id="signup-email"
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        required
-                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75]/20 focus:border-[#1D9E75] transition-colors"
-                        placeholder="name@example.com"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5" htmlFor="signup-password">
-                        {t('auth_password')} <span className="text-red-500">*</span>
+                      <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="login-password">
+                        {t('auth_password')}
                       </label>
                       <div className="relative">
                         <input
-                          id="signup-password"
+                          id="login-password"
+                          name="password"
                           type={showPassword ? 'text' : 'password'}
                           placeholder={t('auth_password_placeholder')}
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
                           className={passwordInputClass}
-                          required
+                          required={!forgotMode}
                           minLength={6}
-                          autoComplete="new-password"
+                          autoComplete="current-password"
                         />
                         <button
                           type="button"
@@ -546,170 +789,43 @@ export function Auth() {
                           {showPassword ? '🙈' : '👁️'}
                         </button>
                       </div>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {language === 'en' ? 'Minimum 6 characters' : '至少6个字符'}
-                      </p>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5" htmlFor="signup-name-en">
-                          {t('auth_full_name_en')} <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          id="signup-name-en"
-                          type="text"
-                          value={fullNameEn}
-                          onChange={(e) => setFullNameEn(e.target.value)}
-                          required
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75]/20 focus:border-[#1D9E75] transition-colors"
-                          placeholder="John Doe"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5" htmlFor="signup-name-zh">
-                          {t('auth_full_name_zh')}
-                        </label>
-                        <input
-                          id="signup-name-zh"
-                          type="text"
-                          value={fullNameZh}
-                          onChange={(e) => setFullNameZh(e.target.value)}
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75]/20 focus:border-[#1D9E75] transition-colors"
-                          placeholder="张三"
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5" htmlFor="signup-unit">
-                          {language === 'en' ? 'Unit Number' : '单元号'} <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          id="signup-unit"
-                          type="text"
-                          value={unitNumber}
-                          onChange={(e) => setUnitNumber(e.target.value)}
-                          required
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75]/20 focus:border-[#1D9E75] transition-colors"
-                          placeholder="101"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5" htmlFor="signup-phone">
-                          {language === 'en' ? 'Phone' : '电话'}
-                        </label>
-                        <input
-                          id="signup-phone"
-                          type="tel"
-                          value={phone}
-                          onChange={(e) => setPhone(e.target.value)}
-                          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75]/20 focus:border-[#1D9E75] transition-colors"
-                          placeholder="04xx xxx xxx"
-                        />
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!email || !password || !fullNameEn || !unitNumber) {
-                          setError(language === 'en' ? 'Please fill in all required fields' : '请填写所有必填项');
-                          return;
-                        }
-                        setError('');
-                        setStep(2);
-                      }}
-                      className="w-full bg-[#1D9E75] text-white py-3 rounded-lg font-semibold hover:bg-[#178a66] transition-colors"
-                    >
-                      {language === 'en' ? 'Next' : '下一步'}
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5" htmlFor="move-in">
-                        {language === 'en' ? 'Move-in Date' : '入住日期'}
-                      </label>
-                      <input
-                        key={`move-in-${moveInDateKey}`}
-                        ref={moveInDateRef}
-                        id="move-in"
-                        type="date"
-                        name="move_in_date"
-                        min="1900-01-01"
-                        max="2100-12-31"
-                        autoComplete="off"
-                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75]/20 focus:border-[#1D9E75] transition-colors cursor-pointer bg-white"
-                      />
-                      <p className="text-xs text-gray-500 mt-1">
-                        {language === 'en'
-                          ? 'Tap the field to open the calendar and pick any date.'
-                          : '点击输入框打开日历，可自由选择日期。'}
-                      </p>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                        {language === 'en' ? 'Language Preference' : '语言偏好'}
-                      </label>
-                      <div className="flex gap-3">
-                        <label
-                          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg border-2 cursor-pointer transition-all ${
-                            languagePref === 'en'
-                              ? 'border-[#1D9E75] bg-emerald-50 text-[#1D9E75]'
-                              : 'border-gray-200 hover:border-gray-300 text-gray-600'
-                          }`}
-                        >
-                          <input
-                            type="radio"
-                            name="lang"
-                            value="en"
-                            checked={languagePref === 'en'}
-                            onChange={() => setLanguagePref('en')}
-                            className="sr-only"
-                          />
-                          <span className="font-medium">English</span>
-                        </label>
-                        <label
-                          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg border-2 cursor-pointer transition-all ${
-                            languagePref === 'zh'
-                              ? 'border-[#1D9E75] bg-emerald-50 text-[#1D9E75]'
-                              : 'border-gray-200 hover:border-gray-300 text-gray-600'
-                          }`}
-                        >
-                          <input
-                            type="radio"
-                            name="lang"
-                            value="zh"
-                            checked={languagePref === 'zh'}
-                            onChange={() => setLanguagePref('zh')}
-                            className="sr-only"
-                          />
-                          <span className="font-medium">中文</span>
-                        </label>
-                      </div>
-                    </div>
-
-                    <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
-                      <p className="text-sm text-emerald-800">
-                        {language === 'en'
-                          ? 'You are registering as a property owner. Council roles are assigned by a site administrator after approval. Admin accounts cannot be created here.'
-                          : '您将以业主身份注册。理事会（Council）角色须由管理员在后台审核后指定。系统管理员（Admin）账号不能通过此页面注册。'}
-                      </p>
-                    </div>
-
-                    <div className="flex gap-3">
-                      <button
-                        type="button"
-                        onClick={() => setStep(1)}
-                        className="flex-1 bg-gray-100 text-gray-700 py-3 rounded-lg font-semibold hover:bg-gray-200 transition-colors"
-                      >
-                        {language === 'en' ? 'Back' : '返回'}
-                      </button>
+                  )}
+                  {isLogin && forgotMode && (
+                    <>
                       <button
                         type="submit"
-                        disabled={isSubmitting}
-                        className="flex-1 bg-[#1D9E75] text-white py-3 rounded-lg font-semibold hover:bg-[#178a66] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        disabled={!forgotCanSubmit}
+                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#1D9E75] py-3 font-semibold text-white transition-colors hover:bg-[#178a66] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {resetSending ? (
+                          <>
+                            <Loader2 size={18} className="animate-spin" />
+                            {t('loading')}
+                          </>
+                        ) : (
+                          t('auth_send_reset_email')
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setForgotMode(false);
+                          setError('');
+                          setResetSuccess('');
+                        }}
+                        className="w-full py-2 text-sm font-medium text-[#1D9E75] hover:underline"
+                      >
+                        {t('auth_back_to_login')}
+                      </button>
+                    </>
+                  )}
+                  {isLogin && !forgotMode && (
+                    <>
+                      <button
+                        type="submit"
+                        disabled={!loginCanSubmit}
+                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#1D9E75] py-3 font-semibold text-white transition-colors hover:bg-[#178a66] disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {isSubmitting ? (
                           <>
@@ -717,89 +833,249 @@ export function Auth() {
                             {t('loading')}
                           </>
                         ) : (
-                          t('auth_signup')
+                          t('auth_login')
                         )}
                       </button>
-                    </div>
-                  </>
-                )}
-              </>
-            )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setForgotMode(true);
+                          setError('');
+                          setResetSuccess('');
+                        }}
+                        className="w-full py-1 text-center text-sm font-medium text-[#1D9E75] hover:underline"
+                      >
+                        {t('auth_forgot_password')}
+                      </button>
+                    </>
+                  )}
+                </form>
+              ) : null}
 
-            {isLogin && forgotMode && (
-              <>
-                <button
-                  type="submit"
-                  disabled={!forgotCanSubmit}
-                  className="w-full bg-[#1D9E75] text-white py-3 rounded-lg font-semibold hover:bg-[#178a66] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {resetSending ? (
+              {legacyOpen === 'signup' ? (
+                <form onSubmit={handleSubmit} className="mt-4 space-y-4 border-t border-gray-200 pt-4">
+                  {step === 1 ? (
                     <>
-                      <Loader2 size={18} className="animate-spin" />
-                      {t('loading')}
+                      <div>
+                        <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="signup-email">
+                          {t('auth_email')} <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          id="signup-email"
+                          type="email"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          required
+                          className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20"
+                          placeholder="name@example.com"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="signup-password">
+                          {t('auth_password')} <span className="text-red-500">*</span>
+                        </label>
+                        <div className="relative">
+                          <input
+                            id="signup-password"
+                            type={showPassword ? 'text' : 'password'}
+                            placeholder={t('auth_password_placeholder')}
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            className={passwordInputClass}
+                            required
+                            minLength={6}
+                            autoComplete="new-password"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                            aria-label={showPassword ? 'Hide password' : 'Show password'}
+                          >
+                            {showPassword ? '🙈' : '👁️'}
+                          </button>
+                        </div>
+                        <p className="mt-1 text-xs text-gray-500">{language === 'en' ? 'Minimum 6 characters' : '至少6个字符'}</p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="signup-name-en">
+                            {t('auth_full_name_en')} <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            id="signup-name-en"
+                            type="text"
+                            value={fullNameEn}
+                            onChange={(e) => setFullNameEn(e.target.value)}
+                            required
+                            className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20"
+                            placeholder="John Doe"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="signup-name-zh">
+                            {t('auth_full_name_zh')}
+                          </label>
+                          <input
+                            id="signup-name-zh"
+                            type="text"
+                            value={fullNameZh}
+                            onChange={(e) => setFullNameZh(e.target.value)}
+                            className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20"
+                            placeholder="张三"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="signup-unit">
+                            {language === 'en' ? 'Unit Number' : '单元号'} <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            id="signup-unit"
+                            type="text"
+                            value={unitNumber}
+                            onChange={(e) => setUnitNumber(e.target.value)}
+                            required
+                            className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20"
+                            placeholder="101"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="signup-phone">
+                            {language === 'en' ? 'Phone' : '电话'}
+                          </label>
+                          <input
+                            id="signup-phone"
+                            type="tel"
+                            value={phone}
+                            onChange={(e) => setPhone(e.target.value)}
+                            className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20"
+                            placeholder="04xx xxx xxx"
+                          />
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!email || !password || !fullNameEn || !unitNumber) {
+                            setError(language === 'en' ? 'Please fill in all required fields' : '请填写所有必填项');
+                            return;
+                          }
+                          setError('');
+                          setStep(2);
+                        }}
+                        className="w-full rounded-lg bg-[#1D9E75] py-3 font-semibold text-white transition-colors hover:bg-[#178a66]"
+                      >
+                        {language === 'en' ? 'Next' : '下一步'}
+                      </button>
                     </>
                   ) : (
-                    t('auth_send_reset_email')
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setForgotMode(false);
-                    setError('');
-                    setResetSuccess('');
-                  }}
-                  className="w-full text-[#1D9E75] py-2 text-sm font-medium hover:underline"
-                >
-                  {t('auth_back_to_login')}
-                </button>
-              </>
-            )}
-
-            {isLogin && !forgotMode && (
-              <>
-                <button
-                  type="submit"
-                  disabled={!loginCanSubmit}
-                  className="w-full bg-[#1D9E75] text-white py-3 rounded-lg font-semibold hover:bg-[#178a66] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {isSubmitting ? (
                     <>
-                      <Loader2 size={18} className="animate-spin" />
-                      {t('loading')}
+                      <div>
+                        <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="move-in">
+                          {language === 'en' ? 'Move-in Date' : '入住日期'}
+                        </label>
+                        <input
+                          key={`move-in-${moveInDateKey}`}
+                          ref={moveInDateRef}
+                          id="move-in"
+                          type="date"
+                          name="move_in_date"
+                          min="1900-01-01"
+                          max="2100-12-31"
+                          autoComplete="off"
+                          className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-4 py-2.5 transition-colors focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20"
+                        />
+                        <p className="mt-1 text-xs text-gray-500">
+                          {language === 'en'
+                            ? 'Tap the field to open the calendar and pick any date.'
+                            : '点击输入框打开日历，可自由选择日期。'}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                          {language === 'en' ? 'Language Preference' : '语言偏好'}
+                        </label>
+                        <div className="flex gap-3">
+                          <label
+                            className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg border-2 px-4 py-2.5 transition-all ${
+                              languagePref === 'en'
+                                ? 'border-[#1D9E75] bg-emerald-50 text-[#1D9E75]'
+                                : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="lang"
+                              value="en"
+                              checked={languagePref === 'en'}
+                              onChange={() => setLanguagePref('en')}
+                              className="sr-only"
+                            />
+                            <span className="font-medium">English</span>
+                          </label>
+                          <label
+                            className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg border-2 px-4 py-2.5 transition-all ${
+                              languagePref === 'zh'
+                                ? 'border-[#1D9E75] bg-emerald-50 text-[#1D9E75]'
+                                : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="lang"
+                              value="zh"
+                              checked={languagePref === 'zh'}
+                              onChange={() => setLanguagePref('zh')}
+                              className="sr-only"
+                            />
+                            <span className="font-medium">中文</span>
+                          </label>
+                        </div>
+                      </div>
+                      <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                        <p className="text-sm text-emerald-800">
+                          {language === 'en'
+                            ? 'You are registering as a property owner. Council roles are assigned by a site administrator after approval. Admin accounts cannot be created here.'
+                            : '您将以业主身份注册。理事会（Council）角色须由管理员在后台审核后指定。系统管理员（Admin）账号不能通过此页面注册。'}
+                        </p>
+                      </div>
+                      <div className="flex gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setStep(1)}
+                          className="flex-1 rounded-lg bg-gray-100 py-3 font-semibold text-gray-700 transition-colors hover:bg-gray-200"
+                        >
+                          {language === 'en' ? 'Back' : '返回'}
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={isSubmitting}
+                          className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#1D9E75] py-3 font-semibold text-white transition-colors hover:bg-[#178a66] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {isSubmitting ? (
+                            <>
+                              <Loader2 size={18} className="animate-spin" />
+                              {t('loading')}
+                            </>
+                          ) : (
+                            t('auth_signup')
+                          )}
+                        </button>
+                      </div>
                     </>
-                  ) : (
-                    t('auth_login')
                   )}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setForgotMode(true);
-                    setError('');
-                    setResetSuccess('');
-                  }}
-                  className="w-full text-center text-sm font-medium text-[#1D9E75] hover:underline py-1"
-                >
-                  {t('auth_forgot_password')}
-                </button>
-              </>
-            )}
-
-            {resetSuccess && (
-              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-800 text-sm">
-                {resetSuccess}
-              </div>
-            )}
+                </form>
+              ) : null}
+            </div>
 
             {error && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-                {error}
-              </div>
+              <div className="mx-6 mb-6 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>
             )}
-              </form>
             </div>
           </div>
+        </div>
         </div>
 
         <div className="flex w-full items-center justify-center border-t border-gray-200 bg-gradient-to-b from-gray-50/80 to-emerald-50/30 px-6 py-8 lg:w-1/2 lg:border-l lg:border-t-0 lg:border-gray-100 lg:bg-gradient-to-br lg:from-white lg:to-emerald-50/40 lg:py-10">

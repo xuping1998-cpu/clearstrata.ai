@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { User, Save, Loader2, Wrench, Scale, CalendarDays, DollarSign, Shield, Phone } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useProperty } from '../../contexts/PropertyContext';
 import { supabase } from '../../lib/supabase';
 
 interface Resident {
@@ -30,6 +31,7 @@ interface Stats {
 export function ResidentProfile() {
   const { language } = useLanguage();
   const { profile, refreshProfile } = useAuth();
+  const { currentPropertyId } = useProperty();
   const [resident, setResident] = useState<Resident | null>(null);
   const [stats, setStats] = useState<Stats>({ maintenanceCount: 0, disputeCount: 0 });
   const [loading, setLoading] = useState(true);
@@ -45,26 +47,29 @@ export function ResidentProfile() {
   });
 
   useEffect(() => {
-    if (profile) loadData();
-  }, [profile]);
+    if (profile && currentPropertyId) void loadData();
+  }, [profile, currentPropertyId]);
 
   const loadData = async () => {
-    if (!profile) return;
+    if (!profile || !currentPropertyId) return;
 
     const [residentResult, maintenanceResult, disputeResult] = await Promise.all([
       supabase
         .from('residents')
         .select('*')
         .eq('user_id', profile.id)
+        .eq('property_id', currentPropertyId)
         .maybeSingle(),
       supabase
         .from('procurement_jobs')
         .select('id', { count: 'exact', head: true })
-        .eq('created_by', profile.id),
+        .eq('posted_by', profile.id)
+        .eq('property_id', currentPropertyId),
       supabase
         .from('disputes')
         .select('id', { count: 'exact', head: true })
-        .or(`submitted_by.eq.${profile.id},respondent_id.eq.${profile.id}`),
+        .eq('property_id', currentPropertyId)
+        .or(`reporter_id.eq.${profile.id},respondent_id.eq.${profile.id}`),
     ]);
 
     if (residentResult.data) {
@@ -86,7 +91,7 @@ export function ResidentProfile() {
   };
 
   const handleSave = async () => {
-    if (!profile || !resident) return;
+    if (!profile || !resident || !currentPropertyId) return;
 
     setSaving(true);
     try {
@@ -98,7 +103,8 @@ export function ResidentProfile() {
           phone: form.phone,
           language_pref: form.language_pref,
         })
-        .eq('id', resident.id);
+        .eq('id', resident.id)
+        .eq('property_id', currentPropertyId);
 
       await supabase
         .from('profiles')

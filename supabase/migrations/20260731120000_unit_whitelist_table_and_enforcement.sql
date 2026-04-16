@@ -35,8 +35,8 @@ CREATE POLICY unit_whitelist_select
       FROM public.property_members pm
       WHERE pm.property_id = unit_whitelist.property_id
         AND pm.user_id = auth.uid()
-        AND pm.status = 'active'::public.member_status
-        AND pm.role IN ('admin'::public.user_role, 'council'::public.user_role)
+        AND pm.status::text = 'active'
+        AND pm.role::text IN ('admin', 'council')
     )
   );
 
@@ -48,8 +48,8 @@ CREATE POLICY unit_whitelist_insert
       FROM public.property_members pm
       WHERE pm.property_id = unit_whitelist.property_id
         AND pm.user_id = auth.uid()
-        AND pm.status = 'active'::public.member_status
-        AND pm.role IN ('admin'::public.user_role, 'council'::public.user_role)
+        AND pm.status::text = 'active'
+        AND pm.role::text IN ('admin', 'council')
     )
   );
 
@@ -61,8 +61,8 @@ CREATE POLICY unit_whitelist_update
       FROM public.property_members pm
       WHERE pm.property_id = unit_whitelist.property_id
         AND pm.user_id = auth.uid()
-        AND pm.status = 'active'::public.member_status
-        AND pm.role IN ('admin'::public.user_role, 'council'::public.user_role)
+        AND pm.status::text = 'active'
+        AND pm.role::text IN ('admin', 'council')
     )
   )
   WITH CHECK (
@@ -71,8 +71,8 @@ CREATE POLICY unit_whitelist_update
       FROM public.property_members pm
       WHERE pm.property_id = unit_whitelist.property_id
         AND pm.user_id = auth.uid()
-        AND pm.status = 'active'::public.member_status
-        AND pm.role IN ('admin'::public.user_role, 'council'::public.user_role)
+        AND pm.status::text = 'active'
+        AND pm.role::text IN ('admin', 'council')
     )
   );
 
@@ -84,8 +84,8 @@ CREATE POLICY unit_whitelist_delete
       FROM public.property_members pm
       WHERE pm.property_id = unit_whitelist.property_id
         AND pm.user_id = auth.uid()
-        AND pm.status = 'active'::public.member_status
-        AND pm.role IN ('admin'::public.user_role, 'council'::public.user_role)
+        AND pm.status::text = 'active'
+        AND pm.role::text IN ('admin', 'council')
     )
   );
 

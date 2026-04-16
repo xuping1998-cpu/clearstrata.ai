@@ -112,6 +112,12 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
     const userId = attendee.user_id;
     const userEmail = attendee.profile?.email;
 
+    if (!currentPropertyId) {
+      const msg = l ? 'No property selected.' : '未选择物业。';
+      alert(msg);
+      return;
+    }
+
     console.log(
       '[MeetingInvite] 开始发送邀请给用户：',
       userId,
@@ -148,6 +154,7 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
         body: {
           meeting_id: meetingId,
           user_id: userId,
+          property_id: currentPropertyId,
           user_email: userEmail ?? undefined,
           locale: language,
         },
@@ -329,6 +336,7 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
       const { error } = await supabase
         .from('meeting_attendees')
         .update({
+          property_id: currentPropertyId,
           attendance_status: 'attended',
           signed_in_at: new Date().toISOString(),
         })

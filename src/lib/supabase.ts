@@ -24,6 +24,8 @@ export type ProfileAccountStatus = 'pending' | 'active' | 'suspended';
 export interface Profile {
   id: string;
   role: UserRole;
+  /** Platform-wide app role (separate from property_members.role). */
+  app_role?: 'user' | 'platform_admin' | string;
   /** Present after migration `profiles_account_status`; defaults to active when omitted. */
   status?: ProfileAccountStatus;
   full_name_en: string;

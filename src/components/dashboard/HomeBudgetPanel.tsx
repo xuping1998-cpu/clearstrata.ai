@@ -268,7 +268,7 @@ export function HomeBudgetPanel() {
         );
         return;
       }
-      const res = await generateAuditReportForInvoice(invoiceId);
+      const res = await generateAuditReportForInvoice(invoiceId, currentPropertyId);
       if (res.error || !res.report_id) {
         window.alert(res.error ?? (en ? 'Could not generate report.' : '生成报告失败。'));
         return;

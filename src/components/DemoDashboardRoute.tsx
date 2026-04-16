@@ -2,6 +2,7 @@ import { ReactNode, useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Layout } from './Layout';
 import { readDemoLocalState } from '../contexts/PropertyContext';
+import { demoEntryPath, MARKETING_DEMO_PROPERTY_CODE } from '@/lib/propertyEntryRoutes';
 
 /**
  * Unauthenticated demo shell: requires appMode=demo + guestPropertyId in localStorage.
@@ -14,7 +15,7 @@ export function DemoDashboardRoute({ children }: { children: ReactNode }) {
   useEffect(() => {
     const d = readDemoLocalState();
     if (!d) {
-      navigate('/demo/BCS3736', { replace: true });
+      navigate(demoEntryPath(MARKETING_DEMO_PROPERTY_CODE), { replace: true });
       setAllowed(false);
       return;
     }

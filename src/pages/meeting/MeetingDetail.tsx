@@ -72,11 +72,16 @@ export function MeetingDetail() {
       setCoreDone(true);
       return;
     }
+    if (!currentPropertyId) {
+      setBundle(initialBundle());
+      setCoreDone(true);
+      return;
+    }
 
     setCoreDone(false);
     setBundle(initialBundle());
 
-    const { meeting: m } = await fetchMeetingCore(meetingId, currentPropertyId || undefined);
+    const { meeting: m } = await fetchMeetingCore(meetingId, currentPropertyId);
     setBundle((prev) => ({ ...prev, meeting: m }));
     setCoreDone(true);
 

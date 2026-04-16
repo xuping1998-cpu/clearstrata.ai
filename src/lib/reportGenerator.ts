@@ -23,9 +23,12 @@ export type GenerateCouncilReportResult = {
  * Invokes Edge Function `generate-audit-report`: builds the 业委会质疑报告 prompt server-side,
  * calls OpenAI, inserts `audit_reports`, returns `report_id`.
  */
-export async function generateAuditReportForInvoice(invoiceId: string): Promise<GenerateCouncilReportResult> {
+export async function generateAuditReportForInvoice(
+  invoiceId: string,
+  propertyId: string,
+): Promise<GenerateCouncilReportResult> {
   const { data, error } = await supabase.functions.invoke('generate-audit-report', {
-    body: { invoice_id: invoiceId },
+    body: { invoice_id: invoiceId, property_id: propertyId },
   });
   if (error) {
     return { report_id: '', error: error.message };
@@ -122,7 +125,7 @@ export async function generateMeetingPack(
 
   for (let i = 0; i < target.length; i++) {
     const invoiceId = target[i]!;
-    const res = await generateAuditReportForInvoice(invoiceId);
+    const res = await generateAuditReportForInvoice(invoiceId, propertyId);
     if (res.report_id) {
       report_ids.push(res.report_id);
     } else {

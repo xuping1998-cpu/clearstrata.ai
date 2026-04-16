@@ -354,6 +354,7 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
         .from('residents')
         .select('id, user_id')
         .eq('id', rid)
+        .eq('property_id', currentPropertyId)
         .maybeSingle();
 
       if (fetchErr) {
@@ -375,7 +376,8 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
       const { error: resErr } = await supabase
         .from('residents')
         .update({ status: 'active', updated_at: now })
-        .eq('id', rid);
+        .eq('id', rid)
+        .eq('property_id', currentPropertyId);
 
       if (resErr) {
         console.error('[UserManagementTab] approve residents update:', resErr);
@@ -419,6 +421,7 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
         .from('residents')
         .select('id, user_id')
         .eq('id', rid)
+        .eq('property_id', currentPropertyId)
         .maybeSingle();
 
       if (fetchErr) {
@@ -440,7 +443,8 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
       const { error: resErr } = await supabase
         .from('residents')
         .update({ status: 'deregistered', updated_at: now })
-        .eq('id', rid);
+        .eq('id', rid)
+        .eq('property_id', currentPropertyId);
 
       if (resErr) {
         console.error('[UserManagementTab] reject residents update:', resErr);

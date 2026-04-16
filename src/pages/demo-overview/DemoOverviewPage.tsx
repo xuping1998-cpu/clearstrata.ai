@@ -9,6 +9,7 @@ import {
 } from '@/lib/demoProperty/demoStorage';
 import { generateDemoData } from '@/lib/demoProperty/generateDemoData';
 import { formatDemoCurrency } from '@/lib/demoPropertyMockData';
+import { DemoCreatePropertyCtaCard } from '@/components/onboarding/DemoCreatePropertyCta';
 
 /**
  * 成交演示页：`/demo-overview`。数据由生成器按 propertyId + unit + visitor 种子计算。
@@ -103,6 +104,10 @@ export function DemoOverviewPage() {
         <p className="mt-2 text-center text-sm text-slate-400">
           对标类似楼盘月均约 {formatDemoCurrency(demo.averageComparableSpend)}（示意）
         </p>
+
+        <div className="mt-8">
+          <DemoCreatePropertyCtaCard />
+        </div>
 
         <p className="mt-6 text-center text-lg text-red-400 md:text-xl">
           ⚠️ 其中有 <span className="font-bold">{formatDemoCurrency(demo.abnormalSpend)}</span> 支出异常

@@ -5,11 +5,12 @@ import { checkBudget } from './budgetCheck';
 export { checkApproval } from './approvalCheck';
 export { checkBudget } from './budgetCheck';
 
-async function hasInvoiceAiAuditRow(invoiceId: string): Promise<boolean> {
+async function hasInvoiceAiAuditRow(invoiceId: string, propertyId: string): Promise<boolean> {
   const { data, error } = await supabase
     .from('invoice_ai_audits')
     .select('id')
     .eq('invoice_id', invoiceId)
+    .eq('property_id', propertyId)
     .maybeSingle();
   if (error) {
     console.warn('[invoice AI audit] exists check failed', invoiceId, error.message);
@@ -39,9 +40,12 @@ export async function runInvoiceAuditPreview(invoice: InvoiceAuditRowInput) {
 /**
  * Runs full AI audit + persists `invoice_ai_audits` / `invoice_ai_audit_results` (incl. over_budget, bypass_approval).
  */
-export async function runInvoiceAudit(invoiceId: string): Promise<{ success: boolean; error?: string }> {
+export async function runInvoiceAudit(
+  invoiceId: string,
+  propertyId: string,
+): Promise<{ success: boolean; error?: string }> {
   const { data, error } = await supabase.functions.invoke('run-invoice-ai-audit', {
-    body: { invoice_id: invoiceId },
+    body: { invoice_id: invoiceId, property_id: propertyId },
   });
   if (error) {
     return { success: false, error: error.message };
@@ -57,20 +61,20 @@ export async function runInvoiceAudit(invoiceId: string): Promise<{ success: boo
  * After a row is inserted into `invoices`, run AI audit in the background (non-blocking).
  * Results sync to `invoice_ai_audit_results` via DB trigger on `invoice_ai_audits`.
  */
-export function scheduleInvoiceAiAuditAfterInsert(invoiceId: string): void {
-  console.info('[invoice upload] success', { invoiceId, next: 'schedule AI audit' });
+export function scheduleInvoiceAiAuditAfterInsert(invoiceId: string, propertyId: string): void {
+  console.info('[invoice upload] success', { invoiceId, propertyId, next: 'schedule AI audit' });
 
   void (async () => {
     try {
-      const exists = await hasInvoiceAiAuditRow(invoiceId);
+      const exists = await hasInvoiceAiAuditRow(invoiceId, propertyId);
       if (exists) {
         console.info('[invoice AI audit] auto trigger skipped — row already exists', { invoiceId });
         return;
       }
 
-      console.info('[invoice AI audit] auto trigger invoke', { invoiceId });
+      console.info('[invoice AI audit] auto trigger invoke', { invoiceId, propertyId });
       const { data, error } = await supabase.functions.invoke('run-invoice-ai-audit', {
-        body: { invoice_id: invoiceId },
+        body: { invoice_id: invoiceId, property_id: propertyId },
       });
 
       if (error) {

@@ -1,6 +1,6 @@
 import { ReactNode, useState, useEffect, useMemo, useCallback } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Home,
   ShoppingCart,
@@ -29,6 +29,8 @@ import { PWAInstallButton } from './PWAInstallButton';
 import { SidebarPromoCard } from './SidebarPromoCard';
 import { UserNotificationToast } from './UserNotificationToast';
 import { DemoGeneratedDataProvider } from '../contexts/DemoGeneratedDataContext';
+import { DemoCreatePropertyCtaButton } from './onboarding/DemoCreatePropertyCta';
+import { demoEntryPath, realPropertyJoinPath } from '@/lib/propertyEntryRoutes';
 
 interface LayoutProps {
   children: ReactNode;
@@ -247,6 +249,22 @@ export function Layout({ children }: LayoutProps) {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {isDemoMode && guestPropertyCode ? (
+        <div className="border-b border-amber-200/80 bg-amber-50 px-4 py-2 text-center text-xs text-amber-950 sm:text-sm">
+          <span className="font-semibold">演示样板</span>
+          <span className="mx-1.5 text-amber-800/90">·</span>
+          <span className="text-amber-900/95">仅展示产品功能，非真实物业后台。</span>
+          <span className="mx-1.5 hidden sm:inline">|</span>
+          <br className="sm:hidden" />
+          <Link to={realPropertyJoinPath(guestPropertyCode)} className="font-semibold text-amber-950 underline-offset-2 hover:underline">
+            真实成员入口
+          </Link>
+          <span className="mx-1.5 text-amber-800/80">·</span>
+          <Link to={demoEntryPath(guestPropertyCode)} className="text-amber-900/90 underline-offset-2 hover:underline">
+            当前 Demo
+          </Link>
+        </div>
+      ) : null}
       <header className="sticky top-0 z-40 border-b border-gray-200 bg-white">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex h-16 items-center justify-between">
@@ -278,6 +296,11 @@ export function Layout({ children }: LayoutProps) {
 
             <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:gap-3">
               <PWAInstallButton />
+              {(isDemoMode || isDemoPropertyMock) && (
+                <div className="hidden shrink-0 sm:block">
+                  <DemoCreatePropertyCtaButton variant="ghost" />
+                </div>
+              )}
               {(isDemoMode || (isDemoPropertyMock && !session)) && (
                 <div className="hidden shrink-0 items-center gap-2 sm:flex">
                   <button
@@ -396,6 +419,9 @@ export function Layout({ children }: LayoutProps) {
               </span>
             </div>
             <div className="flex shrink-0 gap-2 sm:hidden">
+              {(isDemoMode || isDemoPropertyMock) && (
+                <DemoCreatePropertyCtaButton variant="ghost" className="px-2.5 py-1 text-xs" />
+              )}
               <button
                 type="button"
                 onClick={() => navigate('/?mode=signup')}

@@ -4,6 +4,11 @@
  *
  * Always pass `currentPropertyId` from `useProperty()` (or assert after guards).
  * Do not rely on global mutable state for tenant id (avoids React effect ordering bugs).
+ *
+ * DEPRECATED: use property_id instead — Do not add new code paths keyed by
+ * `strata_id`, `public.stratas`, or `strata_notifications` for tenant isolation.
+ * (Strata → property phase 1: primary model is `property_id` only; legacy SQL may still
+ * branch on `strata_id` until migrations are retired.)
  */
 
 /**

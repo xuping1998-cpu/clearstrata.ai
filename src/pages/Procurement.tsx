@@ -137,6 +137,7 @@ export function Procurement() {
           const { data: quotesData } = await supabase
             .from('procurement_quotes')
             .select('*')
+            .eq('property_id', currentPropertyId)
             .eq('job_id', job.id)
             .order('quoted_amount', { ascending: true });
           return { ...job, quotes: quotesData || [] };
@@ -149,7 +150,11 @@ export function Procurement() {
       ];
       const taskTitleMap = new Map<string, string>();
       if (taskIds.length > 0) {
-        const { data: mt } = await supabase.from('manager_tasks').select('id, title').in('id', taskIds);
+        const { data: mt } = await supabase
+          .from('manager_tasks')
+          .select('id, title')
+          .eq('property_id', currentPropertyId)
+          .in('id', taskIds);
         for (const t of mt ?? []) taskTitleMap.set(t.id, t.title || '—');
       }
       setJobs(
@@ -178,9 +183,14 @@ export function Procurement() {
   };
 
   const markCompleted = async (jobId: string) => {
+    if (!currentPropertyId) return;
     const job = jobs.find(j => j.id === jobId);
     const now = new Date().toISOString();
-    await supabase.from('procurement_jobs').update({ status: 'completed', completed_at: now }).eq('id', jobId);
+    await supabase
+      .from('procurement_jobs')
+      .update({ status: 'completed', completed_at: now })
+      .eq('property_id', currentPropertyId)
+      .eq('id', jobId);
 
     if (job) {
       const selectedQuote = job.quotes?.find(q => q.id === job.selected_quote_id);
@@ -203,6 +213,7 @@ export function Procurement() {
   };
 
   const deleteJob = async (jobId: string) => {
+    if (!currentPropertyId) return;
     const { error: auditError } = await supabase
       .from('procurement_audit_log')
       .insert({
@@ -216,7 +227,11 @@ export function Procurement() {
       return;
     }
 
-    const { error } = await supabase.from('procurement_jobs').delete().eq('id', jobId);
+    const { error } = await supabase
+      .from('procurement_jobs')
+      .delete()
+      .eq('property_id', currentPropertyId!)
+      .eq('id', jobId);
     if (error) {
       alert(l ? `Failed to delete: ${error.message}` : `删除失败：${error.message}`);
       return;
@@ -225,15 +240,20 @@ export function Procurement() {
   };
 
   const resendToPM = async (jobId: string) => {
-    await supabase.from('procurement_jobs').update({
-      status: 'pm_executing',
-      inspection_result: null,
-      inspection_notes: null,
-      inspected_by: null,
-      inspected_at: null,
-      pm_completion_notes: null,
-      pm_completed_at: null,
-    }).eq('id', jobId);
+    if (!currentPropertyId) return;
+    await supabase
+      .from('procurement_jobs')
+      .update({
+        status: 'pm_executing',
+        inspection_result: null,
+        inspection_notes: null,
+        inspected_by: null,
+        inspected_at: null,
+        pm_completion_notes: null,
+        pm_completed_at: null,
+      })
+      .eq('property_id', currentPropertyId)
+      .eq('id', jobId);
     loadJobs();
   };
 
@@ -415,6 +435,7 @@ function JobCard({
         <div className="px-6 pb-4">
           <AiPricingPanel
             jobId={job.id}
+            propertyId={currentPropertyId!}
             title={job.title_zh || job.title_en}
             description={job.description_zh || job.description_en}
             jobType={job.job_type}
@@ -429,6 +450,7 @@ function JobCard({
 
           <VendorSearchPanel
             jobId={job.id}
+            propertyId={currentPropertyId!}
             jobTitle={job.title_zh || job.title_en}
             jobDescription={job.description_zh || job.description_en}
             category={job.category || ''}

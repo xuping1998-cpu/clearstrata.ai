@@ -11,6 +11,8 @@
   - p_default_unit_no: optional override when join_requests.unit_number is empty
 */
 
+DROP FUNCTION IF EXISTS public.approve_join_request_final(uuid, uuid, text);
+
 CREATE OR REPLACE FUNCTION public.approve_join_request_final(
   p_request_id uuid,
   p_property_id uuid,

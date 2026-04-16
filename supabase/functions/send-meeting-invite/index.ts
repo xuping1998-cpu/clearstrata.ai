@@ -22,6 +22,8 @@ const corsHeaders = {
 interface InviteRequest {
   meeting_id: string;
   user_id: string;
+  /** Required — must match meetings.property_id (multi-tenant guard). */
+  property_id: string;
   /** UI language for email copy */
   locale?: "en" | "zh";
   /** Optional client hint; recipient email still loaded from profiles in DB */
@@ -263,8 +265,9 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const { meeting_id, user_id, locale: localeRaw } = body;
+    const { meeting_id, user_id, property_id: propertyIdRaw, locale: localeRaw } = body;
     const locale: "en" | "zh" = localeRaw === "en" ? "en" : "zh";
+    const property_id = typeof propertyIdRaw === "string" ? propertyIdRaw.trim() : "";
 
     if (!meeting_id || !user_id) {
       return new Response(
@@ -272,9 +275,15 @@ Deno.serve(async (req: Request) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
+    if (!property_id) {
+      return new Response(
+        JSON.stringify({ error: "property_id is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
 
     const [{ data: meeting, error: meetingErr }, { data: profile, error: profileErr }] = await Promise.all([
-      supabase.from("meetings").select("*").eq("id", meeting_id).maybeSingle(),
+      supabase.from("meetings").select("*").eq("id", meeting_id).eq("property_id", property_id).maybeSingle(),
       supabase.from("profiles").select("full_name_en, full_name_zh, email").eq("id", user_id).maybeSingle(),
     ]);
 
@@ -282,6 +291,36 @@ Deno.serve(async (req: Request) => {
       return new Response(
         JSON.stringify({ error: "Meeting not found" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const [{ count: invitationCount, error: invErr }, { count: memberCount, error: memErr }] = await Promise.all([
+      supabase
+        .from("meeting_invitations")
+        .select("id", { count: "exact", head: true })
+        .eq("meeting_id", meeting_id)
+        .eq("property_id", property_id)
+        .eq("recipient_user_id", user_id),
+      supabase
+        .from("property_members")
+        .select("user_id", { count: "exact", head: true })
+        .eq("property_id", property_id)
+        .eq("user_id", user_id)
+        .eq("status", "active"),
+    ]);
+
+    if (invErr || memErr) {
+      return jsonResponse(
+        { error: "Authorization check failed", code: "AUTH_CHECK_ERROR" },
+        500,
+      );
+    }
+    const okInvite = (invitationCount ?? 0) > 0;
+    const okMember = (memberCount ?? 0) > 0;
+    if (!okInvite && !okMember) {
+      return jsonResponse(
+        { error: "Recipient is not invited to this meeting and is not an active member of this property.", code: "FORBIDDEN" },
+        403,
       );
     }
 

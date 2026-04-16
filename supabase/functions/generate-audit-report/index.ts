@@ -47,7 +47,7 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  let body: { invoice_id?: string };
+  let body: { invoice_id?: string; property_id?: string };
   try {
     body = await req.json();
   } catch {
@@ -58,8 +58,15 @@ Deno.serve(async (req: Request) => {
   }
 
   const invoiceId = typeof body.invoice_id === "string" ? body.invoice_id.trim() : "";
+  const propertyId = typeof body.property_id === "string" ? body.property_id.trim() : "";
   if (!invoiceId) {
     return new Response(JSON.stringify({ error: "invoice_id required" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  if (!propertyId) {
+    return new Response(JSON.stringify({ error: "property_id required" }), {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -97,6 +104,7 @@ Deno.serve(async (req: Request) => {
     .from("invoice_ai_audits")
     .select("risk_level, risk_score, ai_reasons, ai_summary_zh, ai_summary_en")
     .eq("invoice_id", invoiceId)
+    .eq("property_id", propertyId)
     .maybeSingle();
 
   const { data: vendorSignalRows } = await userClient

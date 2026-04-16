@@ -61,10 +61,12 @@ WHERE created_at IS NULL;
 
 DO $rn$
 BEGIN
+  -- Legacy per-row votes lack the structured-vote `status` column; rename regardless of voter_id
+  -- (some DBs dropped voter_id or use meeting_id-only shapes from later patches).
   IF to_regclass('public.meeting_votes') IS NOT NULL
-     AND EXISTS (
+     AND NOT EXISTS (
        SELECT 1 FROM information_schema.columns
-       WHERE table_schema = 'public' AND table_name = 'meeting_votes' AND column_name = 'voter_id'
+       WHERE table_schema = 'public' AND table_name = 'meeting_votes' AND column_name = 'status'
      )
      AND to_regclass('public.meeting_votes_legacy') IS NULL THEN
     ALTER TABLE public.meeting_votes RENAME TO meeting_votes_legacy;
@@ -297,6 +299,36 @@ ALTER TABLE public.meeting_agenda_items
 -- 5) New voting stack + invitations + resolutions (tables only; indexes later)
 -- ---------------------------------------------------------------------------
 
+-- Partial-run safety: free the `meeting_votes` name for the new model.
+-- Handles (a) legacy table not yet renamed, (b) drift where both `meeting_votes` and
+-- `meeting_votes_legacy` exist (empty duplicate stub left after a partial apply).
+DO $mv_rename$
+BEGIN
+  IF to_regclass('public.meeting_votes') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'meeting_votes' AND column_name = 'status'
+     )
+     AND to_regclass('public.meeting_votes_legacy') IS NOT NULL
+  THEN
+    IF NOT EXISTS (SELECT 1 FROM public.meeting_votes LIMIT 1) THEN
+      DROP TABLE public.meeting_votes CASCADE;
+    ELSE
+      RAISE EXCEPTION
+        'meeting_votes: per-row table has rows while meeting_votes_legacy exists; resolve manually before re-running migration';
+    END IF;
+  END IF;
+
+  IF to_regclass('public.meeting_votes') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'meeting_votes' AND column_name = 'status'
+     )
+     AND to_regclass('public.meeting_votes_legacy') IS NULL THEN
+    ALTER TABLE public.meeting_votes RENAME TO meeting_votes_legacy;
+  END IF;
+END $mv_rename$;
+
 CREATE TABLE IF NOT EXISTS public.meeting_votes (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   meeting_id uuid NOT NULL REFERENCES public.meetings(id) ON DELETE CASCADE,
@@ -312,6 +344,24 @@ CREATE TABLE IF NOT EXISTS public.meeting_votes (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- Old prototype tables may exist with the wrong column set; CREATE IF NOT EXISTS would skip forever.
+DO $fix_vote_options$
+BEGIN
+  IF to_regclass('public.meeting_vote_options') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'meeting_vote_options' AND column_name = 'option_key'
+     )
+  THEN
+    IF NOT EXISTS (SELECT 1 FROM public.meeting_vote_options LIMIT 1) THEN
+      DROP TABLE public.meeting_vote_options CASCADE;
+    ELSE
+      RAISE EXCEPTION
+        'meeting_vote_options: non-empty table without option_key; resolve manually before re-running migration';
+    END IF;
+  END IF;
+END $fix_vote_options$;
+
 CREATE TABLE IF NOT EXISTS public.meeting_vote_options (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   vote_id uuid NOT NULL REFERENCES public.meeting_votes(id) ON DELETE CASCADE,
@@ -321,6 +371,23 @@ CREATE TABLE IF NOT EXISTS public.meeting_vote_options (
   sort_order integer NOT NULL DEFAULT 0,
   UNIQUE (vote_id, option_key)
 );
+
+DO $fix_ballots$
+BEGIN
+  IF to_regclass('public.meeting_ballots') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'meeting_ballots' AND column_name = 'property_id'
+     )
+  THEN
+    IF NOT EXISTS (SELECT 1 FROM public.meeting_ballots LIMIT 1) THEN
+      DROP TABLE public.meeting_ballots CASCADE;
+    ELSE
+      RAISE EXCEPTION
+        'meeting_ballots: non-empty table without property_id; resolve manually before re-running migration';
+    END IF;
+  END IF;
+END $fix_ballots$;
 
 CREATE TABLE IF NOT EXISTS public.meeting_ballots (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -444,8 +511,11 @@ CREATE TRIGGER trg_meetings_schedule_guard
 -- ---------------------------------------------------------------------------
 -- 7) Stats views (product quota = 8, not legal) — before indexes & RLS
 -- ---------------------------------------------------------------------------
+-- Replace legacy view shapes (Postgres cannot rename view columns in-place).
+DROP VIEW IF EXISTS public.meeting_dashboard_cards CASCADE;
+DROP VIEW IF EXISTS public.meeting_yearly_stats CASCADE;
 
-CREATE OR REPLACE VIEW public.meeting_yearly_stats AS
+CREATE VIEW public.meeting_yearly_stats AS
 SELECT
   m.property_id,
   m.fiscal_year,
@@ -456,7 +526,7 @@ SELECT
 FROM public.meetings m
 GROUP BY m.property_id, m.fiscal_year;
 
-CREATE OR REPLACE VIEW public.meeting_dashboard_cards AS
+CREATE VIEW public.meeting_dashboard_cards AS
 SELECT
   y.property_id,
   y.fiscal_year,

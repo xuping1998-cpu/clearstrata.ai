@@ -28,7 +28,7 @@ import { Profile } from './pages/Profile';
 import { Hiring } from './pages/Hiring';
 import { Compliance } from './pages/Compliance';
 import { MeetingDetail } from './pages/meeting/MeetingDetail';
-import { Pricing } from './pages/Pricing';
+import { PricingPage } from './pages/PricingPage';
 import { Contact } from './pages/Contact';
 import { PropertyPicker } from './pages/PropertyPicker';
 import JoinWithCode from '@/pages/JoinWithCode';
@@ -37,12 +37,17 @@ import { JoinPathRouter } from './pages/scan-join/JoinPathRouter';
 import { BindUnitPage } from './pages/scan-join/BindUnitPage';
 import { WelcomeAfterJoinPage } from './pages/scan-join/WelcomeAfterJoinPage';
 import JoinPendingPage from './pages/join/JoinPendingPage';
-import { JoinCodeScanPage } from './pages/join/JoinCodeScanPage';
+import { JoinRouteSplit } from './pages/join/JoinRouteSplit';
 import { DemoOverviewPage } from './pages/demo-overview/DemoOverviewPage';
 import { PosterLandingPage } from './pages/marketing/PosterLandingPage';
 import JoinRejectedPage from './pages/join/JoinRejectedPage';
 import JoinInvalidPage from './pages/join/JoinInvalidPage';
 import JoinInviteLandingPage from './pages/join/JoinInviteLandingPage';
+import { CreatePropertyPage } from './pages/onboarding/CreatePropertyPage';
+import { UpgradePage } from './pages/UpgradePage';
+import { LeadsDashboardPage } from './pages/admin/LeadsDashboardPage';
+import { PlatformAdminRoute } from './components/PlatformAdminRoute';
+import { PlatformOverviewPage } from './pages/admin/PlatformOverviewPage';
 import { PropertyAdminHub } from './pages/property-admin/PropertyAdminHub';
 import { UnitWhitelistPage } from './pages/property-admin/UnitWhitelistPage';
 import { PropertyAdminInvites } from './pages/property-admin/PropertyAdminInvites';
@@ -74,11 +79,11 @@ function PricingRoute() {
   if (session) {
     return (
       <Layout>
-        <Pricing />
+        <PricingPage />
       </Layout>
     );
   }
-  return <Pricing />;
+  return <PricingPage />;
 }
 
 function ContactRoute() {
@@ -357,13 +362,16 @@ function AppContent() {
         <Route path="members" element={<PropertyAdminHub />} />
         <Route path="invoices" element={<Navigate to="/demo-property/finance" replace />} />
       </Route>
-      <Route path="/join/:code" element={<JoinCodeScanPage />} />
+      <Route path="/join/:code" element={<JoinRouteSplit />} />
       <Route path="/demo-overview" element={<DemoOverviewPage />} />
       <Route path="/marketing/poster/:code" element={<PosterLandingPage />} />
       <Route path="/join" element={<JoinPathRouter />} />
       <Route path="/bind-unit" element={<BindUnitPage />} />
       <Route path="/welcome" element={<WelcomeAfterJoinPage />} />
       <Route path="/invite" element={<JoinWithCode />} />
+      <Route path="/onboarding/create-property" element={<CreatePropertyPage />} />
+      <Route path="/upgrade" element={<SessionLayoutGate><UpgradePage /></SessionLayoutGate>} />
+      <Route path="/contact-sales" element={<SessionLayoutGate><UpgradePage /></SessionLayoutGate>} />
       <Route path="/dashboard" element={<SessionDashboardRoute />} />
       <Route path="/join-request" element={<JoinRequestPage />} />
       <Route path="/select-property" element={<SelectPropertyRoute />} />
@@ -413,6 +421,26 @@ function AppContent() {
         element={
           <SessionLayoutGate>
             <AdminInviteCodesRoute />
+          </SessionLayoutGate>
+        }
+      />
+      <Route
+        path="/admin/leads"
+        element={
+          <SessionLayoutGate>
+            <PlatformAdminRoute>
+              <LeadsDashboardPage />
+            </PlatformAdminRoute>
+          </SessionLayoutGate>
+        }
+      />
+      <Route
+        path="/admin/overview"
+        element={
+          <SessionLayoutGate>
+            <PlatformAdminRoute>
+              <PlatformOverviewPage />
+            </PlatformAdminRoute>
           </SessionLayoutGate>
         }
       />

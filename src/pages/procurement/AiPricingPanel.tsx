@@ -11,6 +11,7 @@ interface AiEstimate {
 
 interface AiPricingPanelProps {
   jobId: string;
+  propertyId: string;
   title: string;
   description: string;
   jobType: string;
@@ -94,6 +95,7 @@ async function convertPdfPageToImage(file: File): Promise<string> {
 
 export function AiPricingPanel({
   jobId,
+  propertyId,
   title,
   description,
   jobType,
@@ -156,6 +158,8 @@ export function AiPricingPanel({
           estimated_budget: estimatedBudget || 0,
           floor_plan_base64: floorPlanBase64,
           floor_plan_text: floorPlanTextToSend,
+          property_id: propertyId,
+          job_id: jobId,
         }),
       });
 
@@ -169,13 +173,17 @@ export function AiPricingPanel({
         };
         setEstimate(est);
 
-        await supabase.from('procurement_jobs').update({
-          ai_estimate_low: data.low,
-          ai_estimate_high: data.high,
-          ai_estimate_reasoning: data.reasoning,
-          ai_material_calc: data.material_calc || null,
-          floor_plan_text: floorPlanTextToSend || null,
-        }).eq('id', jobId);
+        await supabase
+          .from('procurement_jobs')
+          .update({
+            ai_estimate_low: data.low,
+            ai_estimate_high: data.high,
+            ai_estimate_reasoning: data.reasoning,
+            ai_material_calc: data.material_calc || null,
+            floor_plan_text: floorPlanTextToSend || null,
+          })
+          .eq('property_id', propertyId)
+          .eq('id', jobId);
 
         if (est.materialCalc) {
           setShowCalcDetail(true);

@@ -10,6 +10,7 @@ import { RevenueDashboard } from './finance/RevenueDashboard';
 import { MonthlySummary } from './finance/MonthlySummary';
 import { FinanceBudgetTab } from './finance/FinanceBudgetTab';
 import { DemoPropertyMockFinancePanel } from '@/components/demoProperty/DemoPropertyMockFinancePanel';
+import { DemoCreatePropertyCtaCard } from '@/components/onboarding/DemoCreatePropertyCta';
 
 type FinanceTab = 'invoices' | 'budget' | 'interpreter' | 'revenue' | 'summary';
 
@@ -37,6 +38,9 @@ export function Finance() {
     return (
       <div className="mx-0 min-w-0 w-full max-w-none">
         <BackButton />
+        <div className="mb-4">
+          <DemoCreatePropertyCtaCard />
+        </div>
         <DemoPropertyMockFinancePanel />
       </div>
     );
@@ -97,6 +101,7 @@ export function Finance() {
             ? 'Demo mode: detailed ledgers and invoice tools are available after you register and join the property.'
             : '演示模式：完整账本与发票功能请在注册并加入物业后使用。'}
         </div>
+        <DemoCreatePropertyCtaCard />
         <p className="text-sm text-gray-600">
           {l ? 'Financial overview and risk KPIs are on the demo home page.' : '财务与风险概览请见演示首页。'}
         </p>

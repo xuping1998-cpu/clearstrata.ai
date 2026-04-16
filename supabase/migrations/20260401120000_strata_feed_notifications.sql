@@ -4,7 +4,13 @@
   - strata_notifications: priority, pin, strata scope
   - notification_reads: per-user read state
   - Realtime enabled for INSERT
+
+  DEPRECATED: use property_id instead (strata → property phase 1 — freeze).
+  Do not extend this feed for new product features; use property-scoped notification
+  flows instead. This migration remains for historical DB shape only.
 */
+
+-- DEPRECATED: use property_id instead — `stratas` / `strata_id` are not the primary tenant model.
 
 -- ---------------------------------------------------------------------------
 -- Enum + stratas (single default row for single-building deploys)

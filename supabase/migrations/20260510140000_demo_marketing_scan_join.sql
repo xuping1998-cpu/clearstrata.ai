@@ -7,6 +7,19 @@
   - Does not increment `used_count` so codes with `max_uses = 1` remain valid for multiple marketing visitors (adjust codes in admin if you need per-scan quotas).
 */
 
+-- Older linked DBs may never have received 20260404120000_create_leads.sql; ensure base table exists.
+CREATE TABLE IF NOT EXISTS public.leads (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  email text NOT NULL,
+  building text,
+  units text,
+  message text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.leads ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE public.leads
   ADD COLUMN IF NOT EXISTS phone text;
 

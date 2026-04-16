@@ -77,7 +77,7 @@ export function OwnerInfoTab() {
   }, [loadOwnerInfo]);
 
   const saveOwnerInfo = async () => {
-    if (!editingOwner) return;
+    if (!editingOwner || !currentPropertyId) return;
     await supabase
       .from('owner_info')
       .update({
@@ -89,13 +89,14 @@ export function OwnerInfoTab() {
         move_in_date: editingOwner.move_in_date,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', editingOwner.id);
+      .eq('id', editingOwner.id)
+      .eq('property_id', currentPropertyId);
     setEditingOwner(null);
     loadOwnerInfo();
   };
 
   const approveOwnerInfo = async (id: string) => {
-    if (!profile || !canReviewOwnerInfo) return;
+    if (!profile || !canReviewOwnerInfo || !currentPropertyId) return;
 
     try {
       const { error } = await supabase
@@ -106,7 +107,8 @@ export function OwnerInfoTab() {
           approved_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
-        .eq('id', id);
+        .eq('id', id)
+        .eq('property_id', currentPropertyId);
 
       if (error) {
         console.error('[OwnerInfoTab] approveOwnerInfo failed:', error);
@@ -123,7 +125,8 @@ export function OwnerInfoTab() {
   };
 
   const deleteOwnerInfo = async (id: string) => {
-    await supabase.from('owner_info').delete().eq('id', id);
+    if (!currentPropertyId) return;
+    await supabase.from('owner_info').delete().eq('id', id).eq('property_id', currentPropertyId);
     setDeletingId(null);
     loadOwnerInfo();
   };
@@ -149,7 +152,8 @@ export function OwnerInfoTab() {
             pending_approval: needsApproval,
             updated_at: new Date().toISOString(),
           })
-          .eq('id', existing.id);
+          .eq('id', existing.id)
+          .eq('property_id', currentPropertyId);
       } else {
         await supabase.from('owner_info').insert({
           property_id: currentPropertyId,

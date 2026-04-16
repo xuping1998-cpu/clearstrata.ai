@@ -182,6 +182,7 @@ export function MonthlySummary() {
         await supabase
           .from('monthly_summaries')
           .update({
+            property_id: currentPropertyId,
             total_income: totalIncome,
             total_expenses: totalExpenses,
             net_balance: netBalance,
@@ -189,6 +190,7 @@ export function MonthlySummary() {
             summary_text_zh: summaryZh,
             generated_by: profile.id,
           })
+          .eq('property_id', currentPropertyId)
           .eq('id', existing.id);
       } else {
         await supabase.from('monthly_summaries').insert({
@@ -214,14 +216,16 @@ export function MonthlySummary() {
   };
 
   const publishSummary = async (id: string) => {
-    if (!profile) return;
+    if (!profile || !currentPropertyId) return;
     await supabase
       .from('monthly_summaries')
       .update({
+        property_id: currentPropertyId,
         published: true,
         published_by: profile.id,
         published_at: new Date().toISOString(),
       })
+      .eq('property_id', currentPropertyId)
       .eq('id', id);
     await loadSummaries();
     await loadMonthSnapshot();
@@ -231,14 +235,16 @@ export function MonthlySummary() {
   };
 
   const unpublishSummary = async (id: string) => {
-    if (!profile) return;
+    if (!profile || !currentPropertyId) return;
     await supabase
       .from('monthly_summaries')
       .update({
+        property_id: currentPropertyId,
         published: false,
         published_by: null,
         published_at: null,
       })
+      .eq('property_id', currentPropertyId)
       .eq('id', id);
     await loadSummaries();
     await loadMonthSnapshot();

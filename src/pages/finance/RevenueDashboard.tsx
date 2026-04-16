@@ -204,18 +204,17 @@ export function RevenueDashboard() {
         currentRole === 'council' ||
         currentRole === 'admin' ||
         currentRole === 'property_admin';
-      if (arrearsUsers.length > 0 && canSeeArrearsDetail) {
+      if (arrearsUsers.length > 0 && canSeeArrearsDetail && currentPropertyId) {
         const { data: profiles } = await supabase
           .from('profiles')
           .select('id, full_name_en, full_name_zh')
           .in('id', arrearsUsers);
 
-        let oiQ = supabase
+        const { data: ownerInfos } = await supabase
           .from('owner_info')
           .select('user_id, unit_number')
-          .in('user_id', arrearsUsers);
-        if (currentPropertyId) oiQ = oiQ.eq('property_id', currentPropertyId);
-        const { data: ownerInfos } = await oiQ;
+          .in('user_id', arrearsUsers)
+          .eq('property_id', currentPropertyId);
 
         const arrearsData: ArrearsOwner[] = arrearsUsers.map((uid) => {
           const p = profiles?.find((pr) => pr.id === uid);
@@ -230,6 +229,8 @@ export function RevenueDashboard() {
         });
 
         setArrears(arrearsData.sort((a, b) => b.balance - a.balance));
+      } else {
+        setArrears([]);
       }
     }
   };
