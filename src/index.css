@@ -8,20 +8,6 @@
   }
 }
 
-.hero-brand {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  margin-top: 40px;
-  margin-bottom: 24px;
-}
-
-.hero-brand-logo {
-  width: min(420px, 78vw);
-  height: auto;
-  display: block;
-}
-
 @keyframes slide-up {
   from {
     transform: translateY(100%);

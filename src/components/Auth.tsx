@@ -476,16 +476,21 @@ export function Auth() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="mx-auto flex min-h-screen max-w-7xl flex-col lg:flex-row">
-        <div className="flex w-full flex-col items-center justify-start px-6 pb-8 pt-3 lg:w-1/2 lg:pb-10 lg:pt-4">
-          <div className="hero-brand">
-            <img
-              src="/logo-clearstrata-v1.png"
-              alt="ClearStrata.Ai"
-              className="hero-brand-logo"
-            />
-          </div>
+      <div className="mx-auto flex min-h-screen max-w-7xl flex-col">
+        {/*
+          TEMP: [&>img]:mix-blend-multiply softens opaque white in public/logo-clearstrata-v1.png against bg-gray-50.
+          Replace the PNG with a transparent-background final asset, then remove the blend utility from this wrapper.
+        */}
+        <div className="w-full flex justify-center mt-10 mb-6 [&>img]:mix-blend-multiply">
+          <img
+            src="/logo-clearstrata-v1.png"
+            alt="ClearStrata.Ai"
+            className="w-[520px] max-w-[92vw] h-auto object-contain"
+          />
+        </div>
 
+        <div className="flex flex-1 flex-col lg:flex-row">
+        <div className="flex w-full flex-col items-center justify-start px-6 pb-8 pt-0 lg:w-1/2 lg:pb-10">
           <div className="w-full max-w-md">
             <div className="overflow-visible rounded-2xl border border-gray-100 bg-white shadow-xl shadow-gray-200/60">
               <div className="flex border-b border-gray-100">
@@ -1047,13 +1052,14 @@ export function Auth() {
             {error && (
               <div className="mx-6 mb-6 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>
             )}
+              </div>
             </div>
           </div>
-        </div>
         </div>
 
         <div className="flex w-full items-center justify-center border-t border-gray-200 bg-gradient-to-b from-gray-50/80 to-emerald-50/30 px-6 py-8 lg:w-1/2 lg:border-l lg:border-t-0 lg:border-gray-100 lg:bg-gradient-to-br lg:from-white lg:to-emerald-50/40 lg:py-10">
           <AuthPromoPanel />
+        </div>
         </div>
       </div>
     </div>
