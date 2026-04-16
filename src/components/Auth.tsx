@@ -475,24 +475,24 @@ export function Auth() {
   const forgotCanSubmit = Boolean(email.trim()) && !resetSending;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="mx-auto flex min-h-screen max-w-7xl flex-col lg:flex-row lg:items-start">
-        <div className="flex w-full flex-col items-center justify-start px-6 pb-8 pt-8 lg:w-1/2 lg:pb-10">
+    <div className="flex h-screen min-h-0 items-center justify-center bg-gray-50 px-4 py-8">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 lg:flex-row lg:items-stretch lg:gap-12">
+        <div className="flex min-h-0 w-full flex-1 flex-col justify-between gap-6 lg:h-[520px] lg:gap-0">
           {/*
             TEMP: [&>img]:mix-blend-multiply softens opaque white in public/logo-clearstrata-v1.png against bg-gray-50.
             Replace the PNG with a transparent-background final asset, then remove the blend utility from this wrapper.
           */}
-          <div className="w-full flex flex-col items-center justify-center mb-4 [&>img]:mix-blend-multiply">
+          <div className="flex h-32 w-full flex-shrink-0 flex-col items-center justify-center gap-2 px-2 [&>img]:mix-blend-multiply">
             <img
               src="/logo-clearstrata-v1.png"
               alt="ClearStrata.Ai"
-              className="h-12 w-auto object-contain"
+              className="mx-auto h-auto w-24 object-contain"
             />
-            <p className="mt-2 text-sm font-semibold text-gray-700">清漣讓物業管理更簡單透明</p>
+            <p className="text-center text-sm font-semibold text-gray-700">清漣讓物業管理更簡單透明</p>
           </div>
-          <div className="w-full max-w-md">
-            <div className="max-h-[70vh] overflow-auto overflow-visible rounded-2xl border border-gray-100 bg-white shadow-xl shadow-gray-200/60">
-              <div className="flex border-b border-gray-100">
+          <div className="mx-auto flex min-h-0 w-full max-w-md flex-1 flex-col lg:mt-0">
+            <div className="flex max-h-[min(52vh,calc(100vh-14rem))] min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-md lg:max-h-none">
+              <div className="flex shrink-0 border-b border-gray-100">
                 <button
                   type="button"
                   onClick={() => {
@@ -532,7 +532,7 @@ export function Auth() {
                 </button>
               </div>
 
-              <div className="p-0">
+              <div className="min-h-0 flex-1 overflow-y-auto">
             {passwordUpdated && (
               <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-900 text-sm flex justify-between gap-2 items-start">
                 <span>{t('auth_password_updated_banner')}</span>
@@ -1056,8 +1056,10 @@ export function Auth() {
           </div>
         </div>
 
-        <div className="flex w-full items-start justify-center border-t border-gray-200 bg-gradient-to-b from-gray-50/80 to-emerald-50/30 px-6 pb-8 pt-8 lg:w-1/2 lg:border-l lg:border-t-0 lg:border-gray-100 lg:bg-gradient-to-br lg:from-white lg:to-emerald-50/40 lg:pb-10 lg:pt-8">
-          <AuthPromoPanel />
+        <div className="flex min-h-0 w-full flex-1 flex-col lg:h-[520px] lg:max-w-md">
+          <div className="flex h-full min-h-0 w-full justify-center">
+            <AuthPromoPanel />
+          </div>
         </div>
       </div>
     </div>
