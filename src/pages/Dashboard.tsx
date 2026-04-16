@@ -54,29 +54,6 @@ export function Dashboard() {
   if (isDemoMode && guestPropertyCode) {
     return (
       <>
-        <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
-          <p className="font-medium">{en ? 'Demo sample (read-only)' : '演示样板（只读）'}</p>
-          <p className="mt-1 text-emerald-900/90">
-            {en
-              ? 'This screen showcases ClearStrata with sample data. It is not your real property back office.'
-              : '当前为演示样板，仅用于展示 ClearStrata 的产品能力，不是真实物业后台。'}
-          </p>
-          <p className="mt-2 text-emerald-900/85">
-            {en ? 'If you are a real member of this property, use the dedicated entry:' : '若你是该物业真实成员，请使用真实物业专属入口（需登录/审核），而非本页：'}
-          </p>
-          <p className="mt-1">
-            <Link
-              to={realPropertyJoinPath(guestPropertyCode)}
-              className="font-semibold text-[#0f6b4f] underline-offset-2 hover:underline"
-            >
-              {en ? 'Real property entry' : `真实物业入口（${guestPropertyCode}）`}
-            </Link>
-            <span className="mx-2 text-emerald-800/70">·</span>
-            <Link to={demoEntryPath(guestPropertyCode)} className="text-emerald-800/90 underline-offset-2 hover:underline">
-              {en ? 'Stay on this demo' : '继续浏览本演示'}
-            </Link>
-          </p>
-        </div>
         <div className="mb-4">
           <DemoCreatePropertyCtaCard />
         </div>

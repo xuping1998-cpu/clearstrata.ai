@@ -117,7 +117,7 @@ CREATE POLICY "leads_internal_select"
       SELECT 1
       FROM public.profiles p
       WHERE p.id = (SELECT auth.uid())
-        AND p.role IN ('admin', 'property_admin', 'manager')
+        AND p.role::text IN ('admin', 'property_admin', 'manager')
     )
   );
 
@@ -131,7 +131,7 @@ CREATE POLICY "leads_internal_update"
       SELECT 1
       FROM public.profiles p
       WHERE p.id = (SELECT auth.uid())
-        AND p.role IN ('admin', 'property_admin', 'manager')
+        AND p.role::text IN ('admin', 'property_admin', 'manager')
     )
   )
   WITH CHECK (
@@ -139,7 +139,7 @@ CREATE POLICY "leads_internal_update"
       SELECT 1
       FROM public.profiles p
       WHERE p.id = (SELECT auth.uid())
-        AND p.role IN ('admin', 'property_admin', 'manager')
+        AND p.role::text IN ('admin', 'property_admin', 'manager')
     )
   );
 

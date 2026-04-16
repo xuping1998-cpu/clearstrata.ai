@@ -97,6 +97,7 @@ BEGIN
     FROM pg_proc p
     JOIN pg_namespace ns ON ns.oid = p.pronamespace
     WHERE ns.nspname = 'public'
+      AND p.prokind = 'f'
       AND pg_get_functiondef(p.oid) ILIKE '%strata_id%'
   ) THEN
     RAISE EXCEPTION 'Precheck failed: found function definitions referencing strata_id (cleanup required before dropping strata tables)'

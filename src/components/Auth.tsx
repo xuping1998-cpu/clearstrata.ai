@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Building2, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { supabase } from '../lib/supabase';
@@ -28,6 +28,47 @@ function persistCurrentPropertyId(propertyId: string) {
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function BlueDropletLogo({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 64 64"
+      aria-hidden="true"
+      className={className}
+      role="img"
+      focusable="false"
+    >
+      <defs>
+        <linearGradient id="csDropA" x1="18" y1="10" x2="46" y2="54" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#60A5FA" />
+          <stop offset="1" stopColor="#1D4ED8" />
+        </linearGradient>
+        <linearGradient id="csDropB" x1="12" y1="18" x2="38" y2="56" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#93C5FD" stopOpacity="0.95" />
+          <stop offset="1" stopColor="#2563EB" stopOpacity="0.95" />
+        </linearGradient>
+        <linearGradient id="csDropC" x1="24" y1="14" x2="52" y2="56" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#BFDBFE" stopOpacity="0.95" />
+          <stop offset="1" stopColor="#3B82F6" stopOpacity="0.95" />
+        </linearGradient>
+      </defs>
+      {/* layered droplet */}
+      <path
+        d="M32 6c9 12 18 21 18 33a18 18 0 1 1-36 0C14 27 23 18 32 6Z"
+        fill="url(#csDropA)"
+      />
+      <path
+        d="M25.5 14.2c6.5 9 13 15.8 13 24.8a13.3 13.3 0 1 1-26.6 0c0-9 6.6-15.8 13.6-24.8Z"
+        fill="url(#csDropB)"
+      />
+      <path
+        d="M38.8 13.8c4.7 7 9.2 12.3 9.2 19.6A10.8 10.8 0 1 1 26.4 33.4c0-7.2 5.1-12.6 12.4-19.6Z"
+        fill="url(#csDropC)"
+        opacity="0.9"
+      />
+    </svg>
+  );
+}
 
 /** Property for roster bind: URL propertyId → guest scan → propertyCode resolve → default. */
 async function resolveSignupPropertyIdAsync(): Promise<string> {
@@ -160,7 +201,6 @@ export function Auth() {
   const [phone, setPhone] = useState('');
   /** Native <input type="date"> is unreliable as a controlled empty value in some browsers; keep value in a ref. */
   const moveInDateRef = useRef<HTMLInputElement>(null);
-  const [moveInDateKey, setMoveInDateKey] = useState(0);
   const [languagePref, setLanguagePref] = useState<'en' | 'zh'>('en');
   const [error, setError] = useState('');
   /** Form submit in flight — not AuthContext session loading (avoids mistaken disabled button). */
@@ -478,24 +518,29 @@ export function Auth() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="mx-auto flex min-h-screen max-w-7xl flex-col lg:flex-row">
-        <div className="flex w-full flex-col items-center justify-center px-6 py-8 lg:w-1/2 lg:py-10">
-          <div className="mb-6 w-full max-w-md text-center lg:mb-8">
-            <div className="mb-3 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-[#1D9E75] text-white shadow-lg shadow-[#1D9E75]/25 sm:h-16 sm:w-16">
-              <Building2 className="size-7 sm:size-8" />
+        <div className="flex w-full flex-col items-center justify-start px-6 pb-8 pt-8 lg:w-1/2 lg:pb-10 lg:pt-12">
+          <div className="mb-4 w-full max-w-md text-center lg:mb-5">
+            <div className="mx-auto mb-3 flex items-center justify-center">
+              {/* 60% of previous hero icon size */}
+              <BlueDropletLogo className="h-9 w-9" />
             </div>
-            <h1 className="text-2xl font-bold tracking-tight text-gray-900">ClearStrata</h1>
-            <div className="mt-3 space-y-1.5 text-center text-[15px] font-semibold leading-snug text-gray-800 sm:text-base">
-              {language === 'zh' ? (
-                <>
-                  <p>业主的监督工具</p>
-                  <p>业委会的智控管理</p>
-                  <p>物业经理的工作日志</p>
-                </>
-              ) : (
-                <p className="text-sm font-medium text-gray-700">
-                  Owner oversight · Council control · Manager work log
-                </p>
-              )}
+            <h1 className="text-3xl font-extrabold tracking-tight text-gray-900 sm:text-4xl">
+              <span className="block">让每一笔物业支出</span>
+              <span className="block">都清清楚楚</span>
+            </h1>
+            <p className="mt-2 text-sm font-semibold text-gray-600 sm:text-base">
+              {language === 'zh' ? '业主监督 · 业委会决策 · 物业执行' : 'Owner oversight · Council decisions · Property ops'}
+            </p>
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+              <span className="rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-900">
+                {language === 'zh' ? '业主监督' : 'Owner'}
+              </span>
+              <span className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-sm font-semibold text-gray-800">
+                {language === 'zh' ? '业委会管理' : 'Council'}
+              </span>
+              <span className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-900">
+                {language === 'zh' ? '物业执行' : 'Manager'}
+              </span>
             </div>
             <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-sm">
               <Link to="/pricing" className="font-medium text-[#1D9E75] hover:underline">
@@ -571,8 +616,8 @@ export function Auth() {
               <form onSubmit={handleGuestDemo} className="space-y-4 p-6">
                 <p className="text-xs text-gray-600">
                   {language === 'zh'
-                    ? '仅进入演示样板，不会加入真实物业。'
-                    : 'Opens the read-only demo only — not a real property.'}
+                    ? '体验演示（不影响真实物业）'
+                    : "Demo experience (won't affect your real property)."}
                 </p>
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="guest-name">
@@ -607,7 +652,7 @@ export function Auth() {
                   className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#1D9E75] py-3 font-semibold text-white transition-colors hover:bg-[#178a66] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {guestBusy ? <Loader2 size={18} className="animate-spin" /> : null}
-                  {language === 'zh' ? '进入演示' : 'Try demo'}
+                  {language === 'zh' ? '立即查看账单' : 'View bills now'}
                 </button>
               </form>
             ) : (
@@ -977,7 +1022,7 @@ export function Auth() {
                           {language === 'en' ? 'Move-in Date' : '入住日期'}
                         </label>
                         <input
-                          key={`move-in-${moveInDateKey}`}
+                          key="move-in"
                           ref={moveInDateRef}
                           id="move-in"
                           type="date"

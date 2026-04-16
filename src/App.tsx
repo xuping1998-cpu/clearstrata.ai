@@ -59,7 +59,7 @@ import AdminJoinRequests from './pages/admin/AdminJoinRequests';
 import { JoinAccessGate } from './pages/JoinAccessGate';
 import { PostLoginPropertyRedirect } from './components/PostLoginPropertyRedirect';
 import { DemoDashboardRoute } from './components/DemoDashboardRoute';
-import { PropertyDemoEntry } from './pages/PropertyDemoEntry';
+import { DemoLandingPage } from './pages/DemoLandingPage';
 import { QrPropertyEntryPage } from './pages/entry/QrPropertyEntryPage';
 import {
   canManagePropertyInvites,
@@ -299,7 +299,15 @@ function AppContent() {
       <PostLoginPropertyRedirect />
       <Routes>
       <Route path="/entry" element={<QrPropertyEntryPage />} />
-      <Route path="/demo/:propertyCode" element={<PropertyDemoEntry />} />
+      <Route path="/demo/:propertyCode" element={<DemoLandingPage />} />
+      <Route
+        path="/demo-dashboard/:propertyCode"
+        element={
+          <DemoDashboardRoute>
+            <Dashboard />
+          </DemoDashboardRoute>
+        }
+      />
       <Route
         path="/demo-home"
         element={

@@ -250,18 +250,11 @@ export function Layout({ children }: LayoutProps) {
   return (
     <div className="min-h-screen bg-gray-50">
       {isDemoMode && guestPropertyCode ? (
-        <div className="border-b border-amber-200/80 bg-amber-50 px-4 py-2 text-center text-xs text-amber-950 sm:text-sm">
-          <span className="font-semibold">演示样板</span>
-          <span className="mx-1.5 text-amber-800/90">·</span>
-          <span className="text-amber-900/95">仅展示产品功能，非真实物业后台。</span>
-          <span className="mx-1.5 hidden sm:inline">|</span>
-          <br className="sm:hidden" />
+        <div className="border-b border-amber-200/80 bg-amber-50 px-4 py-2 text-center text-xs font-semibold text-amber-950 sm:text-sm">
+          演示数据，仅供体验
+          <span className="mx-2 text-amber-800/80">·</span>
           <Link to={realPropertyJoinPath(guestPropertyCode)} className="font-semibold text-amber-950 underline-offset-2 hover:underline">
             真实成员入口
-          </Link>
-          <span className="mx-1.5 text-amber-800/80">·</span>
-          <Link to={demoEntryPath(guestPropertyCode)} className="text-amber-900/90 underline-offset-2 hover:underline">
-            当前 Demo
           </Link>
         </div>
       ) : null}
