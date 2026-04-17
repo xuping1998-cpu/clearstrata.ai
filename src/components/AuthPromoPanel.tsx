@@ -1,5 +1,5 @@
 import { QrCode } from 'lucide-react';
-import promoQr from '../assets/promo-qr.png';
+import { QRCodeSVG } from 'qrcode.react';
 import { useLanguage } from '../contexts/LanguageContext';
 
 /** Login / register page: QR + hero copy (i18n via hero_* keys). */
@@ -29,13 +29,14 @@ export function AuthPromoPanel() {
 
       <div className="flex min-h-0 flex-1 flex-col justify-between gap-4 pt-4">
         <div className="flex w-full flex-col items-center gap-2.5 sm:gap-3">
-          <img
+          <div
             id="auth-promo-qr"
-            src={promoQr}
-            alt={en ? 'Scan to try' : '扫码体验'}
-            className="aspect-square w-full max-w-[13rem] rounded-2xl border border-gray-200/80 bg-white p-2.5 shadow-sm object-contain sm:max-w-[15rem] lg:max-w-[16rem]"
-            decoding="async"
-          />
+            className="flex w-full max-w-[13rem] justify-center rounded-2xl border border-gray-200/80 bg-white p-2.5 shadow-sm sm:max-w-[15rem] lg:max-w-[16rem]"
+            role="img"
+            aria-label={en ? 'Scan to try' : '扫码体验'}
+          >
+            <QRCodeSVG value="https://clearstrata.ai/" size={180} />
+          </div>
 
           <button
             type="button"
