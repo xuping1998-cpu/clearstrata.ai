@@ -1,7 +1,5 @@
 /** 侧栏底部：支出透明 / 扫码转化位（文案与样式与产品一致，二维码路径与 Layout 原逻辑相同） */
 import { Link } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
-import { isPlatformAdmin } from '@/lib/permissions';
 
 const QR_SRC = '/qr-code.png';
 
@@ -11,8 +9,6 @@ export type SidebarPromoCardProps = {
 
 export function SidebarPromoCard({ language }: SidebarPromoCardProps) {
   const en = language === 'en';
-  const { session, profile } = useAuth();
-  const showPlatform = Boolean(session) && isPlatformAdmin(profile as any);
 
   return (
     <div
@@ -75,28 +71,6 @@ export function SidebarPromoCard({ language }: SidebarPromoCardProps) {
       >
         {en ? 'See every line of spending in seconds' : '3秒看清每一笔花费'}
       </p>
-
-      {showPlatform ? (
-        <div className="mt-3 border-t border-gray-100 pt-3">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 text-center">
-            {en ? 'Platform admin' : '平台管理'}
-          </p>
-          <div className="mt-2 flex flex-wrap justify-center gap-2">
-            <Link
-              to="/admin/overview"
-              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-900 hover:bg-gray-50"
-            >
-              {en ? 'Overview' : '平台总览'}
-            </Link>
-            <Link
-              to="/admin/leads"
-              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-900 hover:bg-gray-50"
-            >
-              {en ? 'Sales leads' : '销售线索'}
-            </Link>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }
