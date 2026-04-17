@@ -451,10 +451,7 @@ export function Layout({ children }: LayoutProps) {
             {!isDemoMode && !isDemoPropertyMock ? (
               <>
                 <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain [scrollbar-width:thin]">
-                  <div className="px-3 pt-4 pb-2">
-                    <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
-                      {t('nav_group_primary')}
-                    </p>
+                  <div className="px-3 pt-2 pb-2">
                     <button
                       type="button"
                       onClick={() => {
