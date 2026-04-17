@@ -5,8 +5,6 @@ import { GUEST_PROPERTY_STORAGE_KEY, useProperty } from '../contexts/PropertyCon
 import HomeBudgetPanel from '@/components/dashboard/HomeBudgetPanel';
 import { DemoPropertyMockHomePanel } from '@/components/demoProperty/DemoPropertyMockHomePanel';
 import { DemoCreatePropertyCtaCard } from '@/components/onboarding/DemoCreatePropertyCta';
-import { PropertySetupChecklist } from '@/components/onboarding/PropertySetupChecklist';
-import { TrialBanner } from '@/components/billing/TrialBanner';
 import { TrialUpgradeCard } from '@/components/billing/TrialUpgradeCard';
 import { supabase } from '@/lib/supabase';
 import { getTrialDaysRemaining, getTrialState } from '@/lib/subscription';
@@ -95,7 +93,58 @@ export function Dashboard() {
 
   return (
     <>
-      <TrialBanner />
+      <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 shadow-sm">
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            <p className="text-sm font-semibold text-gray-900">你的物业已经创建成功</p>
+            <button
+              type="button"
+              onClick={() => navigate('/property-admin/unit-whitelist')}
+              className="inline-flex items-center justify-center rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold text-emerald-900 hover:bg-emerald-50"
+            >
+              导入房号
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/property-admin/invites')}
+              className="inline-flex items-center justify-center rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold text-emerald-900 hover:bg-emerald-50"
+            >
+              邀请成员
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/invoices/upload')}
+              className="inline-flex items-center justify-center rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold text-emerald-900 hover:bg-emerald-50"
+            >
+              上传第一张发票
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-3 flex-wrap">
+              <p className="text-sm font-semibold text-gray-900">你正在免费试用 ClearStrata</p>
+              <p className="text-sm text-gray-700">
+                {(() => {
+                  const ends = trialRow?.trial_ends_at ?? null;
+                  const daysLeft = getTrialDaysRemaining(ends);
+                  const d = ends ? new Date(String(ends)) : null;
+                  const endText =
+                    d && !Number.isNaN(d.getTime())
+                      ? `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`
+                      : '—';
+                  return `剩余 ${daysLeft} 天（到期日 ${endText}）`;
+                })()}
+              </p>
+            </div>
+            <Link
+              to="/upgrade"
+              className="inline-flex items-center justify-center rounded-xl border border-emerald-200 bg-white px-4 py-2 text-sm font-semibold text-emerald-900 hover:bg-emerald-50"
+            >
+              查看定价
+            </Link>
+          </div>
+        </div>
+      </div>
       {(() => {
         const st = trialRow?.subscription_status ?? null;
         const ends = trialRow?.trial_ends_at ?? null;
@@ -103,7 +152,6 @@ export function Dashboard() {
         const daysLeft = getTrialDaysRemaining(ends);
         return <TrialUpgradeCard state={state} daysLeft={daysLeft} />;
       })()}
-      <PropertySetupChecklist />
       <HomeBudgetPanel />
     </>
   );
