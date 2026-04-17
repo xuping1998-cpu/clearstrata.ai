@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Mail, RefreshCw, Users } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -12,15 +12,18 @@ import {
   fetchMeetingCore,
   fetchMeetingExtras,
   invitationSummary,
+  markMeetingInvitationOpened,
   meetingTitleZhFirst,
   resetFailedInvitations,
   sendMeetingInvitations,
   updateVote,
   type MeetingAgendaRow,
   type MeetingDetailBundle,
+  type MeetingInvitationRow,
   type MeetingVoteOptionRow,
   type MeetingVoteRow,
 } from '../../features/meetings/api';
+import { supabase } from '../../lib/supabase';
 import { labelFormat, labelMeetingType, labelStatus, labelVoteRule, labelVoteStatus, meetingUiStrings } from '../../features/meetings/labels';
 
 const initialBundle = (): MeetingDetailBundle => ({
@@ -57,6 +60,10 @@ export function MeetingDetail() {
   const [newAgendaEn, setNewAgendaEn] = useState('');
   const [newAgendaVote, setNewAgendaVote] = useState(false);
   const [newVoteRule, setNewVoteRule] = useState<'simple_majority' | 'three_quarter' | 'unanimous'>('simple_majority');
+  const [inviteProfileById, setInviteProfileById] = useState<
+    Record<string, { full_name_en: string | null; full_name_zh: string | null; email: string | null }>
+  >({});
+  const openedTrackedRef = useRef<string | null>(null);
 
   const isStaff =
     roleInProperty === 'council' ||
@@ -97,7 +104,52 @@ export function MeetingDetail() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    const ids = Array.from(new Set(bundle.invitations.map((i) => i.recipient_user_id).filter(Boolean)));
+    if (ids.length === 0) {
+      setInviteProfileById({});
+      return;
+    }
+    let cancelled = false;
+    void supabase
+      .from('profiles')
+      .select('id, full_name_en, full_name_zh, email')
+      .in('id', ids)
+      .then(({ data, error }) => {
+        if (cancelled || error || !data) return;
+        const next: Record<string, { full_name_en: string | null; full_name_zh: string | null; email: string | null }> = {};
+        for (const p of data as {
+          id: string;
+          full_name_en: string | null;
+          full_name_zh: string | null;
+          email: string | null;
+        }[]) {
+          next[p.id] = {
+            full_name_en: p.full_name_en,
+            full_name_zh: p.full_name_zh,
+            email: p.email,
+          };
+        }
+        setInviteProfileById(next);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [bundle.invitations]);
+
   const meeting = bundle.meeting;
+
+  useEffect(() => {
+    const mid = meeting?.id;
+    if (!mid || !user?.id || !currentPropertyId) return;
+    const key = `${mid}:${currentPropertyId}`;
+    if (openedTrackedRef.current === key) return;
+    openedTrackedRef.current = key;
+    void (async () => {
+      const { error } = await markMeetingInvitationOpened(mid, currentPropertyId);
+      if (!error) await load();
+    })();
+  }, [meeting?.id, user?.id, currentPropertyId, load]);
 
   const voteByAgendaId = useMemo(() => {
     const m = new Map<string, MeetingVoteRow & { options: MeetingVoteOptionRow[] }>();
@@ -236,6 +288,21 @@ export function MeetingDetail() {
   }
 
   const inv = invitationSummary(bundle.invitations);
+  const openRatePct = inv.total ? Math.min(100, Math.round((inv.openedCount / inv.total) * 100)) : 0;
+  const voteRatePct = inv.total ? Math.min(100, Math.round((inv.voted / inv.total) * 100)) : 0;
+
+  function inviteTrackingStatusLabel(row: MeetingInvitationRow) {
+    if (row.delivery_status === 'voted') return en ? 'Voted' : '已投票';
+    if (row.opened_at) return en ? 'Opened' : '已打开';
+    return en ? 'Not opened' : '未打开';
+  }
+
+  function inviteVoteResultLabel(v: MeetingInvitationRow['vote']) {
+    if (!v) return '—';
+    if (v === 'approve') return en ? 'Approve' : '赞成';
+    if (v === 'reject') return en ? 'Reject' : '反对';
+    return en ? 'Abstain' : '弃权';
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
@@ -476,7 +543,7 @@ export function MeetingDetail() {
                   : '暂无邀请记录。有邀请后下方统计会更新。'}
               </p>
             ) : null}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm mb-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 text-sm mb-4">
               <div>
                 <p className="text-gray-500">{en ? 'Total' : '邀请数'}</p>
                 <p className="text-xl font-semibold">{inv.total}</p>
@@ -490,10 +557,86 @@ export function MeetingDetail() {
                 <p className="text-xl font-semibold">{inv.opened}</p>
               </div>
               <div>
+                <p className="text-gray-500">{en ? 'Voted' : '已投票'}</p>
+                <p className="text-xl font-semibold">{inv.voted}</p>
+              </div>
+              <div>
                 <p className="text-gray-500">{en ? 'Failed' : '失败'}</p>
                 <p className="text-xl font-semibold text-red-700">{inv.failed}</p>
               </div>
             </div>
+
+            {bundle.invitations.length > 0 ? (
+              <div className="mb-6 space-y-4">
+                <h3 className="text-sm font-semibold text-gray-900">
+                  {en ? 'Invitation tracking' : '邀请明细'}
+                </h3>
+                <div className="space-y-3">
+                  <div>
+                    <div className="flex justify-between text-xs text-gray-600 mb-1">
+                      <span>{en ? 'Open rate' : '打开率'}</span>
+                      <span>
+                        {inv.openedCount}/{inv.total} · {openRatePct}%
+                      </span>
+                    </div>
+                    <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+                      <div
+                        className="h-full bg-emerald-500 rounded-full transition-all"
+                        style={{ width: `${openRatePct}%` }}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-xs text-gray-600 mb-1">
+                      <span>{en ? 'Vote rate' : '投票率'}</span>
+                      <span>
+                        {inv.voted}/{inv.total} · {voteRatePct}%
+                      </span>
+                    </div>
+                    <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+                      <div
+                        className="h-full bg-[#1D9E75] rounded-full transition-all"
+                        style={{ width: `${voteRatePct}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                  <table className="min-w-full text-sm text-left">
+                    <thead className="bg-gray-50 text-gray-600">
+                      <tr>
+                        <th className="px-3 py-2 font-medium">{en ? 'Owner' : '业主'}</th>
+                        <th className="px-3 py-2 font-medium">{en ? 'Email' : '邮箱'}</th>
+                        <th className="px-3 py-2 font-medium">{en ? 'Status' : '状态'}</th>
+                        <th className="px-3 py-2 font-medium whitespace-nowrap">{en ? 'Opened at' : '打开时间'}</th>
+                        <th className="px-3 py-2 font-medium">{en ? 'Vote' : '投票结果'}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {bundle.invitations.map((row) => {
+                        const prof = inviteProfileById[row.recipient_user_id];
+                        const ownerName = en
+                          ? prof?.full_name_en || prof?.full_name_zh || '—'
+                          : prof?.full_name_zh || prof?.full_name_en || '—';
+                        const email = row.email ?? prof?.email ?? '—';
+                        return (
+                          <tr key={row.id} className="bg-white">
+                            <td className="px-3 py-2 text-gray-900">{ownerName}</td>
+                            <td className="px-3 py-2 text-gray-700 break-all max-w-[200px]">{email}</td>
+                            <td className="px-3 py-2 text-gray-800">{inviteTrackingStatusLabel(row)}</td>
+                            <td className="px-3 py-2 text-gray-600 whitespace-nowrap">
+                              {row.opened_at ? new Date(row.opened_at).toLocaleString(en ? 'en-CA' : 'zh-CN') : '—'}
+                            </td>
+                            <td className="px-3 py-2 text-gray-800">{inviteVoteResultLabel(row.vote)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
+
             {isStaff && (
               <div className="flex flex-wrap gap-2">
                 <button

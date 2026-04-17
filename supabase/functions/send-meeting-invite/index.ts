@@ -225,6 +225,33 @@ function jsonResponse(
   });
 }
 
+async function upsertInvitationDelivery(
+  supabase: ReturnType<typeof createClient>,
+  params: {
+    meeting_id: string;
+    property_id: string;
+    recipient_user_id: string;
+    email: string;
+    delivery_status: "sent" | "failed";
+  },
+) {
+  const { error } = await supabase.from("meeting_invitations").upsert(
+    {
+      meeting_id: params.meeting_id,
+      property_id: params.property_id,
+      recipient_user_id: params.recipient_user_id,
+      email: params.email,
+      delivery_channel: "email",
+      delivery_status: params.delivery_status,
+      sent_at: params.delivery_status === "sent" ? new Date().toISOString() : null,
+    },
+    { onConflict: "meeting_id,recipient_user_id" },
+  );
+  if (error) {
+    console.error("send-meeting-invite: invitation upsert failed", error);
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
@@ -365,6 +392,13 @@ Deno.serve(async (req: Request) => {
       });
     } catch (networkErr) {
       console.error("send-meeting-invite: Resend fetch failed", networkErr);
+      await upsertInvitationDelivery(supabase, {
+        meeting_id,
+        property_id,
+        recipient_user_id: user_id,
+        email: profile.email as string,
+        delivery_status: "failed",
+      });
       return jsonResponse(
         {
           error: `Could not reach Resend API: ${String(networkErr)}`,
@@ -378,6 +412,13 @@ Deno.serve(async (req: Request) => {
       resendData = (await resendRes.json()) as Record<string, unknown>;
     } catch (parseErr) {
       console.error("send-meeting-invite: invalid Resend JSON", parseErr);
+      await upsertInvitationDelivery(supabase, {
+        meeting_id,
+        property_id,
+        recipient_user_id: user_id,
+        email: profile.email as string,
+        delivery_status: "failed",
+      });
       return jsonResponse(
         {
           error: `Resend returned non-JSON response (HTTP ${resendRes.status})`,
@@ -407,6 +448,13 @@ Deno.serve(async (req: Request) => {
       console.error("send-meeting-invite: Resend error", resendRes.status, resendData);
 
       if (isTestingRecipientRestriction) {
+        await upsertInvitationDelivery(supabase, {
+          meeting_id,
+          property_id,
+          recipient_user_id: user_id,
+          email: profile.email as string,
+          delivery_status: "failed",
+        });
         return jsonResponse(
           {
             error:
@@ -423,6 +471,13 @@ Deno.serve(async (req: Request) => {
         );
       }
 
+      await upsertInvitationDelivery(supabase, {
+        meeting_id,
+        property_id,
+        recipient_user_id: user_id,
+        email: profile.email as string,
+        delivery_status: "failed",
+      });
       return jsonResponse(
         {
           error: `Resend rejected the request: ${resendMessage}`,
@@ -434,6 +489,13 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    await upsertInvitationDelivery(supabase, {
+      meeting_id,
+      property_id,
+      recipient_user_id: user_id,
+      email: profile.email as string,
+      delivery_status: "sent",
+    });
     return jsonResponse({ success: true, email_id: resendData.id }, 200);
   } catch (err) {
     console.error("send-meeting-invite: unhandled", err);

@@ -5,6 +5,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useProperty } from '../../contexts/PropertyContext';
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
+import { withProperty } from '../../lib/supabaseTenant';
 
 /** 参会者行数据（保持原有结构，不改动） */
 interface Attendee {
@@ -133,6 +134,22 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
       return next;
     });
 
+    const persistInviteDelivery = async (status: 'sent' | 'failed') => {
+      const row = {
+        meeting_id: meetingId,
+        property_id: currentPropertyId,
+        recipient_user_id: userId,
+        email: userEmail ?? null,
+        delivery_channel: 'email',
+        delivery_status: status,
+        sent_at: status === 'sent' ? new Date().toISOString() : null,
+      };
+      await withProperty(
+        supabase.from('meeting_invitations').upsert(row, { onConflict: 'meeting_id,recipient_user_id' }) as any,
+        currentPropertyId,
+      );
+    };
+
     try {
       const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
       if (sessionErr) {
@@ -173,6 +190,7 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
           ...prev,
           [userId]: pickInviteFailureHint(errBody, l),
         }));
+        await persistInviteDelivery('failed');
         return;
       }
 
@@ -184,10 +202,12 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
           ...prev,
           [userId]: pickInviteFailureHint(errBody, l),
         }));
+        await persistInviteDelivery('failed');
         return;
       }
 
       console.log('[MeetingInvite] 发送成功:', data);
+      await persistInviteDelivery('sent');
       setEmailStatus((prev) => ({ ...prev, [userId]: 'sent' }));
       setInviteFailureHints((prev) => {
         const next = { ...prev };
@@ -197,6 +217,7 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
     } catch (e) {
       console.error('[MeetingInvite] 未捕获异常:', e);
       setEmailStatus((prev) => ({ ...prev, [userId]: 'error' }));
+      await persistInviteDelivery('failed');
     }
   };
 

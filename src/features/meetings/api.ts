@@ -25,6 +25,13 @@ export interface MeetingRow {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  /** Aggregated ballots for the meeting (DB trigger-maintained). */
+  vote_result?: {
+    approve?: number;
+    reject?: number;
+    abstain?: number;
+    total?: number;
+  } | null;
 }
 
 export interface MeetingAgendaRow {
@@ -83,6 +90,10 @@ export interface MeetingInvitationRow {
   delivery_status: string;
   sent_at: string | null;
   opened_at: string | null;
+  email: string | null;
+  voted_at: string | null;
+  /** approve / reject / abstain (mapped from ballot option keys for / against / abstain). */
+  vote: 'approve' | 'reject' | 'abstain' | null;
   created_at: string | null;
 }
 
@@ -645,23 +656,38 @@ export async function sendMeetingInvitations(meetingId: string, propertyId: stri
       return { count: 0, error: null };
     }
 
+    const { data: profRows, error: profErr } = await supabase
+      .from('profiles')
+      .select('id, email')
+      .in('id', userIds);
+
+    if (profErr) {
+      return { count: 0, error: profErr };
+    }
+
+    const emailByUser: Record<string, string | null> = {};
+    for (const p of (profRows ?? []) as { id: string; email: string | null }[]) {
+      emailByUser[p.id] = p.email ?? null;
+    }
+
     const now = new Date().toISOString();
 
     const rows = userIds.map((userId) => ({
       meeting_id: meetingId,
       property_id: propertyId,
       recipient_user_id: userId,
+      email: emailByUser[userId] ?? null,
       delivery_channel: 'in_app',
       delivery_status: 'sent',
       sent_at: now,
     }));
 
-    const { data, error } = await supabase
-      .from('meeting_invitations')
-      .upsert(rows, {
+    const { data, error } = await withProperty(
+      supabase.from('meeting_invitations').upsert(rows, {
         onConflict: 'meeting_id,recipient_user_id',
-      })
-      .select();
+      }) as any,
+      propertyId,
+    ).select();
 
     if (error) {
       return { count: 0, error };
@@ -706,9 +732,20 @@ export function invitationSummary(inv: MeetingInvitationRow[]) {
     total: inv.length,
     sent: inv.filter((r) => r.delivery_status === 'sent').length,
     opened: inv.filter((r) => r.delivery_status === 'opened').length,
+    voted: inv.filter((r) => r.delivery_status === 'voted').length,
     failed: inv.filter((r) => r.delivery_status === 'failed').length,
     pending: inv.filter((r) => r.delivery_status === 'pending').length,
+    /** Rows with a recorded open (includes voted). */
+    openedCount: inv.filter((r) => r.opened_at != null || r.delivery_status === 'voted').length,
   };
+}
+
+/** Marks the current user’s invitation as opened (RPC; preserves `voted` / `failed`). */
+export async function markMeetingInvitationOpened(meetingId: string, propertyId: string) {
+  return await supabase.rpc('mark_meeting_invitation_opened', {
+    p_meeting_id: meetingId,
+    p_property_id: propertyId,
+  });
 }
 
 export function ballotTallies(ballots: MeetingBallotRow[]) {
