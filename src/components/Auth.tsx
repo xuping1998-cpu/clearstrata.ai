@@ -482,14 +482,14 @@ export function Auth() {
             TEMP: [&>img]:mix-blend-multiply softens opaque white in public/logo-clearstrata-v1.png against bg-gray-50.
             Replace the PNG with a transparent-background final asset, then remove the blend utility from this wrapper.
           */}
-          <div className="mt-6 flex w-full shrink-0 justify-center items-start px-2 [&_img]:mix-blend-multiply">
-            <div className="flex w-full max-w-[min(420px,80%)] flex-col items-center justify-start sm:max-w-[420px]">
+          <div className="mb-2 mt-6 flex w-full shrink-0 justify-center items-start overflow-visible px-2 [&_img]:mix-blend-multiply">
+            <div className="flex w-full flex-col items-center justify-start overflow-visible">
               <img
                 src="/logo-clearstrata-v1.png"
                 alt="ClearStrata.Ai"
-                className="h-auto w-full object-contain"
+                className="h-auto w-[420px] max-w-[80%] origin-center scale-125 object-contain"
               />
-              <p className="mt-6 text-center text-xl font-semibold text-gray-700 sm:text-2xl">清涟让物业管理更简单透明</p>
+              <p className="mt-2 text-center text-xl font-semibold text-gray-700 sm:text-2xl">清涟让物业管理更简单透明</p>
             </div>
           </div>
           <div className="mt-6 flex min-h-0 w-full flex-1 flex-col">
