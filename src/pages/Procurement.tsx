@@ -278,6 +278,14 @@ export function Procurement() {
     );
   }
 
+  if (!currentPropertyId) {
+    return (
+      <div className="rounded-xl border border-gray-200 bg-white p-6 text-gray-700">
+        {l ? 'No property selected.' : '未选择物业。'}
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="mb-6">
@@ -317,7 +325,12 @@ export function Procurement() {
       ) : (
         <div className="space-y-4">
           {jobs.map((job) => (
-            <JobCard key={job.id} job={job} language={language} isCouncil={isCouncil}
+            <JobCard
+              key={job.id}
+              job={job}
+              language={language}
+              isCouncil={isCouncil}
+              propertyId={currentPropertyId}
               onOpenModal={openModal} onMarkCompleted={markCompleted} onResendToPM={resendToPM} onDelete={deleteJob} />
           ))}
         </div>
@@ -359,11 +372,19 @@ export function Procurement() {
 }
 
 function JobCard({
-  job, language, isCouncil, onOpenModal, onMarkCompleted, onResendToPM, onDelete,
+  job,
+  language,
+  isCouncil,
+  propertyId,
+  onOpenModal,
+  onMarkCompleted,
+  onResendToPM,
+  onDelete,
 }: {
   job: ProcurementJob;
   language: string;
   isCouncil: boolean;
+  propertyId: string;
   onOpenModal: (name: string, job?: ProcurementJob) => void;
   onMarkCompleted: (id: string) => void;
   onResendToPM: (id: string) => void;
@@ -435,7 +456,7 @@ function JobCard({
         <div className="px-6 pb-4">
           <AiPricingPanel
             jobId={job.id}
-            propertyId={currentPropertyId!}
+            propertyId={propertyId}
             title={job.title_zh || job.title_en}
             description={job.description_zh || job.description_en}
             jobType={job.job_type}
@@ -450,7 +471,7 @@ function JobCard({
 
           <VendorSearchPanel
             jobId={job.id}
-            propertyId={currentPropertyId!}
+            propertyId={propertyId}
             jobTitle={job.title_zh || job.title_en}
             jobDescription={job.description_zh || job.description_en}
             category={job.category || ''}
