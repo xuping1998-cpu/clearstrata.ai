@@ -12,9 +12,9 @@ export function AuthPromoPanel() {
   };
 
   return (
-    <div className="flex w-full flex-col justify-start gap-5 rounded-2xl border border-emerald-100 bg-gradient-to-br from-green-50 to-emerald-50 p-5 shadow-md sm:p-6 lg:p-7">
-      <div className="flex shrink-0 flex-col justify-start gap-1.5 px-1 pt-0 text-center">
-        <div className="text-sm font-medium text-emerald-600">{t('hero_badge')}</div>
+    <div className="flex h-full min-h-0 w-full flex-col rounded-2xl border border-emerald-100 bg-gradient-to-br from-green-50 to-emerald-50 p-5 shadow-md sm:p-6 lg:p-7">
+      <div className="relative mt-6 shrink-0 px-1 text-center">
+        <div className="absolute inset-x-0 bottom-full mb-1.5 text-sm font-medium text-emerald-600">{t('hero_badge')}</div>
         <h2 className="text-xl font-bold leading-tight text-gray-900 sm:text-2xl">
           {t('hero_title_1')}
           {en ? ' ' : ''}
@@ -27,7 +27,7 @@ export function AuthPromoPanel() {
         <p className="line-clamp-2 text-xs text-gray-500 sm:text-sm">{t('hero_subline')}</p>
       </div>
 
-      <div className="flex w-full flex-col items-center gap-4 pt-1">
+      <div className="flex min-h-0 flex-1 flex-col justify-between gap-4 pt-4">
         <div className="flex w-full flex-col items-center gap-2.5 sm:gap-3">
           <img
             id="auth-promo-qr"
