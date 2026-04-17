@@ -475,23 +475,35 @@ export function Auth() {
   const forgotCanSubmit = Boolean(email.trim()) && !resetSending;
 
   return (
-    <div className="flex h-screen min-h-0 items-center justify-center bg-gray-50 px-4 py-8">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 lg:flex-row lg:items-stretch lg:gap-12">
-        <div className="flex min-h-0 w-full flex-1 flex-col justify-between gap-6 lg:h-[520px] lg:gap-0">
+    <div className="flex min-h-dvh flex-col items-center justify-center bg-gray-50 px-4 py-5 sm:py-6 lg:py-8">
+      <div className="mx-auto grid w-full max-w-7xl grid-cols-1 gap-6 sm:gap-8 lg:grid-cols-[minmax(0,46%)_minmax(0,54%)] lg:items-stretch lg:gap-10 xl:gap-12">
+        <div className="flex min-h-0 w-full flex-col justify-between gap-4 lg:gap-5">
           {/*
             TEMP: [&>img]:mix-blend-multiply softens opaque white in public/logo-clearstrata-v1.png against bg-gray-50.
             Replace the PNG with a transparent-background final asset, then remove the blend utility from this wrapper.
           */}
-          <div className="flex h-32 w-full flex-shrink-0 flex-col items-center justify-center gap-2 px-2 [&>img]:mix-blend-multiply">
+          <div className="flex w-full shrink-0 flex-col items-center gap-2 px-2 pb-1 pt-0 [&>img]:mix-blend-multiply">
             <img
               src="/logo-clearstrata-v1.png"
               alt="ClearStrata.Ai"
-              className="mx-auto h-auto w-24 object-contain"
+              className="mx-auto h-auto w-56 max-w-full object-contain sm:w-64 lg:w-72"
             />
+            <h1 className="text-center text-xl font-bold tracking-tight text-gray-900 sm:text-2xl">ClearStrata</h1>
             <p className="text-center text-sm font-semibold text-gray-700">清漣讓物業管理更簡單透明</p>
+            <div className="mt-1 flex flex-wrap justify-center gap-2">
+              <span className="rounded-full border border-emerald-100 bg-emerald-50/80 px-3 py-1 text-xs font-semibold text-emerald-900">
+                {language === 'zh' ? '业主监督' : 'Owner oversight'}
+              </span>
+              <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-800">
+                {language === 'zh' ? '理事会透明' : 'Council clarity'}
+              </span>
+              <span className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-semibold text-gray-800">
+                {language === 'zh' ? '同步中英' : 'EN / 中文'}
+              </span>
+            </div>
           </div>
-          <div className="mx-auto flex min-h-0 w-full max-w-md flex-1 flex-col lg:mt-0">
-            <div className="flex max-h-[min(52vh,calc(100vh-14rem))] min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-md lg:max-h-none">
+          <div className="flex w-full min-w-0 flex-1 flex-col lg:mt-0">
+            <div className="flex w-full flex-col overflow-visible rounded-2xl border border-gray-100 bg-white shadow-md">
               <div className="flex shrink-0 border-b border-gray-100">
                 <button
                   type="button"
@@ -500,7 +512,7 @@ export function Auth() {
                     setError('');
                     setResetSuccess('');
                   }}
-                  className={`flex-1 py-3.5 text-sm font-semibold transition-colors ${
+                  className={`flex-1 py-3 text-sm font-semibold transition-colors ${
                     mainTab === 'guest'
                       ? 'border-b-2 border-[#1D9E75] bg-emerald-50/40 text-[#1D9E75]'
                       : 'text-gray-500 hover:text-gray-700'
@@ -515,7 +527,7 @@ export function Auth() {
                     setError('');
                     setResetSuccess('');
                   }}
-                  className={`flex-1 py-3.5 text-sm font-semibold transition-colors ${
+                  className={`flex-1 py-3 text-sm font-semibold transition-colors ${
                     mainTab === 'property'
                       ? 'border-b-2 border-slate-800 bg-slate-50 text-slate-900'
                       : 'text-gray-500 hover:text-gray-700'
@@ -526,13 +538,12 @@ export function Auth() {
                 <button
                   type="button"
                   onClick={toggleLanguage}
-                  className="border-l border-gray-100 px-4 py-3.5 text-sm font-medium text-gray-500 transition-colors hover:text-gray-700"
+                  className="border-l border-gray-100 px-4 py-3 text-sm font-medium text-gray-500 transition-colors hover:text-gray-700"
                 >
                   {language === 'en' ? '中文' : 'EN'}
                 </button>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto">
             {passwordUpdated && (
               <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-900 text-sm flex justify-between gap-2 items-start">
                 <span>{t('auth_password_updated_banner')}</span>
@@ -551,7 +562,7 @@ export function Auth() {
               </div>
             )}
             {mainTab === 'guest' ? (
-              <form onSubmit={handleGuestDemo} className="space-y-4 p-6">
+              <form onSubmit={handleGuestDemo} className="space-y-3 p-5">
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="guest-name">
                     {language === 'zh' ? '姓名' : 'Name'} <span className="text-red-500">*</span>
@@ -589,7 +600,7 @@ export function Auth() {
                 </button>
               </form>
             ) : (
-              <form onSubmit={(e) => void handlePropertyEnter(e)} className="space-y-4 p-6">
+              <form onSubmit={(e) => void handlePropertyEnter(e)} className="space-y-3 p-5">
                 <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-800">
                   {language === 'zh'
                     ? '真实物业入口：提交后将前往加入申请页（非 Demo）。'
@@ -1049,15 +1060,14 @@ export function Auth() {
             </div>
 
             {error && (
-              <div className="mx-6 mb-6 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>
+              <div className="mx-6 mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>
             )}
-              </div>
             </div>
           </div>
         </div>
 
-        <div className="flex min-h-0 w-full flex-1 flex-col lg:h-[520px] lg:max-w-md">
-          <div className="flex h-full min-h-0 w-full justify-center">
+        <div className="flex min-h-0 w-full min-w-0 flex-col">
+          <div className="flex h-full min-h-0 w-full">
             <AuthPromoPanel />
           </div>
         </div>

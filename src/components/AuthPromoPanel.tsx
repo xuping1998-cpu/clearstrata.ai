@@ -12,8 +12,8 @@ export function AuthPromoPanel() {
   };
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col justify-between rounded-2xl border border-emerald-100 bg-gradient-to-br from-green-50 to-emerald-50 p-6 shadow-md sm:p-8">
-      <div className="flex h-32 shrink-0 flex-col justify-center gap-1.5 px-1 text-center">
+    <div className="flex h-full min-h-0 w-full flex-col justify-between rounded-2xl border border-emerald-100 bg-gradient-to-br from-green-50 to-emerald-50 p-5 shadow-md sm:p-6 lg:p-7">
+      <div className="flex shrink-0 flex-col justify-center gap-1.5 px-1 py-1 text-center sm:py-2">
         <div className="text-sm font-medium text-emerald-600">{t('hero_badge')}</div>
         <h2 className="text-xl font-bold leading-tight text-gray-900 sm:text-2xl">
           {t('hero_title_1')}
@@ -27,13 +27,13 @@ export function AuthPromoPanel() {
         <p className="line-clamp-2 text-xs text-gray-500 sm:text-sm">{t('hero_subline')}</p>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-between gap-4 pt-2">
-        <div className="flex w-full flex-col items-center gap-3">
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-between gap-3 pt-1 sm:gap-4 sm:pt-2">
+        <div className="flex w-full flex-col items-center gap-2.5 sm:gap-3">
           <img
             id="auth-promo-qr"
             src={promoQr}
             alt={en ? 'Scan to try' : '扫码体验'}
-            className="h-44 w-44 rounded-2xl border border-gray-200/80 bg-white p-3 shadow-sm object-contain sm:h-52 sm:w-52"
+            className="h-40 w-40 rounded-2xl border border-gray-200/80 bg-white p-2.5 shadow-sm object-contain sm:h-48 sm:w-48 lg:h-52 lg:w-52"
             decoding="async"
           />
 
