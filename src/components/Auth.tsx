@@ -474,6 +474,14 @@ export function Auth() {
     Boolean(email.trim()) && Boolean(password) && !isSubmitting && !forgotMode;
   const forgotCanSubmit = Boolean(email.trim()) && !resetSending;
 
+  const goToLogin = () => {
+    setLegacyOpen('login');
+    setIsLogin(true);
+    setForgotMode(false);
+    setError('');
+    setResetSuccess('');
+  };
+
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-50">
       <div className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col gap-6 px-4 pb-4 pt-0 sm:px-6 lg:grid lg:grid-cols-[minmax(0,46%)_minmax(0,54%)] lg:items-stretch lg:gap-6">
@@ -687,41 +695,14 @@ export function Auth() {
 
                 <div className="mt-auto w-full shrink-0 space-y-3">
             <div className="border-t border-gray-100 bg-gray-50/60 px-6 py-4">
-              <p className="text-xs font-semibold text-gray-600">
+              <div className="mt-4 text-center text-sm text-gray-500">
                 {language === 'zh' ? '已有账号？' : 'Already have an account?'}
-              </p>
-              <div className="mt-2 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    const next = legacyOpen === 'login' ? 'none' : 'login';
-                    setLegacyOpen(next);
-                    if (next === 'login') {
-                      setIsLogin(true);
-                      setForgotMode(false);
-                      setError('');
-                      setResetSuccess('');
-                    }
-                  }}
-                  className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-800 hover:bg-gray-50"
+                  onClick={goToLogin}
+                  className="ml-2 font-medium text-[#1D9E75] hover:underline"
                 >
-                  {language === 'zh' ? '邮箱与密码登录' : 'Email & password'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const next = legacyOpen === 'signup' ? 'none' : 'signup';
-                    setLegacyOpen(next);
-                    if (next === 'signup') {
-                      setIsLogin(false);
-                      setStep(1);
-                      setError('');
-                      setResetSuccess('');
-                    }
-                  }}
-                  className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-800 hover:bg-gray-50"
-                >
-                  {language === 'zh' ? '业主完整注册' : 'Full owner signup'}
+                  {language === 'zh' ? '直接登录' : 'Sign in'}
                 </button>
               </div>
 
