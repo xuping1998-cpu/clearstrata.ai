@@ -1,7 +1,6 @@
 /** 侧栏底部：支出透明 / 扫码转化位（文案与样式与产品一致，二维码路径与 Layout 原逻辑相同） */
 import { Link } from 'react-router-dom';
-
-const QR_SRC = '/qr-code.png';
+import { QRCodeSVG } from 'qrcode.react';
 
 export type SidebarPromoCardProps = {
   language: 'en' | 'zh';
@@ -47,18 +46,14 @@ export function SidebarPromoCard({ language }: SidebarPromoCardProps) {
           '[@media(max-height:720px)]:w-20',
         ].join(' ')}
       >
-        <img
-          src={QR_SRC}
-          alt={en ? 'QR code to view property spending' : '扫码查看物业支出'}
-          width={112}
-          height={112}
+        <QRCodeSVG
+          value="https://clearstrata.ai/"
+          aria-label={en ? 'QR code to view property spending' : '扫码查看物业支出'}
           className={[
-            'h-24 w-24 max-h-[112px] max-w-[112px] object-contain',
+            'h-24 w-24 max-h-[112px] max-w-[112px]',
             '[@media(max-height:820px)]:h-[88px] [@media(max-height:820px)]:w-[88px] [@media(max-height:820px)]:max-h-[88px] [@media(max-height:820px)]:max-w-[88px]',
             '[@media(max-height:720px)]:h-20 [@media(max-height:720px)]:w-20 [@media(max-height:720px)]:max-h-20 [@media(max-height:720px)]:max-w-20',
           ].join(' ')}
-          decoding="async"
-          loading="lazy"
         />
       </div>
 
