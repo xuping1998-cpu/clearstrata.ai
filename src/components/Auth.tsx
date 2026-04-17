@@ -475,34 +475,24 @@ export function Auth() {
   const forgotCanSubmit = Boolean(email.trim()) && !resetSending;
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center bg-gray-50 px-4 py-5 sm:py-6 lg:py-8">
-      <div className="mx-auto grid w-full max-w-7xl grid-cols-1 gap-6 sm:gap-8 lg:grid-cols-[minmax(0,46%)_minmax(0,54%)] lg:items-stretch lg:gap-10 xl:gap-12">
-        <div className="flex min-h-0 w-full flex-col justify-between gap-4 lg:gap-5">
+    <div className="flex min-h-[calc(100vh-40px)] w-full flex-col items-start justify-start bg-gray-50 px-4 pb-6 pt-2 sm:pt-3">
+      <div className="mx-auto mt-2 grid w-full max-w-7xl grid-cols-1 gap-6 sm:mt-4 lg:grid-cols-[minmax(0,46%)_minmax(0,54%)] lg:items-start lg:gap-6">
+        <div className="flex min-h-0 w-full flex-col justify-start gap-3">
           {/*
             TEMP: [&>img]:mix-blend-multiply softens opaque white in public/logo-clearstrata-v1.png against bg-gray-50.
             Replace the PNG with a transparent-background final asset, then remove the blend utility from this wrapper.
           */}
-          <div className="flex w-full shrink-0 flex-col items-center gap-2 px-2 pb-1 pt-0 [&>img]:mix-blend-multiply">
-            <img
-              src="/logo-clearstrata-v1.png"
-              alt="ClearStrata.Ai"
-              className="mx-auto h-auto w-56 max-w-full object-contain sm:w-64 lg:w-72"
-            />
-            <h1 className="text-center text-xl font-bold tracking-tight text-gray-900 sm:text-2xl">ClearStrata</h1>
-            <p className="text-center text-sm font-semibold text-gray-700">清漣讓物業管理更簡單透明</p>
-            <div className="mt-1 flex flex-wrap justify-center gap-2">
-              <span className="rounded-full border border-emerald-100 bg-emerald-50/80 px-3 py-1 text-xs font-semibold text-emerald-900">
-                {language === 'zh' ? '业主监督' : 'Owner oversight'}
-              </span>
-              <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-800">
-                {language === 'zh' ? '理事会透明' : 'Council clarity'}
-              </span>
-              <span className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-semibold text-gray-800">
-                {language === 'zh' ? '同步中英' : 'EN / 中文'}
-              </span>
+          <div className="flex w-full shrink-0 justify-center items-start px-2 pb-0 pt-2 [&_img]:mix-blend-multiply">
+            <div className="flex w-full max-w-[min(420px,80%)] flex-col items-center justify-start gap-2 sm:max-w-[420px]">
+              <img
+                src="/logo-clearstrata-v1.png"
+                alt="ClearStrata.Ai"
+                className="h-auto w-full object-contain"
+              />
+              <p className="text-center text-sm font-semibold text-gray-700">清漣讓物業管理更簡單透明</p>
             </div>
           </div>
-          <div className="flex w-full min-w-0 flex-1 flex-col lg:mt-0">
+          <div className="mt-3 flex w-full min-w-0 flex-col">
             <div className="flex w-full flex-col overflow-visible rounded-2xl border border-gray-100 bg-white shadow-md">
               <div className="flex shrink-0 border-b border-gray-100">
                 <button
@@ -1066,10 +1056,8 @@ export function Auth() {
           </div>
         </div>
 
-        <div className="flex min-h-0 w-full min-w-0 flex-col">
-          <div className="flex h-full min-h-0 w-full">
-            <AuthPromoPanel />
-          </div>
+        <div className="flex w-full min-w-0 flex-col self-start">
+          <AuthPromoPanel />
         </div>
       </div>
     </div>
