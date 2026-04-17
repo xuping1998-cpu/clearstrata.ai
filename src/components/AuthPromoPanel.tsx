@@ -35,7 +35,7 @@ export function AuthPromoPanel() {
             role="img"
             aria-label={en ? 'Scan to try' : '扫码体验'}
           >
-            <QRCodeSVG value="https://clearstrata.ai/" size={180} />
+            <QRCodeSVG value="https://clearstrata.ai/" size={220} marginSize={4} />
           </div>
 
           <button
