@@ -146,7 +146,6 @@ export function Auth() {
   const [guestBusy, setGuestBusy] = useState(false);
   const [epName, setEpName] = useState('');
   const [epEmail, setEpEmail] = useState('');
-  const [epStrata, setEpStrata] = useState('');
   const [epUnit, setEpUnit] = useState('');
   const [epCode, setEpCode] = useState('');
   const [epBusy, setEpBusy] = useState(false);
@@ -218,10 +217,9 @@ export function Auth() {
     const code = (epCode.trim() || searchParams.get('propertyCode')?.trim() || '').trim();
     const n = epName.trim();
     const em = epEmail.trim().toLowerCase();
-    const st = epStrata.trim();
     const u = epUnit.trim();
-    if (!n || !em || !st || !u) {
-      setError(language === 'zh' ? '请填写姓名、邮箱、Strata Plan 与房号。' : 'Please fill in all required fields.');
+    if (!n || !em || !u) {
+      setError(language === 'zh' ? '请填写姓名、邮箱与房号。' : 'Please fill in all required fields.');
       return;
     }
     if (!isValidEmailBasic(em)) {
@@ -258,7 +256,6 @@ export function Auth() {
       savePropertyEntryDraft({
         fullName: n,
         email: em,
-        strataPlan: st,
         unitNumber: u,
         propertyId: pid,
         propertyCode: code,
@@ -652,19 +649,6 @@ export function Auth() {
                     onChange={(e) => setEpEmail(e.target.value)}
                     className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20"
                     placeholder="name@example.com"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="ep-strata">
-                    Strata plan <span className="text-red-500">*</span>
-                  </label>
-                  <textarea
-                    id="ep-strata"
-                    value={epStrata}
-                    onChange={(e) => setEpStrata(e.target.value)}
-                    rows={2}
-                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm transition-colors focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20"
-                    placeholder={language === 'zh' ? '计划类型或登记号' : 'Plan type or registration'}
                   />
                 </div>
                 <div>

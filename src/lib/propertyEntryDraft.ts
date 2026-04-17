@@ -5,7 +5,8 @@ const STORAGE_KEY = 'clearstrata_property_entry_v1';
 export type PropertyEntryDraft = {
   fullName: string;
   email: string;
-  strataPlan: string;
+  /** 可选；首页「进入物业」已不再收集，旧草稿可能仍有值 */
+  strataPlan?: string;
   unitNumber: string;
   propertyId: string;
   propertyCode: string;
@@ -13,15 +14,15 @@ export type PropertyEntryDraft = {
 };
 
 export function savePropertyEntryDraft(input: Omit<PropertyEntryDraft, 'savedAt'>): void {
+  const sp = input.strataPlan?.trim();
   const payload: PropertyEntryDraft = {
-    ...input,
     fullName: input.fullName.trim(),
     email: input.email.trim().toLowerCase(),
-    strataPlan: input.strataPlan.trim(),
     unitNumber: input.unitNumber.trim(),
     propertyId: input.propertyId.trim(),
     propertyCode: input.propertyCode.trim(),
     savedAt: new Date().toISOString(),
+    ...(sp ? { strataPlan: sp } : {}),
   };
   try {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(payload));

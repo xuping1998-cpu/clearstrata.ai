@@ -395,7 +395,11 @@ export function JoinRequestPage() {
     setFullName((v) => (v.trim() ? v : d.fullName));
     setEmail((v) => (v.trim() ? v : d.email));
     setUnitNumber((v) => (v.trim() ? v : d.unitNumber));
-    setNote((n) => (n.trim() ? n : `Strata plan: ${d.strataPlan}`));
+    setNote((n) => {
+      if (n.trim()) return n;
+      const sp = d.strataPlan?.trim();
+      return sp ? `Strata plan: ${sp}` : '';
+    });
   }, [searchParams]);
 
   const fetchProperties = async () => {
