@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Building2, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { getAuthErrorMessage } from '../lib/authErrorMessages';
 import { useLanguage } from '../contexts/LanguageContext';
+import { urlIndicatesPasswordRecoveryIntent } from '../lib/authRecovery';
 
 export function ResetPassword() {
   const navigate = useNavigate();
@@ -19,6 +20,15 @@ export function ResetPassword() {
   const [linkInvalid, setLinkInvalid] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  const sessionReadyRef = useRef(false);
+  const recoveryUrlInitially = useRef(
+    typeof window !== 'undefined' && urlIndicatesPasswordRecoveryIntent(),
+  );
+
+  useEffect(() => {
+    sessionReadyRef.current = sessionReady;
+  }, [sessionReady]);
+
   useEffect(() => {
     if (sessionReady) setLinkInvalid(false);
   }, [sessionReady]);
@@ -26,21 +36,29 @@ export function ResetPassword() {
   useEffect(() => {
     let mounted = true;
 
-    void supabase.auth.getSession().then(({ data: { session } }) => {
-      if (mounted && session) setSessionReady(true);
-    });
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mounted) return;
-      if (event === 'PASSWORD_RECOVERY' && session) setSessionReady(true);
-      if (session) setSessionReady(true);
+      if (event === 'PASSWORD_RECOVERY' && session) {
+        setSessionReady(true);
+        return;
+      }
+    });
+
+    void supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!mounted) return;
+      if (session && recoveryUrlInitially.current) {
+        setSessionReady(true);
+      }
     });
 
     const t = window.setTimeout(() => {
       void supabase.auth.getSession().then(({ data: { session } }) => {
-        if (mounted && !session) setLinkInvalid(true);
+        if (!mounted) return;
+        if (!session && !sessionReadyRef.current) {
+          setLinkInvalid(true);
+        }
       });
-    }, 8000);
+    }, 12000);
 
     return () => {
       mounted = false;
@@ -53,31 +71,32 @@ export function ResetPassword() {
     e.preventDefault();
     setError('');
 
-    if (!password.trim()) {
+    const newPassword = password.trim();
+    if (!newPassword) {
       setError(zh ? '新密码不能为空' : 'New password is required.');
       return;
     }
-    if (password.length < 8) {
+    if (newPassword.length < 8) {
       setError(zh ? '密码长度至少 8 位' : 'Password must be at least 8 characters.');
       return;
     }
-    if (password !== confirm) {
+    if (newPassword !== confirm.trim()) {
       setError(zh ? '两次输入的密码不一致' : 'Passwords do not match.');
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const { error: updateErr } = await supabase.auth.updateUser({ password });
+      const { error: updateErr } = await supabase.auth.updateUser({ password: newPassword });
       if (updateErr) {
         setError(getAuthErrorMessage(updateErr, zh ? 'zh' : 'en'));
         return;
       }
       setSuccess(true);
       await supabase.auth.signOut();
-      setTimeout(() => {
-        navigate('/?passwordUpdated=1', { replace: true });
-      }, 800);
+      window.setTimeout(() => {
+        navigate('/login?passwordReset=1', { replace: true });
+      }, 1800);
     } catch (err) {
       setError(getAuthErrorMessage(err, zh ? 'zh' : 'en'));
     } finally {
@@ -119,7 +138,7 @@ export function ResetPassword() {
                   : 'This link is invalid or has expired. Request a new reset from the sign-in page.'}
               </p>
               <Link
-                to="/"
+                to="/login"
                 className="inline-block w-full text-center bg-[#1D9E75] text-white py-3 rounded-lg font-semibold hover:bg-[#178a66]"
               >
                 {zh ? '返回登录' : 'Back to sign in'}
@@ -135,7 +154,7 @@ export function ResetPassword() {
           ) : success ? (
             <div className="text-center space-y-3">
               <p className="text-emerald-700 font-medium">
-                {zh ? '密码修改成功，正在跳转登录…' : 'Password updated. Redirecting…'}
+                {zh ? '密码已重置，请重新登录。正在跳转…' : 'Password reset. Redirecting to sign in…'}
               </p>
             </div>
           ) : (
@@ -208,7 +227,7 @@ export function ResetPassword() {
               )}
 
               <p className="text-center text-sm">
-                <Link to="/" className="text-[#1D9E75] font-medium hover:underline">
+                <Link to="/login" className="text-[#1D9E75] font-medium hover:underline">
                   {zh ? '返回登录' : 'Back to sign in'}
                 </Link>
               </p>

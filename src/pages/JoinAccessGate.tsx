@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useProperty } from '../contexts/PropertyContext';
 import { resolveUserPropertyAccess } from '../lib/resolveUserPropertyAccess';
+import { shouldDeferAutoPropertyRedirects } from '../lib/authRecovery';
 
 /**
  * No active `property_members` membership: may redirect using `join_requests` / invite flow,
@@ -13,6 +14,7 @@ import { resolveUserPropertyAccess } from '../lib/resolveUserPropertyAccess';
 export function JoinAccessGate() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const { language } = useLanguage();
   const en = language === 'en';
   const { refreshMemberships, setCurrentPropertyId } = useProperty();
@@ -22,6 +24,9 @@ export function JoinAccessGate() {
   const load = useCallback(async () => {
     if (!user?.id) {
       setLoading(false);
+      return;
+    }
+    if (shouldDeferAutoPropertyRedirects()) {
       return;
     }
     setLoading(true);
@@ -52,7 +57,7 @@ export function JoinAccessGate() {
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, location.hash, location.pathname, location.search]);
 
   if (loading) {
     return (

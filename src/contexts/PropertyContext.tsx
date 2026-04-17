@@ -13,6 +13,7 @@ import { useLocation, useSearchParams } from 'react-router-dom';
 import { supabase, type UserRole } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 import { samePropertyId } from '../lib/propertyIdMatch';
+import { shouldDeferAutoPropertyRedirects } from '../lib/authRecovery';
 import { DEMO_PROPERTY_MOCK_ID } from '../lib/demoPropertyMockData';
 
 /** Primary storage key (existing installs). */
@@ -329,6 +330,24 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    /** Auth-only routes: do not load memberships or sync propertyId (avoids meeting/property 400s during recovery). */
+    if (location.pathname === '/reset-password' || location.pathname === '/login') {
+      setIsDemoMode(false);
+      setGuestPropertyCodeState(null);
+      setMemberships([]);
+      setCurrentPropertyIdState(null);
+      setNeedsPropertyChoice(false);
+      setIsGuest(false);
+      setPropertyHasManagementStaff(null);
+      setReady(true);
+      return;
+    }
+
+    if (shouldDeferAutoPropertyRedirects()) {
+      setReady(false);
+      return;
+    }
+
     if (!session) {
       const demo = readDemoLocalState();
       if (demo) {
@@ -367,7 +386,7 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
     }
     setReady(false);
     void loadMemberships();
-  }, [session, loadMemberships, guestQuery, location.pathname, searchParams]);
+  }, [session, loadMemberships, guestQuery, location.pathname, location.hash, searchParams]);
 
   /** URL 含有效 propertyId 且与 state 不一致时，以 URL 为准（扫码 / 前进后退 / 分享链接）。 */
   useEffect(() => {

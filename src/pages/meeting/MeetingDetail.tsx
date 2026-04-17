@@ -24,6 +24,7 @@ import {
   type MeetingVoteRow,
 } from '../../features/meetings/api';
 import { supabase } from '../../lib/supabase';
+import { shouldDeferAutoPropertyRedirects } from '../../lib/authRecovery';
 import { labelFormat, labelMeetingType, labelStatus, labelVoteRule, labelVoteStatus, meetingUiStrings } from '../../features/meetings/labels';
 
 const initialBundle = (): MeetingDetailBundle => ({
@@ -74,6 +75,12 @@ export function MeetingDetail() {
   const propertyIdForAgenda = currentPropertyId ?? bundle.meeting?.property_id ?? null;
 
   const load = useCallback(async () => {
+    if (shouldDeferAutoPropertyRedirects()) {
+      setBundle(initialBundle());
+      setCoreDone(true);
+      setExtrasLoading(false);
+      return;
+    }
     if (!meetingId || !user) {
       setBundle(initialBundle());
       setCoreDone(true);
@@ -98,7 +105,7 @@ export function MeetingDetail() {
     const ex = await fetchMeetingExtras(meetingId, m.property_id);
     setBundle((prev) => (prev.meeting ? { ...prev, ...ex } : prev));
     setExtrasLoading(false);
-  }, [meetingId, user, currentPropertyId]);
+  }, [meetingId, user, currentPropertyId, location.hash, location.search]);
 
   useEffect(() => {
     void load();
@@ -140,6 +147,7 @@ export function MeetingDetail() {
   const meeting = bundle.meeting;
 
   useEffect(() => {
+    if (shouldDeferAutoPropertyRedirects()) return;
     const mid = meeting?.id;
     if (!mid || !user?.id || !currentPropertyId) return;
     const key = `${mid}:${currentPropertyId}`;
@@ -149,7 +157,7 @@ export function MeetingDetail() {
       const { error } = await markMeetingInvitationOpened(mid, currentPropertyId);
       if (!error) await load();
     })();
-  }, [meeting?.id, user?.id, currentPropertyId, load]);
+  }, [meeting?.id, user?.id, currentPropertyId, load, location.hash, location.search]);
 
   const voteByAgendaId = useMemo(() => {
     const m = new Map<string, MeetingVoteRow & { options: MeetingVoteOptionRow[] }>();

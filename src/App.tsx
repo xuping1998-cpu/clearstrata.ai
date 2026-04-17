@@ -58,6 +58,7 @@ import { AdminInviteCodes } from './pages/admin/AdminInviteCodes';
 import AdminJoinRequests from './pages/admin/AdminJoinRequests';
 import { JoinAccessGate } from './pages/JoinAccessGate';
 import { PostLoginPropertyRedirect } from './components/PostLoginPropertyRedirect';
+import { PasswordRecoveryUrlNormaliser } from './components/PasswordRecoveryUrlNormaliser';
 import { DemoDashboardRoute } from './components/DemoDashboardRoute';
 import { DemoLandingPage } from './pages/DemoLandingPage';
 import { QrPropertyEntryPage } from './pages/entry/QrPropertyEntryPage';
@@ -296,6 +297,7 @@ function SelectPropertyRoute() {
 function AppContent() {
   return (
     <>
+      <PasswordRecoveryUrlNormaliser />
       <PostLoginPropertyRedirect />
       <Routes>
       <Route path="/entry" element={<QrPropertyEntryPage />} />
@@ -358,6 +360,7 @@ function AppContent() {
       />
       <Route path="/p/:code" element={<PropertyEntry />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/login" element={<Auth />} />
       <Route path="/pricing" element={<PricingRoute />} />
       <Route path="/contact" element={<ContactRoute />} />
       <Route path="/join/pending" element={<JoinPendingPage />} />

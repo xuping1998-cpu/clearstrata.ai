@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useProperty } from '../contexts/PropertyContext';
 import { resolveUserPropertyAccess } from '../lib/resolveUserPropertyAccess';
 import { samePropertyId } from '../lib/propertyIdMatch';
+import { shouldDeferAutoPropertyRedirects } from '../lib/authRecovery';
 
 /**
  * 登录且 Property 就绪后，根据 resolveUserPropertyAccess 自动分流（无感进物业 / 选物业 / pending / rejected）。
@@ -18,9 +19,13 @@ export function PostLoginPropertyRedirect() {
   currentPropertyIdRef.current = currentPropertyId;
 
   useEffect(() => {
-    if (!session || !user?.id || !ready) return;
-
     const path = location.pathname;
+    /** Password recovery establishes a temporary session; do not hijack to select-property / join. */
+    if (path === '/reset-password' || path === '/login') return;
+    /** Hash/query still carry Supabase tokens — wait until client finishes (may be wrong pathname). */
+    if (shouldDeferAutoPropertyRedirects()) return;
+
+    if (!session || !user?.id || !ready) return;
 
     const isJoinApplicationPath =
       path === '/join' ||
@@ -36,10 +41,6 @@ export function PostLoginPropertyRedirect() {
 
       const pathNow =
         typeof window !== 'undefined' ? window.location.pathname : location.pathname;
-  console.log('current user id:', user?.id)
-console.log('current user email:', user?.email)
-    console.log('resolveUserPropertyAccess result:', result);
-      console.log('auto property redirect pathname:', pathNow);
 
       /** 填表页：仅在为 pending/rejected 时跳转，避免打断正常申请 */
       if (isJoinApplicationPath && result.type !== 'pending' && result.type !== 'rejected') {
@@ -77,7 +78,7 @@ console.log('current user email:', user?.email)
     return () => {
       cancelled = true;
     };
-  }, [session, user?.id, ready, location.pathname, navigate, setCurrentPropertyId]);
+  }, [session, user?.id, ready, location.pathname, location.hash, location.search, navigate, setCurrentPropertyId]);
 
   return null;
 }

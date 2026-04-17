@@ -43,6 +43,10 @@ const translations: Record<string, Record<Language, string>> = {
     en: 'Your password has been updated. Please sign in with your new password.',
     zh: '密码已更新，请使用新密码登录',
   },
+  auth_password_reset_login_banner: {
+    en: 'Your password has been reset. Please sign in again.',
+    zh: '密码已重置，请重新登录。',
+  },
   auth_slogan: {
     en: 'Strata management, simplified',
     zh: '物业管理，更透明',

@@ -174,6 +174,7 @@ export function Auth() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const passwordUpdated = searchParams.get('passwordUpdated') === '1';
+  const passwordResetDone = searchParams.get('passwordReset') === '1';
 
   useEffect(() => {
     if (searchParams.get('mode') === 'signup') {
@@ -291,8 +292,9 @@ export function Auth() {
     setError('');
     setResetSuccess('');
     try {
+      const redirectTo = `${window.location.origin}/reset-password`;
       const { error: resetErr } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
-        redirectTo: `${window.location.origin}/reset-password`,
+        redirectTo,
       });
       if (resetErr) throw resetErr;
       setResetSuccess(t('auth_reset_email_sent'));
@@ -549,6 +551,23 @@ export function Auth() {
                   onClick={() => {
                     const next = new URLSearchParams(searchParams);
                     next.delete('passwordUpdated');
+                    setSearchParams(next, { replace: true });
+                  }}
+                  className="shrink-0 text-emerald-700 hover:text-emerald-900 text-lg leading-none"
+                  aria-label="Dismiss"
+                >
+                  ×
+                </button>
+              </div>
+            )}
+            {passwordResetDone && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-900 text-sm flex justify-between gap-2 items-start">
+                <span>{t('auth_password_reset_login_banner')}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = new URLSearchParams(searchParams);
+                    next.delete('passwordReset');
                     setSearchParams(next, { replace: true });
                   }}
                   className="shrink-0 text-emerald-700 hover:text-emerald-900 text-lg leading-none"
