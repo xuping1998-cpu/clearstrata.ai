@@ -180,36 +180,42 @@ export function PropertySetupChecklist() {
   if (!state.shouldShow) return null;
 
   return (
-    <div className="mb-5 rounded-3xl border border-emerald-200 bg-gradient-to-br from-white to-emerald-50/60 p-5 shadow-sm">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+    <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 shadow-sm">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <p className="inline-flex items-center gap-2 text-base font-extrabold text-gray-900">
-            <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-            你的物业已创建成功
-          </p>
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 text-emerald-700" />
+            <p className="text-sm font-semibold text-gray-900">你的物业已创建成功</p>
+          </div>
           <p className="mt-1 text-sm text-gray-700">再完成以下 3 步，即可开始正式使用</p>
         </div>
-      </div>
 
-      <div className="mt-4 grid grid-cols-1 gap-3">
-        <TaskRow
-          title="1. 导入房号"
-          description="先导入/维护房号白名单，后续成员加入会更顺畅。"
-          buttonLabel="去导入"
-          onGo={() => navigate('/property-admin/unit-whitelist')}
-        />
-        <TaskRow
-          title="2. 邀请成员"
-          description="生成邀请码或邀请链接，邀请业主/委员/经理加入。"
-          buttonLabel="去邀请"
-          onGo={() => navigate('/property-admin/invites')}
-        />
-        <TaskRow
-          title="3. 上传第一张发票"
-          description="上传发票后，财务报表与风险分析会开始工作。"
-          buttonLabel="去上传"
-          onGo={() => navigate('/invoices/upload')}
-        />
+        <div className="flex shrink-0 flex-wrap gap-2 sm:flex-nowrap">
+          <button
+            type="button"
+            onClick={() => navigate('/property-admin/unit-whitelist')}
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold text-emerald-900 hover:bg-emerald-50"
+          >
+            导入房号
+            <ArrowRight className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/property-admin/invites')}
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold text-emerald-900 hover:bg-emerald-50"
+          >
+            邀请成员
+            <ArrowRight className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/invoices/upload')}
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold text-emerald-900 hover:bg-emerald-50"
+          >
+            上传第一张发票
+            <ArrowRight className="h-4 w-4" />
+          </button>
+        </div>
       </div>
     </div>
   );
