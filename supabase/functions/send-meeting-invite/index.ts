@@ -199,19 +199,17 @@ function buildEmailHtml(p: InviteEmailHtmlParams): string {
       <td align="center">
         <table role="presentation" width="100%" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06),0 4px 12px rgba(0,0,0,0.04);">
           <tr>
-            <td style="background:linear-gradient(135deg,#1D9E75 0%,#178a66 100%);padding:24px 32px;">
-              <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
-                <tr>
-                  <td align="center" style="padding:0 0 16px;">
-                    <img src="https://clearstrata.ai/logo-clearstrata-v1.png" alt="ClearStrata" height="36" style="display:block;border:0;outline:none;text-decoration:none;height:36px;width:auto;max-width:220px;" />
-                  </td>
-                </tr>
-                <tr>
-                  <td align="center" style="padding:0;">
-                    <p style="margin:0;color:#ffffff;font-size:19px;font-weight:700;line-height:1.35;letter-spacing:0.01em;">会议邀请 / Meeting Invitation</p>
-                  </td>
-                </tr>
-              </table>
+            <td style="background:#16a34a;padding:16px 20px;text-align:center;">
+              <div style="margin-bottom:12px;">
+                <img
+                  src="https://clearstrata.ai/clearstrata-hero-logo.png"
+                  alt="ClearStrata"
+                  style="height:48px;object-fit:contain;display:block;margin:0 auto;"
+                />
+              </div>
+              <div style="font-size:22px;font-weight:600;color:#ffffff;line-height:1.4;">
+                会议邀请 / Meeting Invitation
+              </div>
             </td>
           </tr>
           <tr>
@@ -291,19 +289,17 @@ function buildEmailHtml(p: InviteEmailHtmlParams): string {
       <td align="center">
         <table role="presentation" width="100%" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06),0 4px 12px rgba(0,0,0,0.04);">
           <tr>
-            <td style="background:linear-gradient(135deg,#1D9E75 0%,#178a66 100%);padding:24px 32px;">
-              <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
-                <tr>
-                  <td align="center" style="padding:0 0 16px;">
-                    <img src="https://clearstrata.ai/logo-clearstrata-v1.png" alt="ClearStrata" height="36" style="display:block;border:0;outline:none;text-decoration:none;height:36px;width:auto;max-width:220px;" />
-                  </td>
-                </tr>
-                <tr>
-                  <td align="center" style="padding:0;">
-                    <p style="margin:0;color:#ffffff;font-size:19px;font-weight:700;line-height:1.35;letter-spacing:0.01em;">会议邀请 / Meeting Invitation</p>
-                  </td>
-                </tr>
-              </table>
+            <td style="background:#16a34a;padding:16px 20px;text-align:center;">
+              <div style="margin-bottom:12px;">
+                <img
+                  src="https://clearstrata.ai/clearstrata-hero-logo.png"
+                  alt="ClearStrata"
+                  style="height:48px;object-fit:contain;display:block;margin:0 auto;"
+                />
+              </div>
+              <div style="font-size:22px;font-weight:600;color:#ffffff;line-height:1.4;">
+                会议邀请 / Meeting Invitation
+              </div>
             </td>
           </tr>
           <tr>
