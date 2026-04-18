@@ -99,6 +99,24 @@ Deno.serve(async (req: Request) => {
 
     const row = claimed as { id: string; user_id: string; meeting_id: string };
 
+    const { data: meetingRow, error: meetingErr } = await admin
+      .from("meetings")
+      .select("property_id")
+      .eq("id", row.meeting_id)
+      .maybeSingle();
+
+    if (meetingErr || !meetingRow) {
+      await admin.from("invite_tokens").update({ used_at: null }).eq("id", row.id);
+      console.error("[consume-invite-token] meeting lookup", meetingErr);
+      return json({ ok: false, message: "Meeting not found" }, 404);
+    }
+
+    const propertyId = meetingRow.property_id as string | null;
+    if (!propertyId) {
+      await admin.from("invite_tokens").update({ used_at: null }).eq("id", row.id);
+      return json({ ok: false, message: "Meeting has no property context" }, 500);
+    }
+
     const { data: userData, error: userErr } = await admin.auth.admin.getUserById(
       row.user_id,
     );
@@ -159,6 +177,7 @@ Deno.serve(async (req: Request) => {
       access_token: session.access_token,
       refresh_token: session.refresh_token,
       meetingId: row.meeting_id,
+      propertyId,
     }, 200);
   } catch (e) {
     console.error("[consume-invite-token] unhandled", e);

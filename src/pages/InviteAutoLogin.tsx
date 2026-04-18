@@ -3,12 +3,14 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Building2, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useProperty } from '@/contexts/PropertyContext';
 
 type ConsumeOk = {
   ok: true;
   access_token: string;
   refresh_token: string;
   meetingId: string;
+  propertyId: string;
 };
 
 type ConsumeResponse = {
@@ -17,6 +19,7 @@ type ConsumeResponse = {
   access_token?: string;
   refresh_token?: string;
   meetingId?: string;
+  propertyId?: string;
 };
 
 /** Dedupes React Strict Mode double-mount so the token is only consumed once per page load. */
@@ -36,7 +39,14 @@ function consumeInviteOnce(token: string): Promise<ConsumeOk> {
     }
 
     const d = data;
-    if (!d || d.ok !== true || !d.access_token || !d.refresh_token || !d.meetingId) {
+    if (
+      !d ||
+      d.ok !== true ||
+      !d.access_token ||
+      !d.refresh_token ||
+      !d.meetingId ||
+      !d.propertyId
+    ) {
       throw new Error(typeof d?.message === 'string' ? d.message : 'Invalid or expired invite link');
     }
 
@@ -45,6 +55,7 @@ function consumeInviteOnce(token: string): Promise<ConsumeOk> {
       access_token: d.access_token,
       refresh_token: d.refresh_token,
       meetingId: d.meetingId,
+      propertyId: d.propertyId,
     };
   })();
 
@@ -60,6 +71,7 @@ export function InviteAutoLogin() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { language, toggleLanguage } = useLanguage();
+  const { setCurrentPropertyId } = useProperty();
   const zh = language === 'zh';
 
   const token = (searchParams.get('token') || '').trim();
@@ -88,6 +100,8 @@ export function InviteAutoLogin() {
           setError(sessionErr.message || (zh ? '无法建立登录会话。' : 'Could not establish session.'));
           return;
         }
+
+        setCurrentPropertyId(payload.propertyId);
 
         if (didNavigate.current) return;
         didNavigate.current = true;
