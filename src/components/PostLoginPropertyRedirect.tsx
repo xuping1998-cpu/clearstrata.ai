@@ -42,6 +42,9 @@ export function PostLoginPropertyRedirect() {
       const pathNow =
         typeof window !== 'undefined' ? window.location.pathname : location.pathname;
 
+      if (pathNow === '/reset-password' || pathNow === '/login') return;
+      if (shouldDeferAutoPropertyRedirects()) return;
+
       /** 填表页：仅在为 pending/rejected 时跳转，避免打断正常申请 */
       if (isJoinApplicationPath && result.type !== 'pending' && result.type !== 'rejected') {
         return;

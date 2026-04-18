@@ -4,7 +4,7 @@ import { Building2, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { getAuthErrorMessage } from '../lib/authErrorMessages';
 import { useLanguage } from '../contexts/LanguageContext';
-import { urlIndicatesPasswordRecoveryIntent } from '../lib/authRecovery';
+import { urlSupportsPasswordRecoveryGetSessionFallback } from '../lib/authRecovery';
 
 export function ResetPassword() {
   const navigate = useNavigate();
@@ -22,7 +22,7 @@ export function ResetPassword() {
 
   const sessionReadyRef = useRef(false);
   const recoveryUrlInitially = useRef(
-    typeof window !== 'undefined' && urlIndicatesPasswordRecoveryIntent(),
+    typeof window !== 'undefined' && urlSupportsPasswordRecoveryGetSessionFallback(),
   );
 
   useEffect(() => {

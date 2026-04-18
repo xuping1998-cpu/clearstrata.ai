@@ -215,11 +215,14 @@ function resolveFromHeader(): string | { error: string; code: string } {
   return "ClearStrata <onboarding@resend.dev>";
 }
 
-function jsonResponse(
-  body: Record<string, unknown>,
+/** Unified JSON body for clients: always includes ok, message, detail. */
+function apiResponse(
+  ok: boolean,
+  message: string,
+  detail: unknown,
   status: number,
 ): Response {
-  return new Response(JSON.stringify(body), {
+  return new Response(JSON.stringify({ ok, message, detail }), {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
@@ -258,104 +261,98 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const resendApiKey = Deno.env.get("RESEND_API_KEY")?.trim();
-    if (!resendApiKey) {
-      return jsonResponse(
-        {
-          error:
-            "Email is not configured: RESEND_API_KEY is missing. Add it under Project Settings → Edge Functions → Secrets, then redeploy send-meeting-invite.",
-          code: "MISSING_RESEND_API_KEY",
-        },
-        503,
-      );
+    const missingEnv: string[] = [];
+    if (!Deno.env.get("RESEND_API_KEY")?.trim()) missingEnv.push("RESEND_API_KEY");
+    if (!Deno.env.get("SUPABASE_URL")?.trim()) missingEnv.push("SUPABASE_URL");
+    if (!Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim()) {
+      missingEnv.push("SUPABASE_SERVICE_ROLE_KEY");
+    }
+    if (missingEnv.length > 0) {
+      const name = missingEnv[0];
+      console.error("[send-meeting-invite] missing env:", missingEnv);
+      return apiResponse(false, `missing env var: ${name}`, { missing: missingEnv }, 503);
     }
 
-    const fromResolved = resolveFromHeader();
-    if (typeof fromResolved !== "string") {
-      return jsonResponse(
-        { error: fromResolved.error, code: fromResolved.code },
-        503,
-      );
-    }
-
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const resendApiKey = Deno.env.get("RESEND_API_KEY")!.trim();
 
     let body: InviteRequest;
     try {
       body = await req.json();
     } catch {
-      return new Response(
-        JSON.stringify({ error: "Invalid JSON body" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      return apiResponse(false, "Invalid JSON body", null, 400);
     }
 
     const { meeting_id, user_id, property_id: propertyIdRaw, locale: localeRaw } = body;
     const locale: "en" | "zh" = localeRaw === "en" ? "en" : "zh";
     const property_id = typeof propertyIdRaw === "string" ? propertyIdRaw.trim() : "";
 
+    console.log("[send-meeting-invite] params", {
+      meeting_id,
+      property_id,
+      user_id,
+      locale,
+    });
+
     if (!meeting_id || !user_id) {
-      return new Response(
-        JSON.stringify({ error: "meeting_id and user_id are required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      return apiResponse(false, "meeting_id and user_id are required", null, 400);
     }
     if (!property_id) {
-      return new Response(
-        JSON.stringify({ error: "property_id is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      return apiResponse(false, "property_id is required", null, 400);
     }
 
-    const [{ data: meeting, error: meetingErr }, { data: profile, error: profileErr }] = await Promise.all([
-      supabase.from("meetings").select("*").eq("id", meeting_id).eq("property_id", property_id).maybeSingle(),
-      supabase.from("profiles").select("full_name_en, full_name_zh, email").eq("id", user_id).maybeSingle(),
-    ]);
+    const fromResolved = resolveFromHeader();
+    if (typeof fromResolved !== "string") {
+      return apiResponse(false, fromResolved.error, { code: fromResolved.code }, 503);
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    const [{ data: meeting, error: meetingErr }, { data: profile, error: profileErr }] =
+      await Promise.all([
+        supabase.from("meetings").select("*").eq("id", meeting_id).eq("property_id", property_id)
+          .maybeSingle(),
+        supabase.from("profiles").select("full_name_en, full_name_zh, email").eq("id", user_id)
+          .maybeSingle(),
+      ]);
 
     if (meetingErr || !meeting) {
-      return new Response(
-        JSON.stringify({ error: "Meeting not found" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      return apiResponse(false, "Meeting not found", { meetingErr }, 404);
     }
 
-    const [{ count: invitationCount, error: invErr }, { count: memberCount, error: memErr }] = await Promise.all([
-      supabase
-        .from("meeting_invitations")
-        .select("id", { count: "exact", head: true })
-        .eq("meeting_id", meeting_id)
-        .eq("property_id", property_id)
-        .eq("recipient_user_id", user_id),
-      supabase
-        .from("property_members")
-        .select("user_id", { count: "exact", head: true })
-        .eq("property_id", property_id)
-        .eq("user_id", user_id)
-        .eq("status", "active"),
-    ]);
+    const [{ count: invitationCount, error: invErr }, { count: memberCount, error: memErr }] =
+      await Promise.all([
+        supabase
+          .from("meeting_invitations")
+          .select("id", { count: "exact", head: true })
+          .eq("meeting_id", meeting_id)
+          .eq("property_id", property_id)
+          .eq("recipient_user_id", user_id),
+        supabase
+          .from("property_members")
+          .select("user_id", { count: "exact", head: true })
+          .eq("property_id", property_id)
+          .eq("user_id", user_id)
+          .eq("status", "active"),
+      ]);
 
     if (invErr || memErr) {
-      return jsonResponse(
-        { error: "Authorization check failed", code: "AUTH_CHECK_ERROR" },
-        500,
-      );
+      return apiResponse(false, "Authorization check failed", { invErr, memErr }, 500);
     }
     const okInvite = (invitationCount ?? 0) > 0;
     const okMember = (memberCount ?? 0) > 0;
     if (!okInvite && !okMember) {
-      return jsonResponse(
-        { error: "Recipient is not invited to this meeting and is not an active member of this property.", code: "FORBIDDEN" },
+      return apiResponse(
+        false,
+        "Recipient is not invited to this meeting and is not an active member of this property.",
+        { code: "FORBIDDEN" },
         403,
       );
     }
 
     if (profileErr || !profile || !profile.email) {
-      return new Response(
-        JSON.stringify({ error: "User profile or email not found" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      return apiResponse(false, "User profile or email not found", { profileErr }, 404);
     }
 
     const recipientName = locale === "en"
@@ -374,6 +371,8 @@ Deno.serve(async (req: Request) => {
       ? `Meeting invitation: ${titleForSubject}`
       : `会议邀请：${titleForSubject}`;
 
+    console.log("[send-meeting-invite] calling Resend", { to: profile.email });
+
     let resendRes: Response;
     let resendData: Record<string, unknown>;
     try {
@@ -391,7 +390,7 @@ Deno.serve(async (req: Request) => {
         }),
       });
     } catch (networkErr) {
-      console.error("send-meeting-invite: Resend fetch failed", networkErr);
+      console.error("[send-meeting-invite] Resend fetch failed", networkErr);
       await upsertInvitationDelivery(supabase, {
         meeting_id,
         property_id,
@@ -399,11 +398,10 @@ Deno.serve(async (req: Request) => {
         email: profile.email as string,
         delivery_status: "failed",
       });
-      return jsonResponse(
-        {
-          error: `Could not reach Resend API: ${String(networkErr)}`,
-          code: "RESEND_NETWORK_ERROR",
-        },
+      return apiResponse(
+        false,
+        `Could not reach Resend API: ${String(networkErr)}`,
+        { code: "RESEND_NETWORK_ERROR" },
         502,
       );
     }
@@ -411,7 +409,7 @@ Deno.serve(async (req: Request) => {
     try {
       resendData = (await resendRes.json()) as Record<string, unknown>;
     } catch (parseErr) {
-      console.error("send-meeting-invite: invalid Resend JSON", parseErr);
+      console.error("[send-meeting-invite] invalid Resend JSON", parseErr);
       await upsertInvitationDelivery(supabase, {
         meeting_id,
         property_id,
@@ -419,14 +417,15 @@ Deno.serve(async (req: Request) => {
         email: profile.email as string,
         delivery_status: "failed",
       });
-      return jsonResponse(
-        {
-          error: `Resend returned non-JSON response (HTTP ${resendRes.status})`,
-          code: "RESEND_INVALID_RESPONSE",
-        },
+      return apiResponse(
+        false,
+        `Resend returned non-JSON response (HTTP ${resendRes.status})`,
+        { code: "RESEND_INVALID_RESPONSE" },
         502,
       );
     }
+
+    console.log("[send-meeting-invite] Resend HTTP status", resendRes.status, "ok", resendRes.ok);
 
     if (!resendRes.ok) {
       const resendName =
@@ -440,12 +439,11 @@ Deno.serve(async (req: Request) => {
         typeof resendData.message === "string"
           ? resendData.message.toLowerCase()
           : "";
-      /** Resend test mode: validation_error + typical “only testing emails” copy (HTTP may be 403 or 422). */
       const isTestingRecipientRestriction =
         resendName === "validation_error" &&
         /testing email|only send|verify a domain|can only send/i.test(msgLower);
 
-      console.error("send-meeting-invite: Resend error", resendRes.status, resendData);
+      console.error("[send-meeting-invite] Resend error body", resendRes.status, resendData);
 
       if (isTestingRecipientRestriction) {
         await upsertInvitationDelivery(supabase, {
@@ -455,17 +453,16 @@ Deno.serve(async (req: Request) => {
           email: profile.email as string,
           delivery_status: "failed",
         });
-        return jsonResponse(
+        return apiResponse(
+          false,
+          "Resend is in test mode: only allowed recipients can receive mail until production access is enabled.",
           {
-            error:
-              "Resend is in test mode: only allowed recipients can receive mail until production access is enabled.",
             code: "RESEND_TESTING_RESTRICTION",
-            message_zh:
-              "当前邮箱发送受限，请先完成邮件服务正式发送权限开通",
+            message_zh: "当前邮箱发送受限，请先完成邮件服务正式发送权限开通",
             message_en:
               "Email sending is restricted. Verify your domain in Resend and enable production sending, or use an allowed test recipient until then.",
             status: resendRes.status,
-            details: resendData,
+            resend: resendData,
           },
           502,
         );
@@ -478,13 +475,10 @@ Deno.serve(async (req: Request) => {
         email: profile.email as string,
         delivery_status: "failed",
       });
-      return jsonResponse(
-        {
-          error: `Resend rejected the request: ${resendMessage}`,
-          code: "RESEND_API_ERROR",
-          status: resendRes.status,
-          details: resendData,
-        },
+      return apiResponse(
+        false,
+        `Resend rejected the request: ${resendMessage}`,
+        { code: "RESEND_API_ERROR", status: resendRes.status, resend: resendData },
         502,
       );
     }
@@ -496,15 +490,14 @@ Deno.serve(async (req: Request) => {
       email: profile.email as string,
       delivery_status: "sent",
     });
-    return jsonResponse({ success: true, email_id: resendData.id }, 200);
+    console.log("[send-meeting-invite] success", { email_id: resendData.id });
+    return apiResponse(true, "Email sent", { email_id: resendData.id }, 200);
   } catch (err) {
-    console.error("send-meeting-invite: unhandled", err);
-    return jsonResponse(
-      {
-        error: "Unexpected error while sending invitation",
-        code: "INTERNAL_ERROR",
-        message: String(err),
-      },
+    console.error("[send-meeting-invite] unhandled", err);
+    return apiResponse(
+      false,
+      "Unexpected error while sending invitation",
+      { code: "INTERNAL_ERROR", error: String(err) },
       500,
     );
   }

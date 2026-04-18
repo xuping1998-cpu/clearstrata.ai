@@ -1,5 +1,70 @@
+import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
 import { withProperty } from '../../lib/supabaseTenant';
+
+export type SendMeetingInvitesResult = {
+  attempted: number;
+  sent: number;
+  failed: number;
+  errors: { userId: string; message: string }[];
+  error: Error | null;
+};
+
+async function invokeSendMeetingInviteEdge(params: {
+  meetingId: string;
+  propertyId: string;
+  userId: string;
+  locale: 'en' | 'zh';
+  accessToken: string;
+}): Promise<{ ok: boolean; message: string; detail?: unknown }> {
+  console.log('🚨 Edge invoke: supabase.functions.invoke send-meeting-invite', {
+    meetingId: params.meetingId,
+    propertyId: params.propertyId,
+    userId: params.userId,
+  });
+  const { data, error } = await supabase.functions.invoke('send-meeting-invite', {
+    body: {
+      meeting_id: params.meetingId,
+      user_id: params.userId,
+      property_id: params.propertyId,
+      locale: params.locale,
+    },
+    headers: { Authorization: `Bearer ${params.accessToken}` },
+  });
+
+  if (error) {
+    let body: Record<string, unknown> = {};
+    if (error instanceof FunctionsHttpError) {
+      try {
+        body = (await error.context.clone().json()) as Record<string, unknown>;
+      } catch (e) {
+        console.error('🚨 failed to parse FunctionsHttpError body', e);
+      }
+    }
+    const msg =
+      (typeof body.message === 'string' && body.message) ||
+      (typeof body.error === 'string' && body.error) ||
+      error.message ||
+      'send-meeting-invite failed';
+    return { ok: false, message: msg, detail: body.detail ?? body };
+  }
+
+  const d = data as Record<string, unknown> | null;
+  if (d && d.ok === false) {
+    return {
+      ok: false,
+      message: String(d.message ?? d.error ?? 'error'),
+      detail: d.detail,
+    };
+  }
+  if (d && typeof d.error === 'string' && d.ok !== true && d.success !== true) {
+    return { ok: false, message: d.error, detail: d };
+  }
+  if (d && (d.ok === true || d.success === true)) {
+    return { ok: true, message: String(d.message ?? 'sent'), detail: d.detail ?? d };
+  }
+  return { ok: false, message: 'Unexpected response from send-meeting-invite', detail: data };
+}
 
 export type MeetingType = 'agm' | 'sgm' | 'council';
 export type MeetingFormat = 'in_person' | 'electronic' | 'hybrid';
@@ -629,31 +694,68 @@ export async function castBallot(voteId: string, selectedOptionKey: string, prop
   return { id: data?.id, error };
 }
 
-export async function sendMeetingInvitations(meetingId: string, propertyId: string) {
+/**
+ * Bulk invite: writes `meeting_invitations` as pending, then invokes `send-meeting-invite`
+ * per member. Only marks `sent` after Resend succeeds; otherwise `failed`.
+ */
+export async function sendMeetingInvitations(
+  meetingId: string,
+  propertyId: string,
+  locale: 'en' | 'zh' = 'zh',
+): Promise<SendMeetingInvitesResult> {
+  console.log('🚨 BUILD VERSION', import.meta.env.VITE_BUILD_TIME || 'dev');
+  console.log('🚨 sendMeetingInvitations CALLED', { meetingId, propertyId, locale });
+
+  const empty = (error: Error | null): SendMeetingInvitesResult => ({
+    attempted: 0,
+    sent: 0,
+    failed: 0,
+    errors: [],
+    error,
+  });
+
   try {
     if (!meetingId || !propertyId) {
-      return {
-        count: 0,
-        error: new Error('meetingId and propertyId are required'),
-      };
+      console.warn('🚨 early return reason:', 'missing meetingId or propertyId', { meetingId, propertyId });
+      return empty(new Error('meetingId and propertyId are required'));
     }
 
-    // Load property members
+    const {
+      data: { session },
+      error: sessionErr,
+    } = await supabase.auth.getSession();
+    if (sessionErr || !session?.access_token) {
+      console.warn('🚨 early return reason:', 'no session or access_token', {
+        sessionErr: sessionErr?.message,
+        hasToken: Boolean(session?.access_token),
+      });
+      return empty(new Error(sessionErr?.message ?? 'Not signed in — cannot invoke send-meeting-invite'));
+    }
+    const accessToken = session.access_token;
+
     const { data: members, error: membersError } = await withProperty(
       supabase.from('property_members').select('user_id') as any,
       propertyId,
     );
 
     if (membersError) {
-      return { count: 0, error: membersError };
+      console.warn('🚨 early return reason:', 'property_members query failed', membersError);
+      return empty(
+        new Error(
+          (membersError as { message?: string }).message ?? 'Failed to load property members',
+        ),
+      );
     }
 
     const userIds = Array.from(
       new Set((members ?? []).map((m: { user_id: string }) => m.user_id).filter(Boolean)),
     );
 
+    console.log('[sendMeetingInvitations] recipients count', userIds.length);
+
     if (userIds.length === 0) {
-      return { count: 0, error: null };
+      console.warn('🚨 early return reason:', 'recipientsList empty (no property members)');
+      return empty(null);
     }
 
     const { data: profRows, error: profErr } = await supabase
@@ -662,7 +764,8 @@ export async function sendMeetingInvitations(meetingId: string, propertyId: stri
       .in('id', userIds);
 
     if (profErr) {
-      return { count: 0, error: profErr };
+      console.warn('🚨 early return reason:', 'profiles query failed', profErr);
+      return empty(new Error((profErr as { message?: string }).message ?? 'Failed to load profiles'));
     }
 
     const emailByUser: Record<string, string | null> = {};
@@ -670,38 +773,105 @@ export async function sendMeetingInvitations(meetingId: string, propertyId: stri
       emailByUser[p.id] = p.email ?? null;
     }
 
-    const now = new Date().toISOString();
-
-    const rows = userIds.map((userId) => ({
+    const pendingRows = userIds.map((userId) => ({
       meeting_id: meetingId,
       property_id: propertyId,
       recipient_user_id: userId,
       email: emailByUser[userId] ?? null,
-      delivery_channel: 'in_app',
-      delivery_status: 'sent',
-      sent_at: now,
+      delivery_channel: 'email',
+      delivery_status: 'pending',
+      sent_at: null as string | null,
     }));
 
-    const { data, error } = await withProperty(
-      supabase.from('meeting_invitations').upsert(rows, {
+    const { error: pendingErr } = await withProperty(
+      supabase.from('meeting_invitations').upsert(pendingRows, {
         onConflict: 'meeting_id,recipient_user_id',
       }) as any,
       propertyId,
-    ).select();
+    );
 
-    if (error) {
-      return { count: 0, error };
+    if (pendingErr) {
+      console.warn('🚨 early return reason:', 'meeting_invitations upsert failed', pendingErr);
+      return empty(
+        new Error((pendingErr as { message?: string }).message ?? 'Failed to save pending invitations'),
+      );
+    }
+
+    const recipientsList = userIds.map((id) => ({
+      userId: id,
+      email: emailByUser[id] ?? null,
+    }));
+    console.log('🚨 about to invoke send-meeting-invite', { meetingId, propertyId, recipientsList });
+
+    const errors: { userId: string; message: string }[] = [];
+    let sent = 0;
+    let failed = 0;
+
+    for (const userId of userIds) {
+      const inviteEmail = emailByUser[userId] ?? null;
+      console.log('🚨 invoking for', inviteEmail, { userId });
+      console.log('invoking send-meeting-invite', userId);
+      console.log('[sendMeetingInvitations] invoking send-meeting-invite', { userId, meetingId, propertyId });
+      const r = await invokeSendMeetingInviteEdge({
+        meetingId,
+        propertyId,
+        userId,
+        locale,
+        accessToken,
+      });
+
+      if (r.ok) {
+        console.log('send-meeting-invite success', userId);
+        console.log('[sendMeetingInvitations] send-meeting-invite success', userId);
+        sent += 1;
+        const now = new Date().toISOString();
+        const { error: upErr } = await withProperty(
+          supabase
+            .from('meeting_invitations')
+            .update({
+              delivery_status: 'sent',
+              sent_at: now,
+              email: emailByUser[userId] ?? null,
+              delivery_channel: 'email',
+              property_id: propertyId,
+            } as any)
+            .eq('meeting_id', meetingId)
+            .eq('recipient_user_id', userId) as any,
+          propertyId,
+        );
+        if (upErr) {
+          console.error('[sendMeetingInvitations] failed to mark sent in DB', upErr);
+        }
+      } else {
+        console.error('send-meeting-invite error', userId, r.message);
+        console.error('[sendMeetingInvitations] send-meeting-invite error', userId, r.message, r.detail);
+        failed += 1;
+        errors.push({ userId, message: r.message });
+        await withProperty(
+          supabase
+            .from('meeting_invitations')
+            .update({
+              delivery_status: 'failed',
+              sent_at: null,
+              property_id: propertyId,
+            } as any)
+            .eq('meeting_id', meetingId)
+            .eq('recipient_user_id', userId) as any,
+          propertyId,
+        );
+      }
     }
 
     return {
-      count: data?.length ?? rows.length,
-      error: null,
+      attempted: userIds.length,
+      sent,
+      failed,
+      errors,
+      error: failed === userIds.length && userIds.length > 0 ? new Error(errors[0]?.message ?? 'All sends failed') : null,
     };
   } catch (error) {
-    return {
-      count: 0,
-      error: error instanceof Error ? error : new Error('Unknown error'),
-    };
+    console.error('🚨 invoke failed', error);
+    return empty(error instanceof Error ? error : new Error('Unknown error'));
   }
 }
 

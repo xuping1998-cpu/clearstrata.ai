@@ -58,7 +58,7 @@ import { AdminInviteCodes } from './pages/admin/AdminInviteCodes';
 import AdminJoinRequests from './pages/admin/AdminJoinRequests';
 import { JoinAccessGate } from './pages/JoinAccessGate';
 import { PostLoginPropertyRedirect } from './components/PostLoginPropertyRedirect';
-import { PasswordRecoveryUrlNormaliser } from './components/PasswordRecoveryUrlNormaliser';
+import PasswordRecoveryUrlNormaliser from './components/PasswordRecoveryUrlNormaliser';
 import { DemoDashboardRoute } from './components/DemoDashboardRoute';
 import { DemoLandingPage } from './pages/DemoLandingPage';
 import { QrPropertyEntryPage } from './pages/entry/QrPropertyEntryPage';
@@ -297,6 +297,7 @@ function SelectPropertyRoute() {
 function AppContent() {
   return (
     <>
+      {/* Password recovery: normalize URL before any post-login / property logic */}
       <PasswordRecoveryUrlNormaliser />
       <PostLoginPropertyRedirect />
       <Routes>

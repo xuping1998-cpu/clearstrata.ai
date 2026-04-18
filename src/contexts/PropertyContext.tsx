@@ -323,7 +323,7 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
       setPropertyHasManagementStaff(true);
       setReady(true);
     }
-  }, [location.pathname, searchParams]);
+  }, [location.pathname, location.hash, searchParams]);
 
   useEffect(() => {
     if (location.pathname.startsWith('/demo-property') || searchParams.get('mode') === 'demo') {
@@ -390,6 +390,8 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
 
   /** URL 含有效 propertyId 且与 state 不一致时，以 URL 为准（扫码 / 前进后退 / 分享链接）。 */
   useEffect(() => {
+    if (location.pathname === '/reset-password' || location.pathname === '/login') return;
+    if (shouldDeferAutoPropertyRedirects()) return;
     if (!ready || memberships.length === 0 || isDemoMode || isDemoPropertyMock) return;
     const urlPid = getPropertyIdFromUrl(searchParams);
     if (!urlPid) return;
@@ -400,10 +402,12 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
       persistPropertyId(urlHit.propertyId);
       return urlHit.propertyId;
     });
-  }, [searchParams, memberships, ready, isDemoMode, isDemoPropertyMock]);
+  }, [location.pathname, location.hash, searchParams, memberships, ready, isDemoMode, isDemoPropertyMock]);
 
   /** current 不在 memberships 内时：仅单物业时回退到唯一物业；多物业未选择时不自动指定。 */
   useEffect(() => {
+    if (location.pathname === '/reset-password' || location.pathname === '/login') return;
+    if (shouldDeferAutoPropertyRedirects()) return;
     if (!ready || memberships.length === 0 || isDemoMode || isDemoPropertyMock) return;
     const valid =
       currentPropertyId &&
@@ -417,10 +421,20 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
     setCurrentPropertyIdState(next);
     setNeedsPropertyChoice(false);
     persistPropertyId(next);
-  }, [memberships, ready, currentPropertyId, isDemoMode, isDemoPropertyMock]);
+  }, [
+    location.pathname,
+    location.hash,
+    memberships,
+    ready,
+    currentPropertyId,
+    isDemoMode,
+    isDemoPropertyMock,
+  ]);
 
   /** 缺失或无效 URL 时，把当前物业写回 query（与 state 对齐）。 */
   useEffect(() => {
+    if (location.pathname === '/reset-password' || location.pathname === '/login') return;
+    if (shouldDeferAutoPropertyRedirects()) return;
     if (!ready || !currentPropertyId || memberships.length === 0 || isDemoMode || isDemoPropertyMock) return;
     const urlPid = getPropertyIdFromUrl(searchParams);
     if (urlPid && samePropertyId(urlPid, currentPropertyId)) return;
@@ -436,7 +450,17 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
       },
       { replace: true },
     );
-  }, [ready, currentPropertyId, memberships, searchParams, setSearchParams, isDemoMode, isDemoPropertyMock]);
+  }, [
+    location.pathname,
+    location.hash,
+    ready,
+    currentPropertyId,
+    memberships,
+    searchParams,
+    setSearchParams,
+    isDemoMode,
+    isDemoPropertyMock,
+  ]);
 
   const setCurrentPropertyId = useCallback(
     (id: string) => {

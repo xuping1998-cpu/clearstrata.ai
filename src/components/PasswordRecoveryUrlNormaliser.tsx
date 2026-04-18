@@ -1,25 +1,24 @@
-import { useLayoutEffect } from 'react';
+import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { urlIndicatesPasswordRecoveryIntent } from '../lib/authRecovery';
 
-/**
- * If the email link lands on the wrong path (e.g. Site URL + deep link) but the hash
- * carries `type=recovery`, rewrite to `/reset-password` while preserving hash/search
- * so Supabase can parse tokens on the dedicated page.
- */
-export function PasswordRecoveryUrlNormaliser() {
-  const navigate = useNavigate();
+export default function PasswordRecoveryUrlNormaliser() {
   const location = useLocation();
+  const navigate = useNavigate();
 
-  useLayoutEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (location.pathname === '/reset-password') return;
-    if (!urlIndicatesPasswordRecoveryIntent()) return;
-
-    const hash = window.location.hash || location.hash || '';
+  useEffect(() => {
+    const hash = location.hash || '';
     const search = location.search || '';
-    navigate({ pathname: '/reset-password', search, hash }, { replace: true });
-  }, [location.pathname, location.search, location.hash, navigate]);
+
+    const isRecovery =
+      hash.includes('type=recovery') ||
+      hash.includes('access_token') ||
+      hash.includes('refresh_token') ||
+      search.includes('type=recovery');
+
+    if (isRecovery && location.pathname !== '/reset-password') {
+      navigate('/reset-password' + hash + search, { replace: true });
+    }
+  }, [location, navigate]);
 
   return null;
 }

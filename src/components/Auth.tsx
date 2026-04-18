@@ -292,9 +292,8 @@ export function Auth() {
     setError('');
     setResetSuccess('');
     try {
-      const redirectTo = `${window.location.origin}/reset-password`;
       const { error: resetErr } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
-        redirectTo,
+        redirectTo: `${window.location.origin}/reset-password`,
       });
       if (resetErr) throw resetErr;
       setResetSuccess(t('auth_reset_email_sent'));

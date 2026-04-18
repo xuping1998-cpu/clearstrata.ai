@@ -64,6 +64,7 @@ export function MeetingDetail() {
   const [inviteProfileById, setInviteProfileById] = useState<
     Record<string, { full_name_en: string | null; full_name_zh: string | null; email: string | null }>
   >({});
+  const [inviteToast, setInviteToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
   const openedTrackedRef = useRef<string | null>(null);
 
   const isStaff =
@@ -105,13 +106,14 @@ export function MeetingDetail() {
     const ex = await fetchMeetingExtras(meetingId, m.property_id);
     setBundle((prev) => (prev.meeting ? { ...prev, ...ex } : prev));
     setExtrasLoading(false);
-  }, [meetingId, user, currentPropertyId, location.hash, location.search]);
+  }, [meetingId, user, currentPropertyId, location.pathname, location.hash, location.search]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
   useEffect(() => {
+    if (shouldDeferAutoPropertyRedirects()) return;
     const ids = Array.from(new Set(bundle.invitations.map((i) => i.recipient_user_id).filter(Boolean)));
     if (ids.length === 0) {
       setInviteProfileById({});
@@ -142,7 +144,7 @@ export function MeetingDetail() {
     return () => {
       cancelled = true;
     };
-  }, [bundle.invitations]);
+  }, [bundle.invitations, location.pathname, location.hash, location.search]);
 
   const meeting = bundle.meeting;
 
@@ -157,7 +159,7 @@ export function MeetingDetail() {
       const { error } = await markMeetingInvitationOpened(mid, currentPropertyId);
       if (!error) await load();
     })();
-  }, [meeting?.id, user?.id, currentPropertyId, load, location.hash, location.search]);
+  }, [meeting?.id, user?.id, currentPropertyId, load, location.pathname, location.hash, location.search]);
 
   const voteByAgendaId = useMemo(() => {
     const m = new Map<string, MeetingVoteRow & { options: MeetingVoteOptionRow[] }>();
@@ -252,14 +254,66 @@ export function MeetingDetail() {
     await load();
   }
 
+  useEffect(() => {
+    if (!inviteToast) return;
+    const t = window.setTimeout(() => setInviteToast(null), 8000);
+    return () => window.clearTimeout(t);
+  }, [inviteToast]);
+
   async function handleSendInvites() {
-    if (!meeting) return;
+    console.log('🚨 BUILD VERSION', import.meta.env.VITE_BUILD_TIME || 'dev');
+    if (!meeting) {
+      console.warn('🚨 early return reason: handleSendInvites — meeting is null');
+      return;
+    }
+    console.log('send invite clicked', { meetingId: meeting.id, propertyId: meeting.property_id });
     setBusy(true);
     setActionErr(null);
-    const { error } = await sendMeetingInvitations(meeting.id, meeting.property_id);
-    if (error) setActionErr(error.message);
-    setBusy(false);
-    await load();
+    setInviteToast(null);
+    try {
+      const result = await sendMeetingInvitations(meeting.id, meeting.property_id, en ? 'en' : 'zh');
+      console.log('recipients count', result.attempted);
+      if (result.attempted === 0) {
+        const msg = en ? 'No property members to invite.' : '没有可邀请的成员。';
+        setInviteToast({ kind: 'error', text: msg });
+        setActionErr(msg);
+        return;
+      }
+      if (result.failed > 0 && result.sent === 0) {
+        const msg =
+          result.errors[0]?.message ??
+          (en ? 'All invitation emails failed. See console.' : '全部邀请发送失败，请查看控制台。');
+        console.error('send-meeting-invite error (all failed)', result.errors);
+        setActionErr(msg);
+        setInviteToast({ kind: 'error', text: msg });
+        return;
+      }
+      if (result.failed > 0) {
+        const msg = en
+          ? `Sent ${result.sent}, failed ${result.failed}. Check console for details.`
+          : `已发送 ${result.sent} 封，失败 ${result.failed} 封。详情请查看控制台。`;
+        setActionErr(msg);
+        setInviteToast({ kind: 'error', text: msg });
+        return;
+      }
+      const okMsg = en
+        ? `Invitation emails sent: ${result.sent}`
+        : `已成功发送 ${result.sent} 封会议邀请邮件`;
+      console.log('send-meeting-invite success', { sent: result.sent });
+      setInviteToast({ kind: 'success', text: okMsg });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error('send invite failed', e);
+      setActionErr(msg);
+      setInviteToast({ kind: 'error', text: msg });
+    } finally {
+      setBusy(false);
+      try {
+        await load();
+      } catch (loadErr) {
+        console.warn('[MeetingDetail] load after send failed (non-blocking)', loadErr);
+      }
+    }
   }
 
   async function handleRetryFailedInvites() {
@@ -346,6 +400,16 @@ export function MeetingDetail() {
       </div>
 
       <div className="max-w-5xl mx-auto p-4 sm:p-6 space-y-8">
+        {inviteToast ? (
+          <div
+            className={`fixed bottom-6 left-1/2 z-50 max-w-lg -translate-x-1/2 rounded-lg px-4 py-3 text-sm text-white shadow-lg ${
+              inviteToast.kind === 'success' ? 'bg-[#1D9E75]' : 'bg-red-700'
+            }`}
+            role="status"
+          >
+            {inviteToast.text}
+          </div>
+        ) : null}
         {actionErr ? <p className="text-sm text-red-600 mb-4">{actionErr}</p> : null}
         {extrasLoading ? (
           <p className="text-xs text-gray-500 mb-4">{en ? 'Loading agenda, votes, and invitations…' : '正在加载议程、投票与邀请…'}</p>

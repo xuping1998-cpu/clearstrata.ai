@@ -43,3 +43,15 @@ export function shouldDeferAutoPropertyRedirects(): boolean {
     urlIndicatesSupabasePkceOrOAuthCode()
   );
 }
+
+/**
+ * Narrow URL hints for getSession() unlock alongside PASSWORD_RECOVERY — not an arbitrary session.
+ * - Implicit recovery fragment (`type=recovery`)
+ * - PKCE-style `?code=` on the dedicated reset page only
+ */
+export function urlSupportsPasswordRecoveryGetSessionFallback(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (urlIndicatesPasswordRecoveryIntent()) return true;
+  if (window.location.pathname !== '/reset-password') return false;
+  return /[?&]code=/.test(window.location.search || '');
+}

@@ -26,6 +26,9 @@ export function JoinAccessGate() {
       setLoading(false);
       return;
     }
+    if (location.pathname === '/reset-password' || location.pathname === '/login') {
+      return;
+    }
     if (shouldDeferAutoPropertyRedirects()) {
       return;
     }
@@ -53,7 +56,7 @@ export function JoinAccessGate() {
     }
 
     setLoading(false);
-  }, [user?.id, navigate, refreshMemberships, setCurrentPropertyId]);
+  }, [user?.id, navigate, refreshMemberships, setCurrentPropertyId, location.pathname]);
 
   useEffect(() => {
     void load();
