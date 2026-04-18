@@ -1,0 +1,5 @@
+# Edge Functions: https://supabase.com/docs/guides/functions/function-configuration
+# User session JWTs may use ES256; the gateway only accepts HS256 for verification.
+# This function uses the service role inside the handler and identifies the recipient via JSON body.
+[functions.send-meeting-invite]
+verify_jwt = false

@@ -10,13 +10,21 @@ export type SendMeetingInvitesResult = {
   error: Error | null;
 };
 
-async function invokeSendMeetingInviteEdge(params: {
+/**
+ * Calls send-meeting-invite with the anon key (HS256) so the Functions gateway does not verify
+ * a user session JWT (ES256). The Edge Function uses the service role only; recipient comes from body.
+ */
+export async function invokeSendMeetingInviteEdge(params: {
   meetingId: string;
   propertyId: string;
   userId: string;
   locale: 'en' | 'zh';
-  accessToken: string;
 }): Promise<{ ok: boolean; message: string; detail?: unknown }> {
+  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+  if (!anonKey) {
+    return { ok: false, message: 'Missing VITE_SUPABASE_ANON_KEY', detail: null };
+  }
+
   console.log('🚨 Edge invoke: supabase.functions.invoke send-meeting-invite', {
     meetingId: params.meetingId,
     propertyId: params.propertyId,
@@ -24,12 +32,15 @@ async function invokeSendMeetingInviteEdge(params: {
   });
   const { data, error } = await supabase.functions.invoke('send-meeting-invite', {
     body: {
-      meeting_id: params.meetingId,
-      user_id: params.userId,
-      property_id: params.propertyId,
+      meetingId: params.meetingId,
+      propertyId: params.propertyId,
+      userId: params.userId,
       locale: params.locale,
     },
-    headers: { Authorization: `Bearer ${params.accessToken}` },
+    headers: {
+      Authorization: `Bearer ${anonKey}`,
+      apikey: anonKey,
+    },
   });
 
   if (error) {
@@ -724,14 +735,12 @@ export async function sendMeetingInvitations(
       data: { session },
       error: sessionErr,
     } = await supabase.auth.getSession();
-    if (sessionErr || !session?.access_token) {
-      console.warn('🚨 early return reason:', 'no session or access_token', {
+    if (sessionErr || !session) {
+      console.warn('🚨 early return reason:', 'no session (required for loading members / invitations)', {
         sessionErr: sessionErr?.message,
-        hasToken: Boolean(session?.access_token),
       });
-      return empty(new Error(sessionErr?.message ?? 'Not signed in — cannot invoke send-meeting-invite'));
+      return empty(new Error(sessionErr?.message ?? 'Not signed in'));
     }
-    const accessToken = session.access_token;
 
     const { data: members, error: membersError } = await withProperty(
       supabase.from('property_members').select('user_id') as any,
@@ -817,7 +826,6 @@ export async function sendMeetingInvitations(
         propertyId,
         userId,
         locale,
-        accessToken,
       });
 
       if (r.ok) {

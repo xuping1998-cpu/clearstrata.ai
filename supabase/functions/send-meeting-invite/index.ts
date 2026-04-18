@@ -5,6 +5,9 @@
  * - RESEND_API_KEY (required)
  * - From address is fixed in code: ClearStrata <noreply@clearstrata.ai> (must be verified in Resend).
  * Redeploy after changing secrets: `supabase functions deploy send-meeting-invite`
+ * Auth: do not rely on `Authorization` user JWT (ES256 can cause 401 at the gateway).
+ * Use `supabase/config.toml` `[functions.send-meeting-invite] verify_jwt = false` and call
+ * `invoke` with the anon key in `Authorization` from the app. DB access uses service role only.
  *
  * Product: until Resend production access is enabled, use only Resend-approved test recipients
  * to verify the flow; external addresses will get RESEND_TESTING_RESTRICTION until domain is verified.
@@ -20,14 +23,15 @@ const corsHeaders = {
     "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-interface InviteRequest {
-  meeting_id: string;
-  user_id: string;
-  /** Required — must match meetings.property_id (multi-tenant guard). */
-  property_id: string;
-  /** UI language for email copy */
+/** Request body: snake_case or camelCase (invoke from app uses camelCase). */
+interface InviteRequestBody {
+  meeting_id?: string;
+  meetingId?: string;
+  user_id?: string;
+  userId?: string;
+  property_id?: string;
+  propertyId?: string;
   locale?: "en" | "zh";
-  /** Optional client hint; recipient email still loaded from profiles in DB */
   user_email?: string;
 }
 
@@ -227,7 +231,7 @@ function sendEmailFailedResponse(
 }
 
 async function upsertInvitationDelivery(
-  supabase: ReturnType<typeof createClient>,
+  supabaseAdmin: ReturnType<typeof createClient>,
   params: {
     meeting_id: string;
     property_id: string;
@@ -236,7 +240,7 @@ async function upsertInvitationDelivery(
     delivery_status: "sent" | "failed";
   },
 ) {
-  const { error } = await supabase.from("meeting_invitations").upsert(
+  const { error } = await supabaseAdmin.from("meeting_invitations").upsert(
     {
       meeting_id: params.meeting_id,
       property_id: params.property_id,
@@ -275,17 +279,18 @@ Deno.serve(async (req: Request) => {
 
     const resendApiKey = Deno.env.get("RESEND_API_KEY")!.trim();
 
-    let body: InviteRequest;
+    let raw: InviteRequestBody;
     try {
-      body = await req.json();
+      raw = (await req.json()) as InviteRequestBody;
     } catch (e) {
       console.error("[send-meeting-invite] Invalid JSON body", e);
       return apiResponse(false, "Invalid JSON body", null, 400);
     }
 
-    const { meeting_id, user_id, property_id: propertyIdRaw, locale: localeRaw } = body;
-    const locale: "en" | "zh" = localeRaw === "en" ? "en" : "zh";
-    const property_id = typeof propertyIdRaw === "string" ? propertyIdRaw.trim() : "";
+    const meeting_id = String(raw.meeting_id ?? raw.meetingId ?? "").trim();
+    const user_id = String(raw.user_id ?? raw.userId ?? "").trim();
+    const property_id = String(raw.property_id ?? raw.propertyId ?? "").trim();
+    const locale: "en" | "zh" = raw.locale === "en" ? "en" : "zh";
 
     console.log("[send-meeting-invite] params", {
       meeting_id,
@@ -303,13 +308,15 @@ Deno.serve(async (req: Request) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
 
     const [{ data: meeting, error: meetingErr }, { data: profile, error: profileErr }] =
       await Promise.all([
-        supabase.from("meetings").select("*").eq("id", meeting_id).eq("property_id", property_id)
+        supabaseAdmin.from("meetings").select("*").eq("id", meeting_id).eq("property_id", property_id)
           .maybeSingle(),
-        supabase.from("profiles").select("full_name_en, full_name_zh, email").eq("id", user_id)
+        supabaseAdmin.from("profiles").select("full_name_en, full_name_zh, email").eq("id", user_id)
           .maybeSingle(),
       ]);
 
@@ -319,13 +326,13 @@ Deno.serve(async (req: Request) => {
 
     const [{ count: invitationCount, error: invErr }, { count: memberCount, error: memErr }] =
       await Promise.all([
-        supabase
+        supabaseAdmin
           .from("meeting_invitations")
           .select("id", { count: "exact", head: true })
           .eq("meeting_id", meeting_id)
           .eq("property_id", property_id)
           .eq("recipient_user_id", user_id),
-        supabase
+        supabaseAdmin
           .from("property_members")
           .select("user_id", { count: "exact", head: true })
           .eq("property_id", property_id)
@@ -406,7 +413,7 @@ Deno.serve(async (req: Request) => {
           resendName === "validation_error" &&
           /testing email|only send|verify a domain|can only send/i.test(msgLower);
 
-        await upsertInvitationDelivery(supabase, {
+        await upsertInvitationDelivery(supabaseAdmin, {
           meeting_id,
           property_id,
           recipient_user_id: user_id,
@@ -436,7 +443,7 @@ Deno.serve(async (req: Request) => {
       }
 
       const emailId = res.data?.id;
-      await upsertInvitationDelivery(supabase, {
+      await upsertInvitationDelivery(supabaseAdmin, {
         meeting_id,
         property_id,
         recipient_user_id: user_id,
@@ -449,7 +456,7 @@ Deno.serve(async (req: Request) => {
       console.error("❌ resend error FULL", JSON.stringify(unknownToSerializable(err), null, 2));
       console.error("❌ resend error raw object", err);
 
-      await upsertInvitationDelivery(supabase, {
+      await upsertInvitationDelivery(supabaseAdmin, {
         meeting_id,
         property_id,
         recipient_user_id: user_id,

@@ -3,9 +3,9 @@ import { UserCheck, UserX, Clock, AlertCircle, Users, Plus, X, Mail, CheckCircle
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useProperty } from '../../contexts/PropertyContext';
-import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
 import { withProperty } from '../../lib/supabaseTenant';
+import { invokeSendMeetingInviteEdge } from '../../features/meetings/api';
 
 /** 参会者行数据（保持原有结构，不改动） */
 interface Attendee {
@@ -45,15 +45,6 @@ const statusColors: Record<string, string> = {
   absent: 'bg-red-100 text-red-700',
   proxy: 'bg-orange-100 text-orange-700',
 };
-
-/** 【新增】读取 Edge Function 非 2xx 时的 JSON 正文，便于控制台与弹窗提示 */
-async function readFunctionErrorBody(err: FunctionsHttpError): Promise<Record<string, unknown>> {
-  try {
-    return (await err.context.clone().json()) as Record<string, unknown>;
-  } catch {
-    return {};
-  }
-}
 
 /** 用户可见的补充说明（如 Resend 测试模式限制） */
 function pickInviteFailureHint(body: Record<string, unknown>, en: boolean): string | undefined {
@@ -158,10 +149,9 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
         console.error('[MeetingInvite] getSession 错误:', sessionErr);
       }
 
-      const accessToken = sessionData.session?.access_token ?? session?.access_token;
-      if (!accessToken) {
+      if (!sessionData.session && !session) {
         const msg = l ? 'Not signed in. Please log in again.' : '未登录或会话已过期，请重新登录。';
-        console.error('[MeetingInvite] 无 access_token');
+        console.error('[MeetingInvite] 无 session');
         setEmailStatus((prev) => ({ ...prev, [userId]: 'error' }));
         alert(msg);
         return;
@@ -169,70 +159,32 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
 
       console.log('invoking send-meeting-invite', { meetingId, property_id: currentPropertyId, userId });
 
-      const { data, error } = await supabase.functions.invoke('send-meeting-invite', {
-        body: {
-          meeting_id: meetingId,
-          user_id: userId,
-          property_id: currentPropertyId,
-          user_email: userEmail ?? undefined,
-          locale: language,
-        },
-        headers: { Authorization: `Bearer ${accessToken}` },
+      const r = await invokeSendMeetingInviteEdge({
+        meetingId,
+        propertyId: currentPropertyId,
+        userId,
+        locale: language === 'en' ? 'en' : 'zh',
       });
 
-      if (error) {
-        console.error('[MeetingInvite] invoke 返回 error:', error);
-        let errBody: Record<string, unknown> = {};
-        if (error instanceof FunctionsHttpError) {
-          errBody = await readFunctionErrorBody(error);
-          console.error('send-meeting-invite error', errBody);
-          console.error('[MeetingInvite] HTTP', error.context.status, error.context.statusText, errBody);
-        }
+      if (!r.ok) {
+        const detailObj =
+          r.detail && typeof r.detail === 'object' && r.detail !== null
+            ? (r.detail as Record<string, unknown>)
+            : {};
+        const hintBody = { ...detailObj, message: r.message };
+        console.error('send-meeting-invite error', r.message, r.detail);
         setEmailStatus((prev) => ({ ...prev, [userId]: 'error' }));
         setInviteFailureHints((prev) => ({
           ...prev,
-          [userId]: pickInviteFailureHint(errBody, l),
+          [userId]: pickInviteFailureHint(hintBody, l),
         }));
         await persistInviteDelivery('failed');
-        const httpMsg =
-          (typeof errBody.message === 'string' && errBody.message) ||
-          (typeof errBody.error === 'string' && errBody.error) ||
-          error.message;
-        alert(l ? `发送失败：${httpMsg}` : `Send failed: ${httpMsg}`);
+        alert(l ? `发送失败：${r.message}` : `Send failed: ${r.message}`);
         return;
       }
 
-      const payload = data as Record<string, unknown> | null;
-      if (payload && payload.ok === false) {
-        const msg =
-          (typeof payload.message === 'string' && payload.message) ||
-          (typeof payload.error === 'string' && payload.error) ||
-          'send-meeting-invite failed';
-        console.error('send-meeting-invite error', msg, payload.detail);
-        setEmailStatus((prev) => ({ ...prev, [userId]: 'error' }));
-        setInviteFailureHints((prev) => ({
-          ...prev,
-          [userId]: pickInviteFailureHint(payload, l) ?? msg,
-        }));
-        await persistInviteDelivery('failed');
-        alert(l ? `发送失败：${msg}` : `Send failed: ${msg}`);
-        return;
-      }
-
-      if (data && typeof data === 'object' && data !== null && 'error' in data && !('ok' in data)) {
-        console.error('[MeetingInvite] 响应体含 error:', data);
-        const errBody = data as Record<string, unknown>;
-        setEmailStatus((prev) => ({ ...prev, [userId]: 'error' }));
-        setInviteFailureHints((prev) => ({
-          ...prev,
-          [userId]: pickInviteFailureHint(errBody, l),
-        }));
-        await persistInviteDelivery('failed');
-        return;
-      }
-
-      console.log('send-meeting-invite success', data);
-      console.log('[MeetingInvite] 发送成功:', data);
+      console.log('send-meeting-invite success', r);
+      console.log('[MeetingInvite] 发送成功:', r);
       await persistInviteDelivery('sent');
       setEmailStatus((prev) => ({ ...prev, [userId]: 'sent' }));
       setInviteFailureHints((prev) => {
@@ -244,6 +196,7 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
       console.error('[MeetingInvite] 未捕获异常:', e);
       setEmailStatus((prev) => ({ ...prev, [userId]: 'error' }));
       await persistInviteDelivery('failed');
+      alert(l ? `Send failed: ${e instanceof Error ? e.message : String(e)}` : `发送失败：${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
