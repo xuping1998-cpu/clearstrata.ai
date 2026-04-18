@@ -2,6 +2,7 @@
  * Meeting invitation emails via Resend.
  *
  * Secrets (Supabase Dashboard → Project Settings → Edge Functions → Secrets):
+ * - APP_BASE_URL (optional): public app origin; path/query stripped. Empty/unset → https://clearstrata.ai
  * - RESEND_API_KEY (required)
  * - From address is fixed in code: ClearStrata <noreply@clearstrata.ai> (must be verified in Resend).
  * Redeploy after changing secrets: `supabase functions deploy send-meeting-invite`
@@ -22,6 +23,28 @@ const corsHeaders = {
   "Access-Control-Allow-Headers":
     "Content-Type, Authorization, X-Client-Info, Apikey",
 };
+
+function normalizeBase(raw?: string | null): string {
+  const fallback = "https://clearstrata.ai";
+
+  if (!raw) return fallback;
+
+  const cleaned = raw.trim().replace(/[\u200B-\u200D\uFEFF]/g, "");
+
+  if (!cleaned) return fallback;
+
+  const withProtocol = /^https?:\/\//i.test(cleaned)
+    ? cleaned
+    : `https://${cleaned}`;
+
+  try {
+    const url = new URL(withProtocol);
+    return url.origin;
+  } catch {
+    console.warn("[send-meeting-invite] invalid APP_BASE_URL:", raw);
+    return fallback;
+  }
+}
 
 /** Request body: snake_case or camelCase (invoke from app uses camelCase). */
 interface InviteRequestBody {
@@ -176,10 +199,19 @@ function buildEmailHtml(p: InviteEmailHtmlParams): string {
       <td align="center">
         <table role="presentation" width="100%" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06),0 4px 12px rgba(0,0,0,0.04);">
           <tr>
-            <td style="background:linear-gradient(135deg,#1D9E75 0%,#178a66 100%);padding:28px 32px;">
-              <p style="margin:0 0 4px;color:rgba(255,255,255,0.9);font-size:13px;font-weight:600;letter-spacing:0.02em;">ClearStrata</p>
-              <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;line-height:1.25;">Meeting Invitation</h1>
-              <p style="margin:8px 0 0;color:rgba(255,255,255,0.88);font-size:14px;line-height:1.4;">会议邀请</p>
+            <td style="background:linear-gradient(135deg,#1D9E75 0%,#178a66 100%);padding:24px 32px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                <tr>
+                  <td align="center" style="padding:0 0 16px;">
+                    <img src="https://clearstrata.ai/logo-clearstrata-v1.png" alt="ClearStrata" height="36" style="display:block;border:0;outline:none;text-decoration:none;height:36px;width:auto;max-width:220px;" />
+                  </td>
+                </tr>
+                <tr>
+                  <td align="center" style="padding:0;">
+                    <p style="margin:0;color:#ffffff;font-size:19px;font-weight:700;line-height:1.35;letter-spacing:0.01em;">会议邀请 / Meeting Invitation</p>
+                  </td>
+                </tr>
+              </table>
             </td>
           </tr>
           <tr>
@@ -259,10 +291,19 @@ function buildEmailHtml(p: InviteEmailHtmlParams): string {
       <td align="center">
         <table role="presentation" width="100%" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06),0 4px 12px rgba(0,0,0,0.04);">
           <tr>
-            <td style="background:linear-gradient(135deg,#1D9E75 0%,#178a66 100%);padding:28px 32px;">
-              <p style="margin:0 0 4px;color:rgba(255,255,255,0.9);font-size:13px;font-weight:600;letter-spacing:0.02em;">ClearStrata</p>
-              <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;line-height:1.25;">会议邀请</h1>
-              <p style="margin:8px 0 0;color:rgba(255,255,255,0.88);font-size:14px;line-height:1.4;">Meeting Invitation</p>
+            <td style="background:linear-gradient(135deg,#1D9E75 0%,#178a66 100%);padding:24px 32px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                <tr>
+                  <td align="center" style="padding:0 0 16px;">
+                    <img src="https://clearstrata.ai/logo-clearstrata-v1.png" alt="ClearStrata" height="36" style="display:block;border:0;outline:none;text-decoration:none;height:36px;width:auto;max-width:220px;" />
+                  </td>
+                </tr>
+                <tr>
+                  <td align="center" style="padding:0;">
+                    <p style="margin:0;color:#ffffff;font-size:19px;font-weight:700;line-height:1.35;letter-spacing:0.01em;">会议邀请 / Meeting Invitation</p>
+                  </td>
+                </tr>
+              </table>
             </td>
           </tr>
           <tr>
@@ -524,8 +565,7 @@ Deno.serve(async (req: Request) => {
       ? (profile.full_name_en || profile.full_name_zh || "Owner")
       : (profile.full_name_zh || profile.full_name_en || "业主");
 
-    const appBaseUrl = Deno.env.get("APP_BASE_URL") || "http://localhost:5173";
-    const base = appBaseUrl.replace(/\/$/, "");
+    const base = normalizeBase(Deno.env.get("APP_BASE_URL"));
 
     const inviteToken = crypto.randomUUID();
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
@@ -542,6 +582,13 @@ Deno.serve(async (req: Request) => {
 
     const inviteLink = `${base}/invite?token=${encodeURIComponent(inviteToken)}`;
     const signInUrl = `${base}/login`;
+
+    console.log("[send-meeting-invite] base url debug:", {
+      raw: Deno.env.get("APP_BASE_URL"),
+      base,
+      inviteLink,
+      signInUrl,
+    });
 
     console.log("meeting raw:", meeting);
 
@@ -567,6 +614,7 @@ Deno.serve(async (req: Request) => {
     }
 
     console.log("[send-meeting-invite] email fields", {
+      base,
       inviteLink,
       signInUrl,
       meetingTitle,
