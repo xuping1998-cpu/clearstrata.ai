@@ -3,7 +3,7 @@
  *
  * Secrets (Supabase Dashboard → Project Settings → Edge Functions → Secrets):
  * - RESEND_API_KEY (required)
- * - RESEND_FROM_EMAIL or RESEND_FROM or RESEND_SENDER_DOMAIN (optional; else onboarding@resend.dev)
+ * - From address is fixed in code: ClearStrata <noreply@clearstrata.ai> (must be verified in Resend).
  * Redeploy after changing secrets: `supabase functions deploy send-meeting-invite`
  *
  * Product: until Resend production access is enabled, use only Resend-approved test recipients
@@ -11,6 +11,7 @@
  */
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { Resend } from "npm:resend@4";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -170,51 +171,6 @@ function buildEmailHtml(
 </html>`;
 }
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-/**
- * Resolves the Resend "from" header.
- * Supports: RESEND_FROM (full "Name <email>"), RESEND_FROM_EMAIL (email only), RESEND_SENDER_DOMAIN (email),
- * else Resend onboarding sender for dev.
- */
-function resolveFromHeader(): string | { error: string; code: string } {
-  const fromEmailRaw = Deno.env.get("RESEND_FROM_EMAIL");
-  if (fromEmailRaw !== undefined) {
-    const fromEmail = fromEmailRaw.trim();
-    if (fromEmail === "") {
-      return {
-        error:
-          "RESEND_FROM_EMAIL is set but empty. Remove it or set a valid sender email in Supabase secrets.",
-        code: "INVALID_RESEND_FROM_EMAIL",
-      };
-    }
-    if (!EMAIL_RE.test(fromEmail)) {
-      return {
-        error: `RESEND_FROM_EMAIL must be a valid email address (got invalid value).`,
-        code: "INVALID_RESEND_FROM_EMAIL",
-      };
-    }
-    return `ClearStrata <${fromEmail}>`;
-  }
-
-  const full = Deno.env.get("RESEND_FROM")?.trim();
-  if (full) return full;
-
-  const domain = Deno.env.get("RESEND_SENDER_DOMAIN")?.trim();
-  if (domain) {
-    if (!domain.includes("@") || !EMAIL_RE.test(domain)) {
-      return {
-        error:
-          "RESEND_SENDER_DOMAIN must be a full email address (e.g. noreply@yourdomain.com).",
-        code: "INVALID_RESEND_SENDER_DOMAIN",
-      };
-    }
-    return `ClearStrata <${domain}>`;
-  }
-
-  return "ClearStrata <onboarding@resend.dev>";
-}
-
 /** Unified JSON body for clients: always includes ok, message, detail. */
 function apiResponse(
   ok: boolean,
@@ -226,6 +182,48 @@ function apiResponse(
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+/** Plain JSON.stringify(err) drops Error fields; use this for logs + response detail. */
+function unknownToSerializable(err: unknown): unknown {
+  if (err instanceof Error) {
+    const base: Record<string, unknown> = {
+      name: err.name,
+      message: err.message,
+      stack: err.stack,
+    };
+    const withCause = err as Error & { cause?: unknown };
+    if (withCause.cause !== undefined) {
+      base.cause = unknownToSerializable(withCause.cause);
+    }
+    return base;
+  }
+  if (err !== null && typeof err === "object") {
+    try {
+      return JSON.parse(JSON.stringify(err)) as unknown;
+    } catch {
+      return { value: String(err) };
+    }
+  }
+  return { value: String(err) };
+}
+
+function sendEmailFailedResponse(
+  message: string,
+  detail: unknown,
+  status: number,
+): Response {
+  return new Response(
+    JSON.stringify({
+      ok: false,
+      message,
+      detail: unknownToSerializable(detail),
+    }),
+    {
+      status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    },
+  );
 }
 
 async function upsertInvitationDelivery(
@@ -261,6 +259,8 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    console.log("🚨 FUNCTION START", new Date().toISOString());
+
     const missingEnv: string[] = [];
     if (!Deno.env.get("RESEND_API_KEY")?.trim()) missingEnv.push("RESEND_API_KEY");
     if (!Deno.env.get("SUPABASE_URL")?.trim()) missingEnv.push("SUPABASE_URL");
@@ -278,7 +278,8 @@ Deno.serve(async (req: Request) => {
     let body: InviteRequest;
     try {
       body = await req.json();
-    } catch {
+    } catch (e) {
+      console.error("[send-meeting-invite] Invalid JSON body", e);
       return apiResponse(false, "Invalid JSON body", null, 400);
     }
 
@@ -298,11 +299,6 @@ Deno.serve(async (req: Request) => {
     }
     if (!property_id) {
       return apiResponse(false, "property_id is required", null, 400);
-    }
-
-    const fromResolved = resolveFromHeader();
-    if (typeof fromResolved !== "string") {
-      return apiResponse(false, fromResolved.error, { code: fromResolved.code }, 503);
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -371,133 +367,105 @@ Deno.serve(async (req: Request) => {
       ? `Meeting invitation: ${titleForSubject}`
       : `会议邀请：${titleForSubject}`;
 
-    console.log("[send-meeting-invite] calling Resend", { to: profile.email });
+    const email = profile.email as string;
+    const meetingId = meeting_id;
+    const propertyId = property_id;
 
-    let resendRes: Response;
-    let resendData: Record<string, unknown>;
-    try {
-      resendRes = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${resendApiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: fromResolved,
-          to: [profile.email],
-          subject,
-          html: emailHtml,
-        }),
-      });
-    } catch (networkErr) {
-      console.error("[send-meeting-invite] Resend fetch failed", networkErr);
-      await upsertInvitationDelivery(supabase, {
-        meeting_id,
-        property_id,
-        recipient_user_id: user_id,
-        email: profile.email as string,
-        delivery_status: "failed",
-      });
-      return apiResponse(
-        false,
-        `Could not reach Resend API: ${String(networkErr)}`,
-        { code: "RESEND_NETWORK_ERROR" },
-        502,
-      );
-    }
+    console.log("payload:", {
+      meetingId,
+      propertyId,
+      email,
+    });
+
+    const resend = new Resend(resendApiKey);
 
     try {
-      resendData = (await resendRes.json()) as Record<string, unknown>;
-    } catch (parseErr) {
-      console.error("[send-meeting-invite] invalid Resend JSON", parseErr);
-      await upsertInvitationDelivery(supabase, {
-        meeting_id,
-        property_id,
-        recipient_user_id: user_id,
-        email: profile.email as string,
-        delivery_status: "failed",
+      console.log("📨 sending email to:", email);
+
+      const res = await resend.emails.send({
+        from: "ClearStrata <noreply@clearstrata.ai>",
+        to: email,
+        subject,
+        html: emailHtml,
       });
-      return apiResponse(
-        false,
-        `Resend returned non-JSON response (HTTP ${resendRes.status})`,
-        { code: "RESEND_INVALID_RESPONSE" },
-        502,
-      );
-    }
 
-    console.log("[send-meeting-invite] Resend HTTP status", resendRes.status, "ok", resendRes.ok);
+      console.log("✅ resend success", res);
 
-    if (!resendRes.ok) {
-      const resendName =
-        typeof resendData.name === "string" ? resendData.name : "";
-      const resendMessage =
-        typeof resendData.message === "string"
-          ? resendData.message
-          : JSON.stringify(resendData);
+      if (res.error) {
+        const errPayload = res.error as Record<string, unknown>;
+        console.error("❌ resend error FULL", JSON.stringify(res.error, null, 2));
 
-      const msgLower =
-        typeof resendData.message === "string"
-          ? resendData.message.toLowerCase()
-          : "";
-      const isTestingRecipientRestriction =
-        resendName === "validation_error" &&
-        /testing email|only send|verify a domain|can only send/i.test(msgLower);
+        const resendName =
+          typeof errPayload.name === "string" ? errPayload.name : "";
+        const resendMessage =
+          typeof errPayload.message === "string"
+            ? errPayload.message
+            : JSON.stringify(errPayload);
+        const msgLower = resendMessage.toLowerCase();
+        const isTestingRecipientRestriction =
+          resendName === "validation_error" &&
+          /testing email|only send|verify a domain|can only send/i.test(msgLower);
 
-      console.error("[send-meeting-invite] Resend error body", resendRes.status, resendData);
-
-      if (isTestingRecipientRestriction) {
         await upsertInvitationDelivery(supabase, {
           meeting_id,
           property_id,
           recipient_user_id: user_id,
-          email: profile.email as string,
+          email,
           delivery_status: "failed",
         });
-        return apiResponse(
-          false,
-          "Resend is in test mode: only allowed recipients can receive mail until production access is enabled.",
-          {
-            code: "RESEND_TESTING_RESTRICTION",
-            message_zh: "当前邮箱发送受限，请先完成邮件服务正式发送权限开通",
-            message_en:
-              "Email sending is restricted. Verify your domain in Resend and enable production sending, or use an allowed test recipient until then.",
-            status: resendRes.status,
-            resend: resendData,
-          },
+
+        if (isTestingRecipientRestriction) {
+          return sendEmailFailedResponse(
+            "Resend is in test mode: only allowed recipients can receive mail until production access is enabled.",
+            {
+              code: "RESEND_TESTING_RESTRICTION",
+              message_zh: "当前邮箱发送受限，请先完成邮件服务正式发送权限开通",
+              message_en:
+                "Email sending is restricted. Verify your domain in Resend and enable production sending, or use an allowed test recipient until then.",
+              resend: res.error,
+            },
+            502,
+          );
+        }
+
+        return sendEmailFailedResponse(
+          `Resend rejected the request: ${resendMessage}`,
+          { code: "RESEND_API_ERROR", resend: res.error },
           502,
         );
       }
+
+      const emailId = res.data?.id;
+      await upsertInvitationDelivery(supabase, {
+        meeting_id,
+        property_id,
+        recipient_user_id: user_id,
+        email,
+        delivery_status: "sent",
+      });
+      console.log("[send-meeting-invite] success", { email_id: emailId });
+      return apiResponse(true, "Email sent", { email_id: emailId }, 200);
+    } catch (err) {
+      console.error("❌ resend error FULL", JSON.stringify(unknownToSerializable(err), null, 2));
+      console.error("❌ resend error raw object", err);
 
       await upsertInvitationDelivery(supabase, {
         meeting_id,
         property_id,
         recipient_user_id: user_id,
-        email: profile.email as string,
+        email,
         delivery_status: "failed",
       });
-      return apiResponse(
-        false,
-        `Resend rejected the request: ${resendMessage}`,
-        { code: "RESEND_API_ERROR", status: resendRes.status, resend: resendData },
-        502,
-      );
-    }
 
-    await upsertInvitationDelivery(supabase, {
-      meeting_id,
-      property_id,
-      recipient_user_id: user_id,
-      email: profile.email as string,
-      delivery_status: "sent",
-    });
-    console.log("[send-meeting-invite] success", { email_id: resendData.id });
-    return apiResponse(true, "Email sent", { email_id: resendData.id }, 200);
+      return sendEmailFailedResponse("Failed to send email", err, 500);
+    }
   } catch (err) {
-    console.error("[send-meeting-invite] unhandled", err);
+    const serial = unknownToSerializable(err);
+    console.error("[send-meeting-invite] unhandled", JSON.stringify(serial, null, 2), err);
     return apiResponse(
       false,
       "Unexpected error while sending invitation",
-      { code: "INTERNAL_ERROR", error: String(err) },
+      { code: "INTERNAL_ERROR", detail: serial },
       500,
     );
   }
