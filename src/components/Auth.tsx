@@ -490,19 +490,15 @@ export function Auth() {
     <div className="flex min-h-screen w-full flex-col bg-gray-50">
       <div className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col gap-6 px-4 pb-4 pt-0 sm:px-6 lg:grid lg:grid-cols-[minmax(0,46%)_minmax(0,54%)] lg:items-stretch lg:gap-6">
         <div className="flex h-full min-h-0 w-full flex-col pt-5 lg:pt-7">
-          {/*
-            TEMP: [&>img]:mix-blend-multiply softens opaque white in public/logo-clearstrata-v1.png against bg-gray-50.
-            Replace the PNG with a transparent-background final asset, then remove the blend utility from this wrapper.
-          */}
-          <div className="mb-2 mt-6 flex w-full shrink-0 justify-center items-start overflow-visible px-2 [&_img]:mix-blend-multiply">
-            <div className="flex w-full flex-col items-center justify-start overflow-visible">
+          <div className="mb-2 flex w-full shrink-0 flex-col items-center justify-start overflow-visible px-2">
+            <div className="w-full flex justify-center mt-8 mb-6">
               <img
-                src="/logo-clearstrata-v1.png"
+                src="/clearstrata-hero-logo.png"
                 alt="ClearStrata.Ai"
-                className="h-auto w-[420px] max-w-[80%] origin-center scale-125 object-contain"
+                className="h-auto w-[260px] sm:w-[320px] md:w-[380px] object-contain"
               />
-              <p className="mt-2 text-center text-xl font-semibold text-gray-700 sm:text-2xl">清涟让物业管理更简单透明</p>
             </div>
+            <p className="mt-2 text-center text-xl font-semibold text-gray-700 sm:text-2xl">清涟让物业管理更简单透明</p>
           </div>
           <div className="mt-6 flex min-h-0 w-full flex-1 flex-col">
             <div className="flex min-h-0 flex-1 flex-col overflow-visible rounded-2xl border border-gray-100 bg-white shadow-md">
