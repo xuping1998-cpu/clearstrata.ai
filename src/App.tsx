@@ -58,6 +58,7 @@ import { AdminInviteCodes } from './pages/admin/AdminInviteCodes';
 import AdminJoinRequests from './pages/admin/AdminJoinRequests';
 import { JoinAccessGate } from './pages/JoinAccessGate';
 import { PostLoginPropertyRedirect } from './components/PostLoginPropertyRedirect';
+import { isMeetingDetailDeepLink, savePendingRedirect } from './lib/pendingRedirect';
 import PasswordRecoveryUrlNormaliser from './components/PasswordRecoveryUrlNormaliser';
 import { DemoDashboardRoute } from './components/DemoDashboardRoute';
 import { DemoLandingPage } from './pages/DemoLandingPage';
@@ -515,20 +516,25 @@ function AppMain() {
     );
   }
 
+  if (!session) {
+    if (isMeetingDetailDeepLink(location.pathname)) {
+      const target = location.pathname + location.search + location.hash;
+      savePendingRedirect(target);
+      return <Navigate to="/login" replace />;
+    }
+    return <Auth />;
+  }
+
   return (
     <>
-      {session ? (
-        hasActiveMembership === false && !isDemoPropertyMock ? (
-          <JoinAccessGate />
-        ) : !currentPropertyId && !isDemoPropertyMock ? (
-          <Navigate to="/select-property" replace />
-        ) : (
-          <Layout>
-            <AuthenticatedRoutes />
-          </Layout>
-        )
+      {hasActiveMembership === false && !isDemoPropertyMock ? (
+        <JoinAccessGate />
+      ) : !currentPropertyId && !isDemoPropertyMock ? (
+        <Navigate to="/select-property" replace />
       ) : (
-        <Auth />
+        <Layout>
+          <AuthenticatedRoutes />
+        </Layout>
       )}
     </>
   );

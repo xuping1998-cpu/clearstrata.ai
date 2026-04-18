@@ -35,19 +35,30 @@ interface InviteRequestBody {
   user_email?: string;
 }
 
-function formatDateZh(dateStr: string): string {
-  const d = new Date(dateStr);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  const h = String(d.getHours()).padStart(2, "0");
-  const min = String(d.getMinutes()).padStart(2, "0");
-  return `${y}年${m}月${day}日 ${h}:${min}`;
+/** First non-empty time field (DB uses `scheduled_at`; legacy / alt names supported). */
+function pickMeetingStartRaw(meeting: Record<string, unknown>): string | null {
+  const keys = [
+    "start_time",
+    "meeting_time",
+    "scheduled_at",
+    "scheduled_date",
+  ] as const;
+  for (const k of keys) {
+    const v = meeting[k];
+    if (v == null || v === "") continue;
+    if (typeof v === "string" && v.trim() !== "") return v.trim();
+  }
+  return null;
 }
 
-function formatDateEn(dateStr: string): string {
-  const d = new Date(dateStr);
-  return d.toLocaleString("en-US", {
+function formatWhenZhFromDate(startTime: Date): string {
+  return `${startTime.getFullYear()}年${startTime.getMonth() + 1}月${startTime.getDate()}日 ${startTime.getHours()}:${
+    String(startTime.getMinutes()).padStart(2, "0")
+  }`;
+}
+
+function formatWhenEnFromDate(startTime: Date): string {
+  return startTime.toLocaleString("en-US", {
     weekday: "short",
     year: "numeric",
     month: "short",
@@ -57,120 +68,264 @@ function formatDateEn(dateStr: string): string {
   });
 }
 
-function buildEmailHtml(
+/** Meeting start time for display (locale picks zh vs en formatting). */
+function getMeetingEmailDisplay(
   meeting: Record<string, unknown>,
-  recipientName: string,
-  signInUrl: string,
   locale: "en" | "zh",
-): string {
-  const titleEn = (meeting.title_en || meeting.title_zh || "Meeting") as string;
-  const titleZh = (meeting.title_zh || meeting.title_en || "会议") as string;
-  const dateFormatted = locale === "en"
-    ? formatDateEn(meeting.scheduled_date as string)
-    : formatDateZh(meeting.scheduled_date as string);
-  const durationMin = meeting.duration_minutes as number | null | undefined;
-  const duration = locale === "en"
-    ? (durationMin ? `${durationMin} min` : "TBD")
-    : (durationMin ? `${durationMin} 分钟` : "待定");
-  const location = meeting.is_virtual
-    ? (meeting.meeting_link
-      ? (locale === "en" ? "Online meeting" : "在线会议")
-      : (locale === "en" ? "Online (link TBD)" : "在线会议（链接待定）"))
-    : ((meeting.location as string) || (locale === "en" ? "TBD" : "待定"));
+): {
+  formattedTimeZh: string;
+  formattedTimeEn: string;
+  formattedTime: string;
+} {
+  const startRaw = pickMeetingStartRaw(meeting);
+  let formattedTimeZh = "待定";
+  let formattedTimeEn = "TBD";
+  if (startRaw) {
+    const startTime = new Date(startRaw);
+    if (!Number.isNaN(startTime.getTime())) {
+      formattedTimeZh = formatWhenZhFromDate(startTime);
+      formattedTimeEn = formatWhenEnFromDate(startTime);
+    }
+  }
+  const formattedTime = locale === "en" ? formattedTimeEn : formattedTimeZh;
+  return { formattedTimeZh, formattedTimeEn, formattedTime };
+}
+
+/** zh: title_zh > title > 默认；en: title_en > title > 默认 */
+function resolveMeetingTitle(m: Record<string, unknown>, locale: "en" | "zh"): string {
+  const generic = typeof m.title === "string" && m.title.trim() ? m.title.trim() : "";
+  if (locale === "zh") {
+    const zh = typeof m.title_zh === "string" && m.title_zh.trim() ? m.title_zh.trim() : "";
+    if (zh) return zh;
+    if (generic) return generic;
+    return "会议通知";
+  }
+  const en = typeof m.title_en === "string" && m.title_en.trim() ? m.title_en.trim() : "";
+  if (en) return en;
+  if (generic) return generic;
+  return "Meeting Invitation";
+}
+
+function formatDurationText(m: Record<string, unknown>, locale: "en" | "zh"): string {
+  const raw = m.duration_minutes ?? m.duration;
+  const n = typeof raw === "number" && Number.isFinite(raw) ? raw : null;
+  if (n === null) return "—";
+  return locale === "en" ? `${n} minutes` : `${n} 分钟`;
+}
+
+/** 有 location 显示；否则中英文 fallback */
+function formatLocationText(m: Record<string, unknown>, locale: "en" | "zh"): string {
+  const loc = typeof m.location === "string" && m.location.trim() ? m.location.trim() : "";
+  if (loc) return loc;
+  return locale === "en" ? "Online / To be confirmed" : "线上 / 待确认";
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/** Stripe/Notion-style invitation; all copy from params (plain HTML, no Resend `data`). */
+interface InviteEmailHtmlParams {
+  locale: "en" | "zh";
+  recipientName: string;
+  meetingTitle: string;
+  formattedTime: string;
+  durationText: string;
+  locationText: string;
+  organizerName: string;
+  inviteLink: string;
+  signInUrl: string;
+}
+
+function buildEmailHtml(p: InviteEmailHtmlParams): string {
+  const {
+    locale,
+    recipientName,
+    meetingTitle,
+    formattedTime,
+    durationText,
+    locationText,
+    organizerName,
+    inviteLink,
+    signInUrl,
+  } = p;
+
+  const safe = {
+    recipientName: escapeHtml(recipientName),
+    meetingTitle: escapeHtml(meetingTitle),
+    formattedTime: escapeHtml(formattedTime),
+    durationText: escapeHtml(durationText),
+    locationText: escapeHtml(locationText),
+    organizerName: escapeHtml(organizerName),
+  };
 
   if (locale === "en") {
-    const title = titleEn;
-    return `
-<!DOCTYPE html>
+    return `<!DOCTYPE html>
 <html lang="en">
-<head><meta charset="UTF-8" /></head>
-<body style="margin:0;padding:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-  <div style="max-width:560px;margin:32px auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
-    <div style="background:linear-gradient(135deg,#1D9E75,#178a66);padding:32px 28px;">
-      <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;">Meeting invitation</h1>
-      <p style="margin:6px 0 0;color:rgba(255,255,255,0.85);font-size:14px;">ClearStrata</p>
-    </div>
-    <div style="padding:28px;">
-      <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">
-        Hello ${recipientName},<br/>You are invited to the following meeting:
-      </p>
-      <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:20px;margin-bottom:24px;">
-        <table style="width:100%;border-collapse:collapse;">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Meeting invitation</title>
+</head>
+<body style="margin:0;padding:0;background:#f6f9fc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f9fc;padding:40px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06),0 4px 12px rgba(0,0,0,0.04);">
           <tr>
-            <td style="padding:8px 12px 8px 0;color:#6b7280;font-size:13px;width:88px;vertical-align:top;">Meeting</td>
-            <td style="padding:8px 0;color:#111827;font-size:14px;font-weight:600;">${title}</td>
+            <td style="background:linear-gradient(135deg,#1D9E75 0%,#178a66 100%);padding:28px 32px;">
+              <p style="margin:0 0 4px;color:rgba(255,255,255,0.9);font-size:13px;font-weight:600;letter-spacing:0.02em;">ClearStrata</p>
+              <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;line-height:1.25;">Meeting Invitation</h1>
+              <p style="margin:8px 0 0;color:rgba(255,255,255,0.88);font-size:14px;line-height:1.4;">会议邀请</p>
+            </td>
           </tr>
           <tr>
-            <td style="padding:8px 12px 8px 0;color:#6b7280;font-size:13px;vertical-align:top;">When</td>
-            <td style="padding:8px 0;color:#111827;font-size:14px;">${dateFormatted}</td>
+            <td style="padding:32px 32px 24px;">
+              <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.65;">
+                Hi ${safe.recipientName},<br /><br />
+                You&rsquo;ve been invited to a meeting. Details are below.
+              </p>
+              <table role="presentation" width="100%" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:20px 22px;">
+                <tr><td style="padding:0 0 12px;border-bottom:1px solid #e5e7eb;">
+                  <p style="margin:0 0 4px;color:#6b7280;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">Meeting</p>
+                  <p style="margin:0;color:#111827;font-size:15px;font-weight:600;">${safe.meetingTitle}</p>
+                </td></tr>
+                <tr><td style="padding:12px 0;border-bottom:1px solid #e5e7eb;">
+                  <p style="margin:0 0 4px;color:#6b7280;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">When</p>
+                  <p style="margin:0;color:#111827;font-size:15px;">${safe.formattedTime}</p>
+                </td></tr>
+                <tr><td style="padding:12px 0;border-bottom:1px solid #e5e7eb;">
+                  <p style="margin:0 0 4px;color:#6b7280;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">Duration</p>
+                  <p style="margin:0;color:#111827;font-size:15px;">${safe.durationText}</p>
+                </td></tr>
+                <tr><td style="padding:12px 0;border-bottom:1px solid #e5e7eb;">
+                  <p style="margin:0 0 4px;color:#6b7280;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">Location</p>
+                  <p style="margin:0;color:#111827;font-size:15px;">${safe.locationText}</p>
+                </td></tr>
+                <tr><td style="padding:12px 0 0;">
+                  <p style="margin:0 0 4px;color:#6b7280;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">Organizer</p>
+                  <p style="margin:0;color:#111827;font-size:15px;">${safe.organizerName}</p>
+                </td></tr>
+              </table>
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:28px;">
+                <tr>
+                  <td align="center" style="padding:0 0 12px;">
+                    <a href="${inviteLink}" style="display:inline-block;background:#1D9E75;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;padding:14px 28px;border-radius:8px;">View meeting &middot; Enter app</a>
+                  </td>
+                </tr>
+                <tr>
+                  <td align="center" style="padding:0 0 8px;">
+                    <a href="${signInUrl}" style="display:inline-block;background:#ffffff;color:#374151;font-size:14px;font-weight:600;text-decoration:none;padding:12px 24px;border-radius:8px;border:1px solid #d1d5db;">Sign in only</a>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:24px 0 0;color:#6b7280;font-size:12px;line-height:1.6;">
+                If the button doesn&rsquo;t work, copy and paste this link into your browser:<br />
+                <a href="${inviteLink}" style="color:#1D9E75;word-break:break-all;">${inviteLink}</a>
+              </p>
+              <p style="margin:16px 0 0;color:#6b7280;font-size:12px;line-height:1.6;">
+                Sign-in only: <a href="${signInUrl}" style="color:#1D9E75;word-break:break-all;">${signInUrl}</a>
+              </p>
+            </td>
           </tr>
           <tr>
-            <td style="padding:8px 12px 8px 0;color:#6b7280;font-size:13px;vertical-align:top;">Duration</td>
-            <td style="padding:8px 0;color:#111827;font-size:14px;">${duration}</td>
-          </tr>
-          <tr>
-            <td style="padding:8px 12px 8px 0;color:#6b7280;font-size:13px;vertical-align:top;">Location</td>
-            <td style="padding:8px 0;color:#111827;font-size:14px;">${location}</td>
+            <td style="padding:20px 32px 28px;border-top:1px solid #f3f4f6;background:#fafafa;">
+              <p style="margin:0;color:#9ca3af;font-size:11px;line-height:1.5;">
+                This is an automated message from ClearStrata. Please do not reply to this email.
+              </p>
+            </td>
           </tr>
         </table>
-      </div>
-      ${meeting.is_virtual && meeting.meeting_link
-        ? `<a href="${meeting.meeting_link}" style="display:inline-block;background:#1D9E75;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:600;margin-bottom:16px;">Join online</a><br/><br/>`
-        : ""}
-      <a href="${signInUrl}" style="display:inline-block;background:#1D9E75;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:600;">Open sign-in</a>
-      <p style="margin:24px 0 0;color:#9ca3af;font-size:12px;line-height:1.5;">
-        This message was sent automatically by ClearStrata. Please do not reply to this email.
-      </p>
-    </div>
-  </div>
+      </td>
+    </tr>
+  </table>
 </body>
 </html>`;
   }
 
-  const title = titleZh;
-  return `
-<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="zh">
-<head><meta charset="UTF-8" /></head>
-<body style="margin:0;padding:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-  <div style="max-width:560px;margin:32px auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
-    <div style="background:linear-gradient(135deg,#1D9E75,#178a66);padding:32px 28px;">
-      <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;">会议邀请</h1>
-      <p style="margin:6px 0 0;color:rgba(255,255,255,0.85);font-size:14px;">Meeting Invitation</p>
-    </div>
-    <div style="padding:28px;">
-      <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.6;">
-        ${recipientName} 您好，<br/>您已被邀请参加以下会议：
-      </p>
-      <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:20px;margin-bottom:24px;">
-        <table style="width:100%;border-collapse:collapse;">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>会议邀请</title>
+</head>
+<body style="margin:0;padding:0;background:#f6f9fc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,'PingFang SC','Microsoft YaHei',sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f9fc;padding:40px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06),0 4px 12px rgba(0,0,0,0.04);">
           <tr>
-            <td style="padding:8px 12px 8px 0;color:#6b7280;font-size:13px;width:72px;vertical-align:top;">会议</td>
-            <td style="padding:8px 0;color:#111827;font-size:14px;font-weight:600;">${title}</td>
+            <td style="background:linear-gradient(135deg,#1D9E75 0%,#178a66 100%);padding:28px 32px;">
+              <p style="margin:0 0 4px;color:rgba(255,255,255,0.9);font-size:13px;font-weight:600;letter-spacing:0.02em;">ClearStrata</p>
+              <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:700;line-height:1.25;">会议邀请</h1>
+              <p style="margin:8px 0 0;color:rgba(255,255,255,0.88);font-size:14px;line-height:1.4;">Meeting Invitation</p>
+            </td>
           </tr>
           <tr>
-            <td style="padding:8px 12px 8px 0;color:#6b7280;font-size:13px;vertical-align:top;">时间</td>
-            <td style="padding:8px 0;color:#111827;font-size:14px;">${dateFormatted}</td>
+            <td style="padding:32px 32px 24px;">
+              <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.65;">
+                ${safe.recipientName} 您好，<br /><br />
+                您已被邀请参加以下会议，详情如下。
+              </p>
+              <table role="presentation" width="100%" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:20px 22px;">
+                <tr><td style="padding:0 0 12px;border-bottom:1px solid #e5e7eb;">
+                  <p style="margin:0 0 4px;color:#6b7280;font-size:12px;font-weight:600;">会议</p>
+                  <p style="margin:0;color:#111827;font-size:15px;font-weight:600;">${safe.meetingTitle}</p>
+                </td></tr>
+                <tr><td style="padding:12px 0;border-bottom:1px solid #e5e7eb;">
+                  <p style="margin:0 0 4px;color:#6b7280;font-size:12px;font-weight:600;">时间</p>
+                  <p style="margin:0;color:#111827;font-size:15px;">${safe.formattedTime}</p>
+                </td></tr>
+                <tr><td style="padding:12px 0;border-bottom:1px solid #e5e7eb;">
+                  <p style="margin:0 0 4px;color:#6b7280;font-size:12px;font-weight:600;">时长</p>
+                  <p style="margin:0;color:#111827;font-size:15px;">${safe.durationText}</p>
+                </td></tr>
+                <tr><td style="padding:12px 0;border-bottom:1px solid #e5e7eb;">
+                  <p style="margin:0 0 4px;color:#6b7280;font-size:12px;font-weight:600;">地点</p>
+                  <p style="margin:0;color:#111827;font-size:15px;">${safe.locationText}</p>
+                </td></tr>
+                <tr><td style="padding:12px 0 0;">
+                  <p style="margin:0 0 4px;color:#6b7280;font-size:12px;font-weight:600;">组织者</p>
+                  <p style="margin:0;color:#111827;font-size:15px;">${safe.organizerName}</p>
+                </td></tr>
+              </table>
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:28px;">
+                <tr>
+                  <td align="center" style="padding:0 0 12px;">
+                    <a href="${inviteLink}" style="display:inline-block;background:#1D9E75;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;padding:14px 28px;border-radius:8px;">查看会议 · 进入系统</a>
+                  </td>
+                </tr>
+                <tr>
+                  <td align="center" style="padding:0 0 8px;">
+                    <a href="${signInUrl}" style="display:inline-block;background:#ffffff;color:#374151;font-size:14px;font-weight:600;text-decoration:none;padding:12px 24px;border-radius:8px;border:1px solid #d1d5db;">仅登录系统</a>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:24px 0 0;color:#6b7280;font-size:12px;line-height:1.6;">
+                若按钮无法打开，请将以下链接复制到浏览器地址栏：<br />
+                <a href="${inviteLink}" style="color:#1D9E75;word-break:break-all;">${inviteLink}</a>
+              </p>
+              <p style="margin:16px 0 0;color:#6b7280;font-size:12px;line-height:1.6;">
+                仅登录：<a href="${signInUrl}" style="color:#1D9E75;word-break:break-all;">${signInUrl}</a>
+              </p>
+            </td>
           </tr>
           <tr>
-            <td style="padding:8px 12px 8px 0;color:#6b7280;font-size:13px;vertical-align:top;">时长</td>
-            <td style="padding:8px 0;color:#111827;font-size:14px;">${duration}</td>
-          </tr>
-          <tr>
-            <td style="padding:8px 12px 8px 0;color:#6b7280;font-size:13px;vertical-align:top;">地点</td>
-            <td style="padding:8px 0;color:#111827;font-size:14px;">${location}</td>
+            <td style="padding:20px 32px 28px;border-top:1px solid #f3f4f6;background:#fafafa;">
+              <p style="margin:0;color:#9ca3af;font-size:11px;line-height:1.5;">
+                此邮件由 ClearStrata 系统自动发送，请勿直接回复。
+              </p>
+            </td>
           </tr>
         </table>
-      </div>
-      ${meeting.is_virtual && meeting.meeting_link
-        ? `<a href="${meeting.meeting_link}" style="display:inline-block;background:#1D9E75;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:600;margin-bottom:16px;">加入在线会议</a><br/><br/>`
-        : ""}
-      <a href="${signInUrl}" style="display:inline-block;background:#1D9E75;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:600;">前往签到</a>
-      <p style="margin:24px 0 0;color:#9ca3af;font-size:12px;line-height:1.5;">
-        此邮件由 ClearStrata 系统自动发送，请勿直接回复。
-      </p>
-    </div>
-  </div>
+      </td>
+    </tr>
+  </table>
 </body>
 </html>`;
 }
@@ -314,7 +469,9 @@ Deno.serve(async (req: Request) => {
 
     const [{ data: meeting, error: meetingErr }, { data: profile, error: profileErr }] =
       await Promise.all([
-        supabaseAdmin.from("meetings").select("*").eq("id", meeting_id).eq("property_id", property_id)
+        supabaseAdmin.from("meetings").select(
+          "id, property_id, title_en, title_zh, scheduled_at, scheduled_date, duration_minutes, is_virtual, meeting_link, location, created_by",
+        ).eq("id", meeting_id).eq("property_id", property_id)
           .maybeSingle(),
         supabaseAdmin.from("profiles").select("full_name_en, full_name_zh, email").eq("id", user_id)
           .maybeSingle(),
@@ -363,16 +520,65 @@ Deno.serve(async (req: Request) => {
       : (profile.full_name_zh || profile.full_name_en || "业主");
 
     const appBaseUrl = Deno.env.get("APP_BASE_URL") || "http://localhost:5173";
-    const signInUrl = `${appBaseUrl.replace(/\/$/, "")}/voting/${meeting_id}`;
+    const base = appBaseUrl.replace(/\/$/, "");
 
-    const titleForSubject = locale === "en"
-      ? ((meeting.title_en || meeting.title_zh || "Meeting") as string)
-      : ((meeting.title_zh || meeting.title_en || "会议") as string);
+    const inviteToken = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const { error: tokenInsErr } = await supabaseAdmin.from("invite_tokens").insert({
+      user_id,
+      meeting_id,
+      token: inviteToken,
+      expires_at: expiresAt,
+    });
+    if (tokenInsErr) {
+      console.error("[send-meeting-invite] invite_tokens insert failed", tokenInsErr);
+      return apiResponse(false, "Could not create invite token", { detail: tokenInsErr.message }, 500);
+    }
 
-    const emailHtml = buildEmailHtml(meeting, recipientName, signInUrl, locale);
-    const subject = locale === "en"
-      ? `Meeting invitation: ${titleForSubject}`
-      : `会议邀请：${titleForSubject}`;
+    const inviteLink = `${base}/invite?token=${encodeURIComponent(inviteToken)}`;
+    const signInUrl = `${base}/login`;
+
+    console.log("meeting raw:", meeting);
+
+    const m = meeting as Record<string, unknown>;
+    const displayMeta = getMeetingEmailDisplay(m, locale);
+    const meetingTitle = resolveMeetingTitle(m, locale);
+    const formattedTime = displayMeta.formattedTime;
+    const durationText = formatDurationText(m, locale);
+    const locationText = formatLocationText(m, locale);
+
+    let organizerName = "—";
+    const createdBy = m.created_by as string | undefined;
+    if (createdBy) {
+      const { data: orgProf } = await supabaseAdmin.from("profiles").select("full_name_en, full_name_zh").eq(
+        "id",
+        createdBy,
+      ).maybeSingle();
+      if (orgProf) {
+        organizerName = locale === "en"
+          ? (orgProf.full_name_en || orgProf.full_name_zh || "—")
+          : (orgProf.full_name_zh || orgProf.full_name_en || "—");
+      }
+    }
+
+    console.log("[send-meeting-invite] email fields", {
+      inviteLink,
+      signInUrl,
+      meetingTitle,
+      formattedTime,
+    });
+
+    const htmlTemplate = buildEmailHtml({
+      locale,
+      recipientName,
+      meetingTitle,
+      formattedTime,
+      durationText,
+      locationText,
+      organizerName,
+      inviteLink,
+      signInUrl,
+    });
 
     const email = profile.email as string;
     const meetingId = meeting_id;
@@ -389,11 +595,12 @@ Deno.serve(async (req: Request) => {
     try {
       console.log("📨 sending email to:", email);
 
+      // Resend only applies `data` when using their template system; plain `html` is sent as-is.
       const res = await resend.emails.send({
         from: "ClearStrata <noreply@clearstrata.ai>",
         to: email,
-        subject,
-        html: emailHtml,
+        subject: "会议邀请 / Meeting Invitation",
+        html: htmlTemplate,
       });
 
       console.log("✅ resend success", res);
@@ -413,6 +620,7 @@ Deno.serve(async (req: Request) => {
           resendName === "validation_error" &&
           /testing email|only send|verify a domain|can only send/i.test(msgLower);
 
+        await supabaseAdmin.from("invite_tokens").delete().eq("token", inviteToken);
         await upsertInvitationDelivery(supabaseAdmin, {
           meeting_id,
           property_id,
@@ -456,6 +664,7 @@ Deno.serve(async (req: Request) => {
       console.error("❌ resend error FULL", JSON.stringify(unknownToSerializable(err), null, 2));
       console.error("❌ resend error raw object", err);
 
+      await supabaseAdmin.from("invite_tokens").delete().eq("token", inviteToken);
       await upsertInvitationDelivery(supabaseAdmin, {
         meeting_id,
         property_id,

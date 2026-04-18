@@ -3,3 +3,6 @@
 # This function uses the service role inside the handler and identifies the recipient via JSON body.
 [functions.send-meeting-invite]
 verify_jwt = false
+
+[functions.consume-invite-token]
+verify_jwt = false

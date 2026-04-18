@@ -16,6 +16,7 @@ import { submitUnifiedPropertyEntry } from '../lib/propertyEntryUnified';
 import { demoEntryPath, MARKETING_DEMO_PROPERTY_CODE } from '@/lib/propertyEntryRoutes';
 import { saveGuestExperienceDraft } from '@/lib/guestExperienceDraft';
 import { savePropertyEntryDraft } from '@/lib/propertyEntryDraft';
+import { consumePendingRedirect } from '../lib/pendingRedirect';
 
 function persistCurrentPropertyId(propertyId: string) {
   try {
@@ -321,6 +322,11 @@ export function Auth() {
         const cleanEmail = email.trim().toLowerCase();
         await signIn(cleanEmail, password);
         clearPublicDemoLocalStorage();
+        const pendingAfterLogin = consumePendingRedirect();
+        if (pendingAfterLogin) {
+          navigate(pendingAfterLogin, { replace: true });
+          return;
+        }
         const claimedId = await claimPropertyFromUrlIfPresent();
         if (claimedId) {
           persistCurrentPropertyId(claimedId);
