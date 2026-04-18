@@ -207,7 +207,7 @@ function buildEmailHtml(p: InviteEmailHtmlParams): string {
                   style="height:48px;object-fit:contain;display:block;margin:0 auto;"
                 />
               </div>
-              <div style="font-size:22px;font-weight:600;color:#ffffff;line-height:1.4;">
+              <div style="font-size:22px;font-weight:600;color:#ffffff;">
                 会议邀请 / Meeting Invitation
               </div>
             </td>
@@ -297,7 +297,7 @@ function buildEmailHtml(p: InviteEmailHtmlParams): string {
                   style="height:48px;object-fit:contain;display:block;margin:0 auto;"
                 />
               </div>
-              <div style="font-size:22px;font-weight:600;color:#ffffff;line-height:1.4;">
+              <div style="font-size:22px;font-weight:600;color:#ffffff;">
                 会议邀请 / Meeting Invitation
               </div>
             </td>
