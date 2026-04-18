@@ -35,20 +35,19 @@ interface InviteRequestBody {
   user_email?: string;
 }
 
-/** First non-empty time field (DB uses `scheduled_at`; legacy / alt names supported). */
+/** First non-empty time string: `start_time` → `meeting_time` → `scheduled_at` (DB canonical). */
 function pickMeetingStartRaw(meeting: Record<string, unknown>): string | null {
-  const keys = [
-    "start_time",
-    "meeting_time",
-    "scheduled_at",
-    "scheduled_date",
-  ] as const;
-  for (const k of keys) {
-    const v = meeting[k];
-    if (v == null || v === "") continue;
-    if (typeof v === "string" && v.trim() !== "") return v.trim();
-  }
-  return null;
+  const start_time = meeting["start_time"];
+  const meeting_time = meeting["meeting_time"];
+  const scheduled_at = meeting["scheduled_at"];
+
+  const str = (v: unknown): string | null =>
+    typeof v === "string" && v.trim() !== "" ? v.trim() : null;
+
+  const meetingTimeRaw =
+    str(start_time) || str(meeting_time) || str(scheduled_at);
+
+  return meetingTimeRaw ?? null;
 }
 
 function formatWhenZhFromDate(startTime: Date): string {
@@ -470,15 +469,19 @@ Deno.serve(async (req: Request) => {
     const [{ data: meeting, error: meetingErr }, { data: profile, error: profileErr }] =
       await Promise.all([
         supabaseAdmin.from("meetings").select(
-          "id, property_id, title_en, title_zh, scheduled_at, scheduled_date, duration_minutes, is_virtual, meeting_link, location, created_by",
+          "id, property_id, title_en, title_zh, scheduled_at, duration_minutes, is_virtual, meeting_link, location, created_by",
         ).eq("id", meeting_id).eq("property_id", property_id)
           .maybeSingle(),
         supabaseAdmin.from("profiles").select("full_name_en, full_name_zh, email").eq("id", user_id)
           .maybeSingle(),
       ]);
 
-    if (meetingErr || !meeting) {
-      return apiResponse(false, "Meeting not found", { meetingErr }, 404);
+    if (meetingErr) {
+      console.error("[send-meeting-invite] meeting query error", meetingErr);
+      return apiResponse(false, "Meeting query failed", meetingErr, 500);
+    }
+    if (!meeting) {
+      return apiResponse(false, "Meeting not found", null, 404);
     }
 
     const [{ count: invitationCount, error: invErr }, { count: memberCount, error: memErr }] =
