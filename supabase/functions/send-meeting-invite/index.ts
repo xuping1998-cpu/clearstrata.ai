@@ -418,6 +418,8 @@ Deno.serve(async (req: Request) => {
 
   try {
     console.log("🚨 FUNCTION START", new Date().toISOString());
+    console.log("SEND_MEETING_INVITE_VERSION = 2026-04-17-01");
+    console.log("SENTINEL_SCHEDULED_AT_ONLY_BUILD");
 
     const missingEnv: string[] = [];
     if (!Deno.env.get("RESEND_API_KEY")?.trim()) missingEnv.push("RESEND_API_KEY");
