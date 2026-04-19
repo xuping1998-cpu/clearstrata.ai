@@ -292,7 +292,7 @@ function buildEmailHtml(p: InviteEmailHtmlParams): string {
             <td style="background:#16a34a;padding:16px 20px;text-align:center;">
               <div style="margin-bottom:12px;">
                 <img
-                  src="https://clearstrata.ai/clearstrata-hero-logo.png"
+                  src="https://clearstrata.ai/logo-email-light-v1.png"
                   alt="ClearStrata"
                   style="height:48px;object-fit:contain;display:block;margin:0 auto;"
                 />
