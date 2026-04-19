@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { ArrowLeft, Mail, RefreshCw, Users } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useProperty } from '../../contexts/PropertyContext';
@@ -44,13 +44,7 @@ export function MeetingDetail() {
   const { currentPropertyId, roleInProperty } = useProperty();
   const { language } = useLanguage();
   const en = language === 'en';
-  const navigate = useNavigate();
   const location = useLocation();
-  const listBackPath = location.pathname.includes('/demo/voting')
-    ? '/demo/voting'
-    : location.pathname.startsWith('/voting')
-      ? '/voting'
-      : '/meetings';
 
   const [bundle, setBundle] = useState<MeetingDetailBundle>(initialBundle);
   const [coreDone, setCoreDone] = useState(false);
@@ -147,6 +141,20 @@ export function MeetingDetail() {
   }, [bundle.invitations, location.pathname, location.hash, location.search]);
 
   const meeting = bundle.meeting;
+
+  const isVotingRoute =
+    location.pathname.startsWith('/voting') && !location.pathname.includes('/demo/voting');
+
+  const backToListHref = useMemo(() => {
+    if (location.pathname.includes('/demo/voting')) return '/demo/voting';
+    const pid =
+      currentPropertyId?.trim() ||
+      meeting?.property_id ||
+      new URLSearchParams(location.search).get('propertyId')?.trim();
+    const base = location.pathname.startsWith('/voting') ? '/voting' : '/meetings';
+    if (pid) return `${base}?${new URLSearchParams({ propertyId: pid }).toString()}`;
+    return base;
+  }, [location.pathname, location.search, currentPropertyId, meeting?.property_id]);
 
   useEffect(() => {
     if (shouldDeferAutoPropertyRedirects()) return;
@@ -340,10 +348,13 @@ export function MeetingDetail() {
 
   if (!meeting) {
     return (
-      <div className="min-h-screen bg-gray-50 p-6">
-        <button type="button" onClick={() => navigate(listBackPath)} className="text-emerald-800 flex items-center gap-1 mb-4">
-          <ArrowLeft size={18} /> {en ? 'Back' : '返回'}
-        </button>
+      <div className="min-h-screen bg-slate-100 p-6">
+        <Link
+          to={backToListHref}
+          className="inline-flex items-center gap-2 text-emerald-800 font-medium hover:underline mb-6"
+        >
+          <ArrowLeft size={18} /> {isVotingRoute ? (en ? 'Back to voting list' : '返回投票列表') : en ? 'Back to meetings' : '返回会议列表'}
+        </Link>
         <p className="text-center text-gray-700 text-lg">{en ? meetingUiStrings.notFound.en : meetingUiStrings.notFound.zh}</p>
       </div>
     );
@@ -367,39 +378,68 @@ export function MeetingDetail() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      <div className="bg-gradient-to-r from-[#1D9E75] to-[#178a66] text-white p-6">
-        <div className="max-w-5xl mx-auto flex items-start gap-3">
-          <button type="button" onClick={() => navigate(listBackPath)} className="hover:bg-white/20 p-2 rounded-lg shrink-0">
-            <ArrowLeft size={22} />
-          </button>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2 mb-1">
-              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-white/20">{labelMeetingType(meeting.meeting_type, en)}</span>
-              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-white/20">{labelFormat(meeting.meeting_format, en)}</span>
-              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-white/20">{labelStatus(meeting.status, en)}</span>
+    <div className="min-h-screen bg-slate-100 pb-24">
+      <div className="border-b border-emerald-950/40 bg-gradient-to-br from-slate-950 via-emerald-950 to-[#0a3d2e] text-white shadow-lg shadow-slate-900/20">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
+            <div className="min-w-0 flex-1 space-y-4">
+              <Link
+                to={backToListHref}
+                className="inline-flex w-fit items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-sm font-medium text-white ring-1 ring-white/20 hover:bg-white/20 transition-colors"
+              >
+                <ArrowLeft size={18} />
+                {isVotingRoute ? (en ? 'Back to voting list' : '返回投票列表') : en ? 'Back to meetings' : '返回会议列表'}
+              </Link>
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-emerald-300/90 mb-2">
+                  {isVotingRoute ? (en ? 'Meeting voting' : '会议投票') : en ? 'Meeting details' : '会议详情'}
+                </p>
+                <div className="flex flex-wrap items-center gap-2 mb-3">
+                  <span className="px-2.5 py-0.5 rounded-md text-xs font-medium bg-white/15 text-white/95 ring-1 ring-white/10">
+                    {labelMeetingType(meeting.meeting_type, en)}
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-md text-xs font-medium bg-white/15 text-white/95 ring-1 ring-white/10">
+                    {labelFormat(meeting.meeting_format, en)}
+                  </span>
+                </div>
+                <h1 className="text-2xl sm:text-3xl font-bold text-white leading-snug break-words">
+                  {meetingTitleZhFirst(meeting) || (en ? meetingUiStrings.untitled.en : meetingUiStrings.untitled.zh)}
+                </h1>
+                <dl className="mt-4 space-y-2 text-sm text-white/90 border-t border-white/10 pt-4">
+                  <div className="flex flex-wrap gap-x-2 gap-y-1">
+                    <dt className="text-white/60 shrink-0">{en ? 'Status' : '状态'}</dt>
+                    <dd className="font-semibold text-white">{labelStatus(meeting.status, en)}</dd>
+                  </div>
+                  <div className="flex flex-wrap gap-x-2 gap-y-1">
+                    <dt className="text-white/60 shrink-0">{en ? 'Time' : '时间'}</dt>
+                    <dd>
+                      {meeting.scheduled_at
+                        ? new Date(meeting.scheduled_at).toLocaleString(en ? 'en-CA' : 'zh-CN', {
+                            dateStyle: 'full',
+                            timeStyle: 'short',
+                          })
+                        : en
+                          ? 'Not scheduled'
+                          : '未排期'}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
             </div>
-            <h1 className="text-2xl font-bold truncate">
-              {meetingTitleZhFirst(meeting) || (en ? meetingUiStrings.untitled.en : meetingUiStrings.untitled.zh)}
-            </h1>
-            {meeting.scheduled_at && (
-              <p className="text-white/90 text-sm mt-1">
-                {new Date(meeting.scheduled_at).toLocaleString(en ? 'en-CA' : 'zh-CN', { dateStyle: 'full', timeStyle: 'short' })}
-              </p>
+            {isStaff && (
+              <Link
+                to={`/meetings/${meeting.id}/edit`}
+                className="shrink-0 self-start rounded-lg bg-white/15 px-4 py-2.5 text-sm font-medium text-white ring-1 ring-white/25 hover:bg-white/25 transition-colors lg:mt-12"
+              >
+                {en ? 'Edit meeting' : '编辑会议'}
+              </Link>
             )}
           </div>
-          {isStaff && (
-            <Link
-              to={`/meetings/${meeting.id}/edit`}
-              className="ml-auto shrink-0 text-sm bg-white/15 hover:bg-white/25 px-3 py-2 rounded-lg"
-            >
-              {en ? 'Edit' : '编辑'}
-            </Link>
-          )}
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto p-4 sm:p-6 space-y-8">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 -mt-6 relative z-10">
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-5 sm:p-8 shadow-[0_16px_50px_-12px_rgba(15,23,42,0.18)] space-y-8">
         {inviteToast ? (
           <div
             className={`fixed bottom-6 left-1/2 z-50 max-w-lg -translate-x-1/2 rounded-lg px-4 py-3 text-sm text-white shadow-lg ${
@@ -756,6 +796,7 @@ export function MeetingDetail() {
             )}
           </div>
         </section>
+        </div>
       </div>
     </div>
   );

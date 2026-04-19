@@ -114,6 +114,31 @@ export function MeetingListView({ variant }: Props) {
         ? 'Meetings'
         : '会议';
 
+  /** 单会议详情：两 variant 各自固定前缀，统一透传 propertyId（有则必带）。 */
+  const hrefForMeeting = (meetingId: string | null | undefined): string | null => {
+    const id = typeof meetingId === 'string' ? meetingId.trim() : '';
+    if (!id) return null;
+    const path = variant === 'voting' ? `/voting/${encodeURIComponent(id)}` : `/meetings/${encodeURIComponent(id)}`;
+    const pid = currentPropertyId?.trim();
+    if (pid) {
+      return `${path}?${new URLSearchParams({ propertyId: pid }).toString()}`;
+    }
+    return path;
+  };
+
+  const votingHubHref = currentPropertyId
+    ? `/voting?${new URLSearchParams({ propertyId: currentPropertyId }).toString()}`
+    : '/voting';
+
+  const primaryCtaLabel =
+    variant === 'voting'
+      ? en
+        ? 'Enter meeting voting'
+        : '进入会议投票'
+      : en
+        ? 'View meeting details'
+        : '查看会议详情';
+
   return (
     <div className="min-h-screen bg-gray-50 pb-16">
       <div className="bg-gradient-to-r from-[#1D9E75] to-[#178a66] text-white p-6">
@@ -191,58 +216,92 @@ export function MeetingListView({ variant }: Props) {
           </div>
         )}
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 divide-y divide-gray-100">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 divide-y divide-gray-100 overflow-hidden">
           {meetings.length === 0 ? (
             <div className="p-12 text-center text-gray-600">{en ? 'No meetings yet.' : '暂无会议。'}</div>
           ) : (
-            meetings.map((m) => (
-              <Link
-                key={m.id}
-                to={variant === 'voting' ? `/voting/${m.id}` : `/meetings/${m.id}`}
-                className="w-full text-left p-6 hover:bg-gray-50 transition-colors flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between block focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1D9E75]"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2 mb-1">
-                    <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-800">
-                      {labelMeetingType(m.meeting_type, en)}
-                    </span>
-                    <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-800">
-                      {labelFormat(m.meeting_format, en)}
-                    </span>
-                    <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                      {labelStatus(m.status, en)}
+            meetings.map((m, idx) => {
+              const detailHref = hrefForMeeting(m.id);
+              const cardInteractive = detailHref !== null;
+              const cardClass = [
+                'group w-full text-left p-6 block transition-all duration-150',
+                cardInteractive
+                  ? 'cursor-pointer hover:bg-emerald-50/80 active:bg-emerald-100/60 hover:shadow-[inset_4px_0_0_0_#1D9E75] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#1D9E75]'
+                  : 'cursor-not-allowed opacity-70',
+              ].join(' ');
+
+              const inner = (
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch sm:justify-between sm:gap-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-800">
+                        {labelMeetingType(m.meeting_type, en)}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-800">
+                        {labelFormat(m.meeting_format, en)}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                        {labelStatus(m.status, en)}
+                      </span>
+                    </div>
+                    <h2 className="text-lg font-semibold text-gray-900 truncate group-hover:text-emerald-900 transition-colors">
+                      {meetingTitleZhFirst(m) || (en ? meetingUiStrings.untitled.en : meetingUiStrings.untitled.zh)}
+                    </h2>
+                    {(m.description_zh || m.description_en) && (
+                      <p className="text-sm text-gray-600 line-clamp-2 mt-1">
+                        {(m.description_zh || m.description_en || '').slice(0, 200)}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-2 shrink-0 sm:items-end sm:justify-between sm:min-w-[200px]">
+                    <div className="text-sm text-gray-500 sm:text-right">
+                      {m.scheduled_at
+                        ? new Date(m.scheduled_at).toLocaleString(en ? 'en-CA' : 'zh-CN', {
+                            dateStyle: 'medium',
+                            timeStyle: 'short',
+                          })
+                        : en
+                          ? 'No schedule'
+                          : '未排期'}
+                    </div>
+                    <span
+                      className={[
+                        'inline-flex items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold shadow-sm sm:text-center min-w-[9rem]',
+                        cardInteractive
+                          ? 'bg-[#1D9E75] text-white group-hover:bg-[#178a66] group-active:scale-[0.98] transition-all'
+                          : 'bg-gray-200 text-gray-500',
+                      ].join(' ')}
+                    >
+                      {cardInteractive ? primaryCtaLabel : en ? 'Unavailable' : '无法进入'}
                     </span>
                   </div>
-                  <h2 className="text-lg font-semibold text-gray-900 truncate">
-                    {meetingTitleZhFirst(m) || (en ? meetingUiStrings.untitled.en : meetingUiStrings.untitled.zh)}
-                  </h2>
-                  {(m.description_zh || m.description_en) && (
-                    <p className="text-sm text-gray-600 line-clamp-2">
-                      {(m.description_zh || m.description_en || '').slice(0, 200)}
-                    </p>
-                  )}
                 </div>
-                <div className="text-sm text-gray-500 shrink-0">
-                  {m.scheduled_at
-                    ? new Date(m.scheduled_at).toLocaleString(en ? 'en-CA' : 'zh-CN', {
-                        dateStyle: 'medium',
-                        timeStyle: 'short',
-                      })
-                    : en
-                      ? 'No schedule'
-                      : '未排期'}
+              );
+
+              return cardInteractive ? (
+                <Link key={m.id || `row-${idx}`} to={detailHref} className={cardClass}>
+                  {inner}
+                </Link>
+              ) : (
+                <div key={m.id || `row-${idx}`} className={cardClass} role="group" aria-disabled="true">
+                  {inner}
                 </div>
-              </Link>
-            ))
+              );
+            })
           )}
         </div>
 
         {variant === 'meetings' && (
-          <p className="text-sm text-gray-500 text-center">
-            <Link to="/voting" className="text-emerald-700 hover:underline">
-              {en ? 'Open meetings & voting hub' : '前往会议与投票'}
-            </Link>
-          </p>
+          <div className="mt-10 pt-6 border-t border-gray-200">
+            <p className="text-center">
+              <Link
+                to={votingHubHref}
+                className="text-xs text-gray-400 hover:text-gray-600 underline underline-offset-2 decoration-gray-300 hover:decoration-gray-500 transition-colors"
+              >
+                {en ? 'Voting hub — all meetings in this property' : '投票专区 · 查看本物业全部会议'}
+              </Link>
+            </p>
+          </div>
         )}
       </div>
     </div>
