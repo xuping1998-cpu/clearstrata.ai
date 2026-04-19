@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Mail, RefreshCw, Users } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useProperty } from '../../contexts/PropertyContext';
@@ -25,6 +25,7 @@ import {
 } from '../../features/meetings/api';
 import { supabase } from '../../lib/supabase';
 import { shouldDeferAutoPropertyRedirects } from '../../lib/authRecovery';
+import { samePropertyId } from '../../lib/propertyIdMatch';
 import { labelFormat, labelMeetingType, labelStatus, labelVoteRule, labelVoteStatus, meetingUiStrings } from '../../features/meetings/labels';
 
 const initialBundle = (): MeetingDetailBundle => ({
@@ -45,6 +46,7 @@ export function MeetingDetail() {
   const { language } = useLanguage();
   const en = language === 'en';
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [bundle, setBundle] = useState<MeetingDetailBundle>(initialBundle);
   const [coreDone, setCoreDone] = useState(false);
@@ -147,14 +149,32 @@ export function MeetingDetail() {
 
   const backToListHref = useMemo(() => {
     if (location.pathname.includes('/demo/voting')) return '/demo/voting';
+    /** 会议所属物业优先，避免多物业下切换 UI 后返回串物业 */
     const pid =
-      currentPropertyId?.trim() ||
-      meeting?.property_id ||
-      new URLSearchParams(location.search).get('propertyId')?.trim();
+      meeting?.property_id?.trim() ||
+      searchParams.get('propertyId')?.trim() ||
+      new URLSearchParams(location.search).get('propertyId')?.trim() ||
+      currentPropertyId?.trim();
     const base = location.pathname.startsWith('/voting') ? '/voting' : '/meetings';
     if (pid) return `${base}?${new URLSearchParams({ propertyId: pid }).toString()}`;
     return base;
-  }, [location.pathname, location.search, currentPropertyId, meeting?.property_id]);
+  }, [location.pathname, location.search, searchParams, currentPropertyId, meeting?.property_id]);
+
+  /** 刷新 / 深链：加载会议后把 URL 中的 propertyId 与会议所属物业对齐，返回列表与多物业上下文一致 */
+  useEffect(() => {
+    if (shouldDeferAutoPropertyRedirects()) return;
+    if (!meeting?.property_id) return;
+    const urlPid = searchParams.get('propertyId');
+    if (urlPid && samePropertyId(urlPid, meeting.property_id)) return;
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('propertyId', meeting.property_id);
+        return next;
+      },
+      { replace: true },
+    );
+  }, [meeting?.property_id, searchParams, setSearchParams]);
 
   useEffect(() => {
     if (shouldDeferAutoPropertyRedirects()) return;
@@ -348,10 +368,10 @@ export function MeetingDetail() {
 
   if (!meeting) {
     return (
-      <div className="min-h-screen bg-slate-100 p-6">
+      <div className="min-h-screen bg-gray-50 p-6">
         <Link
           to={backToListHref}
-          className="inline-flex items-center gap-2 text-emerald-800 font-medium hover:underline mb-6"
+          className="inline-flex items-center gap-2 text-[#126b54] font-medium hover:text-[#0f4a3a] hover:underline mb-6"
         >
           <ArrowLeft size={18} /> {isVotingRoute ? (en ? 'Back to voting list' : '返回投票列表') : en ? 'Back to meetings' : '返回会议列表'}
         </Link>
@@ -378,8 +398,8 @@ export function MeetingDetail() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 pb-24">
-      <div className="border-b border-emerald-950/40 bg-gradient-to-br from-slate-950 via-emerald-950 to-[#0a3d2e] text-white shadow-lg shadow-slate-900/20">
+    <div className="min-h-screen bg-gray-50 pb-24">
+      <div className="border-b border-[#063d2f]/45 bg-gradient-to-br from-[#0a4536] via-[#1D9E75] to-[#146b52] text-white shadow-lg shadow-[#04261c]/30">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
             <div className="min-w-0 flex-1 space-y-4">
@@ -391,7 +411,7 @@ export function MeetingDetail() {
                 {isVotingRoute ? (en ? 'Back to voting list' : '返回投票列表') : en ? 'Back to meetings' : '返回会议列表'}
               </Link>
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-emerald-300/90 mb-2">
+                <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/80 mb-2">
                   {isVotingRoute ? (en ? 'Meeting voting' : '会议投票') : en ? 'Meeting details' : '会议详情'}
                 </p>
                 <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -428,7 +448,7 @@ export function MeetingDetail() {
             </div>
             {isStaff && (
               <Link
-                to={`/meetings/${meeting.id}/edit`}
+                to={`/meetings/${meeting.id}/edit?${new URLSearchParams({ propertyId: meeting.property_id }).toString()}`}
                 className="shrink-0 self-start rounded-lg bg-white/15 px-4 py-2.5 text-sm font-medium text-white ring-1 ring-white/25 hover:bg-white/25 transition-colors lg:mt-12"
               >
                 {en ? 'Edit meeting' : '编辑会议'}
@@ -439,7 +459,7 @@ export function MeetingDetail() {
       </div>
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 -mt-6 relative z-10">
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-5 sm:p-8 shadow-[0_16px_50px_-12px_rgba(15,23,42,0.18)] space-y-8">
+        <div className="rounded-2xl border border-gray-200/90 bg-white p-5 sm:p-8 shadow-[0_16px_50px_-12px_rgba(6,61,47,0.14)] space-y-8">
         {inviteToast ? (
           <div
             className={`fixed bottom-6 left-1/2 z-50 max-w-lg -translate-x-1/2 rounded-lg px-4 py-3 text-sm text-white shadow-lg ${
@@ -496,12 +516,12 @@ export function MeetingDetail() {
                       <div className="flex flex-wrap items-center gap-2 mb-2">
                         <span className="text-xs text-gray-500">#{agenda.sort_order}</span>
                         {agenda.requires_vote ? (
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-900">{en ? 'Vote required' : '需要表决'}</span>
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-[#1D9E75]/22 text-[#0a3028] font-medium">{en ? 'Vote required' : '需要表决'}</span>
                         ) : (
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">{en ? 'Discussion' : '讨论'}</span>
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-[#1D9E75]/12 text-[#145a46]">{en ? 'Discussion' : '讨论'}</span>
                         )}
                         {agenda.vote_rule && (
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-900">
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-[#1D9E75]/10 text-[#0f4a3a]">
                             {labelVoteRule(agenda.vote_rule, en)}
                           </span>
                         )}
@@ -528,7 +548,7 @@ export function MeetingDetail() {
                         <div className="mt-4 space-y-3 border-t border-gray-200 pt-3">
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="text-xs font-medium text-gray-700">{en ? 'Vote status' : '表决状态'}:</span>
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-gray-200">{labelVoteStatus(vote.status, en)}</span>
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-[#1D9E75]/15 text-[#145a46] font-medium">{labelVoteStatus(vote.status, en)}</span>
                             <span className="text-xs text-gray-600">
                               {en ? 'Vote rule' : '投票规则'}: {labelVoteRule(vote.vote_rule, en)}
                             </span>
@@ -539,7 +559,7 @@ export function MeetingDetail() {
                               type="button"
                               disabled={busy}
                               onClick={() => handleOpenVote(vote.id)}
-                              className="text-sm px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+                              className="text-sm px-3 py-1.5 rounded-lg bg-[#1D9E75] text-white hover:bg-[#178a66] active:bg-[#146b52] disabled:opacity-50"
                             >
                               {en ? 'Open voting' : '开放投票'}
                             </button>
@@ -549,7 +569,7 @@ export function MeetingDetail() {
                               type="button"
                               disabled={busy}
                               onClick={() => handleCloseVote(vote.id)}
-                              className="text-sm px-3 py-1.5 rounded-lg bg-gray-800 text-white hover:bg-black disabled:opacity-50"
+                              className="text-sm px-3 py-1.5 rounded-lg bg-[#126b54] text-white hover:bg-[#0f4a3a] active:bg-[#0a3028] disabled:opacity-50"
                             >
                               {en ? 'Close voting' : '关闭投票'}
                             </button>
@@ -567,8 +587,8 @@ export function MeetingDetail() {
                                     onClick={() => handleBallot(vote.id, opt.option_key)}
                                     className={`px-3 py-2 rounded-lg border text-sm ${
                                       my?.selected_option_key === opt.option_key
-                                        ? 'border-[#1D9E75] bg-emerald-50 text-emerald-900'
-                                        : 'border-gray-200 bg-white hover:border-gray-300'
+                                        ? 'border-[#1D9E75] bg-[#1D9E75]/10 text-[#0f3d2f]'
+                                        : 'border-gray-200 bg-white hover:border-[#1D9E75]/40'
                                     }`}
                                   >
                                     {en ? opt.label_en || opt.option_key : opt.label_zh || opt.label_en || opt.option_key}
@@ -693,7 +713,7 @@ export function MeetingDetail() {
                     </div>
                     <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
                       <div
-                        className="h-full bg-emerald-500 rounded-full transition-all"
+                        className="h-full bg-[#178a66] rounded-full transition-all"
                         style={{ width: `${openRatePct}%` }}
                       />
                     </div>
@@ -784,7 +804,7 @@ export function MeetingDetail() {
             ) : (
               <ul className="space-y-3 text-sm">
                 {bundle.resolutions.map((r) => (
-                  <li key={r.id} className="border-l-4 border-emerald-500 pl-3">
+                  <li key={r.id} className="border-l-4 border-[#1D9E75] pl-3">
                     <p className="text-gray-900">{r.resolution_text}</p>
                     <p className="text-gray-500 mt-1">
                       {en ? 'Outcome' : '结果'}: {r.outcome}

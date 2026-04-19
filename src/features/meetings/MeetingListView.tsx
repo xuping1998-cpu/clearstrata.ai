@@ -185,7 +185,7 @@ export function MeetingListView({ variant }: Props) {
               <div className="h-10 w-px bg-gray-200 hidden sm:block" />
               <div>
                 <p className="text-sm text-gray-600">{en ? 'AGM status' : 'AGM 状态'}</p>
-                <p className={`text-lg font-semibold ${stats.agm === 'ok' ? 'text-green-700' : 'text-amber-700'}`}>
+                <p className={`text-lg font-semibold ${stats.agm === 'ok' ? 'text-[#157a5c]' : 'text-amber-700'}`}>
                   {stats.agm === 'ok' ? (en ? 'OK — AGM on file' : '正常 — 本年度已有 AGM') : en ? 'Missing AGM' : '缺 AGM'}
                 </p>
               </div>
@@ -221,12 +221,13 @@ export function MeetingListView({ variant }: Props) {
             <div className="p-12 text-center text-gray-600">{en ? 'No meetings yet.' : '暂无会议。'}</div>
           ) : (
             meetings.map((m, idx) => {
-              const detailHref = hrefForMeeting(m.id);
+              const rowId = m.id != null && String(m.id).trim() !== '' ? String(m.id).trim() : '';
+              const detailHref = rowId ? hrefForMeeting(rowId) : null;
               const cardInteractive = detailHref !== null;
               const cardClass = [
                 'group w-full text-left p-6 block transition-all duration-150',
                 cardInteractive
-                  ? 'cursor-pointer hover:bg-emerald-50/80 active:bg-emerald-100/60 hover:shadow-[inset_4px_0_0_0_#1D9E75] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#1D9E75]'
+                  ? 'cursor-pointer hover:bg-[#1D9E75]/[0.08] active:bg-[#1D9E75]/13 hover:shadow-[inset_4px_0_0_0_#1D9E75] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#1D9E75]'
                   : 'cursor-not-allowed opacity-70',
               ].join(' ');
 
@@ -234,17 +235,17 @@ export function MeetingListView({ variant }: Props) {
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch sm:justify-between sm:gap-4">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-800">
+                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-[#1D9E75]/14 text-[#145a46]">
                         {labelMeetingType(m.meeting_type, en)}
                       </span>
-                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-800">
+                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-[#1D9E75]/10 text-[#16694f]">
                         {labelFormat(m.meeting_format, en)}
                       </span>
-                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                      <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-[#1D9E75]/12 text-[#0f4a3a]">
                         {labelStatus(m.status, en)}
                       </span>
                     </div>
-                    <h2 className="text-lg font-semibold text-gray-900 truncate group-hover:text-emerald-900 transition-colors">
+                    <h2 className="text-lg font-semibold text-gray-900 truncate group-hover:text-[#126b54] transition-colors">
                       {meetingTitleZhFirst(m) || (en ? meetingUiStrings.untitled.en : meetingUiStrings.untitled.zh)}
                     </h2>
                     {(m.description_zh || m.description_en) && (
@@ -296,7 +297,7 @@ export function MeetingListView({ variant }: Props) {
             <p className="text-center">
               <Link
                 to={votingHubHref}
-                className="text-xs text-gray-400 hover:text-gray-600 underline underline-offset-2 decoration-gray-300 hover:decoration-gray-500 transition-colors"
+                className="text-xs text-gray-500 hover:text-[#157a5c] underline underline-offset-2 transition-colors"
               >
                 {en ? 'Voting hub — all meetings in this property' : '投票专区 · 查看本物业全部会议'}
               </Link>
