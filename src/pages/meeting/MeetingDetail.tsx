@@ -399,39 +399,39 @@ export function MeetingDetail() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
-      <div className="border-b border-[#063d2f]/45 bg-gradient-to-br from-[#0a4536] via-[#1D9E75] to-[#146b52] text-white shadow-lg shadow-[#04261c]/30">
+      <div className="border-b border-white/25 bg-gradient-to-r from-[#178a66] via-[#1D9E75] to-[#169a78] text-white shadow-md shadow-[#1D9E75]/25">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
             <div className="min-w-0 flex-1 space-y-4">
               <Link
                 to={backToListHref}
-                className="inline-flex w-fit items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-sm font-medium text-white ring-1 ring-white/20 hover:bg-white/20 transition-colors"
+                className="inline-flex w-fit items-center gap-2 rounded-lg bg-white/20 px-3 py-2 text-sm font-medium text-white ring-1 ring-white/35 hover:bg-white/30 transition-colors"
               >
                 <ArrowLeft size={18} />
                 {isVotingRoute ? (en ? 'Back to voting list' : '返回投票列表') : en ? 'Back to meetings' : '返回会议列表'}
               </Link>
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/80 mb-2">
+                <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/90 mb-2 drop-shadow-sm">
                   {isVotingRoute ? (en ? 'Meeting voting' : '会议投票') : en ? 'Meeting details' : '会议详情'}
                 </p>
                 <div className="flex flex-wrap items-center gap-2 mb-3">
-                  <span className="px-2.5 py-0.5 rounded-md text-xs font-medium bg-white/15 text-white/95 ring-1 ring-white/10">
+                  <span className="px-2.5 py-0.5 rounded-md text-xs font-medium bg-white/25 text-white ring-1 ring-white/40 shadow-sm">
                     {labelMeetingType(meeting.meeting_type, en)}
                   </span>
-                  <span className="px-2.5 py-0.5 rounded-md text-xs font-medium bg-white/15 text-white/95 ring-1 ring-white/10">
+                  <span className="px-2.5 py-0.5 rounded-md text-xs font-medium bg-white/25 text-white ring-1 ring-white/40 shadow-sm">
                     {labelFormat(meeting.meeting_format, en)}
                   </span>
                 </div>
                 <h1 className="text-2xl sm:text-3xl font-bold text-white leading-snug break-words">
                   {meetingTitleZhFirst(meeting) || (en ? meetingUiStrings.untitled.en : meetingUiStrings.untitled.zh)}
                 </h1>
-                <dl className="mt-4 space-y-2 text-sm text-white/90 border-t border-white/10 pt-4">
+                <dl className="mt-4 space-y-2 text-sm text-white/95 border-t border-white/25 pt-4">
                   <div className="flex flex-wrap gap-x-2 gap-y-1">
-                    <dt className="text-white/60 shrink-0">{en ? 'Status' : '状态'}</dt>
+                    <dt className="text-white/75 shrink-0">{en ? 'Status' : '状态'}</dt>
                     <dd className="font-semibold text-white">{labelStatus(meeting.status, en)}</dd>
                   </div>
                   <div className="flex flex-wrap gap-x-2 gap-y-1">
-                    <dt className="text-white/60 shrink-0">{en ? 'Time' : '时间'}</dt>
+                    <dt className="text-white/75 shrink-0">{en ? 'Time' : '时间'}</dt>
                     <dd>
                       {meeting.scheduled_at
                         ? new Date(meeting.scheduled_at).toLocaleString(en ? 'en-CA' : 'zh-CN', {
@@ -449,7 +449,7 @@ export function MeetingDetail() {
             {isStaff && (
               <Link
                 to={`/meetings/${meeting.id}/edit?${new URLSearchParams({ propertyId: meeting.property_id }).toString()}`}
-                className="shrink-0 self-start rounded-lg bg-white/15 px-4 py-2.5 text-sm font-medium text-white ring-1 ring-white/25 hover:bg-white/25 transition-colors lg:mt-12"
+                className="shrink-0 self-start rounded-lg bg-white/22 px-4 py-2.5 text-sm font-medium text-white ring-1 ring-white/40 hover:bg-white/34 transition-colors lg:mt-12 shadow-sm"
               >
                 {en ? 'Edit meeting' : '编辑会议'}
               </Link>
