@@ -51,6 +51,16 @@ function genInviteToken(): string {
   return Array.from(arr, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+/** 公开码扫码 / 复制链接：统一走 `/entry`，与 `QrPropertyEntryPage` 自动提交一致。 */
+function publicInviteEntryUrl(origin: string, propertyId: string, code: string): string {
+  const q = new URLSearchParams({
+    propertyId,
+    inviteCode: code,
+    source: 'qr',
+  });
+  return `${origin}/entry?${q.toString()}`;
+}
+
 function deriveStatus(row: {
   is_active: boolean;
   expires_at: string | null;
@@ -297,7 +307,11 @@ export function PropertyAdminInvites() {
   };
 
   const openQrPublic = (row: PublicCodeRow) => {
-    const url = `${base}/join?code=${encodeURIComponent(row.code)}`;
+    if (!currentPropertyId) {
+      setBanner(en ? 'No property selected.' : '未选择物业。');
+      return;
+    }
+    const url = publicInviteEntryUrl(base, currentPropertyId, row.code);
     setQrUrl(url);
     setQrTitle(row.label?.trim() || row.code);
     setQrPurpose(en ? 'Public code — property binding only.' : '公开邀请码 — 仅绑定物业。');
@@ -412,7 +426,9 @@ export function PropertyAdminInvites() {
               ) : (
                 publicRows.map((r) => {
                   const st = deriveStatus(r);
-                  const link = `${base}/join?code=${encodeURIComponent(r.code)}`;
+                  const link = currentPropertyId
+                    ? publicInviteEntryUrl(base, currentPropertyId, r.code)
+                    : '';
                   return (
                     <tr key={r.id} className="border-t border-gray-100">
                       <td className="px-3 py-2.5">{r.label || '—'}</td>
@@ -430,7 +446,8 @@ export function PropertyAdminInvites() {
                         <div className="flex flex-wrap justify-end gap-1">
                           <button
                             type="button"
-                            className="rounded border border-gray-200 px-2 py-1 text-xs hover:bg-gray-50"
+                            disabled={!link}
+                            className="rounded border border-gray-200 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-40"
                             onClick={() => void copyText(link, `p-${r.id}`)}
                           >
                             {copied === `p-${r.id}` ? <Check size={14} className="inline" /> : <Copy size={14} className="inline" />}{' '}
@@ -438,7 +455,8 @@ export function PropertyAdminInvites() {
                           </button>
                           <button
                             type="button"
-                            className="rounded border border-gray-200 px-2 py-1 text-xs hover:bg-gray-50"
+                            disabled={!currentPropertyId}
+                            className="rounded border border-gray-200 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-40"
                             onClick={() => openQrPublic(r)}
                           >
                             <QrCode size={14} className="inline" /> {en ? 'QR' : '二维码'}

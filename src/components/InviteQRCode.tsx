@@ -4,7 +4,7 @@ import QRCodeNode from 'qrcode';
 import { Download } from 'lucide-react';
 
 type InviteQRCodeProps = {
-  /** Full URL or text to encode (e.g. `/join?code=` or `/join?invite=`). */
+  /** Full URL or text to encode (e.g. `/entry?propertyId=&inviteCode=` or `/join?invite=`). */
   value: string;
   /** Pixel size of the QR square. */
   size?: number;
