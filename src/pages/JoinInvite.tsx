@@ -272,7 +272,7 @@ export function JoinInvitePage() {
   if (loadingInvite) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-        <Loader2 className="w-10 h-10 text-[#1D9E75] animate-spin" aria-hidden />
+        <Loader2 className="w-10 h-10 text-clearstrata-ui-primary animate-spin" aria-hidden />
       </div>
     );
   }
@@ -281,13 +281,13 @@ export function JoinInvitePage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
         <div className="w-full max-w-md bg-white rounded-2xl shadow-lg border border-gray-100 p-6 text-center">
-          <Building2 className="w-12 h-12 text-[#1D9E75] mx-auto mb-3" />
+          <Building2 className="w-12 h-12 text-clearstrata-ui-primary mx-auto mb-3" />
           <p className="text-gray-800 font-medium text-sm sm:text-base leading-relaxed">
             {en
               ? 'Open this page using the invite link from your administrator (it should include a code).'
               : '请使用管理员发送的邀请链接打开本页（链接中应包含邀请码）。'}
           </p>
-          <Link to="/" className="mt-6 inline-block text-[#1D9E75] font-semibold text-sm">
+          <Link to="/" className="mt-6 inline-block text-clearstrata-ui-primary font-semibold text-sm">
             {en ? 'Home' : '返回首页'}
           </Link>
         </div>
@@ -307,7 +307,7 @@ export function JoinInvitePage() {
           <div className="mt-6 flex flex-col sm:flex-row gap-2 justify-center">
             <Link
               to={loginHref}
-              className="inline-flex justify-center rounded-xl bg-[#1D9E75] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#178a66]"
+              className="inline-flex justify-center rounded-xl bg-clearstrata-ui-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive"
             >
               {en ? 'Sign in' : '去登录'}
             </Link>
@@ -325,7 +325,7 @@ export function JoinInvitePage() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
         <div className="w-full max-w-md bg-white rounded-2xl shadow-lg border border-gray-100 p-6 text-center">
           <p className="text-gray-800 text-sm sm:text-base">{translateInviteError('INVITE_NOT_FOUND', en)}</p>
-          <Link to="/" className="mt-6 inline-block text-[#1D9E75] font-semibold text-sm">
+          <Link to="/" className="mt-6 inline-block text-clearstrata-ui-primary font-semibold text-sm">
             {en ? 'Home' : '返回首页'}
           </Link>
         </div>
@@ -336,10 +336,10 @@ export function JoinInvitePage() {
   const showExpiredOrDisabled = expired || invite.status === 'disabled';
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-emerald-50/50 to-gray-50 flex flex-col items-center justify-center p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+    <div className="min-h-screen bg-gradient-to-b from-clearstrata-ui-soft/80 to-gray-50 flex flex-col items-center justify-center p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
       <div className="w-full max-w-md min-w-0">
         <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
-          <div className="bg-[#1D9E75] px-4 sm:px-5 py-4 text-white">
+          <div className="bg-clearstrata-ui-primary px-4 sm:px-5 py-4 text-white">
             <div className="flex items-center gap-2 min-w-0">
               <Building2 size={22} className="shrink-0" />
               <span className="font-bold text-base sm:text-lg truncate">{en ? 'Join a property' : '加入物业'}</span>
@@ -371,7 +371,7 @@ export function JoinInvitePage() {
               className={`rounded-xl px-3 py-2 text-sm ${
                 showExpiredOrDisabled
                   ? 'bg-amber-50 text-amber-900 border border-amber-200'
-                  : 'bg-emerald-50 text-emerald-900 border border-emerald-200'
+                  : 'bg-clearstrata-ui-soft text-clearstrata-ui-softText border border-clearstrata-ui-softBorder'
               }`}
             >
               {invite.status === 'disabled' ? (
@@ -388,13 +388,13 @@ export function JoinInvitePage() {
             </div>
 
             {session && alreadyMember && (
-              <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-3 text-sm text-emerald-900">
+              <div className="rounded-xl bg-clearstrata-ui-soft border border-clearstrata-ui-softBorder px-3 py-3 text-sm text-clearstrata-ui-softText">
                 <p className="font-medium">
                   {en ? 'You are already a member of this property.' : '您已是该物业成员。'}
                 </p>
                 <Link
                   to="/dashboard"
-                  className="mt-2 inline-block text-[#1D9E75] font-semibold hover:underline"
+                  className="mt-2 inline-block text-clearstrata-ui-primary font-semibold hover:underline"
                 >
                   {en ? 'Open dashboard' : '进入工作台'}
                 </Link>
@@ -430,7 +430,7 @@ export function JoinInvitePage() {
                 <div className="flex flex-col sm:flex-row gap-2">
                   <Link
                     to={loginHref}
-                    className="flex-1 text-center py-2.5 rounded-xl bg-[#1D9E75] text-white font-semibold text-sm hover:bg-[#178a66]"
+                    className="flex-1 text-center py-2.5 rounded-xl bg-clearstrata-ui-primary text-white font-semibold text-sm hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive"
                   >
                     {en ? 'Sign in' : '登录'}
                   </Link>
@@ -456,7 +456,7 @@ export function JoinInvitePage() {
                     type="button"
                     onClick={() => void submitJoinRequest()}
                     disabled={submitting}
-                    className="w-full py-3.5 rounded-xl bg-[#1D9E75] text-white font-semibold hover:bg-[#178a66] disabled:opacity-50 flex items-center justify-center gap-2"
+                    className="w-full py-3.5 rounded-xl bg-clearstrata-ui-primary text-white font-semibold hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:opacity-50 flex items-center justify-center gap-2"
                   >
                     {submitting ? (
                       <>
@@ -470,7 +470,7 @@ export function JoinInvitePage() {
                 )}
                 {success && (
                   <div className="space-y-3 text-center">
-                    <div className="flex items-center justify-center gap-2 text-emerald-700 font-medium py-1">
+                    <div className="flex items-center justify-center gap-2 text-clearstrata-brand-700 font-medium py-1">
                       <CheckCircle size={22} />
                       {t('join_invite_success_title')}
                     </div>

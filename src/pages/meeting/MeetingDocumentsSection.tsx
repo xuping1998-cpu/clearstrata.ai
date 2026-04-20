@@ -180,7 +180,7 @@ export function MeetingDocumentsSection({ meetingId, isCouncil }: Props) {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="w-8 h-8 border-3 border-[#1D9E75] border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-3 border-clearstrata-ui-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -194,7 +194,7 @@ export function MeetingDocumentsSection({ meetingId, isCouncil }: Props) {
         {isCouncil && !showUploadForm && (
           <button
             onClick={() => setShowUploadForm(true)}
-            className="flex items-center gap-1.5 text-sm bg-[#1D9E75] text-white px-3 py-1.5 rounded-lg hover:bg-[#178a66] transition-colors"
+            className="flex items-center gap-1.5 text-sm bg-clearstrata-ui-primary text-white px-3 py-1.5 rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors"
           >
             <Upload size={16} />
             {l ? 'Upload' : '上传文件'}
@@ -211,7 +211,7 @@ export function MeetingDocumentsSection({ meetingId, isCouncil }: Props) {
               <select
                 value={newDoc.document_type}
                 onChange={(e) => setNewDoc({ ...newDoc, document_type: e.target.value })}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent"
               >
                 <option value="agenda">{docTypeLabels.agenda[language]}</option>
                 <option value="background">{docTypeLabels.background[language]}</option>
@@ -227,7 +227,7 @@ export function MeetingDocumentsSection({ meetingId, isCouncil }: Props) {
                   type="text"
                   value={newDoc.title_en}
                   onChange={(e) => setNewDoc({ ...newDoc, title_en: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent"
                 />
               </div>
               <div>
@@ -236,7 +236,7 @@ export function MeetingDocumentsSection({ meetingId, isCouncil }: Props) {
                   type="text"
                   value={newDoc.title_zh}
                   onChange={(e) => setNewDoc({ ...newDoc, title_zh: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent"
                 />
               </div>
             </div>
@@ -245,7 +245,7 @@ export function MeetingDocumentsSection({ meetingId, isCouncil }: Props) {
               <input
                 type="file"
                 onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-                className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-[#1D9E75]/10 file:text-[#1D9E75] hover:file:bg-[#1D9E75]/20"
+                className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-clearstrata-ui-primary/10 file:text-clearstrata-ui-primary hover:file:bg-clearstrata-ui-primary/20"
               />
             </div>
 
@@ -260,7 +260,7 @@ export function MeetingDocumentsSection({ meetingId, isCouncil }: Props) {
               <button
                 onClick={uploadDocument}
                 disabled={uploading}
-                className="bg-[#1D9E75] text-white px-4 py-2 text-sm rounded-lg hover:bg-[#178a66] transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                className="bg-clearstrata-ui-primary text-white px-4 py-2 text-sm rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors disabled:opacity-50 flex items-center gap-1.5"
               >
                 {uploading && <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
                 {uploading ? (l ? 'Uploading...' : '上传中...') : (l ? 'Upload' : '确认上传')}
@@ -308,7 +308,7 @@ export function MeetingDocumentsSection({ meetingId, isCouncil }: Props) {
                   href={doc.document_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-[#1D9E75] hover:text-[#178a66] p-2 rounded-lg hover:bg-[#1D9E75]/5 transition-colors"
+                  className="text-clearstrata-ui-primary hover:text-clearstrata-ui-primaryHover p-2 rounded-lg hover:bg-clearstrata-ui-primary/10 transition-colors"
                   title={l ? 'Open file' : '查看文件'}
                 >
                   <ExternalLink size={18} />

@@ -75,7 +75,7 @@ export function InvoiceAuditReportDetailPage() {
     return (
       <div className="mx-auto max-w-3xl p-6">
         <p className="text-gray-700">{en ? 'Access denied.' : '无权访问。'}</p>
-        <Link to="/finance/invoice-audit-reports" className="mt-2 inline-block text-emerald-700 underline">
+        <Link to="/finance/invoice-audit-reports" className="mt-2 inline-block text-clearstrata-brand-700 underline">
           {en ? 'Back to list' : '返回列表'}
         </Link>
       </div>
@@ -126,7 +126,7 @@ export function InvoiceAuditReportDetailPage() {
           role="status"
           className={`mb-4 rounded-lg border px-4 py-3 text-sm ${
             flash.kind === 'ok'
-              ? 'border-emerald-200 bg-emerald-50 text-emerald-950'
+              ? 'border-clearstrata-ui-softBorder bg-clearstrata-ui-soft text-clearstrata-brand-950'
               : 'border-red-200 bg-red-50 text-red-900'
           }`}
         >
@@ -253,7 +253,7 @@ export function InvoiceAuditReportDetailPage() {
                     <div className="flex flex-wrap items-center gap-2">
                       <span
                         className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                          logs[0].status === 'sent' ? 'bg-emerald-100 text-emerald-900' : 'bg-red-100 text-red-900'
+                          logs[0].status === 'sent' ? 'bg-clearstrata-brand-100 text-clearstrata-brand-900' : 'bg-red-100 text-red-900'
                         }`}
                       >
                         {logs[0].status === 'sent' ? (en ? 'Sent' : '成功') : en ? 'Failed' : '失败'}
@@ -380,7 +380,7 @@ export function InvoiceAuditReportDetailPage() {
                   .catch((e) => setFlash({ kind: 'err', text: String(e) }))
                   .finally(() => setMailBusy(false));
               }}
-              className="inline-flex items-center gap-2 rounded-xl border border-emerald-700 bg-white px-4 py-2.5 text-sm font-semibold text-emerald-900 shadow-sm hover:bg-emerald-50 disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-xl border border-clearstrata-brand-700 bg-white px-4 py-2.5 text-sm font-semibold text-clearstrata-brand-900 shadow-sm hover:bg-clearstrata-ui-soft disabled:opacity-60"
             >
               {mailBusy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Mail className="h-4 w-4" aria-hidden />}
               {en ? 'Send / resend email' : '发送 / 重发邮件'}
@@ -407,7 +407,7 @@ export function InvoiceAuditReportDetailPage() {
                       <div className="flex flex-wrap items-center gap-2">
                         <span
                           className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                            log.status === 'sent' ? 'bg-emerald-100 text-emerald-900' : 'bg-red-100 text-red-900'
+                            log.status === 'sent' ? 'bg-clearstrata-brand-100 text-clearstrata-brand-900' : 'bg-red-100 text-red-900'
                           }`}
                         >
                           {log.status === 'sent' ? (en ? 'Sent' : '成功') : en ? 'Failed' : '失败'}

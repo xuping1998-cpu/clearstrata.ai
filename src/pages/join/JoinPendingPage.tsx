@@ -92,7 +92,7 @@ export default function JoinPendingPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
-        <Loader2 className="w-10 h-10 text-[#1D9E75] animate-spin" aria-hidden />
+        <Loader2 className="w-10 h-10 text-clearstrata-ui-primary animate-spin" aria-hidden />
         <p className="mt-4 text-sm text-gray-500">{en ? 'Loading…' : '加载中…'}</p>
       </div>
     );
@@ -125,14 +125,14 @@ export default function JoinPendingPage() {
           type="button"
           disabled={refreshing}
           onClick={() => void onRefresh()}
-          className="mt-8 inline-flex items-center justify-center gap-2 w-full sm:w-auto min-w-[200px] px-6 py-3 rounded-xl bg-[#1D9E75] text-white font-semibold hover:bg-[#178a66] disabled:opacity-50"
+          className="mt-8 inline-flex items-center justify-center gap-2 w-full sm:w-auto min-w-[200px] px-6 py-3 rounded-xl bg-clearstrata-ui-primary text-white font-semibold hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:opacity-50"
         >
           {refreshing ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
           {en ? 'Refresh status' : '刷新状态'}
         </button>
 
         <p className="mt-6 text-xs text-gray-400">
-          <Link to="/" className="text-[#1D9E75] hover:underline">
+          <Link to="/" className="text-clearstrata-ui-primary hover:underline">
             {en ? 'Back to home' : '返回首页'}
           </Link>
         </p>

@@ -669,8 +669,8 @@ export function JoinRequestPage() {
   /** 扫码直达：解析中全屏加载 */
   if ((isPublicCodeFlow || inviteTokenParam) && showDeepLinkSpinner) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-emerald-50/40 to-gray-50 flex flex-col items-center justify-center p-6">
-        <Loader2 className="w-10 h-10 text-[#1D9E75] animate-spin" aria-hidden />
+      <div className="min-h-screen bg-gradient-to-b from-clearstrata-ui-soft/40 to-gray-50 flex flex-col items-center justify-center p-6">
+        <Loader2 className="w-10 h-10 text-clearstrata-ui-primary animate-spin" aria-hidden />
         <p className="mt-4 text-sm text-gray-500">{en ? 'Loading…' : '加载中…'}</p>
         <p className="text-center text-xs text-gray-400 mt-12">ClearStrata</p>
       </div>
@@ -678,14 +678,14 @@ export function JoinRequestPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-emerald-50/40 to-gray-50 flex items-start justify-center p-4 py-10">
+    <div className="min-h-screen bg-gradient-to-b from-clearstrata-ui-soft/40 to-gray-50 flex items-start justify-center p-4 py-10">
       <div className="w-full max-w-lg">
         {inviteWelcome ? (
           <div className="text-center mb-6">
             <h1 className="text-xl sm:text-2xl font-bold text-gray-900 leading-snug">
               {en ? `Welcome to ${lockedProperty.name}` : `欢迎加入 ${lockedProperty.name}`}
             </h1>
-            <p className="text-sm text-emerald-800 mt-2 px-2 font-medium">
+            <p className="text-sm text-clearstrata-brand-800 mt-2 px-2 font-medium">
               {en ? 'We have pre-filled part of your application.' : '已为您预填部分申请信息'}
             </p>
             <p className="text-sm text-gray-600 mt-2 px-2">
@@ -707,7 +707,7 @@ export function JoinRequestPage() {
           </div>
         ) : (
           <div className="text-center mb-6">
-            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[#1D9E75] text-white mb-3 shadow-md">
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-clearstrata-ui-primary text-white mb-3 shadow-md">
               <Building2 size={28} />
             </div>
             <h1 className="text-xl font-bold text-gray-900">
@@ -723,7 +723,7 @@ export function JoinRequestPage() {
 
         {showDeepLinkSpinner ? (
           <div className="flex justify-center py-16">
-            <Loader2 className="w-10 h-10 text-[#1D9E75] animate-spin" />
+            <Loader2 className="w-10 h-10 text-clearstrata-ui-primary animate-spin" />
           </div>
         ) : !session ? (
           <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 text-center space-y-4">
@@ -746,14 +746,14 @@ export function JoinRequestPage() {
             </p>
             <Link
               to={loginHref}
-              className="inline-flex justify-center w-full py-3 rounded-xl bg-[#1D9E75] text-white font-semibold hover:bg-[#178a66]"
+              className="inline-flex justify-center w-full py-3 rounded-xl bg-clearstrata-ui-primary text-white font-semibold hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive"
             >
               {en ? 'Sign in' : '去登录'}
             </Link>
           </div>
         ) : showFormSpinner ? (
           <div className="flex justify-center py-16">
-            <Loader2 className="w-10 h-10 text-[#1D9E75] animate-spin" />
+            <Loader2 className="w-10 h-10 text-clearstrata-ui-primary animate-spin" />
           </div>
         ) : (
           <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-5 sm:p-6 space-y-4">
@@ -772,7 +772,7 @@ export function JoinRequestPage() {
               <div className="space-y-3">
                 <p className="text-sm text-amber-900 rounded-xl bg-amber-50 border border-amber-100 px-4 py-3 text-left">{urlResolveError}</p>
                 <p className="text-xs text-gray-500 text-center">
-                  <Link to="/join-request" className="text-[#1D9E75] font-medium hover:underline">
+                  <Link to="/join-request" className="text-clearstrata-ui-primary font-medium hover:underline">
                     {en ? 'Apply without a link (manual)' : '无链接时手动申请'}
                   </Link>
                 </p>
@@ -835,10 +835,10 @@ export function JoinRequestPage() {
                     </button>
                   </div>
                   {codeMatchHint && (
-                    <p className="text-xs text-emerald-800 mt-1 font-medium">{codeMatchHint}</p>
+                    <p className="text-xs text-clearstrata-brand-800 mt-1 font-medium">{codeMatchHint}</p>
                   )}
                   {selectedPropertyName && !codeMatchHint && (
-                    <p className="text-xs text-emerald-700 mt-1">
+                    <p className="text-xs text-clearstrata-brand-700 mt-1">
                       {en ? 'Selected:' : '已选：'} {selectedPropertyName}
                     </p>
                   )}
@@ -934,7 +934,7 @@ export function JoinRequestPage() {
               type="button"
               onClick={() => void submit()}
               disabled={loading}
-              className="w-full py-3.5 rounded-xl bg-[#1D9E75] text-white font-semibold hover:bg-[#178a66] disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full py-3.5 rounded-xl bg-clearstrata-ui-primary text-white font-semibold hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {loading ? <Loader2 className="animate-spin" size={20} /> : null}
               {loading ? (en ? 'Submitting…' : '提交中…') : en ? 'Submit request' : '提交申请'}
@@ -944,7 +944,7 @@ export function JoinRequestPage() {
               <p
                 className={`text-sm text-center rounded-xl px-3 py-2 ${
                   msg.includes('已提交') || msg.includes('等待审核') || msg.toLowerCase().includes('submitted')
-                    ? 'bg-emerald-50 text-emerald-900 border border-emerald-200'
+                    ? 'bg-clearstrata-ui-soft text-clearstrata-ui-softText border border-clearstrata-ui-softBorder'
                     : 'bg-amber-50 text-amber-900 border border-amber-200'
                 }`}
               >

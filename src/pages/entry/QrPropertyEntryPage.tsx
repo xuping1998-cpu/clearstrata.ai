@@ -285,8 +285,8 @@ export function QrPropertyEntryPage() {
 
   if (resolving) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-emerald-50/40 to-gray-50 flex flex-col items-center justify-center p-6">
-        <Loader2 className="w-10 h-10 text-[#1D9E75] animate-spin" aria-hidden />
+      <div className="min-h-screen bg-gradient-to-b from-clearstrata-ui-soft/40 to-gray-50 flex flex-col items-center justify-center p-6">
+        <Loader2 className="w-10 h-10 text-clearstrata-ui-primary animate-spin" aria-hidden />
         <p className="mt-4 text-sm text-gray-500">{en ? 'Loading…' : '加载中…'}</p>
       </div>
     );
@@ -294,10 +294,10 @@ export function QrPropertyEntryPage() {
 
   if (resolveErr || !resolved) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-emerald-50/40 to-gray-50 flex flex-col items-center justify-center p-6">
+      <div className="min-h-screen bg-gradient-to-b from-clearstrata-ui-soft/40 to-gray-50 flex flex-col items-center justify-center p-6">
         <Building2 className="w-12 h-12 text-gray-400 mb-3" />
         <p className="text-sm text-gray-800 text-center max-w-md">{resolveErr || (en ? 'Invalid link.' : '链接无效。')}</p>
-        <Link to="/" className="mt-6 text-[#1D9E75] font-medium text-sm">
+        <Link to="/" className="mt-6 text-clearstrata-ui-primary font-medium text-sm">
           {en ? 'Home' : '返回首页'}
         </Link>
       </div>
@@ -307,15 +307,15 @@ export function QrPropertyEntryPage() {
   const isQr = sourceParam.toLowerCase() === 'qr';
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-emerald-50/40 to-gray-50 flex items-start justify-center p-4 py-10">
+    <div className="min-h-screen bg-gradient-to-b from-clearstrata-ui-soft/40 to-gray-50 flex items-start justify-center p-4 py-10">
       <div className="w-full max-w-md bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-5">
         <div className="text-center">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-[#1D9E75] text-white mb-3">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-clearstrata-ui-primary text-white mb-3">
             <Building2 size={24} />
           </div>
           <h1 className="text-xl font-bold text-gray-900">{resolved.name}</h1>
           {isQr && (
-            <p className="text-xs text-emerald-800 font-medium mt-1">
+            <p className="text-xs text-clearstrata-brand-800 font-medium mt-1">
               {en ? 'Scan QR entry' : '扫码进入'}
             </p>
           )}
@@ -330,7 +330,7 @@ export function QrPropertyEntryPage() {
         {!session && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
             {en ? 'Sign in to continue.' : '请先登录后继续。'}
-            <Link to={loginHref} className="block mt-2 font-semibold text-[#1D9E75]">
+            <Link to={loginHref} className="block mt-2 font-semibold text-clearstrata-ui-primary">
               {en ? 'Sign in' : '去登录'}
             </Link>
           </div>
@@ -345,7 +345,7 @@ export function QrPropertyEntryPage() {
             onChange={(e) => setUnit(e.target.value)}
             disabled={submitting || !session}
             placeholder={en ? 'e.g. 319' : '例如 319'}
-            className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#1D9E75]/25 focus:border-[#1D9E75]"
+            className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-clearstrata-ui-primary/25 focus:border-clearstrata-ui-primary"
           />
         </div>
 
@@ -353,7 +353,7 @@ export function QrPropertyEntryPage() {
           type="button"
           disabled={submitting || !session}
           onClick={() => void onSubmit()}
-          className="w-full py-3 rounded-xl bg-[#1D9E75] text-white text-sm font-semibold hover:bg-[#178a66] disabled:opacity-50 inline-flex items-center justify-center gap-2"
+          className="w-full py-3 rounded-xl bg-clearstrata-ui-primary text-white text-sm font-semibold hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:opacity-50 inline-flex items-center justify-center gap-2"
         >
           {submitting ? <Loader2 className="animate-spin w-5 h-5" /> : null}
           {en ? 'Enter now' : '立即进入'}
@@ -364,7 +364,7 @@ export function QrPropertyEntryPage() {
             role="status"
             className={`rounded-xl px-3 py-2 text-sm ${
               toast.kind === 'success'
-                ? 'bg-emerald-50 text-emerald-950 border border-emerald-200'
+                ? 'bg-clearstrata-ui-soft text-clearstrata-brand-950 border border-clearstrata-ui-softBorder'
                 : 'bg-red-50 text-red-950 border border-red-200'
             }`}
           >

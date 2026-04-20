@@ -203,7 +203,7 @@ export function DashboardRedAlertInvoicesCard() {
                         {row.taskId ? (
                           <Link
                             to={`/property-admin/tasks/${row.taskId}`}
-                            className="flex shrink-0 flex-col items-center justify-center border-l border-red-100 bg-red-50/70 px-2.5 py-2 text-center text-xs font-semibold text-[#1D9E75] transition hover:bg-red-100/90"
+                            className="flex shrink-0 flex-col items-center justify-center border-l border-red-100 bg-red-50/70 px-2.5 py-2 text-center text-xs font-semibold text-red-900 transition hover:bg-red-100/90 hover:text-red-950 hover:underline"
                             title={en ? 'View related task' : '查看关联任务'}
                           >
                             {en ? 'Task' : '查看任务'}

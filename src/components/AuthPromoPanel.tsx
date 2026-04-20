@@ -12,13 +12,13 @@ export function AuthPromoPanel() {
   };
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col rounded-2xl border border-emerald-100 bg-gradient-to-br from-green-50 to-emerald-50 p-5 shadow-md sm:p-6 lg:p-7">
+    <div className="flex h-full min-h-0 w-full flex-col rounded-2xl border border-clearstrata-ui-softBorder bg-gradient-to-br from-clearstrata-ui-soft to-clearstrata-brand-50 p-5 shadow-md sm:p-6 lg:p-7">
       <div className="relative mt-6 shrink-0 px-1 text-center">
-        <div className="absolute inset-x-0 bottom-full mb-1.5 text-sm font-medium text-emerald-600">{t('hero_badge')}</div>
+        <div className="absolute inset-x-0 bottom-full mb-1.5 text-sm font-medium text-clearstrata-brand-600">{t('hero_badge')}</div>
         <h2 className="text-xl font-bold leading-tight text-gray-900 sm:text-2xl">
           {t('hero_title_1')}
           {en ? ' ' : ''}
-          <span className="text-emerald-600">
+          <span className="text-clearstrata-brand-600">
             {t('hero_title_2a')}
             {en ? ' ' : ''}15%
           </span>
@@ -41,7 +41,7 @@ export function AuthPromoPanel() {
           <button
             type="button"
             onClick={scrollToQr}
-            className="inline-flex items-center justify-center gap-2 rounded-full bg-emerald-600 px-6 py-2.5 text-sm font-semibold text-white shadow transition-colors hover:bg-emerald-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 sm:px-8 sm:py-3 sm:text-base"
+            className="inline-flex items-center justify-center gap-2 rounded-full bg-clearstrata-ui-primary px-6 py-2.5 text-sm font-semibold text-white shadow transition-colors hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive focus:outline-none focus-visible:ring-2 focus-visible:ring-clearstrata-brand-500 focus-visible:ring-offset-2 sm:px-8 sm:py-3 sm:text-base"
           >
             <QrCode className="size-5 shrink-0" strokeWidth={2.2} aria-hidden />
             {t('hero_cta')}

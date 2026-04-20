@@ -195,12 +195,12 @@ export function RecentAbnormalInvoicesCard({
         </div>
       ) : filteredItems.length === 0 ? (
         items.length === 0 ? (
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-5 text-center sm:py-6">
-            <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-white text-emerald-600 shadow-sm">
+          <div className="rounded-2xl border border-clearstrata-ui-softBorder bg-clearstrata-ui-soft px-4 py-5 text-center sm:py-6">
+            <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-white text-clearstrata-brand-600 shadow-sm">
               <CheckCircle2 className="size-5" aria-hidden />
             </div>
-            <div className="text-base font-medium text-emerald-800">{emptyAll}</div>
-            <div className="mt-1 text-xs leading-relaxed text-emerald-700 sm:text-sm">{emptyAllSubtitle}</div>
+            <div className="text-base font-medium text-clearstrata-brand-800">{emptyAll}</div>
+            <div className="mt-1 text-xs leading-relaxed text-clearstrata-brand-700 sm:text-sm">{emptyAllSubtitle}</div>
           </div>
         ) : (
           <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-center text-sm text-gray-600">

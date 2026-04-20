@@ -154,7 +154,7 @@ export function MeetingEditor() {
   if (!propertyReady || loading) {
     return (
       <div className="min-h-[40vh] flex items-center justify-center">
-        <Loader2 className="size-8 animate-spin text-emerald-700" />
+        <Loader2 className="size-8 animate-spin text-clearstrata-brand-700" />
       </div>
     );
   }
@@ -165,7 +165,7 @@ export function MeetingEditor() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
-      <Link to="/meetings" className="mb-6 inline-flex items-center gap-1 text-sm font-medium text-emerald-800 hover:underline">
+      <Link to="/meetings" className="mb-6 inline-flex items-center gap-1 text-sm font-medium text-clearstrata-brand-800 hover:underline">
         <ChevronLeft className="size-4" />
         {en ? 'Meetings' : '会议'}
       </Link>

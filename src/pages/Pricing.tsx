@@ -92,7 +92,7 @@ export function Pricing() {
       {!session && (
         <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
-            <Link to="/" className="text-xl font-bold text-[#1D9E75]">
+            <Link to="/" className="text-xl font-bold text-clearstrata-ui-primary">
               {language === 'en' ? 'clearstrata.ai' : '清涟.ai'}
             </Link>
             <div className="flex items-center gap-2 sm:gap-3">
@@ -105,7 +105,7 @@ export function Pricing() {
               </button>
               <Link
                 to="/"
-                className="text-sm font-medium text-gray-700 hover:text-[#1D9E75] transition-colors"
+                className="text-sm font-medium text-gray-700 hover:text-clearstrata-ui-primary transition-colors"
               >
                 {t('auth_login')}
               </Link>
@@ -117,7 +117,7 @@ export function Pricing() {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14 space-y-16 sm:space-y-20">
         {/* Page title (visible) */}
         <div className="border-b border-gray-200 pb-6">
-          <p className="text-sm font-medium text-[#1D9E75] uppercase tracking-wide">
+          <p className="text-sm font-medium text-clearstrata-ui-primary uppercase tracking-wide">
             ClearStrata
           </p>
           <h1 className="mt-1 text-3xl sm:text-4xl font-bold text-gray-900">Pricing</h1>
@@ -155,7 +155,7 @@ export function Pricing() {
               <ul className="mt-8 space-y-3 flex-1">
                 {starterFeatures.map((f) => (
                   <li key={f} className="flex gap-3 text-sm text-gray-700">
-                    <Check className="shrink-0 w-5 h-5 text-[#1D9E75]" aria-hidden />
+                    <Check className="shrink-0 w-5 h-5 text-clearstrata-ui-primary" aria-hidden />
                     <span>{f}</span>
                   </li>
                 ))}
@@ -163,9 +163,9 @@ export function Pricing() {
             </article>
 
             {/* Standard — Most Popular */}
-            <article className="relative flex flex-col rounded-xl border-2 border-[#1D9E75] bg-white p-6 sm:p-8 shadow-md lg:scale-[1.02] lg:z-10">
+            <article className="relative flex flex-col rounded-xl border-2 border-clearstrata-ui-primary bg-white p-6 sm:p-8 shadow-md lg:scale-[1.02] lg:z-10">
               <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                <span className="inline-flex items-center gap-1 rounded-full bg-[#1D9E75] text-white text-xs font-semibold px-3 py-1 shadow-sm">
+                <span className="inline-flex items-center gap-1 rounded-full bg-clearstrata-ui-primary text-white text-xs font-semibold px-3 py-1 shadow-sm">
                   <Sparkles className="w-3.5 h-3.5" aria-hidden />
                   Most Popular
                 </span>
@@ -179,7 +179,7 @@ export function Pricing() {
               <ul className="mt-8 space-y-3 flex-1">
                 {standardFeatures.map((f) => (
                   <li key={f} className="flex gap-3 text-sm text-gray-700">
-                    <Check className="shrink-0 w-5 h-5 text-[#1D9E75]" aria-hidden />
+                    <Check className="shrink-0 w-5 h-5 text-clearstrata-ui-primary" aria-hidden />
                     <span>{f}</span>
                   </li>
                 ))}
@@ -197,7 +197,7 @@ export function Pricing() {
               <ul className="mt-8 space-y-3 flex-1">
                 {premiumFeatures.map((f) => (
                   <li key={f} className="flex gap-3 text-sm text-gray-700">
-                    <Check className="shrink-0 w-5 h-5 text-[#1D9E75]" aria-hidden />
+                    <Check className="shrink-0 w-5 h-5 text-clearstrata-ui-primary" aria-hidden />
                     <span>{f}</span>
                   </li>
                 ))}
@@ -258,7 +258,7 @@ export function Pricing() {
 
         {/* CTA */}
         <section
-          className="rounded-2xl bg-[#1D9E75] text-white px-6 py-10 sm:px-10 sm:py-12 text-center"
+          className="rounded-2xl bg-clearstrata-ui-primary text-white px-6 py-10 sm:px-10 sm:py-12 text-center"
           aria-labelledby="cta-heading"
         >
           <h2 id="cta-heading" className="text-xl sm:text-2xl font-bold leading-snug max-w-2xl mx-auto">
@@ -267,7 +267,7 @@ export function Pricing() {
           <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center items-stretch sm:items-center">
             <Link
               to="/contact"
-              className="inline-flex justify-center items-center rounded-lg bg-white text-[#1D9E75] font-semibold px-6 py-3 text-sm hover:bg-gray-100 transition-colors"
+              className="inline-flex justify-center items-center rounded-lg bg-white text-clearstrata-ui-primary font-semibold px-6 py-3 text-sm hover:bg-gray-100 transition-colors"
             >
               Request a demo
             </Link>

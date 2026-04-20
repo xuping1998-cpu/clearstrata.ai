@@ -123,7 +123,7 @@ export function RevenueDashboard() {
         const c = inv.category || 'general';
         catMap.set(c, (catMap.get(c) || 0) + Number(inv.total_amount || 0));
       });
-    const COLORS = ['#1D9E75', '#0ea5e9', '#8b5cf6', '#f59e0b', '#ef4444', '#64748b', '#ec4899', '#14b8a6'];
+    const COLORS = ['#22a06b', '#0ea5e9', '#8b5cf6', '#f59e0b', '#ef4444', '#64748b', '#ec4899', '#14b8a6'];
     return Array.from(catMap.entries())
       .map(([name, value], i) => ({ name, value: Math.round(value * 100) / 100, color: COLORS[i % COLORS.length] }))
       .filter((d) => d.value > 0);
@@ -256,7 +256,7 @@ export function RevenueDashboard() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="animate-spin text-[#1D9E75]" size={32} />
+        <Loader2 className="animate-spin text-clearstrata-ui-primary" size={32} />
       </div>
     );
   }
@@ -264,10 +264,10 @@ export function RevenueDashboard() {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white rounded-xl p-6 shadow-sm border-l-4 border-[#1D9E75]">
+        <div className="bg-white rounded-xl p-6 shadow-sm border-l-4 border-clearstrata-ui-primary">
           <div className="flex items-center gap-3 mb-3">
-            <div className="p-2 bg-green-50 rounded-lg">
-              <DollarSign size={20} className="text-[#1D9E75]" />
+            <div className="p-2 bg-clearstrata-ui-soft rounded-lg border border-clearstrata-ui-softBorder/50">
+              <DollarSign size={20} className="text-clearstrata-ui-primary" />
             </div>
             <span className="text-sm text-gray-600">{l ? 'This Month Income' : '本月收入'}</span>
           </div>
@@ -307,7 +307,7 @@ export function RevenueDashboard() {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <div className="bg-white rounded-xl p-4 sm:p-6 shadow-sm border border-gray-100">
           <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-            <TrendingUp size={20} className="text-[#1D9E75]" />
+            <TrendingUp size={20} className="text-clearstrata-ui-primary" />
             {l ? 'Monthly income vs expenses (12 mo)' : '月度收支趋势（近12月）'}
           </h3>
           <div className="h-64 sm:h-72 w-full min-h-[240px]">
@@ -318,7 +318,7 @@ export function RevenueDashboard() {
                 <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${v}`} />
                 <Tooltip formatter={(v) => `$${Number(v ?? 0).toFixed(2)}`} />
                 <Legend />
-                <Line type="monotone" dataKey="income" name={l ? 'Income' : '收入'} stroke="#1D9E75" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="income" name={l ? 'Income' : '收入'} stroke="#22a06b" strokeWidth={2} dot={false} />
                 <Line type="monotone" dataKey="expense" name={l ? 'Expenses' : '支出'} stroke="#ef4444" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
@@ -327,7 +327,7 @@ export function RevenueDashboard() {
 
         <div className="bg-white rounded-xl p-4 sm:p-6 shadow-sm border border-gray-100">
           <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-            <PieChartIcon size={20} className="text-[#1D9E75]" />
+            <PieChartIcon size={20} className="text-clearstrata-ui-primary" />
             {l ? 'Expense by category (approved/paid)' : '支出分类占比（已批准/已付款）'}
           </h3>
           <div className="h-64 sm:h-72 w-full min-h-[240px] flex items-center justify-center">
@@ -361,7 +361,7 @@ export function RevenueDashboard() {
 
       <div className="bg-white rounded-xl p-4 sm:p-6 shadow-sm border border-gray-100">
         <h3 className="text-base sm:text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-          <PieChartIcon size={20} className="text-[#1D9E75]" />
+          <PieChartIcon size={20} className="text-clearstrata-ui-primary" />
           {l ? 'Invoice status distribution' : '发票状态分布'}
         </h3>
         <div className="h-56 sm:h-64 w-full min-h-[220px] flex items-center justify-center">
@@ -438,13 +438,13 @@ export function RevenueDashboard() {
       <div className="bg-white rounded-xl shadow-sm">
         <div className="p-6 border-b border-gray-200 flex items-center justify-between">
           <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-            <Users size={20} className="text-[#1D9E75]" />
+            <Users size={20} className="text-clearstrata-ui-primary" />
             {l ? 'Special Levies' : '特别征收 (Special Levy)'}
           </h3>
           {isCouncil && (
             <button
               onClick={() => setShowLevyForm(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-[#1D9E75] text-white rounded-lg hover:bg-[#178a66] transition-colors text-sm"
+              className="flex items-center gap-2 px-4 py-2 bg-clearstrata-ui-primary text-white rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors text-sm"
             >
               <Plus size={16} />
               {l ? 'New Levy' : '新建征收'}
@@ -480,7 +480,7 @@ export function RevenueDashboard() {
                       levy.status === 'active'
                         ? 'bg-blue-100 text-blue-700'
                         : levy.status === 'completed'
-                        ? 'bg-green-100 text-green-700'
+                        ? 'bg-clearstrata-brand-100 text-clearstrata-brand-800'
                         : 'bg-gray-100 text-gray-600'
                     }`}>
                       {levy.status === 'active' ? (l ? 'Active' : '进行中') :
@@ -499,7 +499,7 @@ export function RevenueDashboard() {
                     <div className="w-full bg-gray-200 rounded-full h-3">
                       <div
                         className={`h-3 rounded-full transition-all ${
-                          progress >= 100 ? 'bg-[#1D9E75]' : 'bg-blue-500'
+                          progress >= 100 ? 'bg-clearstrata-ui-primary' : 'bg-blue-500'
                         }`}
                         style={{ width: `${progress}%` }}
                       />
@@ -601,7 +601,7 @@ function LevyFormModal({
               required
               value={form.title_en}
               onChange={(e) => setForm({ ...form, title_en: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent"
             />
           </div>
           <div>
@@ -612,7 +612,7 @@ function LevyFormModal({
               type="text"
               value={form.title_zh}
               onChange={(e) => setForm({ ...form, title_zh: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent"
             />
           </div>
           <div>
@@ -623,7 +623,7 @@ function LevyFormModal({
               value={form.description_en}
               onChange={(e) => setForm({ ...form, description_en: e.target.value })}
               rows={2}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent"
             />
           </div>
           <div>
@@ -634,7 +634,7 @@ function LevyFormModal({
               value={form.description_zh}
               onChange={(e) => setForm({ ...form, description_zh: e.target.value })}
               rows={2}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent"
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -649,7 +649,7 @@ function LevyFormModal({
                 min="0"
                 value={form.target_amount}
                 onChange={(e) => setForm({ ...form, target_amount: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent"
               />
             </div>
             <div>
@@ -660,7 +660,7 @@ function LevyFormModal({
                 type="date"
                 value={form.due_date}
                 onChange={(e) => setForm({ ...form, due_date: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent"
               />
             </div>
           </div>
@@ -668,7 +668,7 @@ function LevyFormModal({
             <button
               type="submit"
               disabled={submitting}
-              className="flex-1 bg-[#1D9E75] text-white py-2.5 rounded-lg hover:bg-[#178a66] transition-colors disabled:opacity-50 font-medium"
+              className="flex-1 bg-clearstrata-ui-primary text-white py-2.5 rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors disabled:opacity-50 font-medium"
             >
               {submitting ? (l ? 'Creating...' : '创建中...') : (l ? 'Create Levy' : '创建征收')}
             </button>

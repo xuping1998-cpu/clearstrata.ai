@@ -160,7 +160,7 @@ export function MeetingAgendaSection({ meetingId, meetingStatus, isCouncil }: Pr
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="w-8 h-8 border-3 border-[#1D9E75] border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-3 border-clearstrata-ui-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -174,7 +174,7 @@ export function MeetingAgendaSection({ meetingId, meetingStatus, isCouncil }: Pr
         {isCouncil && !showAddForm && (
           <button
             onClick={() => setShowAddForm(true)}
-            className="flex items-center gap-1.5 text-sm bg-[#1D9E75] text-white px-3 py-1.5 rounded-lg hover:bg-[#178a66] transition-colors"
+            className="flex items-center gap-1.5 text-sm bg-clearstrata-ui-primary text-white px-3 py-1.5 rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors"
           >
             <Plus size={16} />
             {l ? 'Add Item' : '添加议题'}
@@ -198,7 +198,7 @@ export function MeetingAgendaSection({ meetingId, meetingStatus, isCouncil }: Pr
                   type="text"
                   value={newItem.title_en}
                   onChange={(e) => setNewItem({ ...newItem, title_en: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent"
                   placeholder="Agenda item title"
                 />
               </div>
@@ -208,7 +208,7 @@ export function MeetingAgendaSection({ meetingId, meetingStatus, isCouncil }: Pr
                   type="text"
                   value={newItem.title_zh}
                   onChange={(e) => setNewItem({ ...newItem, title_zh: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent"
                   placeholder="议题标题"
                 />
               </div>
@@ -219,7 +219,7 @@ export function MeetingAgendaSection({ meetingId, meetingStatus, isCouncil }: Pr
                 <textarea
                   value={newItem.description_en}
                   onChange={(e) => setNewItem({ ...newItem, description_en: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent"
                   rows={2}
                 />
               </div>
@@ -228,7 +228,7 @@ export function MeetingAgendaSection({ meetingId, meetingStatus, isCouncil }: Pr
                 <textarea
                   value={newItem.description_zh}
                   onChange={(e) => setNewItem({ ...newItem, description_zh: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent"
                   rows={2}
                 />
               </div>
@@ -239,7 +239,7 @@ export function MeetingAgendaSection({ meetingId, meetingStatus, isCouncil }: Pr
                 id="requires_vote"
                 checked={newItem.requires_vote}
                 onChange={(e) => setNewItem({ ...newItem, requires_vote: e.target.checked })}
-                className="w-4 h-4 text-[#1D9E75] border-gray-300 rounded focus:ring-[#1D9E75]"
+                className="w-4 h-4 text-clearstrata-ui-primary border-gray-300 rounded focus:ring-clearstrata-ui-primary"
               />
               <label htmlFor="requires_vote" className="text-sm text-gray-700">{l ? 'Requires voting' : '需要投票表决'}</label>
             </div>
@@ -255,7 +255,7 @@ export function MeetingAgendaSection({ meetingId, meetingStatus, isCouncil }: Pr
               <button
                 onClick={addItem}
                 disabled={saving}
-                className="bg-[#1D9E75] text-white px-4 py-2 text-sm rounded-lg hover:bg-[#178a66] transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                className="bg-clearstrata-ui-primary text-white px-4 py-2 text-sm rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors disabled:opacity-50 flex items-center gap-1.5"
               >
                 {saving && <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
                 {saving ? (l ? 'Adding...' : '添加中...') : (l ? 'Confirm' : '确认添加')}
@@ -284,8 +284,8 @@ export function MeetingAgendaSection({ meetingId, meetingStatus, isCouncil }: Pr
           {items.map((item) => (
             <div key={item.id} className="border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-colors">
               <div className="flex items-start gap-3">
-                <div className="w-7 h-7 bg-[#1D9E75]/10 rounded-full flex items-center justify-center shrink-0 mt-0.5">
-                  <span className="text-xs font-bold text-[#1D9E75]">{item.item_number}</span>
+                <div className="w-7 h-7 bg-clearstrata-ui-primary/10 rounded-full flex items-center justify-center shrink-0 mt-0.5">
+                  <span className="text-xs font-bold text-clearstrata-ui-primary">{item.item_number}</span>
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
@@ -306,8 +306,8 @@ export function MeetingAgendaSection({ meetingId, meetingStatus, isCouncil }: Pr
                     <div className="mt-2">
                       <div className="flex items-center gap-5 mb-3">
                         <div className="flex items-center gap-1.5">
-                          <ThumbsUp size={14} className="text-green-600" />
-                          <span className="text-sm font-semibold text-green-700">{item.vote_for}</span>
+                          <ThumbsUp size={14} className="text-clearstrata-brand-600" />
+                          <span className="text-sm font-semibold text-clearstrata-brand-800">{item.vote_for}</span>
                           <span className="text-xs text-gray-400">{l ? 'For' : '赞成'}</span>
                         </div>
                         <div className="flex items-center gap-1.5">
@@ -325,7 +325,7 @@ export function MeetingAgendaSection({ meetingId, meetingStatus, isCouncil }: Pr
                         <div className="flex gap-2">
                           <button
                             onClick={() => castVote(item.id, 'for')}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-xs font-medium"
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-clearstrata-ui-primary text-white rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors text-xs font-medium"
                           >
                             <ThumbsUp size={13} />
                             {l ? 'For' : '赞成'}
@@ -348,7 +348,7 @@ export function MeetingAgendaSection({ meetingId, meetingStatus, isCouncil }: Pr
 
                       {item.user_voted && (
                         <div className="flex items-center gap-1.5 text-sm">
-                          <CheckCircle size={14} className="text-green-600" />
+                          <CheckCircle size={14} className="text-clearstrata-brand-600" />
                           <span className="text-gray-600">
                             {l ? 'You voted: ' : '您已投票：'}
                             <span className="font-medium">

@@ -186,7 +186,7 @@ export function BudgetAlertsCard({
 
       <div className="flex min-h-0 flex-1 flex-col">
         {filteredAlerts.length === 0 ? (
-          <div className="flex flex-1 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-6 text-center text-sm text-emerald-800">
+          <div className="flex flex-1 items-center justify-center rounded-xl border border-clearstrata-ui-softBorder bg-clearstrata-ui-soft px-4 py-6 text-center text-sm text-clearstrata-ui-softText">
             {emptyMessage}
           </div>
         ) : (

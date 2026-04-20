@@ -20,10 +20,10 @@ export function DemoLandingPage() {
   const code = (propertyCode ?? '').trim() || 'BCS3736';
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-emerald-50/30 via-white to-white">
+    <div className="min-h-screen bg-gradient-to-b from-clearstrata-ui-soft/30 via-white to-white">
       <div className="mx-auto max-w-5xl px-6 py-10">
         <div className="flex items-center gap-3">
-          <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-[#1D9E75] text-white shadow-lg shadow-[#1D9E75]/25">
+          <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-clearstrata-ui-primary text-white shadow-lg shadow-clearstrata-ui-primary/25">
             <Building2 className="size-6" />
           </div>
           <div className="min-w-0">
@@ -52,7 +52,7 @@ export function DemoLandingPage() {
               </div>
               <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
                 <div className="text-xs font-bold tracking-wide text-gray-500">预算超支</div>
-                <div className="mt-2 text-2xl font-extrabold text-emerald-700">{demoStats.overspend}%</div>
+                <div className="mt-2 text-2xl font-extrabold text-clearstrata-brand-700">{demoStats.overspend}%</div>
                 <div className="mt-1 text-xs text-gray-500">年度维度自动计算与预警</div>
               </div>
             </div>
@@ -72,7 +72,7 @@ export function DemoLandingPage() {
               </Link>
               <Link
                 to={`/join/${encodeURIComponent(code)}`}
-                className="inline-flex items-center justify-center px-1 py-3 text-sm font-semibold text-[#1D9E75] underline-offset-2 hover:underline"
+                className="inline-flex items-center justify-center px-1 py-3 text-sm font-semibold text-clearstrata-ui-primary underline-offset-2 hover:underline"
               >
                 我是业主，进入真实物业
               </Link>
@@ -81,14 +81,14 @@ export function DemoLandingPage() {
             <p className="mt-4 text-xs text-gray-500">演示数据为模拟结果，仅用于体验产品能力，不会进入真实物业数据流。</p>
           </div>
 
-          <div className="rounded-3xl border border-emerald-200/60 bg-white p-6 shadow-sm">
+          <div className="rounded-3xl border border-clearstrata-ui-softBorder/60 bg-white p-6 shadow-sm">
             <div className="text-sm font-extrabold text-gray-900">你将看到什么</div>
             <ul className="mt-3 space-y-2 text-sm text-gray-700">
               <li> - 每一笔发票支出与预算类目的对齐</li>
               <li> - 异常支出提示与可追溯链路</li>
               <li> - 会议与决议（只读）预览</li>
             </ul>
-            <div className="mt-5 rounded-2xl bg-emerald-50 p-4 text-xs font-semibold text-emerald-950">
+            <div className="mt-5 rounded-2xl bg-clearstrata-ui-soft p-4 text-xs font-semibold text-clearstrata-brand-950">
               提示：这是演示样板（只读）。若你是该物业真实成员，请使用 “进入真实物业”。
             </div>
           </div>

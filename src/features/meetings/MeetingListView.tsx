@@ -92,7 +92,7 @@ export function MeetingListView({ variant }: Props) {
   if (!propertyReady || loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="w-12 h-12 border-4 border-[#1D9E75] border-t-transparent rounded-full animate-spin" />
+        <div className="w-12 h-12 border-4 border-clearstrata-ui-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -141,7 +141,7 @@ export function MeetingListView({ variant }: Props) {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-16">
-      <div className="bg-gradient-to-r from-[#1D9E75] to-[#178a66] text-white p-6">
+      <div className="bg-gradient-to-r from-clearstrata-brand-500 to-clearstrata-brand-600 text-white p-6">
         <div className="flex items-center gap-3 mb-2 max-w-7xl mx-auto">
           {variant === 'meetings' ? (
             <Link to="/" className="hover:bg-white/20 p-2 rounded-lg transition-colors">
@@ -173,7 +173,7 @@ export function MeetingListView({ variant }: Props) {
               <div className="h-10 w-px bg-gray-200 hidden sm:block" />
               <div>
                 <p className="text-sm text-gray-600">{en ? 'General meetings used / quota' : '大会类已用 / 配额'}</p>
-                <p className="text-2xl font-bold text-[#1D9E75]">
+                <p className="text-2xl font-bold text-clearstrata-brand-600">
                   {stats.used} / {stats.quota}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
@@ -185,7 +185,7 @@ export function MeetingListView({ variant }: Props) {
               <div className="h-10 w-px bg-gray-200 hidden sm:block" />
               <div>
                 <p className="text-sm text-gray-600">{en ? 'AGM status' : 'AGM 状态'}</p>
-                <p className={`text-lg font-semibold ${stats.agm === 'ok' ? 'text-[#157a5c]' : 'text-amber-700'}`}>
+                <p className={`text-lg font-semibold ${stats.agm === 'ok' ? 'text-clearstrata-brand-700' : 'text-amber-700'}`}>
                   {stats.agm === 'ok' ? (en ? 'OK — AGM on file' : '正常 — 本年度已有 AGM') : en ? 'Missing AGM' : '缺 AGM'}
                 </p>
               </div>
@@ -193,7 +193,7 @@ export function MeetingListView({ variant }: Props) {
                 <div className="ml-auto">
                   <Link
                     to="/meetings/new"
-                    className="inline-flex items-center gap-2 bg-[#1D9E75] text-white px-4 py-2 rounded-lg hover:bg-[#178a66] transition-colors"
+                    className="inline-flex items-center gap-2 bg-clearstrata-ui-primary text-white px-4 py-2 rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors"
                   >
                     <Plus size={20} />
                     {en ? 'New meeting' : '新建会议'}
@@ -208,7 +208,7 @@ export function MeetingListView({ variant }: Props) {
           <div className="flex justify-end">
             <Link
               to="/meetings/new"
-              className="inline-flex items-center gap-2 bg-[#1D9E75] text-white px-4 py-2 rounded-lg hover:bg-[#178a66] transition-colors"
+              className="inline-flex items-center gap-2 bg-clearstrata-ui-primary text-white px-4 py-2 rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors"
             >
               <Plus size={20} />
               {en ? 'New meeting' : '新建会议'}
@@ -227,7 +227,7 @@ export function MeetingListView({ variant }: Props) {
               const cardClass = [
                 'group w-full text-left p-6 block transition-all duration-150',
                 cardInteractive
-                  ? 'cursor-pointer hover:bg-[#1D9E75]/[0.08] active:bg-[#1D9E75]/13 hover:shadow-[inset_4px_0_0_0_#1D9E75] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#1D9E75]'
+                  ? 'cursor-pointer hover:bg-clearstrata-ui-primary/[0.08] active:bg-clearstrata-ui-primary/15 hover:shadow-[inset_4px_0_0_0_#22a06b] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-clearstrata-ui-primary'
                   : 'cursor-not-allowed opacity-70',
               ].join(' ');
 
@@ -235,17 +235,17 @@ export function MeetingListView({ variant }: Props) {
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch sm:justify-between sm:gap-4">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2 mb-1">
-                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-[#1D9E75]/14 text-[#145a46]">
+                      <span className="px-2 py-0.5 rounded-full text-xs font-medium border border-clearstrata-ui-softBorder bg-clearstrata-ui-soft text-clearstrata-ui-softText">
                         {labelMeetingType(m.meeting_type, en)}
                       </span>
-                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-[#1D9E75]/10 text-[#16694f]">
+                      <span className="px-2 py-0.5 rounded-full text-xs font-medium border border-clearstrata-ui-softBorder bg-clearstrata-brand-50 text-clearstrata-brand-800">
                         {labelFormat(m.meeting_format, en)}
                       </span>
-                      <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-[#1D9E75]/12 text-[#0f4a3a]">
+                      <span className="px-2 py-0.5 rounded-full text-xs font-semibold border border-clearstrata-ui-softBorder bg-clearstrata-brand-100 text-clearstrata-brand-800">
                         {labelStatus(m.status, en)}
                       </span>
                     </div>
-                    <h2 className="text-lg font-semibold text-gray-900 truncate group-hover:text-[#126b54] transition-colors">
+                    <h2 className="text-lg font-semibold text-gray-900 truncate group-hover:text-clearstrata-brand-700 transition-colors">
                       {meetingTitleZhFirst(m) || (en ? meetingUiStrings.untitled.en : meetingUiStrings.untitled.zh)}
                     </h2>
                     {(m.description_zh || m.description_en) && (
@@ -269,7 +269,7 @@ export function MeetingListView({ variant }: Props) {
                       className={[
                         'inline-flex items-center justify-center rounded-lg px-4 py-2.5 text-sm font-semibold shadow-sm sm:text-center min-w-[9rem]',
                         cardInteractive
-                          ? 'bg-[#1D9E75] text-white group-hover:bg-[#178a66] group-active:scale-[0.98] transition-all'
+                          ? 'bg-clearstrata-ui-primary text-white group-hover:bg-clearstrata-ui-primaryHover group-active:bg-clearstrata-ui-primaryActive group-active:scale-[0.98] transition-all'
                           : 'bg-gray-200 text-gray-500',
                       ].join(' ')}
                     >
@@ -297,7 +297,7 @@ export function MeetingListView({ variant }: Props) {
             <p className="text-center">
               <Link
                 to={votingHubHref}
-                className="text-xs text-gray-500 hover:text-[#157a5c] underline underline-offset-2 transition-colors"
+                className="text-xs text-gray-500 hover:text-clearstrata-brand-700 underline underline-offset-2 transition-colors"
               >
                 {en ? 'Voting hub — all meetings in this property' : '投票专区 · 查看本物业全部会议'}
               </Link>

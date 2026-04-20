@@ -68,9 +68,9 @@ const STATUS_CONFIG: Record<string, { en: string; zh: string; color: string; ico
   pending_approval: { en: 'Pending Approval', zh: '待审批', color: 'bg-orange-100 text-orange-800', icon: 'clock' },
   pm_executing: { en: 'PM Executing', zh: '物业经理执行中', color: 'bg-blue-100 text-blue-800', icon: 'wrench' },
   pending_inspection: { en: 'Pending Inspection', zh: '待验收', color: 'bg-amber-100 text-amber-800', icon: 'eye' },
-  inspection_passed: { en: 'Inspection Passed', zh: '验收通过', color: 'bg-emerald-100 text-emerald-800', icon: 'check' },
+  inspection_passed: { en: 'Inspection Passed', zh: '验收通过', color: 'bg-clearstrata-brand-100 text-clearstrata-brand-800', icon: 'check' },
   inspection_failed: { en: 'Inspection Failed', zh: '验收不通过', color: 'bg-red-100 text-red-800', icon: 'x' },
-  approved: { en: 'Approved', zh: '已批准', color: 'bg-green-100 text-green-800', icon: 'check' },
+  approved: { en: 'Approved', zh: '已批准', color: 'bg-clearstrata-brand-100 text-clearstrata-brand-800', icon: 'check' },
   completed: { en: 'Completed', zh: '已完成', color: 'bg-gray-100 text-gray-800', icon: 'check' },
   cancelled: { en: 'Cancelled', zh: '已取消', color: 'bg-gray-100 text-gray-600', icon: 'x' },
 };
@@ -273,7 +273,7 @@ export function Procurement() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="animate-spin text-[#1D9E75]" size={32} />
+        <Loader2 className="animate-spin text-clearstrata-ui-primary" size={32} />
       </div>
     );
   }
@@ -308,7 +308,7 @@ export function Procurement() {
                 <Briefcase size={20} />
                 {l ? 'Property Managers' : '物业经理'}
               </button>
-              <button onClick={() => openModal('newJob')} className="flex items-center gap-2 bg-[#1D9E75] text-white px-4 py-2 rounded-lg hover:bg-[#178a66] transition-colors">
+              <button onClick={() => openModal('newJob')} className="flex items-center gap-2 bg-clearstrata-ui-primary text-white px-4 py-2 rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors">
                 <Plus size={20} />
                 {l ? 'New Request' : '新建申请'}
               </button>
@@ -397,16 +397,16 @@ function JobCard({
   const selectedQuote = job.quotes?.find(q => q.id === job.selected_quote_id);
 
   return (
-    <div className={`bg-white rounded-xl shadow-sm border-l-4 ${job.job_type === 'maintenance' ? 'border-orange-500' : 'border-[#1D9E75]'}`}>
+    <div className={`bg-white rounded-xl shadow-sm border-l-4 ${job.job_type === 'maintenance' ? 'border-orange-500' : 'border-clearstrata-ui-primary'}`}>
       <div className="p-6">
         <div className="flex items-start justify-between mb-4">
           <div className="flex-1">
             <div className="flex items-center gap-3 mb-2 flex-wrap">
-              <span className={`px-2 py-1 rounded text-xs font-semibold ${job.job_type === 'maintenance' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>
+              <span className={`px-2 py-1 rounded text-xs font-semibold ${job.job_type === 'maintenance' ? 'bg-orange-100 text-orange-700' : 'bg-clearstrata-brand-100 text-clearstrata-brand-700'}`}>
                 {job.job_type === 'maintenance' ? (l ? 'Maintenance' : '维修') : (l ? 'Procurement' : '采购')}
               </span>
               {job.category && (
-                <span className="px-2 py-1 rounded text-xs font-medium bg-teal-50 text-teal-700 border border-teal-200">
+                <span className="px-2 py-1 rounded text-xs font-medium bg-clearstrata-ui-soft text-clearstrata-brand-700 border border-clearstrata-ui-softBorder">
                   {getCategoryLabel(job.category, language)}
                 </span>
               )}
@@ -419,7 +419,7 @@ function JobCard({
                 <span className="text-gray-500">{l ? 'Linked task: ' : '关联任务：'}</span>
                 <Link
                   to={`/property-admin/tasks/${job.task_id}`}
-                  className="font-medium text-[#1D9E75] hover:underline"
+                  className="font-medium text-clearstrata-ui-primary hover:underline"
                 >
                   {job.linkedTaskTitle}
                 </Link>
@@ -428,7 +428,7 @@ function JobCard({
             <p className="text-gray-600 text-sm mb-3">{l ? job.description_en : job.description_zh || job.description_en}</p>
             <div className="flex items-center gap-4 text-sm flex-wrap">
               <span className="text-gray-700">
-                {l ? 'Budget' : '预算'}: <span className="text-[#1D9E75] font-semibold">${job.estimated_budget?.toLocaleString()}</span>
+                {l ? 'Budget' : '预算'}: <span className="text-clearstrata-ui-primary font-semibold">${job.estimated_budget?.toLocaleString()}</span>
               </span>
               {selectedQuote && (
                 <span className="text-gray-700">
@@ -482,7 +482,7 @@ function JobCard({
             <>
               <div className="flex items-center gap-2 mb-3">
                 <h4 className="font-semibold text-gray-900 text-sm">供应商报价</h4>
-                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${(job.quotes?.length || 0) >= 3 ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'}`}>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${(job.quotes?.length || 0) >= 3 ? 'bg-clearstrata-brand-100 text-clearstrata-brand-800' : 'bg-orange-100 text-orange-800'}`}>
                   {job.quotes?.length || 0} / 3
                 </span>
               </div>
@@ -499,11 +499,11 @@ function JobCard({
                         <span className="text-xs font-semibold text-gray-500">供应商 {idx + 1}</span>
                         <div className="flex items-center gap-1.5">
                           {light && <TrafficLightBadge light={light} language={language} />}
-                          {idx === 0 && <span className="text-xs bg-green-600 text-white px-2 py-0.5 rounded-full">最低价</span>}
+                          {idx === 0 && <span className="text-xs bg-clearstrata-ui-primary text-white px-2 py-0.5 rounded-full">最低价</span>}
                         </div>
                       </div>
                       <div className="font-medium text-gray-900 text-sm">{quote.vendor_name}</div>
-                      <div className="text-lg font-bold text-[#1D9E75] mt-1">${quote.quoted_amount.toLocaleString()}</div>
+                      <div className="text-lg font-bold text-clearstrata-ui-primary mt-1">${quote.quoted_amount.toLocaleString()}</div>
                     </div>
                   );
                 })}
@@ -516,7 +516,7 @@ function JobCard({
       <div className="px-6 pb-5 flex flex-wrap gap-2">
         {isCouncil && job.status === 'collecting_quotes' && (
           <button onClick={() => onOpenModal('addQuote', job)}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-[#1D9E75] bg-green-50 rounded-lg hover:bg-green-100 transition-colors">
+            className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-clearstrata-ui-primary bg-clearstrata-ui-soft rounded-lg hover:bg-clearstrata-brand-100 transition-colors">
             <Plus size={16} />
             {l ? 'Add Quote' : '添加报价'}
           </button>
@@ -524,7 +524,7 @@ function JobCard({
 
         {isCouncil && job.status === 'collecting_quotes' && (job.quotes?.length || 0) >= 1 && (
           <button onClick={() => onOpenModal('approveQuote', job)}
-            className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-[#1D9E75] text-white rounded-lg hover:bg-[#178a66] transition-colors">
+            className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-clearstrata-ui-primary text-white rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors">
             <Send size={16} />
             {l ? 'Approve & Notify PM' : '批准并通知物业经理'}
           </button>
@@ -558,7 +558,7 @@ function JobCard({
           <>
             <Link
               to="/finance?tab=invoices"
-              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-clearstrata-ui-primary text-white rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors"
             >
               <FileText size={16} />
               {l ? 'Open Finance → Invoices' : '财务报表 · 上传/审批发票'}
@@ -626,9 +626,9 @@ function WorkflowStepper({ currentStep, language, failed }: { currentStep: numbe
         let lineColor = 'bg-gray-200';
         let textColor = 'text-gray-400';
 
-        if (isDone) { dotColor = 'bg-[#1D9E75]'; lineColor = 'bg-[#1D9E75]'; textColor = 'text-[#1D9E75]'; }
+        if (isDone) { dotColor = 'bg-clearstrata-ui-primary'; lineColor = 'bg-clearstrata-ui-primary'; textColor = 'text-clearstrata-ui-primary'; }
         else if (isFailed) { dotColor = 'bg-red-500'; textColor = 'text-red-600'; }
-        else if (isActive) { dotColor = 'bg-[#1D9E75] ring-4 ring-green-100'; textColor = 'text-gray-900 font-semibold'; }
+        else if (isActive) { dotColor = 'bg-clearstrata-ui-primary ring-4 ring-clearstrata-brand-100'; textColor = 'text-gray-900 font-semibold'; }
 
         return (
           <div key={step.key} className="flex items-center flex-1">

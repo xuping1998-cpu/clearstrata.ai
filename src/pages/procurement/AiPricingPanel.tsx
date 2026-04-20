@@ -65,7 +65,7 @@ export function TrafficLightBadge({
   };
 
   const colorConfig = {
-    green: { bg: 'bg-green-100', text: 'text-green-800', dot: 'bg-green-500' },
+    green: { bg: 'bg-clearstrata-brand-100', text: 'text-clearstrata-brand-800', dot: 'bg-clearstrata-ui-primary' },
     yellow: { bg: 'bg-yellow-100', text: 'text-yellow-800', dot: 'bg-yellow-500' },
     red: { bg: 'bg-red-100', text: 'text-red-800', dot: 'bg-red-500' },
   };
@@ -261,7 +261,7 @@ export function AiPricingPanel({
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowFloorPlanInput(!showFloorPlanInput)}
-            className="text-xs text-teal-600 hover:text-teal-700 flex items-center gap-1 transition-colors px-2 py-1 rounded-md hover:bg-teal-50"
+            className="text-xs text-clearstrata-brand-600 hover:text-clearstrata-brand-700 flex items-center gap-1 transition-colors px-2 py-1 rounded-md hover:bg-clearstrata-ui-soft"
             title={l ? 'Upload floor plan for precise estimate' : '上传楼面图精确估价'}
           >
             <FileUp size={12} />
@@ -347,7 +347,7 @@ function FloorPlanUploadSection({
     <div className="mb-3 p-3 bg-white/80 rounded-lg border border-blue-200/60">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-1.5">
-          <Calculator className="text-teal-600" size={14} />
+          <Calculator className="text-clearstrata-brand-600" size={14} />
           <span className="text-xs font-semibold text-gray-700">
             {l ? 'Upload Floor Plan for Precise Material Calculation' : '上传楼面图，AI精确计算材料量'}
           </span>
@@ -378,7 +378,7 @@ function FloorPlanUploadSection({
             />
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-clearstrata-brand-700 bg-clearstrata-ui-soft border border-clearstrata-ui-softBorder rounded-lg hover:bg-clearstrata-brand-100 transition-colors"
             >
               <FileUp size={13} />
               {l ? 'Choose File' : '选择文件'}
@@ -406,14 +406,14 @@ function FloorPlanUploadSection({
             placeholder={l
               ? 'e.g., Lot: 6,200 sq ft, Building footprint: 2,400 sq ft, Garden area: 3,800 sq ft, Driveway: 600 sq ft...'
               : '例如：地块总面积6,200平方英尺，建筑占地2,400平方英尺，花园面积3,800平方英尺，车道600平方英尺...'}
-            className="w-full px-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-400 focus:border-transparent resize-none"
+            className="w-full px-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:ring-2 focus:ring-clearstrata-brand-400 focus:border-transparent resize-none"
           />
         </div>
 
         <button
           onClick={onSubmit}
           disabled={!floorPlanFile && !floorPlanText.trim()}
-          className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium bg-clearstrata-ui-primary text-white rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Calculator size={13} />
           {l ? 'Recalculate with Floor Plan Data' : '结合楼面图重新计算'}
@@ -437,24 +437,24 @@ function MaterialCalcSection({
   const l = language === 'en';
 
   return (
-    <div className="mt-3 p-3 bg-teal-50/70 rounded-lg border border-teal-200/60">
+    <div className="mt-3 p-3 bg-clearstrata-ui-soft/80 rounded-lg border border-clearstrata-ui-softBorder/80">
       <button
         onClick={onToggle}
         className="w-full flex items-center justify-between"
       >
         <div className="flex items-center gap-1.5">
-          <Calculator className="text-teal-600" size={14} />
-          <span className="text-xs font-semibold text-teal-800">
+          <Calculator className="text-clearstrata-brand-600" size={14} />
+          <span className="text-xs font-semibold text-clearstrata-brand-800">
             {l ? 'Material Calculation Details' : '材料量计算明细'}
           </span>
         </div>
         {showDetail
-          ? <ChevronUp className="text-teal-600" size={14} />
-          : <ChevronDown className="text-teal-600" size={14} />}
+          ? <ChevronUp className="text-clearstrata-brand-600" size={14} />
+          : <ChevronDown className="text-clearstrata-brand-600" size={14} />}
       </button>
       {showDetail && (
-        <div className="mt-2 pt-2 border-t border-teal-200/40">
-          <p className="text-xs text-teal-900/80 leading-relaxed whitespace-pre-line">
+        <div className="mt-2 pt-2 border-t border-clearstrata-ui-softBorder/60">
+          <p className="text-xs text-clearstrata-brand-900/80 leading-relaxed whitespace-pre-line">
             {materialCalc}
           </p>
         </div>

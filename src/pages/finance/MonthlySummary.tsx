@@ -256,7 +256,7 @@ export function MonthlySummary() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="animate-spin text-[#1D9E75]" size={32} />
+        <Loader2 className="animate-spin text-clearstrata-ui-primary" size={32} />
       </div>
     );
   }
@@ -325,9 +325,9 @@ export function MonthlySummary() {
 
       {canManage && snapshot && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 border-l-4 border-l-green-500">
+          <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 border-l-4 border-l-clearstrata-brand-500">
             <div className="flex items-center gap-2 text-xs text-gray-500 mb-1">
-              <DollarSign size={14} className="text-green-600" />
+              <DollarSign size={14} className="text-clearstrata-brand-600" />
               {l ? 'Month income' : '本月收入'}
             </div>
             <div className="text-xl font-bold text-gray-900">${snapshot.income.toFixed(2)}</div>
@@ -356,7 +356,7 @@ export function MonthlySummary() {
               <span className="text-blue-700 font-medium">
                 {l ? 'Pending' : '待审核'}: {snapshot.pending_review}
               </span>
-              <span className="text-green-700 font-medium">
+              <span className="text-clearstrata-brand-700 font-medium">
                 {l ? 'Approved' : '已批准'}: {snapshot.approved}
               </span>
               <span className="text-cyan-700 font-medium">
@@ -371,13 +371,13 @@ export function MonthlySummary() {
       )}
 
       {canManage && (
-        <div className="bg-gradient-to-r from-[#1D9E75] to-[#178a66] rounded-xl p-6 text-white">
+        <div className="bg-clearstrata-hero rounded-xl p-6 text-white">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-lg font-bold mb-1">
                 {l ? 'Monthly Financial Summary' : '月度财务摘要'}
               </h3>
-              <p className="text-green-100 text-sm">
+              <p className="text-white/90 text-sm">
                 {l
                   ? 'Generate a plain-language summary of this month\'s income and expenses. Review and publish for all owners to see.'
                   : '自动生成本月收支报告，用通俗语言描述。审核确认后发布给所有业主查看。'}
@@ -386,7 +386,7 @@ export function MonthlySummary() {
             <button
               onClick={generateSummary}
               disabled={generating}
-              className="flex items-center gap-2 px-5 py-2.5 bg-white text-[#1D9E75] rounded-lg hover:bg-green-50 transition-colors font-medium disabled:opacity-50"
+              className="flex items-center gap-2 px-5 py-2.5 bg-white text-clearstrata-ui-primary rounded-lg hover:bg-clearstrata-ui-soft active:bg-clearstrata-brand-100 transition-colors font-medium disabled:opacity-50"
             >
               {generating ? (
                 <Loader2 size={18} className="animate-spin" />
@@ -431,7 +431,7 @@ export function MonthlySummary() {
                     </h3>
                     <div className="flex items-center gap-2 mt-1">
                       {summary.published ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs font-medium">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 border border-clearstrata-ui-softBorder bg-clearstrata-ui-soft text-clearstrata-ui-softText rounded-full text-xs font-medium">
                           <CheckCircle size={12} />
                           {l ? 'Published' : '已发布'}
                         </span>
@@ -446,7 +446,7 @@ export function MonthlySummary() {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => setSelectedSummary(summary)}
-                      className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:text-[#1D9E75] hover:bg-green-50 rounded-lg transition-colors"
+                      className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:text-clearstrata-ui-primary hover:bg-clearstrata-ui-soft rounded-lg transition-colors"
                     >
                       <Eye size={16} />
                       {l ? 'View' : '查看'}
@@ -462,7 +462,7 @@ export function MonthlySummary() {
                     {canManage && !summary.published && (
                       <button
                         onClick={() => publishSummary(summary.id)}
-                        className="flex items-center gap-2 px-3 py-2 text-sm bg-[#1D9E75] text-white rounded-lg hover:bg-[#178a66] transition-colors"
+                        className="flex items-center gap-2 px-3 py-2 text-sm bg-clearstrata-ui-primary text-white rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors"
                       >
                         <Send size={16} />
                         {l ? 'Publish' : '发布'}
@@ -472,9 +472,9 @@ export function MonthlySummary() {
                 </div>
 
                 <div className="grid grid-cols-3 gap-4">
-                  <div className="bg-green-50 rounded-lg p-4">
+                  <div className="bg-clearstrata-ui-soft rounded-lg p-4 border border-clearstrata-ui-softBorder/60">
                     <div className="text-xs text-gray-500 mb-1">{l ? 'Income' : '收入'}</div>
-                    <div className="text-xl font-bold text-green-700">
+                    <div className="text-xl font-bold text-clearstrata-brand-800">
                       ${Number(summary.total_income).toFixed(2)}
                     </div>
                   </div>
@@ -537,9 +537,9 @@ function SummaryDetailModal({
 
         <div className="p-6 space-y-6">
           <div className="grid grid-cols-3 gap-4">
-            <div className="bg-green-50 rounded-lg p-4 text-center">
+            <div className="bg-clearstrata-ui-soft border border-clearstrata-ui-softBorder/60 rounded-lg p-4 text-center">
               <div className="text-xs text-gray-500 mb-1">{l ? 'Income' : '收入'}</div>
-              <div className="text-2xl font-bold text-green-700">${Number(summary.total_income).toFixed(2)}</div>
+              <div className="text-2xl font-bold text-clearstrata-brand-800">${Number(summary.total_income).toFixed(2)}</div>
             </div>
             <div className="bg-red-50 rounded-lg p-4 text-center">
               <div className="text-xs text-gray-500 mb-1">{l ? 'Expenses' : '支出'}</div>

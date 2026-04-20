@@ -35,7 +35,7 @@ export function TrialUpgradeCard({
           <div className="flex flex-col items-stretch gap-2 sm:items-end">
             <Link
               to="/upgrade"
-              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#1D9E75] px-4 py-2 text-sm font-semibold text-white hover:bg-[#178a66] active:scale-[0.99]"
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-clearstrata-ui-primary px-4 py-2 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive active:scale-[0.99]"
             >
               {cta}
               <ArrowRight className="h-4 w-4" />

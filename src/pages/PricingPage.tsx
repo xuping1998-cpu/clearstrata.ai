@@ -123,7 +123,7 @@ function PrimaryCta({ label, to }: { label: string; to: string }) {
   return (
     <Link
       to={to}
-      className="inline-flex w-full items-center justify-center rounded-xl bg-[#1D9E75] px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#178a66] active:scale-[0.99] sm:w-auto"
+      className="inline-flex w-full items-center justify-center rounded-xl bg-clearstrata-ui-primary px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive active:scale-[0.99] sm:w-auto"
     >
       {label}
     </Link>
@@ -146,13 +146,13 @@ function PricingCard({ tier, ctaTo }: { tier: PricingTier; ctaTo: string }) {
     <article
       className={
         tier.emphasis
-          ? 'relative rounded-3xl border-2 border-emerald-200 bg-white p-6 shadow-md sm:p-7'
+          ? 'relative rounded-3xl border-2 border-clearstrata-ui-softBorder bg-white p-6 shadow-md sm:p-7'
           : 'rounded-3xl border border-gray-200 bg-white p-6 shadow-sm sm:p-7'
       }
     >
       {tier.badge ? (
         <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-          <span className="inline-flex items-center gap-1 rounded-full bg-[#1D9E75] px-3 py-1 text-xs font-semibold text-white shadow-sm">
+          <span className="inline-flex items-center gap-1 rounded-full bg-clearstrata-ui-primary px-3 py-1 text-xs font-semibold text-white shadow-sm">
             <Sparkles className="h-3.5 w-3.5" />
             {tier.badge}
           </span>
@@ -173,7 +173,7 @@ function PricingCard({ tier, ctaTo }: { tier: PricingTier; ctaTo: string }) {
       <ul className="mt-6 space-y-3">
         {tier.bullets.map((b) => (
           <li key={b} className="flex items-start gap-2 text-sm text-gray-700">
-            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-[#1D9E75]" />
+            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-clearstrata-ui-primary" />
             <span>{b}</span>
           </li>
         ))}
@@ -184,7 +184,7 @@ function PricingCard({ tier, ctaTo }: { tier: PricingTier; ctaTo: string }) {
           to={ctaTo}
           className={
             tier.emphasis
-              ? 'inline-flex w-full items-center justify-center rounded-xl bg-[#1D9E75] px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-[#178a66] active:scale-[0.99]'
+              ? 'inline-flex w-full items-center justify-center rounded-xl bg-clearstrata-ui-primary px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive active:scale-[0.99]'
               : 'inline-flex w-full items-center justify-center rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-900 hover:bg-gray-50'
           }
         >
@@ -239,7 +239,7 @@ export function PricingPage() {
           <button
             type="button"
             onClick={() => navigate('/')}
-            className="text-lg font-black tracking-tight text-[#1D9E75]"
+            className="text-lg font-black tracking-tight text-clearstrata-ui-primary"
           >
             clearstrata.ai
           </button>
@@ -255,8 +255,8 @@ export function PricingPage() {
         <section className="py-4 sm:py-8">
           <div className="grid gap-8 lg:grid-cols-12 lg:items-center">
             <div className="lg:col-span-7">
-              <p className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-950">
-                <ShieldCheck className="h-4 w-4 text-emerald-700" />
+              <p className="inline-flex items-center gap-2 rounded-full border border-clearstrata-ui-softBorder bg-clearstrata-ui-soft px-3 py-1 text-xs font-semibold text-clearstrata-brand-950">
+                <ShieldCheck className="h-4 w-4 text-clearstrata-brand-700" />
                 3 个月免费试用 · 无需信用卡 · 5 分钟完成开通
               </p>
               <h1 className="mt-4 text-3xl font-black tracking-tight text-gray-900 sm:text-4xl">
@@ -278,19 +278,19 @@ export function PricingPage() {
                 <p className="text-sm font-semibold text-gray-900">你将得到什么？</p>
                 <ul className="mt-4 space-y-3 text-sm text-gray-700">
                   <li className="flex gap-2">
-                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-[#1D9E75]" />
+                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-clearstrata-ui-primary" />
                     发票、审批、公告、成员统一在一个后台
                   </li>
                   <li className="flex gap-2">
-                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-[#1D9E75]" />
+                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-clearstrata-ui-primary" />
                     自动发现异常发票与预算偏差
                   </li>
                   <li className="flex gap-2">
-                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-[#1D9E75]" />
+                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-clearstrata-ui-primary" />
                     业主可按权限参与监督与透明查看
                   </li>
                 </ul>
-                <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 text-xs text-emerald-950">
+                <div className="mt-5 rounded-2xl border border-clearstrata-ui-softBorder bg-clearstrata-ui-soft/60 p-4 text-xs text-clearstrata-brand-950">
                   低门槛开通：允许先空白创建物业，再逐步导入房号、邀请成员、上传第一张发票。
                 </div>
               </div>
@@ -314,7 +314,7 @@ export function PricingPage() {
         {/* 3) ROI 说明区 */}
         <section className="mt-14 sm:mt-16">
           <SectionTitle title="这不是成本，而是帮你省钱" />
-          <div className="mt-8 rounded-3xl border border-emerald-200 bg-gradient-to-br from-white to-emerald-50/70 p-6 shadow-sm sm:p-8">
+          <div className="mt-8 rounded-3xl border border-clearstrata-ui-softBorder bg-gradient-to-br from-white to-clearstrata-ui-soft/70 p-6 shadow-sm sm:p-8">
             <div className="grid gap-6 lg:grid-cols-12 lg:items-center">
               <div className="lg:col-span-7">
                 <div className="grid gap-4 sm:grid-cols-3">

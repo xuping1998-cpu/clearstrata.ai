@@ -41,7 +41,7 @@ const statusLabels: Record<string, Record<'en' | 'zh', string>> = {
 const statusColors: Record<string, string> = {
   invited: 'bg-gray-100 text-gray-700',
   confirmed: 'bg-blue-100 text-blue-700',
-  attended: 'bg-green-100 text-green-700',
+  attended: 'bg-clearstrata-brand-100 text-clearstrata-brand-800',
   absent: 'bg-red-100 text-red-700',
   proxy: 'bg-orange-100 text-orange-700',
 };
@@ -358,7 +358,7 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="w-8 h-8 border-3 border-[#1D9E75] border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-3 border-clearstrata-ui-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -374,7 +374,7 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
             <button
               type="button"
               onClick={signIn}
-              className="flex items-center gap-1.5 text-sm bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 transition-colors"
+              className="flex items-center gap-1.5 text-sm bg-clearstrata-ui-primary text-white px-3 py-1.5 rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors"
             >
               <UserCheck size={16} />
               {l ? 'Sign in' : '我要签到'}
@@ -384,7 +384,7 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
             <button
               type="button"
               onClick={openAddForm}
-              className="flex items-center gap-1.5 text-sm bg-[#1D9E75] text-white px-3 py-1.5 rounded-lg hover:bg-[#178a66] transition-colors"
+              className="flex items-center gap-1.5 text-sm bg-clearstrata-ui-primary text-white px-3 py-1.5 rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors"
             >
               <Plus size={16} />
               {l ? 'Invite' : '邀请参会'}
@@ -407,7 +407,7 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
               <select
                 value={selectedUserId}
                 onChange={(e) => setSelectedUserId(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent"
               >
                 <option value="">{l ? '-- Select --' : '-- 请选择 --'}</option>
                 {allUsers.map((u) => (
@@ -430,7 +430,7 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
                 type="button"
                 onClick={addAttendee}
                 disabled={saving}
-                className="bg-[#1D9E75] text-white px-4 py-2 text-sm rounded-lg hover:bg-[#178a66] transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                className="bg-clearstrata-ui-primary text-white px-4 py-2 text-sm rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors disabled:opacity-50 flex items-center gap-1.5"
               >
                 {saving && <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
                 {saving ? (l ? 'Adding...' : '添加中...') : (l ? 'Send invite' : '确认邀请')}
@@ -474,10 +474,10 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
             return (
               <div key={attendee.id} className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg">
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
-                  attendee.attendance_status === 'attended' ? 'bg-green-100' : 'bg-gray-100'
+                  attendee.attendance_status === 'attended' ? 'bg-clearstrata-brand-100' : 'bg-gray-100'
                 }`}>
                   {attendee.attendance_status === 'attended' ? (
-                    <UserCheck size={20} className="text-green-600" />
+                    <UserCheck size={20} className="text-clearstrata-brand-600" />
                   ) : (
                     <UserX size={20} className="text-gray-400" />
                   )}
@@ -497,7 +497,7 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
                       </span>
                     )}
                     {mailState === 'sent' && (
-                      <span className="text-xs text-green-600 flex items-center gap-1">
+                      <span className="text-xs text-clearstrata-brand-600 flex items-center gap-1">
                         <CheckCircle size={12} aria-hidden />
                         {l ? 'Sent' : '已发送'}
                       </span>
@@ -513,7 +513,7 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
                       <button
                         type="button"
                         onClick={() => handleSendInvite(attendee)}
-                        className="text-xs text-[#1D9E75] hover:text-[#178a66] flex items-center gap-1 transition-colors font-medium"
+                        className="text-xs text-clearstrata-ui-primary hover:text-clearstrata-ui-primaryHover flex items-center gap-1 transition-colors font-medium"
                         title={l ? 'Send invitation email' : '发送邀请邮件'}
                       >
                         <Mail size={13} aria-hidden />

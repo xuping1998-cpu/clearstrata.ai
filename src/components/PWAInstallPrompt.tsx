@@ -77,7 +77,7 @@ export function PWAInstallPrompt() {
       </button>
 
       <div className="flex items-start gap-3">
-        <div className="bg-[#1D9E75] rounded-lg p-2">
+        <div className="bg-clearstrata-ui-primary rounded-lg p-2">
           <Download className="text-white" size={24} />
         </div>
         <div className="flex-1">
@@ -91,7 +91,7 @@ export function PWAInstallPrompt() {
           </p>
           <button
             onClick={handleInstall}
-            className="w-full px-4 py-2 bg-[#1D9E75] text-white rounded-lg hover:bg-[#178a66] transition-colors font-medium"
+            className="w-full px-4 py-2 bg-clearstrata-ui-primary text-white rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors font-medium"
           >
             {language === 'en' ? 'Install Now' : '立即安装'}
           </button>

@@ -109,7 +109,7 @@ function recommendPlan(): PlanKey {
 
 function CheckCell({ ok }: { ok: boolean }) {
   return ok ? (
-    <CheckCircle2 className="mx-auto h-5 w-5 text-[#1D9E75]" aria-hidden />
+    <CheckCircle2 className="mx-auto h-5 w-5 text-clearstrata-ui-primary" aria-hidden />
   ) : (
     <span className="block text-center text-gray-300">—</span>
   );
@@ -298,7 +298,7 @@ export function UpgradePage() {
           <button
             type="button"
             onClick={() => navigate('/')}
-            className="text-lg font-black tracking-tight text-[#1D9E75]"
+            className="text-lg font-black tracking-tight text-clearstrata-ui-primary"
           >
             clearstrata.ai
           </button>
@@ -312,7 +312,7 @@ export function UpgradePage() {
             <button
               type="button"
               onClick={() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-              className="inline-flex items-center justify-center rounded-xl bg-[#1D9E75] px-4 py-2 text-sm font-semibold text-white hover:bg-[#178a66] active:scale-[0.99]"
+              className="inline-flex items-center justify-center rounded-xl bg-clearstrata-ui-primary px-4 py-2 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive active:scale-[0.99]"
             >
               提交升级意向
             </button>
@@ -326,7 +326,7 @@ export function UpgradePage() {
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <ShieldCheck className="h-5 w-5 text-emerald-700" />
+                <ShieldCheck className="h-5 w-5 text-clearstrata-brand-700" />
                 <h1 className="text-xl font-black tracking-tight text-gray-900">{statusCopy.title}</h1>
               </div>
               <p className="mt-2 text-sm text-gray-700">{statusCopy.line1}</p>
@@ -342,7 +342,7 @@ export function UpgradePage() {
               <button
                 type="button"
                 onClick={() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                className="inline-flex items-center justify-center rounded-xl bg-[#1D9E75] px-4 py-2 text-sm font-semibold text-white hover:bg-[#178a66] active:scale-[0.99]"
+                className="inline-flex items-center justify-center rounded-xl bg-clearstrata-ui-primary px-4 py-2 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive active:scale-[0.99]"
               >
                 联系开通 / 提交意向
               </button>
@@ -356,8 +356,8 @@ export function UpgradePage() {
         {/* 2) 推荐方案区 */}
         <section className="mt-10 grid gap-6 lg:grid-cols-12">
           <div className="lg:col-span-7">
-            <div className="rounded-3xl border border-emerald-200 bg-gradient-to-br from-white to-emerald-50/60 p-6 shadow-sm sm:p-8">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-800">推荐方案</p>
+            <div className="rounded-3xl border border-clearstrata-ui-softBorder bg-gradient-to-br from-white to-clearstrata-ui-soft/60 p-6 shadow-sm sm:p-8">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-clearstrata-brand-800">推荐方案</p>
               <h2 className="mt-2 text-xl font-black text-gray-900">推荐给你的物业：{recommended}</h2>
               <p className="mt-2 text-sm text-gray-700">
                 适合正在使用发票审计、预算对比与会议支持的物业。对大多数业委会来说，这一档已经能覆盖核心使用场景。
@@ -375,7 +375,7 @@ export function UpgradePage() {
               <ul className="mt-5 space-y-3 text-sm text-gray-700">
                 {recommendedPlan.bullets.slice(0, 5).map((b) => (
                   <li key={b} className="flex gap-2">
-                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-[#1D9E75]" />
+                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-clearstrata-ui-primary" />
                     <span>{b}</span>
                   </li>
                 ))}
@@ -387,7 +387,7 @@ export function UpgradePage() {
                     setSelectedPlan(recommended);
                     formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                   }}
-                  className="inline-flex items-center justify-center rounded-xl bg-[#1D9E75] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#178a66] active:scale-[0.99]"
+                  className="inline-flex items-center justify-center rounded-xl bg-clearstrata-ui-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive active:scale-[0.99]"
                 >
                   提交升级意向（{recommended}）
                 </button>
@@ -420,7 +420,7 @@ export function UpgradePage() {
                         <p className="text-sm font-semibold text-gray-900">{p.key}</p>
                         <p className="mt-1 text-xs text-gray-600">{p.monthly} · {p.yearly}</p>
                       </div>
-                      <span className="text-xs font-semibold text-[#1D9E75]">选择 →</span>
+                      <span className="text-xs font-semibold text-clearstrata-ui-primary">选择 →</span>
                     </div>
                   </button>
                 ))}
@@ -476,7 +476,7 @@ export function UpgradePage() {
               <input
                 value={contactName}
                 onChange={(e) => setContactName(e.target.value)}
-                className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none ring-emerald-400/30 focus:ring-2"
+                className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none ring-clearstrata-brand-400/30 focus:ring-2"
                 placeholder="例如：王小明"
               />
             </div>
@@ -510,7 +510,7 @@ export function UpgradePage() {
               <input
                 value={propertyName}
                 onChange={(e) => setPropertyName(e.target.value)}
-                className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none ring-emerald-400/30 focus:ring-2"
+                className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none ring-clearstrata-brand-400/30 focus:ring-2"
                 placeholder="例如：BCS 3736 Strata"
               />
             </div>
@@ -519,7 +519,7 @@ export function UpgradePage() {
               <select
                 value={selectedPlan}
                 onChange={(e) => setSelectedPlan(e.target.value as PlanKey)}
-                className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none ring-emerald-400/30 focus:ring-2"
+                className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none ring-clearstrata-brand-400/30 focus:ring-2"
               >
                 <option value="Starter">Starter</option>
                 <option value="Standard">Standard</option>
@@ -531,7 +531,7 @@ export function UpgradePage() {
               <textarea
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                className="mt-1 min-h-[96px] w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none ring-emerald-400/30 focus:ring-2"
+                className="mt-1 min-h-[96px] w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none ring-clearstrata-brand-400/30 focus:ring-2"
                 placeholder="例如：我们希望优先开通发票审计；成员大约 8–12 人；希望下周前完成开通。"
               />
               <p className="mt-2 text-xs text-gray-500">
@@ -543,7 +543,7 @@ export function UpgradePage() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#1D9E75] px-5 py-3 text-sm font-semibold text-white hover:bg-[#178a66] disabled:opacity-50 active:scale-[0.99] sm:w-auto"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-clearstrata-ui-primary px-5 py-3 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:opacity-50 active:scale-[0.99] sm:w-auto"
               >
                 {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : null}
                 提交升级意向
@@ -558,7 +558,7 @@ export function UpgradePage() {
               <div
                 className={`sm:col-span-2 rounded-2xl border px-4 py-3 text-sm ${
                   toast.kind === 'success'
-                    ? 'border-emerald-200 bg-emerald-50 text-emerald-950'
+                    ? 'border-clearstrata-ui-softBorder bg-clearstrata-ui-soft text-clearstrata-brand-950'
                     : 'border-red-200 bg-red-50 text-red-900'
                 }`}
                 role="status"
@@ -585,7 +585,7 @@ export function UpgradePage() {
         </section>
 
         {/* 6) 底部 CTA 区 */}
-        <section className="mt-10 rounded-3xl border border-gray-200 bg-gradient-to-br from-white to-emerald-50/50 p-6 shadow-sm sm:p-8">
+        <section className="mt-10 rounded-3xl border border-gray-200 bg-gradient-to-br from-white to-clearstrata-ui-soft/50 p-6 shadow-sm sm:p-8">
           <div className="mx-auto max-w-3xl text-center">
             <p className="text-sm font-semibold text-gray-900">
               你的物业已经开始建立透明管理，现在是把它正式运行起来的时候了。
@@ -594,7 +594,7 @@ export function UpgradePage() {
               <button
                 type="button"
                 onClick={() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                className="inline-flex items-center justify-center rounded-xl bg-[#1D9E75] px-5 py-3 text-sm font-semibold text-white hover:bg-[#178a66] active:scale-[0.99]"
+                className="inline-flex items-center justify-center rounded-xl bg-clearstrata-ui-primary px-5 py-3 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive active:scale-[0.99]"
               >
                 提交升级意向
               </button>

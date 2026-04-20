@@ -472,7 +472,7 @@ export function Auth() {
   };
 
   const passwordInputClass =
-    'w-full pr-10 pl-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75]/20 focus:border-[#1D9E75] transition-colors';
+    'w-full pr-10 pl-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary/20 focus:border-clearstrata-ui-primary transition-colors';
 
   const loginCanSubmit =
     Boolean(email.trim()) && Boolean(password) && !isSubmitting && !forgotMode;
@@ -512,7 +512,7 @@ export function Auth() {
                   }}
                   className={`flex-1 py-3 text-sm font-semibold transition-colors ${
                     mainTab === 'guest'
-                      ? 'border-b-2 border-[#1D9E75] bg-emerald-50/40 text-[#1D9E75]'
+                      ? 'border-b-2 border-clearstrata-ui-primary bg-clearstrata-ui-soft/40 text-clearstrata-ui-primary'
                       : 'text-gray-500 hover:text-gray-700'
                   }`}
                 >
@@ -545,7 +545,7 @@ export function Auth() {
               <div className="flex min-h-0 flex-1 flex-col">
                 <div className="min-h-0 shrink-0 overflow-visible">
             {passwordUpdated && (
-              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-900 text-sm flex justify-between gap-2 items-start">
+              <div className="p-3 bg-clearstrata-ui-soft border border-clearstrata-ui-softBorder rounded-lg text-clearstrata-ui-softText text-sm flex justify-between gap-2 items-start">
                 <span>{t('auth_password_updated_banner')}</span>
                 <button
                   type="button"
@@ -554,7 +554,7 @@ export function Auth() {
                     next.delete('passwordUpdated');
                     setSearchParams(next, { replace: true });
                   }}
-                  className="shrink-0 text-emerald-700 hover:text-emerald-900 text-lg leading-none"
+                  className="shrink-0 text-clearstrata-brand-700 hover:text-clearstrata-brand-900 text-lg leading-none"
                   aria-label="Dismiss"
                 >
                   ×
@@ -562,7 +562,7 @@ export function Auth() {
               </div>
             )}
             {passwordResetDone && (
-              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-900 text-sm flex justify-between gap-2 items-start">
+              <div className="p-3 bg-clearstrata-ui-soft border border-clearstrata-ui-softBorder rounded-lg text-clearstrata-ui-softText text-sm flex justify-between gap-2 items-start">
                 <span>{t('auth_password_reset_login_banner')}</span>
                 <button
                   type="button"
@@ -571,7 +571,7 @@ export function Auth() {
                     next.delete('passwordReset');
                     setSearchParams(next, { replace: true });
                   }}
-                  className="shrink-0 text-emerald-700 hover:text-emerald-900 text-lg leading-none"
+                  className="shrink-0 text-clearstrata-brand-700 hover:text-clearstrata-brand-900 text-lg leading-none"
                   aria-label="Dismiss"
                 >
                   ×
@@ -589,7 +589,7 @@ export function Auth() {
                     type="text"
                     value={guestName}
                     onChange={(e) => setGuestName(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20"
+                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-clearstrata-ui-primary focus:ring-2 focus:ring-clearstrata-ui-primary/20"
                     autoComplete="name"
                   />
                 </div>
@@ -602,7 +602,7 @@ export function Auth() {
                     type="email"
                     value={guestEmail}
                     onChange={(e) => setGuestEmail(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20"
+                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-clearstrata-ui-primary focus:ring-2 focus:ring-clearstrata-ui-primary/20"
                     autoComplete="email"
                     placeholder="name@example.com"
                   />
@@ -610,7 +610,7 @@ export function Auth() {
                 <button
                   type="submit"
                   disabled={guestBusy}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#1D9E75] py-3 font-semibold text-white transition-colors hover:bg-[#178a66] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-clearstrata-ui-primary py-3 font-semibold text-white transition-colors hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {guestBusy ? <Loader2 size={18} className="animate-spin" /> : null}
                   {language === 'zh' ? '立即查看账单' : 'View bills now'}
@@ -638,7 +638,7 @@ export function Auth() {
                     type="text"
                     value={epCode}
                     onChange={(e) => setEpCode(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 font-mono uppercase transition-colors focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20"
+                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 font-mono uppercase transition-colors focus:border-clearstrata-ui-primary focus:ring-2 focus:ring-clearstrata-ui-primary/20"
                     placeholder="BCS3736"
                     autoComplete="off"
                   />
@@ -655,7 +655,7 @@ export function Auth() {
                     type="text"
                     value={epName}
                     onChange={(e) => setEpName(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20"
+                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-clearstrata-ui-primary focus:ring-2 focus:ring-clearstrata-ui-primary/20"
                   />
                 </div>
                 <div>
@@ -667,7 +667,7 @@ export function Auth() {
                     type="email"
                     value={epEmail}
                     onChange={(e) => setEpEmail(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20"
+                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-clearstrata-ui-primary focus:ring-2 focus:ring-clearstrata-ui-primary/20"
                     placeholder="name@example.com"
                   />
                 </div>
@@ -680,7 +680,7 @@ export function Auth() {
                     type="text"
                     value={epUnit}
                     onChange={(e) => setEpUnit(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20"
+                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-clearstrata-ui-primary focus:ring-2 focus:ring-clearstrata-ui-primary/20"
                     placeholder="1204"
                   />
                 </div>
@@ -704,7 +704,7 @@ export function Auth() {
                 <button
                   type="button"
                   onClick={goToLogin}
-                  className="ml-2 font-medium text-[#1D9E75] hover:underline"
+                  className="ml-2 font-medium text-clearstrata-ui-primary hover:underline"
                 >
                   {language === 'zh' ? '直接登录' : 'Sign in'}
                 </button>
@@ -713,7 +713,7 @@ export function Auth() {
               {legacyOpen === 'login' ? (
                 <form onSubmit={handleSubmit} className="mt-4 space-y-3">
                   {resetSuccess && (
-                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{resetSuccess}</div>
+                    <div className="rounded-lg border border-clearstrata-ui-softBorder bg-clearstrata-ui-soft p-3 text-sm text-clearstrata-ui-softText">{resetSuccess}</div>
                   )}
                   <div>
                     <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="login-email">
@@ -727,7 +727,7 @@ export function Auth() {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       required={!forgotMode}
-                      className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20"
+                      className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-clearstrata-ui-primary focus:ring-2 focus:ring-clearstrata-ui-primary/20"
                       placeholder="name@example.com"
                     />
                   </div>
@@ -765,7 +765,7 @@ export function Auth() {
                       <button
                         type="submit"
                         disabled={!forgotCanSubmit}
-                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#1D9E75] py-3 font-semibold text-white transition-colors hover:bg-[#178a66] disabled:cursor-not-allowed disabled:opacity-50"
+                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-clearstrata-ui-primary py-3 font-semibold text-white transition-colors hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {resetSending ? (
                           <>
@@ -783,7 +783,7 @@ export function Auth() {
                           setError('');
                           setResetSuccess('');
                         }}
-                        className="w-full py-2 text-sm font-medium text-[#1D9E75] hover:underline"
+                        className="w-full py-2 text-sm font-medium text-clearstrata-ui-primary hover:underline"
                       >
                         {t('auth_back_to_login')}
                       </button>
@@ -794,7 +794,7 @@ export function Auth() {
                       <button
                         type="submit"
                         disabled={!loginCanSubmit}
-                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#1D9E75] py-3 font-semibold text-white transition-colors hover:bg-[#178a66] disabled:cursor-not-allowed disabled:opacity-50"
+                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-clearstrata-ui-primary py-3 font-semibold text-white transition-colors hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {isSubmitting ? (
                           <>
@@ -812,7 +812,7 @@ export function Auth() {
                           setError('');
                           setResetSuccess('');
                         }}
-                        className="w-full py-1 text-center text-sm font-medium text-[#1D9E75] hover:underline"
+                        className="w-full py-1 text-center text-sm font-medium text-clearstrata-ui-primary hover:underline"
                       >
                         {t('auth_forgot_password')}
                       </button>
@@ -835,7 +835,7 @@ export function Auth() {
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
                           required
-                          className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20"
+                          className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-clearstrata-ui-primary focus:ring-2 focus:ring-clearstrata-ui-primary/20"
                           placeholder="name@example.com"
                         />
                       </div>
@@ -877,7 +877,7 @@ export function Auth() {
                             value={fullNameEn}
                             onChange={(e) => setFullNameEn(e.target.value)}
                             required
-                            className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20"
+                            className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-clearstrata-ui-primary focus:ring-2 focus:ring-clearstrata-ui-primary/20"
                             placeholder="John Doe"
                           />
                         </div>
@@ -890,7 +890,7 @@ export function Auth() {
                             type="text"
                             value={fullNameZh}
                             onChange={(e) => setFullNameZh(e.target.value)}
-                            className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20"
+                            className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-clearstrata-ui-primary focus:ring-2 focus:ring-clearstrata-ui-primary/20"
                             placeholder="张三"
                           />
                         </div>
@@ -906,7 +906,7 @@ export function Auth() {
                             value={unitNumber}
                             onChange={(e) => setUnitNumber(e.target.value)}
                             required
-                            className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20"
+                            className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-clearstrata-ui-primary focus:ring-2 focus:ring-clearstrata-ui-primary/20"
                             placeholder="101"
                           />
                         </div>
@@ -919,7 +919,7 @@ export function Auth() {
                             type="tel"
                             value={phone}
                             onChange={(e) => setPhone(e.target.value)}
-                            className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20"
+                            className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-clearstrata-ui-primary focus:ring-2 focus:ring-clearstrata-ui-primary/20"
                             placeholder="04xx xxx xxx"
                           />
                         </div>
@@ -934,7 +934,7 @@ export function Auth() {
                           setError('');
                           setStep(2);
                         }}
-                        className="w-full rounded-lg bg-[#1D9E75] py-3 font-semibold text-white transition-colors hover:bg-[#178a66]"
+                        className="w-full rounded-lg bg-clearstrata-ui-primary py-3 font-semibold text-white transition-colors hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive"
                       >
                         {language === 'en' ? 'Next' : '下一步'}
                       </button>
@@ -954,7 +954,7 @@ export function Auth() {
                           min="1900-01-01"
                           max="2100-12-31"
                           autoComplete="off"
-                          className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-4 py-2.5 transition-colors focus:border-[#1D9E75] focus:ring-2 focus:ring-[#1D9E75]/20"
+                          className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-4 py-2.5 transition-colors focus:border-clearstrata-ui-primary focus:ring-2 focus:ring-clearstrata-ui-primary/20"
                         />
                         <p className="mt-1 text-xs text-gray-500">
                           {language === 'en'
@@ -970,7 +970,7 @@ export function Auth() {
                           <label
                             className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg border-2 px-4 py-2.5 transition-all ${
                               languagePref === 'en'
-                                ? 'border-[#1D9E75] bg-emerald-50 text-[#1D9E75]'
+                                ? 'border-clearstrata-ui-primary bg-clearstrata-ui-soft text-clearstrata-ui-primary'
                                 : 'border-gray-200 text-gray-600 hover:border-gray-300'
                             }`}
                           >
@@ -987,7 +987,7 @@ export function Auth() {
                           <label
                             className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg border-2 px-4 py-2.5 transition-all ${
                               languagePref === 'zh'
-                                ? 'border-[#1D9E75] bg-emerald-50 text-[#1D9E75]'
+                                ? 'border-clearstrata-ui-primary bg-clearstrata-ui-soft text-clearstrata-ui-primary'
                                 : 'border-gray-200 text-gray-600 hover:border-gray-300'
                             }`}
                           >
@@ -1003,8 +1003,8 @@ export function Auth() {
                           </label>
                         </div>
                       </div>
-                      <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-                        <p className="text-sm text-emerald-800">
+                      <div className="rounded-lg border border-clearstrata-ui-softBorder bg-clearstrata-ui-soft p-3">
+                        <p className="text-sm text-clearstrata-ui-softText">
                           {language === 'en'
                             ? 'You are registering as a property owner. Council roles are assigned by a site administrator after approval. Admin accounts cannot be created here.'
                             : '您将以业主身份注册。理事会（Council）角色须由管理员在后台审核后指定。系统管理员（Admin）账号不能通过此页面注册。'}
@@ -1021,7 +1021,7 @@ export function Auth() {
                         <button
                           type="submit"
                           disabled={isSubmitting}
-                          className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#1D9E75] py-3 font-semibold text-white transition-colors hover:bg-[#178a66] disabled:cursor-not-allowed disabled:opacity-50"
+                          className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-clearstrata-ui-primary py-3 font-semibold text-white transition-colors hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {isSubmitting ? (
                             <>

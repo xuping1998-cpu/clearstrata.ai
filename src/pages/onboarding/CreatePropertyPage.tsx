@@ -161,8 +161,8 @@ export function CreatePropertyPage() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-emerald-50/40 to-gray-50 flex flex-col items-center justify-center p-6">
-        <Loader2 className="w-10 h-10 text-[#1D9E75] animate-spin" aria-hidden />
+      <div className="min-h-screen bg-gradient-to-b from-clearstrata-ui-soft/40 to-gray-50 flex flex-col items-center justify-center p-6">
+        <Loader2 className="w-10 h-10 text-clearstrata-ui-primary animate-spin" aria-hidden />
         <p className="mt-4 text-sm text-gray-500">加载中…</p>
       </div>
     );
@@ -170,10 +170,10 @@ export function CreatePropertyPage() {
 
   if (!session) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-emerald-50/40 to-gray-50 flex items-center justify-center p-6">
+      <div className="min-h-screen bg-gradient-to-b from-clearstrata-ui-soft/40 to-gray-50 flex items-center justify-center p-6">
         <div className="w-full max-w-lg rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
           <div className="flex items-start gap-3">
-            <div className="mt-0.5 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
+            <div className="mt-0.5 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-clearstrata-brand-100 text-clearstrata-brand-700">
               <ShieldCheck size={20} />
             </div>
             <div>
@@ -186,7 +186,7 @@ export function CreatePropertyPage() {
           <button
             type="button"
             onClick={() => navigate(redirectBackToSelf)}
-            className="mt-5 w-full rounded-xl bg-[#1D9E75] px-4 py-3 text-sm font-semibold text-white hover:bg-[#178a66] transition-colors"
+            className="mt-5 w-full rounded-xl bg-clearstrata-ui-primary px-4 py-3 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors"
           >
             去登录 / 注册
           </button>
@@ -199,12 +199,12 @@ export function CreatePropertyPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-emerald-50/40 via-gray-50 to-gray-50">
+    <div className="min-h-screen bg-gradient-to-b from-clearstrata-ui-soft/40 via-gray-50 to-gray-50">
       <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-10">
-          <div className="rounded-3xl border border-emerald-200 bg-white p-6 shadow-sm sm:p-8">
+          <div className="rounded-3xl border border-clearstrata-ui-softBorder bg-white p-6 shadow-sm sm:p-8">
             <div className="flex items-start gap-3">
-              <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-[#1D9E75] text-white shadow-sm">
+              <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-clearstrata-ui-primary text-white shadow-sm">
                 <Building2 size={22} />
               </div>
               <div className="min-w-0">
@@ -217,9 +217,9 @@ export function CreatePropertyPage() {
               </div>
             </div>
 
-            <div className="mt-5 rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4">
-              <p className="text-sm font-medium text-emerald-950">创建后你将成为该物业的首位管理员</p>
-              <p className="mt-1 text-xs text-emerald-900/80">
+            <div className="mt-5 rounded-2xl border border-clearstrata-ui-softBorder bg-clearstrata-ui-soft/80 p-4">
+              <p className="text-sm font-medium text-clearstrata-brand-950">创建后你将成为该物业的首位管理员</p>
+              <p className="mt-1 text-xs text-clearstrata-ui-softText/80">
                 你可以立刻邀请成员、导入房号、上传发票，开始使用完整功能。
               </p>
             </div>
@@ -231,7 +231,7 @@ export function CreatePropertyPage() {
                   value={propertyName}
                   onChange={(e) => setPropertyName(e.target.value)}
                   placeholder="例如：BCS 3736 Strata"
-                  className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none ring-emerald-400/30 focus:ring-2"
+                  className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none ring-clearstrata-brand-400/30 focus:ring-2"
                 />
               </div>
 
@@ -242,7 +242,7 @@ export function CreatePropertyPage() {
                     value={propertyCode}
                     onChange={(e) => setPropertyCode(e.target.value)}
                     placeholder="例如：BCS3736"
-                    className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none ring-emerald-400/30 focus:ring-2"
+                    className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none ring-clearstrata-brand-400/30 focus:ring-2"
                   />
                   <p className="mt-1 text-xs text-gray-500">用于二维码、邀请链接与快速搜索。</p>
                 </div>
@@ -252,7 +252,7 @@ export function CreatePropertyPage() {
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
                     placeholder="例如：Vancouver"
-                    className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none ring-emerald-400/30 focus:ring-2"
+                    className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none ring-clearstrata-brand-400/30 focus:ring-2"
                   />
                 </div>
               </div>
@@ -266,7 +266,7 @@ export function CreatePropertyPage() {
                     value={contactName}
                     onChange={(e) => setContactName(e.target.value)}
                     placeholder="例如：王小明"
-                    className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none ring-emerald-400/30 focus:ring-2"
+                    className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none ring-clearstrata-brand-400/30 focus:ring-2"
                   />
                 </div>
                 <div>
@@ -274,7 +274,7 @@ export function CreatePropertyPage() {
                   <select
                     value={starterRole}
                     onChange={(e) => setStarterRole(e.target.value as StarterRole)}
-                    className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none ring-emerald-400/30 focus:ring-2"
+                    className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none ring-clearstrata-brand-400/30 focus:ring-2"
                   >
                     <option value="council">council（业委会）</option>
                     <option value="manager">manager（物业经理）</option>
@@ -294,7 +294,7 @@ export function CreatePropertyPage() {
                     value={contactEmail}
                     onChange={(e) => setContactEmail(e.target.value)}
                     placeholder="name@example.com"
-                    className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none ring-emerald-400/30 focus:ring-2"
+                    className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none ring-clearstrata-brand-400/30 focus:ring-2"
                   />
                   <p className="mt-1 text-xs text-gray-500">可与登录邮箱一致，也支持填写常用工作邮箱。</p>
                 </div>
@@ -307,7 +307,7 @@ export function CreatePropertyPage() {
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="例如：604-555-0101"
-                    className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none ring-emerald-400/30 focus:ring-2"
+                    className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none ring-clearstrata-brand-400/30 focus:ring-2"
                   />
                   <p className="mt-1 text-xs text-gray-500">至少包含 8 位数字（可含空格、横线）。</p>
                 </div>
@@ -322,7 +322,7 @@ export function CreatePropertyPage() {
                   onChange={(e) => setStrataPlan(e.target.value)}
                   placeholder="例如：Type 1 / Bare Land Strata；或粘贴计划书编号与要点"
                   rows={3}
-                  className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none ring-emerald-400/30 focus:ring-2"
+                  className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none ring-clearstrata-brand-400/30 focus:ring-2"
                 />
               </div>
 
@@ -333,7 +333,7 @@ export function CreatePropertyPage() {
                     value={unitNo}
                     onChange={(e) => setUnitNo(e.target.value)}
                     placeholder="例如：101"
-                    className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none ring-emerald-400/30 focus:ring-2"
+                    className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none ring-clearstrata-brand-400/30 focus:ring-2"
                   />
                 </div>
               </div>
@@ -341,7 +341,7 @@ export function CreatePropertyPage() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#1D9E75] px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#178a66] disabled:opacity-50 active:scale-[0.99]"
+                className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-clearstrata-ui-primary px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:opacity-50 active:scale-[0.99]"
               >
                 {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : null}
                 {submitting ? '创建中…' : '立即创建我的物业'}
@@ -352,7 +352,7 @@ export function CreatePropertyPage() {
                   role="status"
                   className={`rounded-xl border px-3 py-2 text-sm ${
                     toast.kind === 'success'
-                      ? 'border-emerald-200 bg-emerald-50 text-emerald-950'
+                      ? 'border-clearstrata-ui-softBorder bg-clearstrata-ui-soft text-clearstrata-brand-950'
                       : toast.kind === 'warn'
                         ? 'border-amber-200 bg-amber-50 text-amber-950'
                         : 'border-red-200 bg-red-50 text-red-900'
@@ -369,26 +369,26 @@ export function CreatePropertyPage() {
               <h2 className="text-lg font-bold text-gray-900">创建后你会看到什么？</h2>
               <ul className="mt-4 space-y-3 text-sm text-gray-700">
                 <li className="flex gap-2">
-                  <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
+                  <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-clearstrata-brand-500" />
                   <span>后台首页会出现“开通任务卡”，引导你完成 3 步开通。</span>
                 </li>
                 <li className="flex gap-2">
-                  <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
+                  <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-clearstrata-brand-500" />
                   <span>默认生成一个业主邀请码，方便你立刻邀请成员加入。</span>
                 </li>
                 <li className="flex gap-2">
-                  <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
+                  <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-clearstrata-brand-500" />
                   <span>系统会尝试初始化基础预算分类与欢迎公告（若当前数据库支持）。</span>
                 </li>
               </ul>
             </div>
 
-            <div className="rounded-3xl border border-gray-200 bg-gradient-to-br from-white to-emerald-50/40 p-6 shadow-sm sm:p-8">
+            <div className="rounded-3xl border border-gray-200 bg-gradient-to-br from-white to-clearstrata-ui-soft/40 p-6 shadow-sm sm:p-8">
               <h2 className="text-lg font-bold text-gray-900">需要准备什么资料？</h2>
               <p className="mt-2 text-sm text-gray-600">
                 你只需提供最少信息即可开通。房号/住户导入、预算与发票等可以稍后再完善。
               </p>
-              <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-900">
+              <div className="mt-4 rounded-2xl border border-clearstrata-ui-softBorder bg-clearstrata-ui-soft px-4 py-3 text-xs text-clearstrata-ui-softText">
                 提示：如果你来自 Demo 页面，创建成功后会立即进入真实后台（非演示数据）。
               </div>
             </div>

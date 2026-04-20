@@ -24,7 +24,7 @@ function kpiCornerHint(item: DashboardKpi, en: boolean): string {
 function cardShellCompact(className: string) {
   return [
     'rounded-2xl border border-gray-200 bg-gray-50 px-4 py-2',
-    'transition hover:border-emerald-300/80 hover:shadow-sm',
+    'transition hover:border-clearstrata-brand-300/80 hover:shadow-sm',
     className,
   ].join(' ');
 }
@@ -114,7 +114,7 @@ export function DashboardKpiBar({
                 key={item.key}
                 type="button"
                 onClick={() => onKpiClick?.(item.key)}
-                className="w-full rounded-2xl border border-gray-200 bg-white p-5 text-left font-sans shadow-sm transition hover:border-emerald-300 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
+                className="w-full rounded-2xl border border-gray-200 bg-white p-5 text-left font-sans shadow-sm transition hover:border-clearstrata-brand-300 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-clearstrata-brand-500 focus-visible:ring-offset-2"
               >
                 {content}
               </button>
@@ -125,7 +125,7 @@ export function DashboardKpiBar({
               <Link
                 key={item.key}
                 to={item.link}
-                className="block rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition hover:border-emerald-300 hover:shadow-md"
+                className="block rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition hover:border-clearstrata-brand-300 hover:shadow-md"
               >
                 {content}
               </Link>
@@ -158,7 +158,7 @@ export function DashboardKpiBar({
               key={item.key}
               type="button"
               onClick={() => onKpiClick?.(item.key)}
-              className={`${cardShellCompact('w-full text-left font-sans focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-1')}`}
+              className={`${cardShellCompact('w-full text-left font-sans focus:outline-none focus-visible:ring-2 focus-visible:ring-clearstrata-brand-500 focus-visible:ring-offset-1')}`}
             >
               {body}
             </button>

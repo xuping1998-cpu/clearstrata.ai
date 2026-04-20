@@ -112,7 +112,7 @@ export function Profile() {
         <div className="bg-white rounded-xl p-6 shadow-sm">
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="flex items-center gap-4 pb-6 border-b border-gray-200">
-              <div className="w-16 h-16 bg-[#1D9E75] rounded-full flex items-center justify-center">
+              <div className="w-16 h-16 bg-clearstrata-ui-primary rounded-full flex items-center justify-center">
                 <User className="text-white" size={32} />
               </div>
               <div>
@@ -136,7 +136,7 @@ export function Profile() {
                 onChange={(e) =>
                   setFormData({ ...formData, full_name_en: e.target.value })
                 }
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1D9E75]"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-clearstrata-ui-primary"
                 placeholder="John Doe"
               />
             </div>
@@ -151,7 +151,7 @@ export function Profile() {
                 onChange={(e) =>
                   setFormData({ ...formData, full_name_zh: e.target.value })
                 }
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1D9E75]"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-clearstrata-ui-primary"
                 placeholder="张三"
               />
             </div>
@@ -166,7 +166,7 @@ export function Profile() {
                 onChange={(e) =>
                   setFormData({ ...formData, phone: e.target.value })
                 }
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1D9E75]"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-clearstrata-ui-primary"
                 placeholder="+1 (555) 123-4567"
               />
             </div>
@@ -188,7 +188,7 @@ export function Profile() {
                         preferred_language: e.target.value as 'en' | 'zh',
                       })
                     }
-                    className="w-4 h-4 text-[#1D9E75] focus:ring-[#1D9E75]"
+                    className="w-4 h-4 text-clearstrata-ui-primary focus:ring-clearstrata-ui-primary"
                   />
                   <span>English</span>
                 </label>
@@ -204,7 +204,7 @@ export function Profile() {
                         preferred_language: e.target.value as 'en' | 'zh',
                       })
                     }
-                    className="w-4 h-4 text-[#1D9E75] focus:ring-[#1D9E75]"
+                    className="w-4 h-4 text-clearstrata-ui-primary focus:ring-clearstrata-ui-primary"
                   />
                   <span>中文</span>
                 </label>
@@ -212,7 +212,7 @@ export function Profile() {
             </div>
 
             {success && (
-              <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-green-800">
+              <div className="p-4 bg-clearstrata-ui-soft border border-clearstrata-ui-softBorder rounded-lg text-clearstrata-ui-softText">
                 {language === 'en'
                   ? 'Profile updated successfully!'
                   : '个人信息更新成功！'}
@@ -223,7 +223,7 @@ export function Profile() {
               <button
                 type="submit"
                 disabled={loading}
-                className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-[#1D9E75] text-white rounded-lg hover:bg-[#178a66] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-clearstrata-ui-primary text-white rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? (
                   <>

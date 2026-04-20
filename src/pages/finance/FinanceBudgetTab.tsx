@@ -86,7 +86,7 @@ export function FinanceBudgetTab() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-clearstrata-ui-primary text-white">
             <PieChart size={20} aria-hidden />
           </div>
           <div>
@@ -119,7 +119,7 @@ export function FinanceBudgetTab() {
       <div className="flex flex-wrap gap-3 text-sm">
         <Link
           to="/finance?tab=invoices"
-          className="font-medium text-emerald-700 hover:text-emerald-900 hover:underline"
+          className="font-medium text-clearstrata-brand-700 hover:text-clearstrata-brand-900 hover:underline"
         >
           {en ? 'Open invoice management' : '前往发票管理'}
         </Link>

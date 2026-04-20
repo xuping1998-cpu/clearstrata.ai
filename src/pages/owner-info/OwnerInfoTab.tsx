@@ -1,9 +1,22 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { CreditCard as Edit, Check, Users, Trash2, Building2 } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useProperty } from '../../contexts/PropertyContext';
 import { supabase } from '../../lib/supabase';
+import { samePropertyId } from '../../lib/propertyIdMatch';
+
+function formatPropertyAddress(row: Record<string, unknown>): string | null {
+  const single = String(row.address ?? '').trim();
+  if (single) return single;
+  const line1 = String(row.address_line1 ?? '').trim();
+  const city = String(row.city ?? '').trim();
+  const prov = String(row.province ?? '').trim();
+  const postal = String(row.postal_code ?? '').trim();
+  const cityProv = [city, prov].filter(Boolean).join(', ');
+  const parts = [line1, cityProv, postal].filter(Boolean);
+  return parts.length ? parts.join(' · ') : null;
+}
 
 interface OwnerInfoRecord {
   id: string;
@@ -28,7 +41,63 @@ interface OwnerInfoRecord {
 export function OwnerInfoTab() {
   const { t, language } = useLanguage();
   const { profile } = useAuth();
-  const { currentPropertyId, currentRole } = useProperty();
+  const { currentPropertyId, currentRole, memberships, ready: propertyReady } = useProperty();
+
+  const membershipForCurrent = useMemo(() => {
+    if (!currentPropertyId) return undefined;
+    return memberships.find((m) => samePropertyId(m.propertyId, currentPropertyId));
+  }, [memberships, currentPropertyId]);
+
+  const [propertyBuilding, setPropertyBuilding] = useState<{
+    loading: boolean;
+    name: string | null;
+    addressLine: string | null;
+  }>({ loading: true, name: null, addressLine: null });
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!propertyReady) return;
+    if (!currentPropertyId) {
+      setPropertyBuilding({ loading: false, name: null, addressLine: null });
+      return;
+    }
+    setPropertyBuilding((s) => ({ ...s, loading: true }));
+    void (async () => {
+      const fullCols =
+        'name, city, code, property_code, address, address_line1, province, postal_code';
+      let res = await supabase.from('properties').select(fullCols).eq('id', currentPropertyId).maybeSingle();
+      if (res.error) {
+        const msg = String(res.error.message ?? '');
+        if (msg.includes('column') && msg.includes('does not exist')) {
+          res = await supabase
+            .from('properties')
+            .select('name, city, code, property_code')
+            .eq('id', currentPropertyId)
+            .maybeSingle();
+        }
+      }
+      if (cancelled) return;
+      if (res.error || !res.data) {
+        setPropertyBuilding({
+          loading: false,
+          name: membershipForCurrent?.name?.trim() || null,
+          addressLine: null,
+        });
+        return;
+      }
+      const row = res.data as Record<string, unknown>;
+      const name =
+        String(row.name ?? '').trim() || membershipForCurrent?.name?.trim() || null;
+      setPropertyBuilding({
+        loading: false,
+        name,
+        addressLine: formatPropertyAddress(row),
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [propertyReady, currentPropertyId, membershipForCurrent?.name]);
   const [ownerInfos, setOwnerInfos] = useState<OwnerInfoRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingOwner, setEditingOwner] = useState<OwnerInfoRecord | null>(null);
@@ -198,7 +267,7 @@ export function OwnerInfoTab() {
         {ownerInfos.length > 0 && ownerInfos.some((info) => info.user_id === profile?.id) ? (
           <button
             onClick={() => startEditForm(ownerInfos.find((info) => info.user_id === profile?.id)!)}
-            className="flex items-center gap-2 px-4 py-2 bg-[#1D9E75] text-white rounded-lg hover:bg-[#178a66] transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-clearstrata-ui-primary text-white rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors"
           >
             <Edit size={18} />
             {language === 'en' ? 'Update My Information' : '更新我的信息'}
@@ -210,7 +279,7 @@ export function OwnerInfoTab() {
                 setFormData({ unit_number: '', unit_size_sqft: '', occupancy_status: 'owner_occupied', emergency_contact_name: '', emergency_contact_phone: '', move_in_date: '' });
                 setShowForm(true);
               }}
-              className="flex items-center gap-2 px-4 py-2 bg-[#1D9E75] text-white rounded-lg hover:bg-[#178a66] transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-clearstrata-ui-primary text-white rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors"
             >
               <Users size={18} />
               {language === 'en' ? 'Add My Information' : '添加我的信息'}
@@ -229,14 +298,14 @@ export function OwnerInfoTab() {
           {ownerInfos.map((info) => (
             <div
               key={info.id}
-              className={`bg-white rounded-xl p-6 shadow-sm border-l-4 ${info.pending_approval ? 'border-yellow-500' : 'border-[#1D9E75]'}`}
+              className={`bg-white rounded-xl p-6 shadow-sm border-l-4 ${info.pending_approval ? 'border-yellow-500' : 'border-clearstrata-ui-primary'}`}
             >
               <div className="mb-3">
                 <span
                   className={`px-3 py-1 text-xs font-medium rounded-full inline-block ${
                     info.pending_approval
                       ? 'bg-yellow-100 text-yellow-800'
-                      : 'bg-emerald-100 text-emerald-800'
+                      : 'bg-clearstrata-brand-100 text-clearstrata-brand-800'
                   }`}
                 >
                   {info.pending_approval ? t('owner_info_status_pending') : t('owner_info_status_approved')}
@@ -244,12 +313,12 @@ export function OwnerInfoTab() {
               </div>
               <div className="flex items-start justify-between mb-4">
                 <div>
-                  <div className="text-2xl font-bold text-[#1D9E75] mb-1">{language === 'en' ? 'Unit' : '单元'} {info.unit_number}</div>
+                  <div className="text-2xl font-bold text-clearstrata-ui-primary mb-1">{language === 'en' ? 'Unit' : '单元'} {info.unit_number}</div>
                   <div className="text-sm text-gray-600">{info.unit_size_sqft} {language === 'en' ? 'sqft' : '平方英尺'}</div>
                 </div>
                 {canReviewOwnerInfo && !editingOwner && (
                   <div className="flex gap-2">
-                    <button onClick={() => setEditingOwner(info)} className="text-[#1D9E75] hover:bg-gray-100 p-2 rounded-lg"><Edit size={18} /></button>
+                    <button onClick={() => setEditingOwner(info)} className="text-clearstrata-ui-primary hover:bg-gray-100 p-2 rounded-lg"><Edit size={18} /></button>
                     <button onClick={() => setDeletingId(info.id)} className="text-red-600 hover:bg-red-50 p-2 rounded-lg"><Trash2 size={18} /></button>
                   </div>
                 )}
@@ -283,17 +352,43 @@ export function OwnerInfoTab() {
                 )}
               </div>
               <div className="mt-4 pt-4 border-t border-gray-200">
-                <div className="flex items-center gap-2 mb-3"><Building2 size={16} className="text-[#1D9E75]" /><h4 className="font-semibold text-gray-900 text-sm">{language === 'en' ? 'Building Information' : '大楼信息'}</h4></div>
-                <div className="space-y-1.5 text-xs text-gray-600">
-                  <div><span className="font-medium text-gray-700">{language === 'en' ? 'Building:' : '大楼：'}</span> ClearStrata Tower</div>
-                  <div><span className="font-medium text-gray-700">{language === 'en' ? 'Address:' : '地址：'}</span> 123 Main Street, Vancouver, BC</div>
+                <div className="flex items-center gap-2 mb-3">
+                  <Building2 size={16} className="text-clearstrata-ui-primary" />
+                  <h4 className="font-semibold text-gray-900 text-sm">
+                    {language === 'en' ? 'Building Information' : '大楼信息'}
+                  </h4>
                 </div>
+                {!currentPropertyId ? (
+                  <p className="text-xs text-amber-900">
+                    {language === 'en' ? 'Property info not set' : '未设置物业信息'}
+                  </p>
+                ) : propertyBuilding.loading ? (
+                  <p className="text-xs text-gray-500">{language === 'en' ? 'Loading…' : '加载中…'}</p>
+                ) : !String(propertyBuilding.name ?? '').trim() &&
+                  !String(propertyBuilding.addressLine ?? '').trim() ? (
+                  <p className="text-xs text-amber-900">
+                    {language === 'en' ? 'Property info not set' : '未设置物业信息'}
+                  </p>
+                ) : (
+                  <div className="space-y-1.5 text-xs text-gray-600">
+                    <div>
+                      <span className="font-medium text-gray-700">{language === 'en' ? 'Building:' : '大楼：'}</span>{' '}
+                      {String(propertyBuilding.name ?? '').trim() ||
+                        (language === 'en' ? 'Not set' : '未设置')}
+                    </div>
+                    <div>
+                      <span className="font-medium text-gray-700">{language === 'en' ? 'Address:' : '地址：'}</span>{' '}
+                      {String(propertyBuilding.addressLine ?? '').trim() ||
+                        (language === 'en' ? 'Address not set' : '地址未设置')}
+                    </div>
+                  </div>
+                )}
               </div>
               {canReviewOwnerInfo && info.pending_approval && (
                 <button
                   type="button"
                   onClick={() => approveOwnerInfo(info.id)}
-                  className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-2 bg-[#1D9E75] text-white rounded-lg hover:bg-[#178a66] transition-colors font-medium"
+                  className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-2 bg-clearstrata-ui-primary text-white rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors font-medium"
                 >
                   <Check size={18} />
                   {t('owner_info_approve_confirm')}
@@ -311,15 +406,15 @@ export function OwnerInfoTab() {
             <form onSubmit={handleFormSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{language === 'en' ? 'Unit Number' : '单元号'} *</label>
-                <input type="text" required value={formData.unit_number} onChange={(e) => setFormData({ ...formData, unit_number: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent" />
+                <input type="text" required value={formData.unit_number} onChange={(e) => setFormData({ ...formData, unit_number: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{language === 'en' ? 'Unit Size (sqft)' : '单元面积'} *</label>
-                <input type="number" required step="0.01" value={formData.unit_size_sqft} onChange={(e) => setFormData({ ...formData, unit_size_sqft: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent" />
+                <input type="number" required step="0.01" value={formData.unit_size_sqft} onChange={(e) => setFormData({ ...formData, unit_size_sqft: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{language === 'en' ? 'Occupancy Status' : '占用状态'} *</label>
-                <select required value={formData.occupancy_status} onChange={(e) => setFormData({ ...formData, occupancy_status: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent">
+                <select required value={formData.occupancy_status} onChange={(e) => setFormData({ ...formData, occupancy_status: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent">
                   <option value="owner_occupied">{language === 'en' ? 'Owner Occupied' : '业主自住'}</option>
                   <option value="rented">{language === 'en' ? 'Rented' : '出租'}</option>
                   <option value="vacant">{language === 'en' ? 'Vacant' : '空置'}</option>
@@ -327,15 +422,15 @@ export function OwnerInfoTab() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{language === 'en' ? 'Emergency Contact Name' : '紧急联系人'}</label>
-                <input type="text" value={formData.emergency_contact_name} onChange={(e) => setFormData({ ...formData, emergency_contact_name: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent" />
+                <input type="text" value={formData.emergency_contact_name} onChange={(e) => setFormData({ ...formData, emergency_contact_name: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{language === 'en' ? 'Emergency Contact Phone' : '紧急联系人电话'}</label>
-                <input type="tel" value={formData.emergency_contact_phone} onChange={(e) => setFormData({ ...formData, emergency_contact_phone: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent" />
+                <input type="tel" value={formData.emergency_contact_phone} onChange={(e) => setFormData({ ...formData, emergency_contact_phone: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{language === 'en' ? 'Move-in Date' : '入住日期'}</label>
-                <input type="date" value={formData.move_in_date} onChange={(e) => setFormData({ ...formData, move_in_date: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent" />
+                <input type="date" value={formData.move_in_date} onChange={(e) => setFormData({ ...formData, move_in_date: e.target.value })} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent" />
               </div>
               {(currentRole === 'owner' || currentRole === 'tenant') && (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
@@ -357,7 +452,7 @@ export function OwnerInfoTab() {
                 );
               })()}
               <div className="flex gap-3 pt-4">
-                <button type="submit" disabled={submitting} className="flex-1 bg-[#1D9E75] text-white py-3 rounded-lg hover:bg-[#178a66] transition-colors disabled:bg-gray-300 font-medium">
+                <button type="submit" disabled={submitting} className="flex-1 bg-clearstrata-ui-primary text-white py-3 rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors disabled:bg-gray-300 font-medium">
                   {submitting ? (language === 'en' ? 'Submitting...' : '提交中...') : (language === 'en' ? 'Submit' : '提交')}
                 </button>
                 <button type="button" onClick={() => setShowForm(false)} disabled={submitting} className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg hover:bg-gray-300 transition-colors font-medium">
@@ -391,7 +486,7 @@ export function OwnerInfoTab() {
                 </select>
               </div>
               <div className="flex gap-3">
-                <button onClick={saveOwnerInfo} className="flex-1 bg-[#1D9E75] text-white py-2 rounded-lg hover:bg-[#178a66]">{t('action_save')}</button>
+                <button onClick={saveOwnerInfo} className="flex-1 bg-clearstrata-ui-primary text-white py-2 rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive">{t('action_save')}</button>
                 <button onClick={() => setEditingOwner(null)} className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300">{t('action_cancel')}</button>
               </div>
             </div>

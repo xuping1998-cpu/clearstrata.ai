@@ -305,7 +305,7 @@ export function NewJobModal({
             <button
               onClick={sendInvitations}
               disabled={selectedVendorIdxs.size === 0 || step === 'sending'}
-              className="flex-1 flex items-center justify-center gap-2 bg-[#1D9E75] text-white py-2.5 rounded-lg hover:bg-[#178a66] transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 flex items-center justify-center gap-2 bg-clearstrata-ui-primary text-white py-2.5 rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {step === 'sending' ? (
                 <><Loader2 className="animate-spin" size={16} /> {l ? 'Sending...' : '发送中...'}</>
@@ -344,7 +344,7 @@ export function NewJobModal({
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">{l ? 'Type' : '类型'}</label>
             <select value={newJob.job_type} onChange={(e) => setNewJob({ ...newJob, job_type: e.target.value as any })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent">
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent">
               <option value="maintenance">{l ? 'Maintenance Request' : '维修申请'}</option>
               <option value="procurement">{l ? 'Procurement Project' : '采购项目'}</option>
             </select>
@@ -355,7 +355,7 @@ export function NewJobModal({
             <select
               value={newJob.category}
               onChange={(e) => setNewJob({ ...newJob, category: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent"
             >
               <option value="">{l ? 'Select category...' : '请选择类别...'}</option>
               {SERVICE_CATEGORIES.map(c => (
@@ -369,7 +369,7 @@ export function NewJobModal({
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{l ? 'Priority' : '优先级'}</label>
                 <select value={newJob.priority} onChange={(e) => setNewJob({ ...newJob, priority: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent">
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent">
                   <option value="low">{l ? 'Low' : '低'}</option>
                   <option value="medium">{l ? 'Medium' : '中'}</option>
                   <option value="high">{l ? 'High' : '高'}</option>
@@ -380,7 +380,7 @@ export function NewJobModal({
                 <label className="block text-sm font-medium text-gray-700 mb-1">{l ? 'Unit Number' : '单元号'}</label>
                 <input type="text" value={newJob.unit_number} onChange={(e) => setNewJob({ ...newJob, unit_number: e.target.value })}
                   placeholder={l ? 'e.g., 808' : '例如：808'}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent" />
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent" />
               </div>
             </div>
           )}
@@ -389,31 +389,31 @@ export function NewJobModal({
             <label className="block text-sm font-medium text-gray-700 mb-1">{l ? 'Title' : '标题'} (English)</label>
             <input type="text" value={newJob.title_en} onChange={(e) => { setNewJob({ ...newJob, title_en: e.target.value }); setError(''); }}
               placeholder={l ? 'e.g., Replace Thermostat' : '例如：Replace Thermostat'}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent" />
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">{l ? 'Title' : '标题'} ({'\u4E2D\u6587'})</label>
             <input type="text" value={newJob.title_zh} onChange={(e) => { setNewJob({ ...newJob, title_zh: e.target.value }); setError(''); }}
               placeholder={l ? 'e.g., 更换恒温器' : '例如：更换恒温器'}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent" />
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">{l ? 'Description' : '描述'} (English)</label>
             <textarea value={newJob.description_en} onChange={(e) => { setNewJob({ ...newJob, description_en: e.target.value }); setError(''); }}
               placeholder={l ? 'Describe the issue or requirement...' : '描述问题或需求...'} rows={3}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent" />
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">{l ? 'Description' : '描述'} ({'\u4E2D\u6587'})</label>
             <textarea value={newJob.description_zh} onChange={(e) => { setNewJob({ ...newJob, description_zh: e.target.value }); setError(''); }}
               placeholder={l ? '描述问题或需求...' : '描述问题或需求...'} rows={3}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent" />
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">{l ? 'Estimated Budget (Optional)' : '预算金额（可选）'}</label>
             <input type="number" value={newJob.estimated_budget} onChange={(e) => { setNewJob({ ...newJob, estimated_budget: e.target.value }); setError(''); }}
               placeholder={l ? 'Leave blank if unknown' : '不清楚可留空'} min="0" step="1"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent" />
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent" />
           </div>
 
           <div>
@@ -423,7 +423,7 @@ export function NewJobModal({
             <select
               value={linkedTaskId}
               onChange={(e) => setLinkedTaskId(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent"
             >
               <option value="">{l ? '— None —' : '— 不关联 —'}</option>
               {managerTasks.map((t) => (
@@ -466,7 +466,7 @@ export function NewJobModal({
 
           <div className="flex gap-3 pt-4">
             <button onClick={createJobAndSearch}
-              className="flex-1 flex items-center justify-center gap-2 bg-[#1D9E75] text-white py-2.5 rounded-lg hover:bg-[#178a66] transition-colors font-medium">
+              className="flex-1 flex items-center justify-center gap-2 bg-clearstrata-ui-primary text-white py-2.5 rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors font-medium">
               <Search size={16} />
               {l ? 'Submit & Search Vendors' : '提交并搜索供应商'}
             </button>
@@ -497,7 +497,7 @@ function VendorSearchCard({
   return (
     <label
       className={`block p-3 border-2 rounded-xl cursor-pointer transition-all ${
-        selected ? 'border-[#1D9E75] bg-green-50/50' : 'border-gray-200 hover:border-gray-300 bg-white'
+        selected ? 'border-clearstrata-ui-primary bg-clearstrata-ui-soft/50' : 'border-gray-200 hover:border-gray-300 bg-white'
       }`}
     >
       <div className="flex items-start gap-3">
@@ -505,7 +505,7 @@ function VendorSearchCard({
           type="checkbox"
           checked={selected}
           onChange={onToggle}
-          className="mt-1 w-4 h-4 text-[#1D9E75] rounded focus:ring-[#1D9E75] shrink-0"
+          className="mt-1 w-4 h-4 text-clearstrata-ui-primary rounded focus:ring-clearstrata-ui-primary shrink-0"
         />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -581,25 +581,25 @@ export function AddQuoteModal({
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">{l ? 'Vendor Name' : '供应商名称'}</label>
             <input type="text" value={q.vendor_name} onChange={(e) => setQ({ ...q, vendor_name: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent" />
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">{l ? 'Contact' : '联系人'}</label>
             <input type="text" value={q.vendor_contact} onChange={(e) => setQ({ ...q, vendor_contact: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent" />
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">{l ? 'Quoted Amount ($)' : '报价金额 ($)'}</label>
             <input type="number" value={q.quoted_amount} onChange={(e) => setQ({ ...q, quoted_amount: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent" />
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">{l ? 'Details (Optional)' : '详情（可选）'}</label>
             <textarea value={q.description_en} onChange={(e) => setQ({ ...q, description_en: e.target.value })} rows={3}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent" />
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent" />
           </div>
           <div className="flex gap-3 pt-4">
-            <button onClick={addQuote} className="flex-1 bg-[#1D9E75] text-white py-2 rounded-lg hover:bg-[#178a66] transition-colors font-medium">
+            <button onClick={addQuote} className="flex-1 bg-clearstrata-ui-primary text-white py-2 rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors font-medium">
               {l ? 'Add Quote' : '添加报价'}
             </button>
             <button onClick={onClose} className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300 transition-colors font-medium">
@@ -683,8 +683,8 @@ export function ApproveQuoteModal({
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
         <div className="bg-white rounded-xl p-8 max-w-md w-full text-center">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <CheckCircle className="text-[#1D9E75]" size={32} />
+          <div className="w-16 h-16 bg-clearstrata-brand-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <CheckCircle className="text-clearstrata-ui-primary" size={32} />
           </div>
           <p className="text-lg font-semibold text-gray-900">{successMsg}</p>
         </div>
@@ -718,16 +718,16 @@ export function ApproveQuoteModal({
 
                 return (
                   <label key={quote.id}
-                    className={`block p-4 border-2 rounded-xl cursor-pointer transition-all ${selectedQuoteId === quote.id ? 'border-[#1D9E75] bg-green-50 shadow-sm' : 'border-gray-200 hover:border-gray-300'}`}>
+                    className={`block p-4 border-2 rounded-xl cursor-pointer transition-all ${selectedQuoteId === quote.id ? 'border-clearstrata-ui-primary bg-clearstrata-ui-soft shadow-sm' : 'border-gray-200 hover:border-gray-300'}`}>
                     <div className="flex items-center gap-3">
                       <input type="radio" name="quote" value={quote.id} checked={selectedQuoteId === quote.id}
                         onChange={() => setSelectedQuoteId(quote.id)}
-                        className="w-5 h-5 text-[#1D9E75] focus:ring-[#1D9E75]" />
+                        className="w-5 h-5 text-clearstrata-ui-primary focus:ring-clearstrata-ui-primary" />
                       <div className="flex-1">
                         <div className="flex items-center justify-between">
                           <span className="font-semibold text-gray-900">{quote.vendor_name}</span>
                           <div className="flex items-center gap-2">
-                            <span className="text-xl font-bold text-[#1D9E75]">${quote.quoted_amount.toLocaleString()}</span>
+                            <span className="text-xl font-bold text-clearstrata-ui-primary">${quote.quoted_amount.toLocaleString()}</span>
                             {light && <TrafficLightBadge light={light} language={language} />}
                           </div>
                         </div>
@@ -739,7 +739,7 @@ export function ApproveQuoteModal({
                         )}
                       </div>
                       {idx === 0 && (
-                        <span className="text-xs bg-green-600 text-white px-2 py-1 rounded-full whitespace-nowrap">
+                        <span className="text-xs bg-clearstrata-ui-primary text-white px-2 py-1 rounded-full whitespace-nowrap">
                           最低价
                         </span>
                       )}
@@ -760,7 +760,7 @@ export function ApproveQuoteModal({
               <p className="text-gray-500 mb-3">{l ? 'No active property managers.' : '没有在职物业经理。'}</p>
               {onAddManager && (
                 <button onClick={onAddManager}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-[#1D9E75] text-white rounded-lg hover:bg-[#178a66] transition-colors">
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-clearstrata-ui-primary text-white rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors">
                   <Plus size={16} />
                   {l ? 'Add Property Manager' : '添加物业经理'}
                 </button>
@@ -770,11 +770,11 @@ export function ApproveQuoteModal({
             <div className="space-y-2">
               {propertyManagers.map((m) => (
                 <label key={m.id}
-                  className={`block p-3 border-2 rounded-xl cursor-pointer transition-all ${selectedManagerId === m.id ? 'border-[#1D9E75] bg-green-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                  className={`block p-3 border-2 rounded-xl cursor-pointer transition-all ${selectedManagerId === m.id ? 'border-clearstrata-ui-primary bg-clearstrata-ui-soft' : 'border-gray-200 hover:border-gray-300'}`}>
                   <div className="flex items-center gap-3">
                     <input type="radio" name="manager" value={m.id} checked={selectedManagerId === m.id}
                       onChange={() => setSelectedManagerId(m.id)}
-                      className="w-5 h-5 text-[#1D9E75] focus:ring-[#1D9E75]" />
+                      className="w-5 h-5 text-clearstrata-ui-primary focus:ring-clearstrata-ui-primary" />
                     <div>
                       <div className="font-semibold text-gray-900">{l ? m.full_name_en : m.full_name_zh}</div>
                       <div className="text-sm text-gray-500">{m.email} / {m.phone}</div>
@@ -801,7 +801,7 @@ export function ApproveQuoteModal({
 
         <div className="flex gap-3">
           <button onClick={handleApprove} disabled={!canSubmit}
-            className="flex-1 flex items-center justify-center gap-2 bg-[#1D9E75] text-white py-3 rounded-lg hover:bg-[#178a66] transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+            className="flex-1 flex items-center justify-center gap-2 bg-clearstrata-ui-primary text-white py-3 rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed">
             <Send size={18} />
             {submitting ? (l ? 'Submitting...' : '提交中...') : (l ? 'Approve & Notify PM' : '批准并通知物业经理')}
           </button>
@@ -874,12 +874,12 @@ export function PMCompleteModal({
           <label className="block text-sm font-medium text-gray-700 mb-2">{l ? 'Completion Notes' : '完工说明'}</label>
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={4}
             placeholder={l ? 'Describe the work completed, any issues encountered...' : '描述完成的工作、遇到的问题...'}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent" />
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent" />
         </div>
 
         <div className="flex gap-3">
           <button onClick={handleComplete} disabled={submitting}
-            className="flex-1 flex items-center justify-center gap-2 bg-[#1D9E75] text-white py-3 rounded-lg hover:bg-[#178a66] transition-colors font-medium disabled:opacity-50">
+            className="flex-1 flex items-center justify-center gap-2 bg-clearstrata-ui-primary text-white py-3 rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors font-medium disabled:opacity-50">
             <CheckCircle size={18} />
             {submitting ? (l ? 'Submitting...' : '提交中...') : (l ? 'Submit Completion' : '提交完工')}
           </button>
@@ -976,7 +976,7 @@ export function InspectionModal({
           </h3>
           {loadingPhotos ? (
             <div className="flex items-center justify-center py-8">
-              <div className="w-6 h-6 border-2 border-[#1D9E75] border-t-transparent rounded-full animate-spin" />
+              <div className="w-6 h-6 border-2 border-clearstrata-ui-primary border-t-transparent rounded-full animate-spin" />
             </div>
           ) : photos.length === 0 ? (
             <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-xl">
@@ -997,12 +997,12 @@ export function InspectionModal({
           <label className="block text-sm font-medium text-gray-700 mb-2">{l ? 'Inspection Notes' : '验收备注'}</label>
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3}
             placeholder={l ? 'Comments about the work quality...' : '关于工作质量的评价...'}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent" />
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent" />
         </div>
 
         <div className="flex gap-3">
           <button onClick={() => handleInspection('passed')} disabled={submitting}
-            className="flex-1 flex items-center justify-center gap-2 bg-[#1D9E75] text-white py-3 rounded-lg hover:bg-[#178a66] transition-colors font-medium disabled:opacity-50">
+            className="flex-1 flex items-center justify-center gap-2 bg-clearstrata-ui-primary text-white py-3 rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors font-medium disabled:opacity-50">
             <CheckCircle size={18} />
             {l ? 'Inspection Passed' : '验收通过'}
           </button>
@@ -1032,7 +1032,7 @@ export function ManagerListModal({
         </div>
         <div className="mb-4">
           <button onClick={onAddManager}
-            className="flex items-center gap-2 bg-[#1D9E75] text-white px-4 py-2 rounded-lg hover:bg-[#178a66] transition-colors">
+            className="flex items-center gap-2 bg-clearstrata-ui-primary text-white px-4 py-2 rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors">
             <Plus size={20} />
             {l ? 'Add Property Manager' : '添加物业经理'}
           </button>
@@ -1051,7 +1051,7 @@ export function ManagerListModal({
                       <div className="flex items-center gap-2"><Phone size={16} className="text-gray-400" />{m.phone}</div>
                     </div>
                   </div>
-                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${m.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${m.status === 'active' ? 'bg-clearstrata-brand-100 text-clearstrata-brand-800' : 'bg-gray-100 text-gray-800'}`}>
                     {m.status === 'active' ? (l ? 'Active' : '在职') : (l ? 'Inactive' : '离职')}
                   </span>
                 </div>
@@ -1092,25 +1092,25 @@ export function AddManagerModal({
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">{l ? 'Full Name (English)' : '全名（英文）'}</label>
             <input type="text" value={m.full_name_en} onChange={(e) => setM({ ...m, full_name_en: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent" placeholder="John Smith" />
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent" placeholder="John Smith" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">{l ? 'Full Name (Chinese)' : '全名（中文）'}</label>
             <input type="text" value={m.full_name_zh} onChange={(e) => setM({ ...m, full_name_zh: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent" placeholder="张三" />
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent" placeholder="张三" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">{l ? 'Email' : '邮箱'}</label>
             <input type="email" value={m.email} onChange={(e) => setM({ ...m, email: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent" placeholder="manager@example.com" />
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent" placeholder="manager@example.com" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">{l ? 'Phone' : '电话'}</label>
             <input type="tel" value={m.phone} onChange={(e) => setM({ ...m, phone: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent" placeholder="+1 234 567 8900" />
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent" placeholder="+1 234 567 8900" />
           </div>
           <div className="flex gap-3">
-            <button onClick={add} className="flex-1 bg-[#1D9E75] text-white py-2 rounded-lg hover:bg-[#178a66] transition-colors">{l ? 'Submit' : '提交'}</button>
+            <button onClick={add} className="flex-1 bg-clearstrata-ui-primary text-white py-2 rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors">{l ? 'Submit' : '提交'}</button>
             <button onClick={onClose} className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300 transition-colors">{l ? 'Cancel' : '取消'}</button>
           </div>
         </div>

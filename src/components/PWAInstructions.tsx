@@ -10,7 +10,7 @@ export function PWAInstructions() {
   return (
     <div className="bg-white rounded-lg p-6 border border-gray-200">
       <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-        <Smartphone size={20} className="text-[#1D9E75]" />
+        <Smartphone size={20} className="text-clearstrata-ui-primary" />
         {language === 'en' ? 'Install on Mobile' : '在手机上安装'}
       </h3>
 
@@ -59,7 +59,7 @@ export function PWAInstructions() {
         )}
 
         {isAndroid && (
-          <div className="bg-green-50 rounded-lg p-4 border border-green-200">
+          <div className="bg-clearstrata-ui-soft rounded-lg p-4 border border-clearstrata-ui-softBorder">
             <div className="font-medium text-gray-900 mb-2 flex items-center gap-2">
               <Smartphone size={16} />
               Android

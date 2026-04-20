@@ -60,7 +60,7 @@ export function PWAInstallButton() {
   return (
     <button
       onClick={handleInstall}
-      className="flex items-center gap-2 px-3 py-1.5 bg-[#1D9E75] text-white rounded-lg hover:bg-[#178a66] transition-colors text-sm font-medium"
+      className="flex items-center gap-2 px-3 py-1.5 bg-clearstrata-ui-primary text-white rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors text-sm font-medium"
       title={language === 'en' ? 'Install App' : '安装应用'}
     >
       <Download size={16} />

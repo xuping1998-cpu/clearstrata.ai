@@ -80,7 +80,7 @@ export function RiskStatusSection({
     bypassApprovalCount = 0,
   } = aiRisk;
 
-  let badgeClass = 'bg-emerald-100 text-emerald-800';
+  let badgeClass = 'bg-clearstrata-brand-100 text-clearstrata-brand-800';
   let badgeLabel = en ? 'OK' : '正常';
   let mainText = en ? 'No hard flags or elevated AI risk (this fiscal year).' : '本财年未发现硬约束违规或需优先关注的 AI 风险。';
   let subText = en

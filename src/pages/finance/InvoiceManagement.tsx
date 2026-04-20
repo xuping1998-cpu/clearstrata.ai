@@ -111,7 +111,7 @@ function quoteVarianceBadgeClass(v: QuoteVarianceResult): string {
     case 'warning':
       return 'bg-amber-100 text-amber-900';
     default:
-      return 'bg-emerald-50 text-emerald-800';
+      return 'bg-clearstrata-ui-soft text-clearstrata-ui-softText';
   }
 }
 
@@ -132,7 +132,7 @@ function statusStyle(status: string): { labelZh: string; labelEn: string; classN
     pending_upload: { labelZh: '上传中', labelEn: 'Uploading', className: 'bg-gray-100 text-gray-700' },
     ai_processing: { labelZh: 'AI识别中', labelEn: 'AI processing', className: 'bg-slate-100 text-slate-700' },
     pending_review: { labelZh: '待审核', labelEn: 'Pending review', className: 'bg-blue-100 text-blue-800' },
-    approved: { labelZh: '已批准', labelEn: 'Approved', className: 'bg-green-100 text-green-800' },
+    approved: { labelZh: '已批准', labelEn: 'Approved', className: 'bg-clearstrata-brand-100 text-clearstrata-brand-800' },
     paid: { labelZh: '已付款', labelEn: 'Paid', className: 'bg-cyan-100 text-cyan-800' },
     rejected: { labelZh: '已拒绝', labelEn: 'Rejected', className: 'bg-red-100 text-red-800' },
     flagged: { labelZh: '异常', labelEn: 'Exception', className: 'bg-red-100 text-red-800 ring-1 ring-red-200' },
@@ -202,7 +202,7 @@ function parseRecItem(raw: unknown, l: boolean): { title: string; action: string
 function riskLevelBadgeClass(level: string): string {
   switch (level) {
     case 'low':
-      return 'bg-emerald-100 text-emerald-900 ring-1 ring-emerald-200';
+      return 'bg-clearstrata-brand-100 text-clearstrata-brand-900 ring-1 ring-clearstrata-ui-softBorder';
     case 'medium':
       return 'bg-amber-100 text-amber-900 ring-1 ring-amber-200';
     case 'high':
@@ -1139,7 +1139,7 @@ export function InvoiceManagement({
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="animate-spin text-[#1D9E75]" size={32} />
+        <Loader2 className="animate-spin text-clearstrata-ui-primary" size={32} />
       </div>
     );
   }
@@ -1153,7 +1153,7 @@ export function InvoiceManagement({
               ? 'Filtered: red-alert invoices only (≥20% above approved quote).'
               : '当前筛选：红色预警发票（发票金额较批复报价高出 ≥20%）。'}
           </span>
-          <Link to="/finance?tab=invoices" className="font-semibold text-[#1D9E75] hover:underline shrink-0">
+          <Link to="/finance?tab=invoices" className="font-semibold text-clearstrata-ui-primary hover:underline shrink-0">
             {l ? 'Show all invoices' : '查看全部发票'}
           </Link>
         </div>
@@ -1165,7 +1165,7 @@ export function InvoiceManagement({
               ? 'Filtered: audit-flagged invoices only (automatic rules).'
               : '当前筛选：审计规则标记的异常发票。'}
           </span>
-          <Link to="/finance?tab=invoices" className="font-semibold text-[#1D9E75] hover:underline shrink-0">
+          <Link to="/finance?tab=invoices" className="font-semibold text-clearstrata-ui-primary hover:underline shrink-0">
             {l ? 'Show all invoices' : '查看全部发票'}
           </Link>
         </div>
@@ -1177,7 +1177,7 @@ export function InvoiceManagement({
               ? `Filtered: abnormal invoices${rangeThisMonthOnly ? ' (created this month)' : ''}.`
               : `当前筛选：异常发票${rangeThisMonthOnly ? '（本月创建）' : ''}。`}
           </span>
-          <Link to="/finance?tab=invoices" className="font-semibold text-[#1D9E75] hover:underline shrink-0">
+          <Link to="/finance?tab=invoices" className="font-semibold text-clearstrata-ui-primary hover:underline shrink-0">
             {l ? 'Show all invoices' : '查看全部发票'}
           </Link>
         </div>
@@ -1189,7 +1189,7 @@ export function InvoiceManagement({
               ? 'Filtered: high-risk invoices (quote variance, audit flags, exceptions, or budget exceeded).'
               : '当前筛选：高风险发票（报价偏差、审计/科目异常、流程异常或预算超支标记）。'}
           </span>
-          <Link to="/finance?tab=invoices" className="font-semibold text-[#1D9E75] hover:underline shrink-0">
+          <Link to="/finance?tab=invoices" className="font-semibold text-clearstrata-ui-primary hover:underline shrink-0">
             {l ? 'Show all invoices' : '查看全部发票'}
           </Link>
         </div>
@@ -1203,7 +1203,7 @@ export function InvoiceManagement({
         <SummaryCard
           label={l ? 'Approved' : '已批准'}
           value={statusCounts['approved'] || 0}
-          className="border-l-4 border-green-500 bg-green-50/80"
+          className="border-l-4 border-clearstrata-brand-500 bg-clearstrata-ui-soft/90"
         />
         <SummaryCard
           label={l ? 'Paid' : '已付款'}
@@ -1238,7 +1238,7 @@ export function InvoiceManagement({
       {uploadProgress && (
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center gap-3">
           {uploadProgress.includes('!') || uploadProgress.includes('Done') ? (
-            <CheckCircle size={20} className="text-[#1D9E75] shrink-0" />
+            <CheckCircle size={20} className="text-clearstrata-ui-primary shrink-0" />
           ) : (
             <Loader2 size={20} className="animate-spin text-blue-600 shrink-0" />
           )}
@@ -1262,7 +1262,7 @@ export function InvoiceManagement({
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder={l ? 'Search vendor, invoice #...' : '搜索供应商、发票号...'}
-                className="w-full rounded-lg border border-gray-300 py-1.5 pl-9 pr-2 text-sm focus:ring-2 focus:ring-[#1D9E75] md:py-2 md:pl-9 md:pr-3"
+                className="w-full rounded-lg border border-gray-300 py-1.5 pl-9 pr-2 text-sm focus:ring-2 focus:ring-clearstrata-ui-primary md:py-2 md:pl-9 md:pr-3"
               />
             </div>
             <div className="flex min-w-0 shrink-0 items-center gap-1.5">
@@ -1270,7 +1270,7 @@ export function InvoiceManagement({
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-[150px] max-w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#1D9E75] md:px-3 md:py-2"
+                className="w-[150px] max-w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-clearstrata-ui-primary md:px-3 md:py-2"
               >
                 <option value="all">{l ? 'All statuses' : '全部状态'}</option>
                 {(
@@ -1297,7 +1297,7 @@ export function InvoiceManagement({
                 type="date"
                 value={dateFrom}
                 onChange={(e) => setDateFrom(e.target.value)}
-                className="w-[145px] max-w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#1D9E75] md:py-2"
+                className="w-[145px] max-w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-clearstrata-ui-primary md:py-2"
               />
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
@@ -1306,7 +1306,7 @@ export function InvoiceManagement({
                 type="date"
                 value={dateTo}
                 onChange={(e) => setDateTo(e.target.value)}
-                className="w-[145px] max-w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-[#1D9E75] md:py-2"
+                className="w-[145px] max-w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-clearstrata-ui-primary md:py-2"
                 title={l ? 'To' : '结束日期'}
               />
             </div>
@@ -1328,8 +1328,8 @@ export function InvoiceManagement({
                 Excel
               </button>
               <label
-                className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[#1D9E75] px-2.5 py-1.5 text-xs font-medium text-white transition-colors sm:gap-2 sm:px-3 sm:py-2 sm:text-sm ${
-                  uploading ? 'pointer-events-none opacity-50' : 'hover:bg-[#178a66]'
+                className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-clearstrata-ui-primary px-2.5 py-1.5 text-xs font-medium text-white transition-colors sm:gap-2 sm:px-3 sm:py-2 sm:text-sm ${
+                  uploading ? 'pointer-events-none opacity-50' : 'hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive'
                 }`}
               >
                 <Upload size={16} className="sm:h-[18px] sm:w-[18px]" />
@@ -1500,7 +1500,7 @@ export function InvoiceManagement({
                           {invoiceTaskSource[inv.id] ? (
                             <Link
                               to={`/property-admin/tasks/${invoiceTaskSource[inv.id].taskId}`}
-                              className="block truncate text-xs font-medium text-[#1D9E75] hover:underline"
+                              className="block truncate text-xs font-medium text-clearstrata-ui-primary hover:underline"
                               title={invoiceTaskSource[inv.id].title}
                               onClick={(e) => e.stopPropagation()}
                             >
@@ -1531,7 +1531,7 @@ export function InvoiceManagement({
                               <button
                                 type="button"
                                 onClick={() => setSelectedInvoice(inv)}
-                                className="rounded-md p-1 text-gray-500 hover:bg-green-50 hover:text-[#1D9E75]"
+                                className="rounded-md p-1 text-gray-500 hover:bg-clearstrata-ui-soft hover:text-clearstrata-ui-primary"
                                 title={l ? 'Details' : '详情'}
                               >
                                 <Eye size={14} />
@@ -1552,7 +1552,7 @@ export function InvoiceManagement({
                                 <button
                                   type="button"
                                   onClick={() => void approveInvoiceFromList(inv)}
-                                  className="rounded-md bg-[#1D9E75] px-2 py-1.5 text-xs font-medium leading-none text-white hover:bg-[#178a66]"
+                                  className="rounded-md bg-clearstrata-ui-primary px-2 py-1.5 text-xs font-medium leading-none text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive"
                                 >
                                   {l ? 'Approve' : '审核通过'}
                                 </button>
@@ -1596,7 +1596,7 @@ export function InvoiceManagement({
                     type="button"
                     key={inv.id}
                     onClick={() => setSelectedInvoice(inv)}
-                    className="w-full text-left border border-gray-200 rounded-xl p-4 hover:border-[#1D9E75]/50 transition-colors bg-white shadow-sm"
+                    className="w-full text-left border border-gray-200 rounded-xl p-4 hover:border-clearstrata-ui-primary/50 transition-colors bg-white shadow-sm"
                   >
                     <div className="flex justify-between gap-2 mb-2">
                       <span className="font-semibold text-gray-900">{inv.vendor_name}</span>
@@ -1646,7 +1646,7 @@ export function InvoiceManagement({
                           <span className="text-gray-500">{l ? 'Source: ' : '来源：'}</span>
                           <Link
                             to={`/property-admin/tasks/${invoiceTaskSource[inv.id].taskId}`}
-                            className="text-[#1D9E75] font-medium hover:underline"
+                            className="text-clearstrata-ui-primary font-medium hover:underline"
                           >
                             {invoiceTaskSource[inv.id].title}
                           </Link>
@@ -1658,7 +1658,7 @@ export function InvoiceManagement({
                         <button
                           type="button"
                           onClick={() => void approveInvoiceFromList(inv)}
-                          className="flex-1 py-2 text-xs font-medium rounded-lg bg-[#1D9E75] text-white"
+                          className="flex-1 py-2 text-xs font-medium rounded-lg bg-clearstrata-ui-primary text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive"
                         >
                           {l ? 'Approve' : '审核通过'}
                         </button>
@@ -1727,7 +1727,7 @@ export function InvoiceManagement({
               value={rejectNote}
               onChange={(e) => setRejectNote(e.target.value)}
               rows={4}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#1D9E75] mb-4"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-clearstrata-ui-primary mb-4"
               placeholder={l ? 'Reason / note…' : '驳回原因 / 备注…'}
             />
             <div className="flex gap-3">
@@ -2186,7 +2186,7 @@ function InvoiceDetailModal({
           <div
             className={`px-4 sm:px-6 py-2.5 text-sm border-b ${
               auditBanner.type === 'ok'
-                ? 'bg-emerald-50 text-emerald-900 border-emerald-100'
+                ? 'bg-clearstrata-ui-soft text-clearstrata-ui-softText border-clearstrata-ui-softBorder'
                 : 'bg-red-50 text-red-800 border-red-100'
             }`}
             role="status"
@@ -2261,7 +2261,7 @@ function InvoiceDetailModal({
                     type="button"
                     disabled={aiRunLoading}
                     onClick={() => void runInvoiceAiAudit()}
-                    className="shrink-0 rounded-lg bg-[#1D9E75] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#178a66] disabled:opacity-50"
+                    className="shrink-0 rounded-lg bg-clearstrata-ui-primary px-3 py-1.5 text-xs font-semibold text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:opacity-50"
                   >
                     {aiRunLoading ? (l ? 'Running…' : '运行中…') : l ? 'Run AI audit' : '立即运行 AI 审计'}
                   </button>
@@ -2320,7 +2320,7 @@ function InvoiceDetailModal({
                         <button
                           type="button"
                           onClick={() => setReasonsExpanded((v) => !v)}
-                          className="mt-2 text-xs font-medium text-[#1D9E75] hover:underline"
+                          className="mt-2 text-xs font-medium text-clearstrata-ui-primary hover:underline"
                         >
                           {reasonsExpanded
                             ? l
@@ -2382,7 +2382,7 @@ function InvoiceDetailModal({
                     type="button"
                     disabled={aiRunLoading}
                     onClick={() => void runInvoiceAiAudit()}
-                    className="mt-2 inline-flex items-center justify-center rounded-lg bg-[#1D9E75] px-4 py-2 text-sm font-semibold text-white hover:bg-[#178a66] disabled:opacity-50"
+                    className="mt-2 inline-flex items-center justify-center rounded-lg bg-clearstrata-ui-primary px-4 py-2 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:opacity-50"
                   >
                     {aiRunLoading ? (l ? 'Running…' : '运行中…') : l ? 'Run AI audit now' : '立即运行 AI 审计'}
                   </button>
@@ -2515,12 +2515,12 @@ function InvoiceDetailModal({
 
           {/* 4. 来源任务（related_task_id） */}
           {invoice.related_task_id ? (
-            <section className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
+            <section className="rounded-xl border border-clearstrata-ui-softBorder bg-clearstrata-ui-soft/80 p-4">
               <h3 className="text-sm font-semibold text-gray-900 mb-2">{l ? 'Source task' : '来源任务'}</h3>
               <p className="text-sm text-gray-800">
                 <Link
                   to={`/property-admin/tasks/${invoice.related_task_id}`}
-                  className="font-medium text-[#1D9E75] hover:underline"
+                  className="font-medium text-clearstrata-ui-primary hover:underline"
                 >
                   {relatedSourceTaskTitle || (l ? 'View task' : '查看任务')}
                 </Link>
@@ -2528,7 +2528,7 @@ function InvoiceDetailModal({
               <p className="mt-3 text-xs text-gray-600">
                 <Link
                   to={`/property-admin/tasks/${invoice.related_task_id}`}
-                  className="text-[#1D9E75] font-medium hover:underline"
+                  className="text-clearstrata-ui-primary font-medium hover:underline"
                 >
                   {l
                     ? 'View execution trail (logs / photos / before–after)'
@@ -2587,7 +2587,7 @@ function InvoiceDetailModal({
                       value={approvalNote}
                       onChange={(e) => setApprovalNote(e.target.value)}
                       rows={3}
-                      className={`w-full px-3 py-2 rounded-lg text-sm mb-4 focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent ${
+                      className={`w-full px-3 py-2 rounded-lg text-sm mb-4 focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent ${
                         missingDangerNote
                           ? 'border-2 border-red-500 bg-red-50/50'
                           : 'border border-gray-300'
@@ -2604,7 +2604,7 @@ function InvoiceDetailModal({
                       <button
                         type="button"
                         onClick={handleApproveClick}
-                        className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#1D9E75] px-3 py-2 text-sm font-medium text-white hover:bg-[#178a66] sm:w-auto sm:px-3.5 sm:py-2.5"
+                        className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-clearstrata-ui-primary px-3 py-2 text-sm font-medium text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive sm:w-auto sm:px-3.5 sm:py-2.5"
                       >
                         <Check size={16} />
                         {l ? 'Approve' : '审核通过'}
@@ -2625,7 +2625,7 @@ function InvoiceDetailModal({
 
           {/* 审批记录（已通过） */}
           {invoice.status === 'approved' && invoice.verified_at ? (
-            <section className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
+            <section className="rounded-xl border border-clearstrata-ui-softBorder bg-clearstrata-ui-soft/80 p-4">
               <h3 className="text-sm font-semibold text-gray-900 mb-3">{l ? 'Approval record' : '审批记录'}</h3>
               <dl className="space-y-2 text-sm">
                 <div>
@@ -2691,7 +2691,7 @@ function InvoiceDetailModal({
                   type="button"
                   onClick={() => void saveEdits()}
                   disabled={saving}
-                  className="px-4 py-2 bg-[#1D9E75] text-white rounded-lg text-sm font-medium hover:bg-[#178a66] disabled:opacity-50"
+                  className="px-4 py-2 bg-clearstrata-ui-primary text-white rounded-lg text-sm font-medium hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:opacity-50"
                 >
                   {saving ? '…' : l ? 'Save' : '保存'}
                 </button>
@@ -2730,7 +2730,7 @@ function InvoiceDetailModal({
               <button
                 type="button"
                 onClick={() => void downloadDoc()}
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#1D9E75] text-white rounded-lg text-sm font-medium hover:bg-[#178a66]"
+                className="inline-flex items-center gap-2 px-4 py-2.5 bg-clearstrata-ui-primary text-white rounded-lg text-sm font-medium hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive"
               >
                 <Download size={18} />
                 {l ? 'Download voucher' : '下载凭证'}
@@ -2835,7 +2835,7 @@ function InfoField({ label, value, highlight }: { label: string; value: string; 
   return (
     <div>
       <div className="text-xs font-medium text-gray-500 mb-0.5">{label}</div>
-      <div className={`text-sm ${highlight ? 'text-[#1D9E75] font-bold text-lg' : 'text-gray-900'}`}>{value}</div>
+      <div className={`text-sm ${highlight ? 'text-clearstrata-ui-primary font-bold text-lg' : 'text-gray-900'}`}>{value}</div>
     </div>
   );
 }

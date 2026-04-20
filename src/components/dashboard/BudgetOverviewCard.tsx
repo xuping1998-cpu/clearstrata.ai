@@ -28,7 +28,7 @@ export function BudgetOverviewCard({ summary, language, embedded = false }: Budg
         {!embedded && (
           <span
             className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-              overBudget ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'
+              overBudget ? 'bg-red-100 text-red-800' : 'bg-clearstrata-brand-100 text-clearstrata-brand-800'
             }`}
           >
             {overBudget ? (en ? 'Over budget' : '超支') : en ? 'Within budget' : '预算内'}
@@ -75,7 +75,7 @@ export function BudgetOverviewCard({ summary, language, embedded = false }: Budg
           <div
             className={`mt-0.5 font-bold tabular-nums tracking-tight ${
               embedded ? 'text-base sm:text-lg' : 'text-lg sm:text-xl'
-            } ${overBudget ? 'text-red-700' : 'text-emerald-800'}`}
+            } ${overBudget ? 'text-red-700' : 'text-clearstrata-brand-800'}`}
           >
             {formatCurrency(summary.remaining_budget, language)}
           </div>
@@ -89,7 +89,7 @@ export function BudgetOverviewCard({ summary, language, embedded = false }: Budg
         </div>
         <div className={`${embedded ? 'h-1.5' : 'h-2'} overflow-hidden rounded-full bg-gray-100`}>
           <div
-            className={`h-full rounded-full transition-[width] ${overBudget ? 'bg-red-500' : 'bg-emerald-500'}`}
+            className={`h-full rounded-full transition-[width] ${overBudget ? 'bg-red-500' : 'bg-clearstrata-brand-500'}`}
             style={{ width: `${Number.isFinite(barWidth) ? barWidth : 0}%` }}
           />
         </div>

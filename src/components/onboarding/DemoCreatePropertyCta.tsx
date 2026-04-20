@@ -33,7 +33,7 @@ export function DemoCreatePropertyCtaButton({
       }}
       className={
         variant === 'primary'
-          ? `inline-flex items-center justify-center gap-2 rounded-xl bg-[#1D9E75] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#178a66] active:scale-[0.99] ${className}`
+          ? `inline-flex items-center justify-center gap-2 rounded-xl bg-clearstrata-ui-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive active:scale-[0.99] ${className}`
           : `inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50 ${className}`
       }
     >
@@ -51,7 +51,7 @@ export function DemoCreatePropertyCtaCard() {
   const loginHref = `/?redirect=${encodeURIComponent(target)}&from=${encodeURIComponent(location.pathname)}`;
 
   return (
-    <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-white to-emerald-50/60 p-5 shadow-sm">
+    <div className="rounded-2xl border border-clearstrata-ui-softBorder bg-gradient-to-br from-white to-clearstrata-ui-soft/60 p-5 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-base font-extrabold text-gray-900">5 分钟开通你自己的物业后台</p>
@@ -68,7 +68,7 @@ export function DemoCreatePropertyCtaCard() {
             }
             navigate(target);
           }}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#1D9E75] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#178a66] active:scale-[0.99]"
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-clearstrata-ui-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive active:scale-[0.99]"
         >
           <Rocket className="h-4 w-4" />
           立即创建我的物业
@@ -77,7 +77,7 @@ export function DemoCreatePropertyCtaCard() {
       </div>
       <p className="mt-3 text-xs leading-relaxed text-gray-500">
         演示样板见{' '}
-        <Link to={demoEntryPath(MARKETING_DEMO_PROPERTY_CODE)} className="font-semibold text-[#1D9E75] underline-offset-2 hover:underline">
+        <Link to={demoEntryPath(MARKETING_DEMO_PROPERTY_CODE)} className="font-semibold text-clearstrata-ui-primary underline-offset-2 hover:underline">
           Demo（{MARKETING_DEMO_PROPERTY_CODE}）
         </Link>
         ；若你已是该物业真实成员，请走{' '}

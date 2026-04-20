@@ -313,7 +313,7 @@ export function VendorSearchPanel({
                 </div>
 
                 {v.price_reference && (
-                  <div className="flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 rounded px-1.5 py-0.5 w-fit mb-1.5">
+                  <div className="flex items-center gap-1 text-xs font-medium text-clearstrata-brand-700 bg-clearstrata-ui-soft rounded px-1.5 py-0.5 w-fit mb-1.5">
                     <DollarSign size={11} />
                     {v.price_reference}
                   </div>

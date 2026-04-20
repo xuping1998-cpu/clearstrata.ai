@@ -37,24 +37,24 @@ export function PropertyAdminHub() {
         <div className="text-sm text-gray-600 mt-2 flex flex-wrap gap-x-4 gap-y-1">
           {showInvitesLink && (
             <>
-              <Link to="/property-admin/invites" className="font-medium text-[#1D9E75] hover:underline">
+              <Link to="/property-admin/invites" className="font-medium text-clearstrata-ui-primary hover:underline">
                 邀请管理（公开+定向）
               </Link>
-              <Link to="/property-admin/invite-analytics" className="font-medium text-[#1D9E75] hover:underline">
+              <Link to="/property-admin/invite-analytics" className="font-medium text-clearstrata-ui-primary hover:underline">
                 邀请码统计
               </Link>
-              <Link to="/admin/invites" className="font-medium text-[#1D9E75] hover:underline">
+              <Link to="/admin/invites" className="font-medium text-clearstrata-ui-primary hover:underline">
                 经典邀请码
               </Link>
             </>
           )}
           {showReview && (
-            <Link to="/property-admin/join-requests" className="font-medium text-[#1D9E75] hover:underline">
+            <Link to="/property-admin/join-requests" className="font-medium text-clearstrata-ui-primary hover:underline">
               加入申请审批
             </Link>
           )}
           {showUnitWhitelist && !isDemoPropertyMock && (
-            <Link to="/property-admin/unit-whitelist" className="font-medium text-[#1D9E75] hover:underline">
+            <Link to="/property-admin/unit-whitelist" className="font-medium text-clearstrata-ui-primary hover:underline">
               房号白名单
             </Link>
           )}
@@ -79,7 +79,7 @@ export function PropertyAdminHub() {
             to="/property-admin/unit-whitelist"
             className={({ isActive }) =>
               `px-4 py-2 rounded-lg text-sm font-medium ${
-                isActive ? 'bg-[#1D9E75] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                isActive ? 'bg-clearstrata-ui-primary text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`
             }
           >
@@ -114,7 +114,7 @@ function TabBtn({
       type="button"
       onClick={onClick}
       className={`px-4 py-2 rounded-lg text-sm font-medium ${
-        active ? 'bg-[#1D9E75] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+        active ? 'bg-clearstrata-ui-primary text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
       }`}
     >
       {label}
@@ -279,7 +279,7 @@ function RequestsSection() {
       <p className="text-gray-700 text-sm">在此页可快速跳转至「加入申请审批」完整列表，进行通过 / 拒绝操作。</p>
       <Link
         to="/property-admin/join-requests"
-        className="inline-flex items-center justify-center px-4 py-2.5 rounded-xl bg-[#1D9E75] text-white text-sm font-semibold hover:bg-[#178a66]"
+        className="inline-flex items-center justify-center px-4 py-2.5 rounded-xl bg-clearstrata-ui-primary text-white text-sm font-semibold hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive"
       >
         打开加入申请审批
       </Link>
@@ -320,7 +320,7 @@ function SettingsSection({ propertyId }: { propertyId: string }) {
         <input type="checkbox" checked={allowPublic} onChange={(e) => setAllowPublic(e.target.checked)} />
         <span className="text-sm text-gray-700">允许公开申请加入（显示在申请页列表）</span>
       </label>
-      <button type="button" onClick={save} className="px-4 py-2 rounded-lg bg-[#1D9E75] text-white text-sm font-medium">
+      <button type="button" onClick={save} className="px-4 py-2 rounded-lg bg-clearstrata-ui-primary text-white text-sm font-medium hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive">
         保存
       </button>
       {msg && <p className="mt-3 text-sm">{msg}</p>}

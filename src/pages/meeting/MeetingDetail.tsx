@@ -361,7 +361,7 @@ export function MeetingDetail() {
   if (!coreDone) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="w-12 h-12 border-4 border-[#1D9E75] border-t-transparent rounded-full animate-spin" />
+        <div className="w-12 h-12 border-4 border-clearstrata-ui-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -371,7 +371,7 @@ export function MeetingDetail() {
       <div className="min-h-screen bg-gray-50 p-6">
         <Link
           to={backToListHref}
-          className="inline-flex items-center gap-2 text-[#126b54] font-medium hover:text-[#0f4a3a] hover:underline mb-6"
+          className="inline-flex items-center gap-2 text-clearstrata-brand-700 font-medium hover:text-clearstrata-brand-900 hover:underline mb-6"
         >
           <ArrowLeft size={18} /> {isVotingRoute ? (en ? 'Back to voting list' : '返回投票列表') : en ? 'Back to meetings' : '返回会议列表'}
         </Link>
@@ -399,7 +399,7 @@ export function MeetingDetail() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
-      <div className="border-b border-white/25 bg-gradient-to-r from-[#178a66] via-[#1D9E75] to-[#169a78] text-white shadow-md shadow-[#1D9E75]/25">
+      <div className="border-b border-white/25 bg-clearstrata-hero text-white shadow-md shadow-clearstrata-ui-primary/25">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
             <div className="min-w-0 flex-1 space-y-4">
@@ -463,7 +463,7 @@ export function MeetingDetail() {
         {inviteToast ? (
           <div
             className={`fixed bottom-6 left-1/2 z-50 max-w-lg -translate-x-1/2 rounded-lg px-4 py-3 text-sm text-white shadow-lg ${
-              inviteToast.kind === 'success' ? 'bg-[#1D9E75]' : 'bg-red-700'
+              inviteToast.kind === 'success' ? 'bg-clearstrata-ui-primary' : 'bg-red-700'
             }`}
             role="status"
           >
@@ -516,12 +516,12 @@ export function MeetingDetail() {
                       <div className="flex flex-wrap items-center gap-2 mb-2">
                         <span className="text-xs text-gray-500">#{agenda.sort_order}</span>
                         {agenda.requires_vote ? (
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-[#1D9E75]/22 text-[#0a3028] font-medium">{en ? 'Vote required' : '需要表决'}</span>
+                          <span className="text-xs px-2 py-0.5 rounded-full border border-clearstrata-ui-softBorder bg-clearstrata-brand-100 text-clearstrata-brand-900 font-medium">{en ? 'Vote required' : '需要表决'}</span>
                         ) : (
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-[#1D9E75]/12 text-[#145a46]">{en ? 'Discussion' : '讨论'}</span>
+                          <span className="text-xs px-2 py-0.5 rounded-full border border-clearstrata-ui-softBorder bg-clearstrata-ui-soft text-clearstrata-ui-softText">{en ? 'Discussion' : '讨论'}</span>
                         )}
                         {agenda.vote_rule && (
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-[#1D9E75]/10 text-[#0f4a3a]">
+                          <span className="text-xs px-2 py-0.5 rounded-full border border-clearstrata-ui-softBorder bg-clearstrata-brand-50 text-clearstrata-brand-800">
                             {labelVoteRule(agenda.vote_rule, en)}
                           </span>
                         )}
@@ -538,7 +538,7 @@ export function MeetingDetail() {
                           type="button"
                           disabled={busy}
                           onClick={() => handleCreateVote(agenda)}
-                          className="mt-3 text-sm px-3 py-1.5 rounded-lg bg-[#1D9E75] text-white hover:bg-[#178a66] disabled:opacity-50"
+                          className="mt-3 text-sm px-3 py-1.5 rounded-lg bg-clearstrata-ui-primary text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:opacity-50"
                         >
                           {en ? 'Create vote' : '创建表决'}
                         </button>
@@ -548,7 +548,7 @@ export function MeetingDetail() {
                         <div className="mt-4 space-y-3 border-t border-gray-200 pt-3">
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="text-xs font-medium text-gray-700">{en ? 'Vote status' : '表决状态'}:</span>
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-[#1D9E75]/15 text-[#145a46] font-medium">{labelVoteStatus(vote.status, en)}</span>
+                            <span className="text-xs px-2 py-0.5 rounded-full border border-clearstrata-ui-softBorder bg-clearstrata-ui-soft text-clearstrata-ui-softText font-medium">{labelVoteStatus(vote.status, en)}</span>
                             <span className="text-xs text-gray-600">
                               {en ? 'Vote rule' : '投票规则'}: {labelVoteRule(vote.vote_rule, en)}
                             </span>
@@ -559,7 +559,7 @@ export function MeetingDetail() {
                               type="button"
                               disabled={busy}
                               onClick={() => handleOpenVote(vote.id)}
-                              className="text-sm px-3 py-1.5 rounded-lg bg-[#1D9E75] text-white hover:bg-[#178a66] active:bg-[#146b52] disabled:opacity-50"
+                              className="text-sm px-3 py-1.5 rounded-lg bg-clearstrata-ui-primary text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:opacity-50"
                             >
                               {en ? 'Open voting' : '开放投票'}
                             </button>
@@ -569,7 +569,7 @@ export function MeetingDetail() {
                               type="button"
                               disabled={busy}
                               onClick={() => handleCloseVote(vote.id)}
-                              className="text-sm px-3 py-1.5 rounded-lg bg-[#126b54] text-white hover:bg-[#0f4a3a] active:bg-[#0a3028] disabled:opacity-50"
+                              className="text-sm px-3 py-1.5 rounded-lg bg-clearstrata-brand-700 text-white hover:bg-clearstrata-brand-800 active:bg-clearstrata-brand-900 disabled:opacity-50"
                             >
                               {en ? 'Close voting' : '关闭投票'}
                             </button>
@@ -587,8 +587,8 @@ export function MeetingDetail() {
                                     onClick={() => handleBallot(vote.id, opt.option_key)}
                                     className={`px-3 py-2 rounded-lg border text-sm ${
                                       my?.selected_option_key === opt.option_key
-                                        ? 'border-[#1D9E75] bg-[#1D9E75]/10 text-[#0f3d2f]'
-                                        : 'border-gray-200 bg-white hover:border-[#1D9E75]/40'
+                                        ? 'border-clearstrata-ui-primary bg-clearstrata-ui-primary/10 text-clearstrata-ui-softText'
+                                        : 'border-gray-200 bg-white hover:border-clearstrata-ui-primary/40'
                                     }`}
                                   >
                                     {en ? opt.label_en || opt.option_key : opt.label_zh || opt.label_en || opt.option_key}
@@ -713,7 +713,7 @@ export function MeetingDetail() {
                     </div>
                     <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
                       <div
-                        className="h-full bg-[#178a66] rounded-full transition-all"
+                        className="h-full bg-clearstrata-ui-primaryHover rounded-full transition-all"
                         style={{ width: `${openRatePct}%` }}
                       />
                     </div>
@@ -727,7 +727,7 @@ export function MeetingDetail() {
                     </div>
                     <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
                       <div
-                        className="h-full bg-[#1D9E75] rounded-full transition-all"
+                        className="h-full bg-clearstrata-ui-primary rounded-full transition-all"
                         style={{ width: `${voteRatePct}%` }}
                       />
                     </div>
@@ -775,7 +775,7 @@ export function MeetingDetail() {
                   type="button"
                   disabled={busy}
                   onClick={handleSendInvites}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#1D9E75] text-white text-sm hover:bg-[#178a66] disabled:opacity-50"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-clearstrata-ui-primary text-white text-sm hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:opacity-50"
                 >
                   <Users size={16} />
                   {en ? 'Send / refresh in-app invites' : '发送或刷新站内邀请'}
@@ -804,7 +804,7 @@ export function MeetingDetail() {
             ) : (
               <ul className="space-y-3 text-sm">
                 {bundle.resolutions.map((r) => (
-                  <li key={r.id} className="border-l-4 border-[#1D9E75] pl-3">
+                  <li key={r.id} className="border-l-4 border-clearstrata-ui-primary pl-3">
                     <p className="text-gray-900">{r.resolution_text}</p>
                     <p className="text-gray-500 mt-1">
                       {en ? 'Outcome' : '结果'}: {r.outcome}

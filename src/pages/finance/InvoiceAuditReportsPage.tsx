@@ -88,7 +88,7 @@ export function InvoiceAuditReportsPage() {
     return (
       <div className="p-6">
         <p className="text-gray-700">{en ? 'Access denied.' : '无权访问。'}</p>
-        <Link to="/" className="mt-2 inline-block text-emerald-700 underline">
+        <Link to="/" className="mt-2 inline-block text-clearstrata-brand-700 underline">
           {en ? 'Home' : '返回首页'}
         </Link>
       </div>
@@ -109,7 +109,7 @@ export function InvoiceAuditReportsPage() {
   const emailBadge = (r: InvoiceAuditReportRow) => {
     if (r.email_status === 'sent') {
       return (
-        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-900">
+        <span className="rounded-full bg-clearstrata-brand-100 px-2 py-0.5 text-[11px] font-medium text-clearstrata-brand-900">
           {en ? 'Emailed' : '已发邮件'}
         </span>
       );
@@ -150,7 +150,7 @@ export function InvoiceAuditReportsPage() {
           role="status"
           className={`mb-4 rounded-xl border px-4 py-3 text-sm shadow-sm ${
             flash.kind === 'ok'
-              ? 'border-emerald-200 bg-emerald-50 text-emerald-950'
+              ? 'border-clearstrata-ui-softBorder bg-clearstrata-ui-soft text-clearstrata-brand-950'
               : 'border-red-200 bg-red-50 text-red-900'
           }`}
         >
@@ -310,7 +310,7 @@ export function InvoiceAuditReportsPage() {
                                   .catch((e) => setFlash({ kind: 'err', text: String(e) }))
                                   .finally(() => setMailingId(null));
                               }}
-                              className="inline-flex items-center gap-1 rounded-lg border border-emerald-700 bg-white px-2.5 py-1.5 text-xs font-medium text-emerald-900 hover:bg-emerald-50 disabled:opacity-60"
+                              className="inline-flex items-center gap-1 rounded-lg border border-clearstrata-brand-700 bg-white px-2.5 py-1.5 text-xs font-medium text-clearstrata-brand-900 hover:bg-clearstrata-ui-soft disabled:opacity-60"
                             >
                               {busyMail ? (
                                 <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
@@ -395,7 +395,7 @@ export function InvoiceAuditReportsPage() {
                             .catch((e) => setFlash({ kind: 'err', text: String(e) }))
                             .finally(() => setMailingId(null));
                         }}
-                        className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-emerald-700 bg-white px-3 py-2 text-xs font-medium text-emerald-900"
+                        className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-clearstrata-brand-700 bg-white px-3 py-2 text-xs font-medium text-clearstrata-brand-900"
                       >
                         <Mail className="h-3.5 w-3.5" aria-hidden />
                         {en ? 'Email' : '邮件'}

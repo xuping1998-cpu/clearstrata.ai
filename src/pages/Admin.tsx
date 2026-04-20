@@ -274,7 +274,7 @@ export function Admin() {
         </div>
         <button
           onClick={handlePrint}
-          className="flex items-center gap-2 px-4 py-2 bg-[#1D9E75] text-white rounded-lg hover:bg-[#178a66] transition-colors print:hidden"
+          className="flex items-center gap-2 px-4 py-2 bg-clearstrata-ui-primary text-white rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors print:hidden"
         >
           <Printer size={20} />
           {language === 'en' ? 'Print' : '打印'}
@@ -418,7 +418,7 @@ export function Admin() {
                       <button
                         onClick={() => updateRole(owner.id, 'council')}
                         disabled={updating === owner.id}
-                        className="px-4 py-2 bg-[#1D9E75] text-white rounded-lg hover:bg-[#178a66] transition-colors disabled:opacity-50"
+                        className="px-4 py-2 bg-clearstrata-ui-primary text-white rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors disabled:opacity-50"
                       >
                         {updating === owner.id
                           ? (language === 'en' ? 'Updating...' : '更新中...')
@@ -427,7 +427,7 @@ export function Admin() {
                       <button
                         onClick={() => updateRole(owner.id, 'manager')}
                         disabled={updating === owner.id}
-                        className="px-4 py-2 bg-teal-700 text-white rounded-lg hover:bg-teal-800 transition-colors disabled:opacity-50"
+                        className="px-4 py-2 bg-clearstrata-brand-700 text-white rounded-lg hover:bg-clearstrata-brand-800 transition-colors disabled:opacity-50"
                       >
                         {updating === owner.id
                           ? (language === 'en' ? 'Updating...' : '更新中...')
@@ -446,11 +446,11 @@ export function Admin() {
         {managers.length > 0 && (
           <div className="bg-white rounded-xl p-6 shadow-sm">
             <div className="flex items-center gap-3 mb-4">
-              <Shield className="text-teal-600" size={24} />
+              <Shield className="text-clearstrata-brand-600" size={24} />
               <h2 className="text-xl font-semibold text-gray-900">
                 {language === 'en' ? 'Property Managers' : '物业经理'}
               </h2>
-              <span className="px-2 py-1 bg-teal-100 text-teal-900 rounded-full text-sm font-medium">
+              <span className="px-2 py-1 bg-clearstrata-brand-100 text-clearstrata-brand-900 rounded-full text-sm font-medium">
                 {managers.length}
               </span>
             </div>
@@ -470,14 +470,14 @@ export function Admin() {
                   onFormChange={(field, value) =>
                     setEditForm({ ...editForm, [field]: value })
                   }
-                  className="bg-teal-50 border-teal-200"
+                  className="bg-clearstrata-brand-50 border-clearstrata-brand-200"
                   actions={
                     canManageRoles ? (
                       <div className="flex gap-2">
                         <button
                           onClick={() => updateRole(mgr.id, 'council')}
                           disabled={updating === mgr.id}
-                          className="px-4 py-2 bg-[#1D9E75] text-white rounded-lg hover:bg-[#178a66] transition-colors disabled:opacity-50"
+                          className="px-4 py-2 bg-clearstrata-ui-primary text-white rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors disabled:opacity-50"
                         >
                           {updating === mgr.id
                             ? (language === 'en' ? 'Updating...' : '更新中...')

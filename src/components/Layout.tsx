@@ -30,7 +30,7 @@ import { SidebarPromoCard } from './SidebarPromoCard';
 import { UserNotificationToast } from './UserNotificationToast';
 import { DemoGeneratedDataProvider } from '../contexts/DemoGeneratedDataContext';
 import { DemoCreatePropertyCtaButton } from './onboarding/DemoCreatePropertyCta';
-import { demoEntryPath, realPropertyJoinPath } from '@/lib/propertyEntryRoutes';
+import { realPropertyJoinPath } from '@/lib/propertyEntryRoutes';
 import { isPlatformAdmin } from '@/lib/permissions';
 
 interface LayoutProps {
@@ -124,8 +124,8 @@ export function Layout({ children }: LayoutProps) {
     if (isDemoPropertyMock) {
       if (location.pathname.startsWith('/demo-property')) {
         return [
-          { path: '/demo-property', icon: Home, label: t('nav_dashboard'), iconBg: 'bg-emerald-500' },
-          { path: '/demo-property/finance', icon: DollarSign, label: t('nav_finance'), iconBg: 'bg-green-500' },
+          { path: '/demo-property', icon: Home, label: t('nav_dashboard'), iconBg: 'bg-clearstrata-brand-500' },
+          { path: '/demo-property/finance', icon: DollarSign, label: t('nav_finance'), iconBg: 'bg-clearstrata-brand-600' },
           {
             path: '/demo-property/members',
             icon: Users,
@@ -135,8 +135,8 @@ export function Layout({ children }: LayoutProps) {
         ] as Array<{ path: string; icon: LucideIcon; label: string; iconBg: string }>;
       }
       return [
-        { path: '/?mode=demo', icon: Home, label: t('nav_dashboard'), iconBg: 'bg-emerald-500' },
-        { path: '/finance?mode=demo', icon: DollarSign, label: t('nav_finance'), iconBg: 'bg-green-500' },
+        { path: '/?mode=demo', icon: Home, label: t('nav_dashboard'), iconBg: 'bg-clearstrata-brand-500' },
+        { path: '/finance?mode=demo', icon: DollarSign, label: t('nav_finance'), iconBg: 'bg-clearstrata-brand-600' },
         {
           path: '/property-admin?mode=demo',
           icon: Users,
@@ -148,17 +148,17 @@ export function Layout({ children }: LayoutProps) {
     if (isDemoMode) {
       return [
         { path: '/demo/voting', icon: Vote, label: t('nav_voting'), iconBg: 'bg-purple-500' },
-        { path: '/demo/finance', icon: DollarSign, label: t('nav_finance'), iconBg: 'bg-green-500' },
+        { path: '/demo/finance', icon: DollarSign, label: t('nav_finance'), iconBg: 'bg-clearstrata-brand-600' },
         { path: '/demo/owner-info', icon: Users, label: t('nav_owner_info'), iconBg: 'bg-sky-500' },
         { path: '/demo/compliance', icon: FileText, label: t('nav_help_compliance'), iconBg: 'bg-indigo-500' },
       ] as Array<{ path: string; icon: LucideIcon; label: string; iconBg: string }>;
     }
     return [
       { path: '/owner-info', icon: Users, label: t('nav_owner_info'), iconBg: 'bg-sky-500' },
-      { path: '/manager-tasks', icon: Briefcase, label: t('nav_disputes'), iconBg: 'bg-teal-600' },
+      { path: '/manager-tasks', icon: Briefcase, label: t('nav_disputes'), iconBg: 'bg-clearstrata-brand-700' },
       { path: '/procurement', icon: ShoppingCart, label: t('nav_procurement'), iconBg: 'bg-blue-500' },
       { path: '/compliance', icon: FileText, label: t('nav_help_compliance'), iconBg: 'bg-indigo-500' },
-      { path: '/finance', icon: DollarSign, label: t('nav_finance'), iconBg: 'bg-green-500' },
+      { path: '/finance', icon: DollarSign, label: t('nav_finance'), iconBg: 'bg-clearstrata-brand-600' },
       { path: '/meetings', icon: CalendarDays, label: t('nav_meetings_records'), iconBg: 'bg-violet-600' },
     ] as Array<{ path: string; icon: LucideIcon; label: string; iconBg: string }>;
   }, [t, isDemoMode, isDemoPropertyMock, location.pathname, language]);
@@ -198,7 +198,7 @@ export function Layout({ children }: LayoutProps) {
           className={`
           flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] font-medium
           transition-colors
-          ${active ? 'bg-[#1D9E75] text-white' : 'text-gray-700 hover:bg-gray-100'}
+          ${active ? 'bg-clearstrata-ui-primary text-white' : 'text-gray-700 hover:bg-gray-100'}
         `}
         >
           <Icon size={18} />
@@ -224,7 +224,7 @@ export function Layout({ children }: LayoutProps) {
             flex min-h-[48px] w-full items-center gap-2.5 rounded-[10px] border px-[14px] py-[10px] text-left transition-colors
             ${
               active
-                ? 'border-emerald-200 bg-emerald-50/90'
+                ? 'border-clearstrata-ui-softBorder bg-clearstrata-ui-soft/90'
                 : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50/80'
             }
           `}
@@ -283,7 +283,7 @@ export function Layout({ children }: LayoutProps) {
                     navigate('/');
                   }
                 }}
-                className="text-2xl font-bold text-[#1D9E75] transition-opacity hover:opacity-90"
+                className="text-2xl font-bold text-clearstrata-ui-primary transition-opacity hover:opacity-90"
               >
                 {language === 'en' ? 'clearstrata.ai' : '清涟.ai'}
               </button>
@@ -301,7 +301,7 @@ export function Layout({ children }: LayoutProps) {
                   <button
                     type="button"
                     onClick={() => navigate('/?mode=signup')}
-                    className="rounded-lg bg-[#1D9E75] px-3 py-1.5 text-xs font-semibold text-white sm:text-sm"
+                    className="rounded-lg bg-clearstrata-ui-primary px-3 py-1.5 text-xs font-semibold text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive sm:text-sm"
                   >
                     {language === 'en' ? 'Register' : '注册加入'}
                   </button>
@@ -402,10 +402,10 @@ export function Layout({ children }: LayoutProps) {
       )}
 
       {isDemoMode && !isDemoPropertyMock && (
-        <div className="border-b border-emerald-200 bg-emerald-50">
-          <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2 px-4 py-2 text-xs text-emerald-950 sm:text-sm sm:px-6 lg:px-8">
+        <div className="border-b border-clearstrata-ui-softBorder bg-clearstrata-ui-soft">
+          <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2 px-4 py-2 text-xs text-clearstrata-brand-950 sm:text-sm sm:px-6 lg:px-8">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white sm:text-xs">
+              <span className="rounded-full bg-clearstrata-brand-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white sm:text-xs">
                 {language === 'en' ? 'Demo' : '演示'}
               </span>
               <span className="font-medium">
@@ -420,14 +420,14 @@ export function Layout({ children }: LayoutProps) {
               <button
                 type="button"
                 onClick={() => navigate('/?mode=signup')}
-                className="rounded-lg bg-[#1D9E75] px-2.5 py-1 text-xs font-semibold text-white"
+                className="rounded-lg bg-clearstrata-ui-primary px-2.5 py-1 text-xs font-semibold text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive"
               >
                 {language === 'en' ? 'Register' : '注册'}
               </button>
               <button
                 type="button"
                 onClick={() => navigate('/')}
-                className="rounded-lg border border-emerald-300 bg-white px-2.5 py-1 text-xs font-medium text-emerald-900"
+                className="rounded-lg border border-clearstrata-brand-300 bg-white px-2.5 py-1 text-xs font-medium text-clearstrata-brand-900"
               >
                 {language === 'en' ? 'Log in' : '登录'}
               </button>
@@ -462,7 +462,7 @@ export function Layout({ children }: LayoutProps) {
                         flex h-14 w-full items-center gap-2.5 rounded-xl px-4 text-left text-[18px] font-semibold transition-colors
                         ${
                           homeActive
-                            ? 'bg-[#1D9E75] text-white hover:bg-[#22b384]'
+                            ? 'bg-clearstrata-ui-primary text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive'
                             : 'bg-gray-100 text-gray-800 hover:bg-[#e8ebea]'
                         }
                       `}
@@ -541,7 +541,7 @@ export function Layout({ children }: LayoutProps) {
                       setMobileMenuOpen(false);
                     }}
                     className={`flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left transition-colors sm:gap-2.5 sm:px-3.5 ${
-                      homeActive ? 'bg-[#1D9E75] text-white shadow-md' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+                      homeActive ? 'bg-clearstrata-ui-primary text-white shadow-md hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
                     }`}
                   >
                     <Home className="h-5 w-5 shrink-0" size={20} />
