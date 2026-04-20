@@ -188,9 +188,10 @@ export function QrPropertyEntryPage() {
 
           if (cancelled) return;
 
-          console.log('[entry] auto submit payload', {
+          console.log('[entry] payload', {
             propertyId,
             inviteCode: inviteCodeParam,
+            unitNo: null,
             userId: user?.id,
           });
 
