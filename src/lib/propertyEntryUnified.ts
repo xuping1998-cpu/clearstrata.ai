@@ -38,6 +38,20 @@ function rpcRowErrorCode(data: unknown): string | undefined {
   return row?.error != null ? String(row.error) : undefined;
 }
 
+/** `?code=` on join / invite pages — merged into RPC `p_invite_code` for `join_requests.invite_code` attribution. */
+function inviteCodeFromBrowserUrl(): string | null {
+  if (typeof window === 'undefined') return null;
+  const raw = new URLSearchParams(window.location.search).get('code');
+  const t = raw?.trim() ?? '';
+  return t ? t : null;
+}
+
+function mergeInviteCodeForRpc(explicit: string | null | undefined): string | null {
+  const a = explicit?.trim() ?? '';
+  if (a) return a;
+  return inviteCodeFromBrowserUrl();
+}
+
 export type SubmitUnifiedPropertyEntryInput = {
   /** 当前登录用户 id（用于去重预检与日志） */
   userId: string;
@@ -160,6 +174,8 @@ export async function submitUnifiedPropertyEntry(
     }
   }
 
+  const pInviteForRpc = mergeInviteCodeForRpc(input.p_invite_code);
+
   const { data, error } = await client.rpc('submit_join_request', {
     p_property_id: input.p_property_id,
     p_requested_role: input.p_requested_role,
@@ -168,7 +184,7 @@ export async function submitUnifiedPropertyEntry(
     p_full_name: input.p_full_name,
     p_email: input.p_email,
     p_phone: input.p_phone,
-    p_invite_code: input.p_invite_code,
+    p_invite_code: pInviteForRpc,
     p_direct_invite_id: input.p_direct_invite_id,
     p_inferred_role: input.p_inferred_role,
     p_inferred_unit_number: input.p_inferred_unit_number,
