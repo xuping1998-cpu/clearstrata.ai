@@ -259,7 +259,7 @@ export function Admin() {
       <div className="mb-6 flex justify-between items-start">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            {language === 'en' ? 'User Management' : '用户管理'}
+            {language === 'en' ? 'Accounts & roles' : '账号与角色'}
           </h1>
           <p className="text-gray-600">
             {language === 'en'
@@ -268,8 +268,8 @@ export function Admin() {
           </p>
           <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3 max-w-2xl">
             {language === 'en'
-              ? 'New sign-ups get profile role Owner with a pending resident record until activated under Owner Information → User Management. Admin accounts stay database-only.'
-              : '新注册用户为业主并带有「待激活」居住人档案，请在「业主信息 → 用户管理」中批准。系统管理员（Admin）仅能通过数据库设置。'}
+              ? 'New sign-ups get profile role Owner with a pending resident record until activated under System → People management. Admin accounts stay database-only.'
+              : '新注册用户为业主并带有「待激活」居住人档案，请在「系统管理 → 人员管理」中批准。系统管理员（Admin）仅能通过数据库设置。'}
           </p>
         </div>
         <button
@@ -294,7 +294,7 @@ export function Admin() {
           </div>
           <button
             type="button"
-            onClick={() => navigate('/owner-info?tab=users')}
+            onClick={() => navigate('/property-admin/people?tab=members')}
             className="shrink-0 px-4 py-2 rounded-lg bg-amber-800 text-white text-sm font-medium hover:bg-amber-900 transition-colors"
           >
             {t('admin_review_residents_cta')}

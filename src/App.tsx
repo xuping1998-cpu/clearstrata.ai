@@ -48,7 +48,8 @@ import { UpgradePage } from './pages/UpgradePage';
 import { LeadsDashboardPage } from './pages/admin/LeadsDashboardPage';
 import { PlatformAdminRoute } from './components/PlatformAdminRoute';
 import { PlatformOverviewPage } from './pages/admin/PlatformOverviewPage';
-import { PropertyAdminHub } from './pages/property-admin/PropertyAdminHub';
+import { PropertySettingsPage } from './pages/property-admin/PropertyAdminHub';
+import { PropertyPeoplePage } from './pages/property-admin/PropertyPeoplePage';
 import { UnitWhitelistPage } from './pages/property-admin/UnitWhitelistPage';
 import { PropertyAdminInvites } from './pages/property-admin/PropertyAdminInvites';
 import { PropertyInviteAnalytics } from './pages/property-admin/PropertyInviteAnalytics';
@@ -64,6 +65,8 @@ import { DemoDashboardRoute } from './components/DemoDashboardRoute';
 import { DemoLandingPage } from './pages/DemoLandingPage';
 import { QrPropertyEntryPage } from './pages/entry/QrPropertyEntryPage';
 import {
+  canAccessPropertyPeoplePage,
+  canAccessPropertySettingsPage,
   canManagePropertyInvites,
   canManageUnitWhitelist,
   canReviewJoinRequests,
@@ -255,16 +258,40 @@ function AuthenticatedRoutes() {
   );
 }
 
-function PropertyAdminLayoutRoute() {
+function PropertyAdminIndexRoute() {
+  const { session } = useAuth();
+  const { memberships, currentPropertyId, roleInProperty } = useProperty();
+  if (!session) return <Navigate to="/" replace />;
+  if (!memberships.length || !currentPropertyId) return <Navigate to="/" replace />;
+  if (canAccessPropertySettingsPage(roleInProperty)) return <Navigate to="/property-admin/settings" replace />;
+  if (canAccessPropertyPeoplePage(roleInProperty)) return <Navigate to="/property-admin/people" replace />;
+  return <Navigate to="/" replace />;
+}
+
+function PropertyAdminPeopleLayoutRoute() {
   const { session } = useAuth();
   const { memberships, currentPropertyId } = useProperty();
   if (!session) return <Navigate to="/" replace />;
-  if (!memberships.length || !currentPropertyId) {
-    return <Navigate to="/" replace />;
-  }
+  if (!memberships.length || !currentPropertyId) return <Navigate to="/" replace />;
   return (
     <Layout>
-      <PropertyAdminHub />
+      <AdminStaffRoute canAccess={canAccessPropertyPeoplePage}>
+        <PropertyPeoplePage />
+      </AdminStaffRoute>
+    </Layout>
+  );
+}
+
+function PropertyAdminSettingsLayoutRoute() {
+  const { session } = useAuth();
+  const { memberships, currentPropertyId } = useProperty();
+  if (!session) return <Navigate to="/" replace />;
+  if (!memberships.length || !currentPropertyId) return <Navigate to="/" replace />;
+  return (
+    <Layout>
+      <AdminStaffRoute canAccess={canAccessPropertySettingsPage}>
+        <PropertySettingsPage />
+      </AdminStaffRoute>
     </Layout>
   );
 }
@@ -372,7 +399,7 @@ function AppContent() {
       <Route path="/demo-property" element={<DemoPropertyLayout />}>
         <Route index element={<Dashboard />} />
         <Route path="finance" element={<Finance />} />
-        <Route path="members" element={<PropertyAdminHub />} />
+        <Route path="members" element={<PropertyPeoplePage />} />
         <Route path="invoices" element={<Navigate to="/demo-property/finance" replace />} />
       </Route>
       <Route path="/join/:code" element={<JoinRouteSplit />} />
@@ -388,7 +415,9 @@ function AppContent() {
       <Route path="/dashboard" element={<SessionDashboardRoute />} />
       <Route path="/join-request" element={<JoinRequestPage />} />
       <Route path="/select-property" element={<SelectPropertyRoute />} />
-      <Route path="/property-admin" element={<PropertyAdminLayoutRoute />} />
+      <Route path="/property-admin" element={<PropertyAdminIndexRoute />} />
+      <Route path="/property-admin/people" element={<PropertyAdminPeopleLayoutRoute />} />
+      <Route path="/property-admin/settings" element={<PropertyAdminSettingsLayoutRoute />} />
       <Route
         path="/property-admin/invites"
         element={
@@ -465,14 +494,7 @@ function AppContent() {
           </SessionLayoutGate>
         }
       />
-      <Route
-        path="/property-admin/join-requests"
-        element={
-          <SessionLayoutGate>
-            <AdminJoinRequestsRoute />
-          </SessionLayoutGate>
-        }
-      />
+      <Route path="/property-admin/join-requests" element={<Navigate to="/property-admin/people?tab=review" replace />} />
       <Route path="/*" element={<AppMain />} />
     </Routes>
     </>

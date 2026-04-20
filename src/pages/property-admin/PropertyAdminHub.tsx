@@ -1,293 +1,98 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, Navigate, NavLink } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
-import { useDemoGeneratedDataOptional } from '../../contexts/DemoGeneratedDataContext';
-import { buildDemoGenerationSeed } from '../../lib/demoProperty/demoStorage';
-import { generateDemoData } from '../../lib/demoProperty/generateDemoData';
 import { useProperty } from '../../contexts/PropertyContext';
 import {
+  canAccessPropertySettingsPage,
+  canApproveJoinRequest,
   canManagePropertyAdmin,
-  canReviewJoinRequests,
   canManagePropertyInvites,
   canManageUnitWhitelist,
 } from '../../lib/propertyPermissions';
 
-type Tab = 'members' | 'requests' | 'settings';
-
-export function PropertyAdminHub() {
+/**
+ * 物业设置：仅物业级规则与配置（不含成员列表、加入申请、邀请码清单）。
+ * 成员 / 申请 / 邀请码统一在「系统管理 → 人员管理」。
+ */
+export function PropertySettingsPage() {
   const { currentPropertyId, currentRole, isDemoPropertyMock } = useProperty();
-  const [tab, setTab] = useState<Tab>('members');
 
-  if (
-    !currentPropertyId ||
-    (!canManagePropertyAdmin(currentRole) && !canReviewJoinRequests(currentRole))
-  ) {
+  if (!currentPropertyId || !canAccessPropertySettingsPage(currentRole)) {
     return <Navigate to="/" replace />;
   }
 
   const showAdmin = canManagePropertyAdmin(currentRole);
-  const showReview = canReviewJoinRequests(currentRole);
+  const showSettingsForm = showAdmin || canApproveJoinRequest(currentRole);
   const showInvitesLink = canManagePropertyInvites(currentRole);
   const showUnitWhitelist = canManageUnitWhitelist(currentRole);
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">物业后台</h1>
-        <div className="text-sm text-gray-600 mt-2 flex flex-wrap gap-x-4 gap-y-1">
-          {showInvitesLink && (
-            <>
-              <Link to="/property-admin/invites" className="font-medium text-clearstrata-ui-primary hover:underline">
-                邀请管理（公开+定向）
-              </Link>
-              <Link to="/property-admin/invite-analytics" className="font-medium text-clearstrata-ui-primary hover:underline">
-                邀请码统计
-              </Link>
-              <Link to="/admin/invites" className="font-medium text-clearstrata-ui-primary hover:underline">
-                经典邀请码
-              </Link>
-            </>
-          )}
-          {showReview && (
-            <Link to="/property-admin/join-requests" className="font-medium text-clearstrata-ui-primary hover:underline">
-              加入申请审批
-            </Link>
-          )}
-          {showUnitWhitelist && !isDemoPropertyMock && (
-            <Link to="/property-admin/unit-whitelist" className="font-medium text-clearstrata-ui-primary hover:underline">
-              房号白名单
-            </Link>
-          )}
-        </div>
-      </div>
-      <div className="flex flex-wrap gap-2 mb-6 border-b border-gray-200 pb-2">
-        <TabBtn active={tab === 'members'} onClick={() => setTab('members')} label="成员" show={showAdmin || showReview} />
-        <TabBtn
-          active={tab === 'requests'}
-          onClick={() => setTab('requests')}
-          label="加入申请"
-          show={showReview && !isDemoPropertyMock}
-        />
-        <TabBtn
-          active={tab === 'settings'}
-          onClick={() => setTab('settings')}
-          label="物业设置"
-          show={showAdmin && !isDemoPropertyMock}
-        />
-        {showUnitWhitelist && !isDemoPropertyMock ? (
-          <NavLink
-            to="/property-admin/unit-whitelist"
-            className={({ isActive }) =>
-              `px-4 py-2 rounded-lg text-sm font-medium ${
-                isActive ? 'bg-clearstrata-ui-primary text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`
-            }
-          >
-            房号管理
-          </NavLink>
-        ) : null}
+        <h1 className="text-2xl font-bold text-gray-900">物业设置</h1>
+        <p className="text-sm text-gray-600 mt-2 max-w-2xl">
+          配置本物业的加入规则、房号白名单及权限策略。
+        </p>
       </div>
 
-      {tab === 'members' && (showAdmin || showReview) && (
-        <MembersSection propertyId={currentPropertyId} />
-      )}
-      {tab === 'requests' && showReview && <RequestsSection />}
-      {tab === 'settings' && showAdmin && <SettingsSection propertyId={currentPropertyId} />}
+      <div className="space-y-6">
+        {showSettingsForm && !isDemoPropertyMock && currentPropertyId && (
+          <SettingsSection propertyId={currentPropertyId} readOnlyName={!showAdmin} />
+        )}
+
+        {!isDemoPropertyMock && (
+          <div className="rounded-xl border border-gray-200 bg-white p-6 space-y-3">
+            <h2 className="text-sm font-semibold text-gray-900">相关配置页面</h2>
+            <ul className="space-y-2 text-sm">
+              {showUnitWhitelist ? (
+                <li>
+                  <NavLink
+                    to="/property-admin/unit-whitelist"
+                    className="font-medium text-clearstrata-ui-primary hover:underline"
+                  >
+                    房号白名单
+                  </NavLink>
+                  <span className="text-gray-500"> — 限制可申请或加入的单元号段</span>
+                </li>
+              ) : null}
+              {showInvitesLink ? (
+                <>
+                  <li>
+                    <Link
+                      to="/property-admin/invite-analytics"
+                      className="font-medium text-clearstrata-ui-primary hover:underline"
+                    >
+                      邀请码统计
+                    </Link>
+                  </li>
+                  <li>
+                    <Link
+                      to="/property-admin/invites"
+                      className="font-medium text-clearstrata-ui-primary hover:underline"
+                    >
+                      定向邀请管理
+                    </Link>
+                  </li>
+                  <li>
+                    <Link to="/admin/invites" className="font-medium text-clearstrata-ui-primary hover:underline">
+                      链接型邀请码
+                    </Link>
+                    <span className="text-gray-500"> — 适用于 `/invite` 短链邀请</span>
+                  </li>
+                </>
+              ) : null}
+            </ul>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-function TabBtn({
-  active,
-  onClick,
-  label,
-  show,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-  show: boolean;
-}) {
-  if (!show) return null;
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`px-4 py-2 rounded-lg text-sm font-medium ${
-        active ? 'bg-clearstrata-ui-primary text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-      }`}
-    >
-      {label}
-    </button>
-  );
-}
+/** @deprecated 使用 PropertySettingsPage；保留别名供旧引用。 */
+export const PropertyAdminHub = PropertySettingsPage;
 
-function MembersSection({ propertyId }: { propertyId: string }) {
-  const { isDemoPropertyMock } = useProperty();
-  const demoGen = useDemoGeneratedDataOptional();
-  const [rows, setRows] = useState<
-    { user_id: string; role: string; status: string; unit_no: string | null; email?: string; full_name_en?: string }[]
-  >([]);
-  const [loading, setLoading] = useState(true);
-
-  if (isDemoPropertyMock) {
-    const src =
-      demoGen?.memberList ??
-      generateDemoData({
-        seed: buildDemoGenerationSeed(),
-        unitCount: 48,
-      }).memberList;
-    const mockRows = src.map((m) => ({
-      user_id: m.user_id,
-      role: m.role,
-      status: m.status,
-      unit_no: m.unit_no,
-      email: m.email,
-      full_name_en: m.full_name_en,
-    }));
-    return (
-      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
-        <table className="min-w-full text-sm">
-          <thead className="bg-gray-50 text-left">
-            <tr>
-              <th className="px-4 py-2">用户</th>
-              <th className="px-4 py-2">角色</th>
-              <th className="px-4 py-2">状态</th>
-              <th className="px-4 py-2">房号</th>
-            </tr>
-          </thead>
-          <tbody>
-            {mockRows.map((r) => (
-              <tr key={r.user_id} className="border-t border-gray-100">
-                <td className="px-4 py-2">{r.full_name_en || r.email || r.user_id}</td>
-                <td className="px-4 py-2">{r.role}</td>
-                <td className="px-4 py-2">{r.status}</td>
-                <td className="px-4 py-2">{r.unit_no?.trim() ? r.unit_no.trim() : '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <p className="border-t border-gray-100 px-4 py-2 text-xs text-gray-500">演示成员数据 · propertyId: {propertyId}</p>
-      </div>
-    );
-  }
-
-  const load = useCallback(async () => {
-    const { data: mems, error: memErr } = await supabase
-      .from('property_members')
-      .select('user_id, role, status')
-      .eq('property_id', propertyId);
-    if (memErr) {
-      console.error('[property-admin] property_members load error', memErr);
-    }
-    const list = mems ?? [];
-
-    const memberUserIds = list.map((m) => m.user_id as string).filter(Boolean);
-
-    let resRows: { user_id: string | null; unit_no: string | null }[] | null = null;
-    let resErr: { message?: string } | null = null;
-    if (memberUserIds.length === 0) {
-      resRows = [];
-    } else {
-      const res = await supabase
-        .from('residents')
-        .select('user_id, unit_no')
-        .eq('property_id', propertyId)
-        .in('user_id', memberUserIds);
-      resRows = res.data;
-      resErr = res.error;
-    }
-    if (resErr) {
-      console.error('[property-admin] residents load error (房号将无法合并)', resErr);
-    }
-
-    const unitByUserId = new Map<string, string>();
-    for (const row of resRows ?? []) {
-      const uid = row.user_id as string | null | undefined;
-      if (!uid) continue;
-      const u = String(row.unit_no ?? '').trim();
-      if (u) unitByUserId.set(uid, u);
-    }
-
-    const ids = memberUserIds;
-    let profById: Record<string, { email: string; full_name_en: string }> = {};
-    if (ids.length > 0) {
-      const { data: profs, error: profErr } = await supabase.from('profiles').select('id, email, full_name_en').in('id', ids);
-      if (profErr) {
-        console.error('[property-admin] profiles load error', profErr);
-      }
-      for (const p of profs ?? []) {
-        profById[p.id as string] = { email: p.email as string, full_name_en: p.full_name_en as string };
-      }
-    }
-
-    const finalRows = list.map((m) => {
-      const uid = m.user_id as string;
-      return {
-        user_id: uid,
-        role: String(m.role ?? ''),
-        status: String(m.status ?? ''),
-        unit_no: unitByUserId.get(uid) ?? null,
-        email: profById[uid]?.email,
-        full_name_en: profById[uid]?.full_name_en,
-      };
-    });
-
-    console.log('[property-admin] mems =', mems);
-    console.log('[property-admin] resRows =', resRows);
-    console.log('[property-admin] finalRows =', finalRows);
-
-    setRows(finalRows);
-    setLoading(false);
-  }, [propertyId]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  if (loading) return <p className="text-gray-600">加载中…</p>;
-
-  return (
-    <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
-      <table className="min-w-full text-sm">
-        <thead className="bg-gray-50 text-left">
-          <tr>
-            <th className="px-4 py-2">用户</th>
-            <th className="px-4 py-2">角色</th>
-            <th className="px-4 py-2">状态</th>
-            <th className="px-4 py-2">房号</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.user_id} className="border-t border-gray-100">
-              <td className="px-4 py-2">{r.full_name_en || r.email || r.user_id}</td>
-              <td className="px-4 py-2">{r.role}</td>
-              <td className="px-4 py-2">{r.status}</td>
-              <td className="px-4 py-2">{r.unit_no?.trim() ? r.unit_no.trim() : '—'}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function RequestsSection() {
-  return (
-    <div className="rounded-xl border border-gray-200 bg-white p-6 text-center space-y-3">
-      <p className="text-gray-700 text-sm">在此页可快速跳转至「加入申请审批」完整列表，进行通过 / 拒绝操作。</p>
-      <Link
-        to="/property-admin/join-requests"
-        className="inline-flex items-center justify-center px-4 py-2.5 rounded-xl bg-clearstrata-ui-primary text-white text-sm font-semibold hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive"
-      >
-        打开加入申请审批
-      </Link>
-    </div>
-  );
-}
-
-function SettingsSection({ propertyId }: { propertyId: string }) {
+function SettingsSection({ propertyId, readOnlyName }: { propertyId: string; readOnlyName?: boolean }) {
   const [name, setName] = useState('');
   const [allowPublic, setAllowPublic] = useState(true);
   const [msg, setMsg] = useState<string | null>(null);
@@ -304,23 +109,32 @@ function SettingsSection({ propertyId }: { propertyId: string }) {
 
   const save = async () => {
     setMsg(null);
-    const { error } = await supabase
-      .from('properties')
-      .update({ name, allow_public_join_requests: allowPublic })
-      .eq('id', propertyId);
+    const payload = readOnlyName ? { allow_public_join_requests: allowPublic } : { name, allow_public_join_requests: allowPublic };
+    const { error } = await supabase.from('properties').update(payload).eq('id', propertyId);
     if (error) setMsg(error.message);
     else setMsg('已保存');
   };
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-6 max-w-lg">
+      <h2 className="text-base font-semibold text-gray-900 mb-3">物业基础信息与加入规则</h2>
       <label className="block text-sm font-medium text-gray-700 mb-1">物业名称</label>
-      <input value={name} onChange={(e) => setName(e.target.value)} className="w-full border rounded-lg px-3 py-2 mb-4" />
+      <input
+        value={name}
+        readOnly={readOnlyName}
+        disabled={readOnlyName}
+        onChange={(e) => setName(e.target.value)}
+        className="w-full border rounded-lg px-3 py-2 mb-4 disabled:bg-gray-50 disabled:text-gray-600"
+      />
       <label className="flex items-center gap-2 mb-4">
         <input type="checkbox" checked={allowPublic} onChange={(e) => setAllowPublic(e.target.checked)} />
         <span className="text-sm text-gray-700">允许公开申请加入（显示在申请页列表）</span>
       </label>
-      <button type="button" onClick={save} className="px-4 py-2 rounded-lg bg-clearstrata-ui-primary text-white text-sm font-medium hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive">
+      <button
+        type="button"
+        onClick={() => void save()}
+        className="px-4 py-2 rounded-lg bg-clearstrata-ui-primary text-white text-sm font-medium hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive"
+      >
         保存
       </button>
       {msg && <p className="mt-3 text-sm">{msg}</p>}

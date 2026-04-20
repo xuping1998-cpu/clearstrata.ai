@@ -1,34 +1,28 @@
 import { useState, useEffect, useMemo, Component, type ErrorInfo, type ReactNode } from 'react';
 import { useSearchParams, useLocation } from 'react-router-dom';
-import { User, Receipt, FileText, UserCog, Megaphone, Users } from 'lucide-react';
+import { User, Receipt, FileText, Megaphone } from 'lucide-react';
 import { useProperty } from '../contexts/PropertyContext';
-import { canManageUsersOnProperty } from '../lib/propertyPermissions';
 import { useLanguage } from '../contexts/LanguageContext';
 import { BackButton } from '../components/BackButton';
 import { MyProfileTab } from './owner-info/MyProfileTab';
 import { LedgerTab } from './owner-info/LedgerTab';
 import { FormsTab } from './owner-info/FormsTab';
-import { UserManagementTab } from './owner-info/UserManagementTab';
 import { OwnerNotificationsSection } from './owner-info/OwnerNotificationsSection';
 import { AnnouncementList } from '../components/AnnouncementList';
 
-type TabType = 'profile' | 'members' | 'ledger' | 'forms' | 'users' | 'announcements';
+type TabType = 'profile' | 'ledger' | 'forms' | 'announcements';
 
 interface TabConfig {
   key: TabType;
   label: string;
   icon: React.ReactNode;
-  /** Management tabs: only for staff (non-owner roles in this property). */
-  councilOnly?: boolean;
 }
 
 const tabs: TabConfig[] = [
   { key: 'profile', label: '我的资料', icon: <User size={18} /> },
-  { key: 'members', label: '本物业成员', icon: <Users size={18} /> },
   { key: 'ledger', label: '账务记录', icon: <Receipt size={18} /> },
   { key: 'forms', label: '表单', icon: <FileText size={18} /> },
   { key: 'announcements', label: '公告', icon: <Megaphone size={18} /> },
-  { key: 'users', label: '用户管理', icon: <UserCog size={18} />, councilOnly: true },
 ];
 
 /** 隔离子 Tab 运行时错误，避免整页白屏（「我的资料」等仍可用）。 */
@@ -61,12 +55,9 @@ class OwnerInfoSectionErrorBoundary extends Component<
 
 export function OwnerInfo() {
   const { language } = useLanguage();
-  const { currentRole, currentPropertyId, isDemoMode, propertyHasManagementStaff } = useProperty();
+  const { currentPropertyId, isDemoMode, propertyHasManagementStaff } = useProperty();
   const [searchParams] = useSearchParams();
   const location = useLocation();
-  const isStaffInProperty = Boolean(canManageUsersOnProperty(currentRole));
-
-  const canManageRestrictedTabs = isStaffInProperty;
 
   const tabKeys = useMemo(() => tabs.map((x) => x.key), []);
   const [activeTab, setActiveTab] = useState<TabType>('profile');
@@ -81,11 +72,8 @@ export function OwnerInfo() {
     }
     const normalized = raw === 'notify' ? 'announcements' : raw;
     if (!tabKeys.includes(normalized as TabType)) return;
-    const next = normalized as TabType;
-    const cfg = tabs.find((t) => t.key === next);
-    if (cfg?.councilOnly && !canManageRestrictedTabs) return;
-    setActiveTab(next);
-  }, [searchParams, canManageRestrictedTabs, tabKeys]);
+    setActiveTab(normalized as TabType);
+  }, [searchParams, tabKeys]);
 
   useEffect(() => {
     if (location.pathname !== '/owner-info' || location.hash !== '#owner-announcements') return;
@@ -94,12 +82,6 @@ export function OwnerInfo() {
     }, 80);
     return () => window.clearTimeout(timer);
   }, [location.pathname, location.hash]);
-
-  const visibleTabs = tabs.filter((tab) => {
-    if (tab.key === 'members' && canManageRestrictedTabs) return false;
-    if (tab.councilOnly && !canManageRestrictedTabs) return false;
-    return true;
-  });
 
   if (isDemoMode) {
     return (
@@ -120,22 +102,21 @@ export function OwnerInfo() {
         <h1 className="text-3xl font-bold text-gray-900">业主信息</h1>
         <p className="text-gray-600 mt-2">管理您的资料、单元信息和账户详情</p>
         {currentPropertyId &&
-          propertyHasManagementStaff === false &&
-          !isStaffInProperty && (
+          propertyHasManagementStaff === false && (
             <div
               role="alert"
               className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950"
             >
               {language === 'en'
-                ? 'This property has no management role assigned (no admin, council, or manager in property members). Ask your strata to restore roles in the database or promote staff under User Management.'
-                : '系统无管理角色：当前物业在成员表中没有管理员、业委会或物业经理。请联系业委会或通过数据库恢复角色，或由已有权限人员在「用户管理」中提升职员。'}
+                ? 'This property has no management role assigned (no admin, council, or manager in property members). Ask your strata to restore roles in the database or promote staff under People management (System).'
+                : '系统无管理角色：当前物业在成员表中没有管理员、业委会或物业经理。请联系业委会或通过数据库恢复角色，或由已有权限人员在「系统管理 → 人员管理」中处理。'}
             </div>
           )}
       </div>
 
       <div className="mb-6 border-b border-gray-200 overflow-x-auto">
         <nav className="flex gap-1 min-w-max">
-          {visibleTabs.map((tab) => (
+          {tabs.map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
@@ -157,19 +138,9 @@ export function OwnerInfo() {
           <MyProfileTab />
         </OwnerInfoSectionErrorBoundary>
       )}
-      {activeTab === 'members' && currentPropertyId && (
-        <OwnerInfoSectionErrorBoundary title={language === 'en' ? 'Could not load member list.' : '「本物业成员」加载失败。'}>
-          <UserManagementTab readOnly />
-        </OwnerInfoSectionErrorBoundary>
-      )}
       {activeTab === 'ledger' && <LedgerTab />}
       {activeTab === 'forms' && <FormsTab />}
       {activeTab === 'announcements' && <OwnerNotificationsSection />}
-      {activeTab === 'users' && canManageRestrictedTabs && currentPropertyId && (
-        <OwnerInfoSectionErrorBoundary title={language === 'en' ? 'Could not load user management.' : '「用户管理」加载失败。'}>
-          <UserManagementTab readOnly={false} />
-        </OwnerInfoSectionErrorBoundary>
-      )}
     </div>
   );
 }

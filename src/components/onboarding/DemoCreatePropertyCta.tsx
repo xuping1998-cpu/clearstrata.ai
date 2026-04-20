@@ -54,7 +54,7 @@ export function DemoCreatePropertyCtaCard() {
     <div className="rounded-2xl border border-clearstrata-ui-softBorder bg-gradient-to-br from-white to-clearstrata-ui-soft/60 p-5 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-base font-extrabold text-gray-900">5 分钟开通你自己的物业后台</p>
+          <p className="text-base font-extrabold text-gray-900">5 分钟开通你自己的物业</p>
           <p className="mt-1 text-sm text-gray-700">立即开始透明管理每一笔支出</p>
         </div>
       </div>

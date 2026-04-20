@@ -177,7 +177,7 @@ export function CreatePropertyPage() {
               <ShieldCheck size={20} />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-gray-900">创建你的物业后台</h1>
+              <h1 className="text-lg font-bold text-gray-900">创建你的物业</h1>
               <p className="mt-1 text-sm text-gray-600">
                 为了确保你将成为该物业的首位管理员，请先登录或注册。
               </p>

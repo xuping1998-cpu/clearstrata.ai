@@ -8,6 +8,7 @@ import {
   getTrialState,
 } from '@/lib/subscription';
 import { useProperty } from '@/contexts/PropertyContext';
+import { StatusAlert } from '@/components/status';
 
 type PropertyTrialRow = {
   subscription_status?: string | null;
@@ -115,24 +116,17 @@ export function TrialBanner() {
     };
   })();
 
+  const alertTone = expired ? 'danger' : expiring ? 'warning' : 'success';
+
   return (
-    <div
-      className={
-        expired
-          ? 'mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 shadow-sm'
-          : expiring
-            ? 'mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 shadow-sm'
-            : 'mb-4 rounded-2xl border border-clearstrata-ui-softBorder bg-clearstrata-ui-soft px-4 py-3 shadow-sm'
-      }
-      role="status"
-    >
+    <StatusAlert tone={alertTone} className="mb-4 rounded-2xl shadow-sm">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             {expired || expiring ? (
-              <AlarmClock className="h-4 w-4 text-rose-600" />
+              <AlarmClock className="h-4 w-4 shrink-0 opacity-90" aria-hidden />
             ) : (
-              <ShieldCheck className="h-4 w-4 text-clearstrata-brand-700" />
+              <ShieldCheck className="h-4 w-4 shrink-0 opacity-90" aria-hidden />
             )}
             <p className="text-sm font-semibold text-gray-900">{copy.title}</p>
           </div>
@@ -155,7 +149,7 @@ export function TrialBanner() {
           </Link>
         </div>
       </div>
-    </div>
+    </StatusAlert>
   );
 }
 

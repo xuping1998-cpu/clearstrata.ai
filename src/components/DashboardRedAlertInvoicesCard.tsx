@@ -6,6 +6,7 @@ import { useProperty } from '../contexts/PropertyContext';
 import { fetchTaskTitleByInvoiceIds } from '../lib/invoiceTaskLinks';
 import { supabase } from '../lib/supabase';
 import { computeQuoteInvoiceVariance, isRedAlertVariance, type QuoteVarianceResult } from '../lib/quoteInvoiceVariance';
+import { StatusBadge } from '@/components/status';
 
 const STAFF_ROLES = new Set(['council', 'admin', 'manager', 'property_admin']);
 
@@ -141,9 +142,14 @@ export function DashboardRedAlertInvoicesCard() {
       <div className="flex items-start gap-2">
         <AlertTriangle className="mt-0.5 shrink-0 text-red-600" size={22} aria-hidden />
         <div className="min-w-0 flex-1">
-          <h2 className="text-base font-bold text-red-900">
-            {en ? 'Red-alert invoices' : '红色预警发票'}
-          </h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-base font-bold text-red-900">
+              {en ? 'Red-alert invoices' : '红色预警发票'}
+            </h2>
+            <StatusBadge tone="danger" size="sm" className="shrink-0">
+              {en ? 'Variance risk' : '金额风险'}
+            </StatusBadge>
+          </div>
           {loading ? (
             <div className="mt-3 flex items-center gap-2 text-sm text-red-800/80">
               <Loader2 className="h-4 w-4 animate-spin" />

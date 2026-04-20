@@ -5,7 +5,7 @@ import { demoEntryPath, MARKETING_DEMO_PROPERTY_CODE } from '@/lib/propertyEntry
 
 const SEO_TITLE = 'ClearStrata 定价';
 const SEO_DESCRIPTION =
-  'ClearStrata 商用定价：3 个月免费试用，5 分钟开通物业后台，让每一笔支出更透明。';
+  'ClearStrata 商用定价：3 个月免费试用，5 分钟开通物业设置，让每一笔支出更透明。';
 
 function useSeo() {
   useEffect(() => {
@@ -66,7 +66,7 @@ const tiers: PricingTier[] = [
     priceMonthly: '$29 / 月',
     priceYearly: '$299 / 年',
     tagline: '适合小型物业',
-    bullets: ['基础财务查看', '公告与成员管理', '基础邀请码功能', '物业后台基础模块'],
+    bullets: ['基础财务查看', '公告与成员管理', '基础邀请码功能', '物业设置基础模块'],
     cta: '开始免费试用',
   },
   {
@@ -391,7 +391,7 @@ export function PricingPage() {
           <div className="rounded-3xl border border-gray-200 bg-white p-7 shadow-sm sm:p-10">
             <div className="mx-auto max-w-3xl text-center">
               <h2 className="text-2xl font-black tracking-tight text-gray-900 sm:text-3xl">
-                5 分钟开通你的物业后台
+                5 分钟开通你的物业设置
               </h2>
               <p className="mt-3 text-sm text-gray-700 sm:text-base">
                 无需部署，无需培训，今天就开始让每一笔支出更透明。

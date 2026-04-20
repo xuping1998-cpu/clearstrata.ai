@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Check, Loader2, X, ClipboardList } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -13,6 +13,7 @@ import { sendJoinDecisionEmail } from '../../lib/sendJoinDecisionEmail';
 import { logPropertyEntryApproveResult } from '../../lib/propertyEntryGateLog';
 import { firstRpcJsonRow, joinRpcErrorCode } from '../../lib/propertyEntryUnified';
 import { approveJoinRequest, rejectJoinRequest } from '../../lib/unifiedPropertyEntry';
+import { StatusAlert, StatusBadge } from '@/components/status';
 
 export const JOIN_REQUESTS_SELECT_PENDING =
   'id, property_id, user_id, requested_role, full_name, email, phone, unit_number, note, status, created_at';
@@ -113,7 +114,7 @@ function joinApproveUserMessage(
 }
 
 export type JoinRequestsReviewPanelProps = {
-  /** When true, omits page-scale heading / invite link row (e.g. embedded in 用户管理). */
+  /** When true, omits page-scale heading / invite link row (e.g. embedded in 人员管理). */
   embedded?: boolean;
 };
 
@@ -121,7 +122,6 @@ export function JoinRequestsReviewPanel({ embedded = false }: JoinRequestsReview
   const { user } = useAuth();
   const { language, t } = useLanguage();
   const en = language === 'en';
-  const location = useLocation();
   const { ready, currentPropertyId, roleInProperty, memberships } = useProperty();
 
   const effectiveRole: UserRole | null = useMemo(() => {
@@ -396,12 +396,12 @@ export function JoinRequestsReviewPanel({ embedded = false }: JoinRequestsReview
           <div>
             <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
               <ClipboardList className="text-[#1D9E75]" size={26} />
-              {en ? 'Join request review (join_requests)' : '加入申请审核（join_requests）'}
+              {en ? 'Join request review' : '加入申请'}
             </h2>
             <p className="text-sm text-gray-600 mt-1">
               {en
-                ? 'Only pending rows from public.join_requests for this property.'
-                : '仅展示本物业 public.join_requests 表中 status = pending 的记录。'}
+                ? 'Only pending join requests for this property.'
+                : '仅展示本物业待处理的加入申请。'}
             </p>
             <p className="text-xs text-gray-400 mt-1">
               {en ? 'Reviewer role (this property)' : '审核角色（当前物业）'}:{' '}
@@ -409,8 +409,8 @@ export function JoinRequestsReviewPanel({ embedded = false }: JoinRequestsReview
             </p>
           </div>
           <Link
-            to={{ pathname: '/admin/invites', search: location.search }}
-            className="text-sm font-medium text-[#1D9E75] hover:underline shrink-0"
+            to="/property-admin/people?tab=invites"
+            className="text-sm font-medium text-clearstrata-ui-primary hover:underline shrink-0"
           >
             {en ? 'Invite codes' : '邀请码管理'}
           </Link>
@@ -424,43 +424,39 @@ export function JoinRequestsReviewPanel({ embedded = false }: JoinRequestsReview
       )}
 
       {pageError && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">{pageError}</div>
+        <StatusAlert tone="danger">{pageError}</StatusAlert>
       )}
 
       {successBanner && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-          {successBanner}
-        </div>
+        <StatusAlert tone="success">{successBanner}</StatusAlert>
       )}
 
       {!canApproveRequests && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+        <StatusAlert tone="warning">
           {en
             ? 'Only an active council member on this property can approve join requests (「通过」). You may still reject pending requests if your role allows.'
             : '仅本物业在任业委会（council）成员可使用「通过」审批；若您的角色允许，仍可拒绝待处理申请。'}
-        </div>
+        </StatusAlert>
       )}
 
       {toast && (
         <div
-          className={`fixed bottom-6 left-1/2 z-[60] max-w-md -translate-x-1/2 px-4 w-[min(100%,28rem)]`}
+          className="fixed bottom-6 left-1/2 z-[60] max-w-md -translate-x-1/2 px-4 w-[min(100%,28rem)]"
           role="status"
         >
-          <div
-            className={`rounded-xl border px-4 py-3 text-sm shadow-lg ${
-              toast.kind === 'success'
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-950'
-                : 'border-red-200 bg-red-50 text-red-950'
-            }`}
+          <StatusAlert
+            tone={toast.kind === 'success' ? 'success' : 'danger'}
+            variant="solid"
+            className="shadow-lg"
           >
             {toast.text}
-          </div>
+          </StatusAlert>
         </div>
       )}
 
       {loading ? (
         <div className="flex justify-center py-16">
-          <Loader2 className="w-10 h-10 text-[#1D9E75] animate-spin" aria-hidden />
+          <Loader2 className="w-10 h-10 text-clearstrata-ui-primary animate-spin" aria-hidden />
         </div>
       ) : pendingRows.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-10 text-center text-gray-500 text-sm">
@@ -501,9 +497,9 @@ export function JoinRequestsReviewPanel({ embedded = false }: JoinRequestsReview
                   {en ? 'Submitted' : '提交时间'} {fmt(r.created_at)}
                 </p>
                 <p className="pt-2">
-                  <span className="inline-flex items-center rounded-full bg-amber-50 text-amber-900 border border-amber-100 px-2.5 py-0.5 text-xs font-medium">
+                  <StatusBadge tone="warning" size="sm">
                     {en ? 'Pending' : '待审核'}
-                  </span>
+                  </StatusBadge>
                 </p>
               </div>
 
@@ -524,7 +520,7 @@ export function JoinRequestsReviewPanel({ embedded = false }: JoinRequestsReview
                     type="button"
                     disabled={actingId === r.id || !user?.id || !canApproveRequests}
                     onClick={() => void approve(r.id, r.unit_number)}
-                    className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#1D9E75] text-white text-sm font-semibold hover:bg-[#178a66] disabled:opacity-50"
+                    className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-clearstrata-ui-primary text-white text-sm font-semibold hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:opacity-50"
                   >
                     {actingId === r.id ? <Loader2 className="animate-spin" size={18} /> : <Check size={18} />}
                     {en ? 'Approve' : '通过'}

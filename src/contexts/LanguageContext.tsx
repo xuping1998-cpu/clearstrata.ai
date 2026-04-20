@@ -60,7 +60,7 @@ const translations: Record<string, Record<Language, string>> = {
   nav_maintenance: { en: 'Maintenance', zh: '维修申请' },
   nav_finance: { en: 'Financial Reports', zh: '财务报表' },
   nav_owner_info: { en: 'Owner Information', zh: '业主信息' },
-  nav_review_applications: { en: 'Join requests (join_requests)', zh: '加入申请审核（join_requests）' },
+  nav_review_applications: { en: 'Join requests', zh: '加入申请审核' },
   nav_communication: { en: 'Dispute Resolution', zh: '纠纷调解' },
   nav_disputes: { en: 'Property manager', zh: '物业经理' },
   nav_hiring: { en: 'Property Manager', zh: '物业经理' },
@@ -71,8 +71,10 @@ const translations: Record<string, Record<Language, string>> = {
   nav_group_help: { en: 'Help', zh: '帮助中心' },
   nav_help_compliance: { en: 'Laws & regulations', zh: '法律法规' },
   nav_invite_codes: { en: 'Invite codes', zh: '邀请码管理' },
-  nav_join_requests: { en: 'Join requests (join_requests)', zh: '加入申请审核（join_requests）' },
-  nav_property_admin_sidebar: { en: 'Property admin', zh: '物业后台' },
+  nav_join_requests: { en: 'Join requests', zh: '加入申请审核' },
+  nav_property_admin_sidebar: { en: 'Property settings', zh: '物业设置' },
+  nav_people_management: { en: 'People management', zh: '人员管理' },
+  nav_property_settings: { en: 'Property settings', zh: '物业设置' },
   nav_meetings_records: { en: 'Meetings', zh: '会议记录' },
 
   current_property_not_loaded: {
@@ -86,8 +88,8 @@ const translations: Record<string, Record<Language, string>> = {
   select_property: { en: 'Select property', zh: '选择物业' },
   loading_property_context: { en: 'Loading property context…', zh: '正在加载物业上下文…' },
   join_requests_empty_pending: {
-    en: 'No pending join_requests for this property.',
-    zh: '本物业暂无待审核的 join_requests。',
+    en: 'No pending join requests for this property.',
+    zh: '本物业暂无待审核的加入申请。',
   },
 
   hero_badge: { en: 'ClearStrata.ai', zh: 'ClearStrata.ai' },
@@ -114,10 +116,10 @@ const translations: Record<string, Record<Language, string>> = {
     zh: '申请已提交，等待审核。通过后您即可访问该物业。',
   },
 
-  admin_review_residents_cta: { en: 'Open User Management tab', zh: '打开「用户管理」页签' },
+  admin_review_residents_cta: { en: 'Open People management', zh: '打开「人员管理」' },
   admin_review_residents_hint: {
-    en: 'Approve or reject pending accounts under Owner Information → User Management.',
-    zh: '请在「业主信息 → 用户管理」中批准或拒绝待激活账号。',
+    en: 'Approve or reject pending accounts under System → People management.',
+    zh: '请在「系统管理 → 人员管理」中批准或拒绝待激活账号。',
   },
   admin_pending_residents_banner: {
     en: '{n} pending account activations',
@@ -146,8 +148,8 @@ const translations: Record<string, Record<Language, string>> = {
   },
 
   residents_tab_subtitle: {
-    en: 'Residents by unit (activated records). Account activation is handled under User Management.',
-    zh: '按单元查看在册居住人档案；新账号激活请在「用户管理」中处理。',
+    en: 'Residents by unit (activated records). Account activation is handled under People management.',
+    zh: '按单元查看在册居住人档案；新账号激活请在「系统管理 → 人员管理」中处理。',
   },
   residents_summary_total: { en: 'Total records', zh: '档案总数' },
   residents_summary_active: { en: 'Active', zh: '在册活跃' },

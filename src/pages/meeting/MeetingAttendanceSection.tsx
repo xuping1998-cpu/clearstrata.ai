@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { UserCheck, UserX, Clock, AlertCircle, Users, Plus, X, Mail, CheckCircle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { StatusBadge, type StatusTone } from '@/components/status';
 import { useProperty } from '../../contexts/PropertyContext';
 import { supabase } from '../../lib/supabase';
 import { withProperty } from '../../lib/supabaseTenant';
@@ -37,13 +38,13 @@ const statusLabels: Record<string, Record<'en' | 'zh', string>> = {
   proxy: { en: 'Proxy', zh: '委托代理' },
 };
 
-/** 出席状态徽章样式（保持原有） */
-const statusColors: Record<string, string> = {
-  invited: 'bg-gray-100 text-gray-700',
-  confirmed: 'bg-blue-100 text-blue-700',
-  attended: 'bg-clearstrata-brand-100 text-clearstrata-brand-800',
-  absent: 'bg-red-100 text-red-700',
-  proxy: 'bg-orange-100 text-orange-700',
+/** 出席状态 → 语义 tone（样式由 StatusBadge + clearstrata.state 统一） */
+const statusTone: Record<string, StatusTone> = {
+  invited: 'neutral',
+  confirmed: 'neutral',
+  attended: 'success',
+  absent: 'danger',
+  proxy: 'warning',
 };
 
 /** 用户可见的补充说明（如 Resend 测试模式限制） */
@@ -522,11 +523,13 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
                     )}
 
                     {showAttendanceStatusBadge && (
-                      <span
-                        className={`text-xs px-2 py-1 rounded-full font-medium ${statusColors[attendee.attendance_status] || 'bg-gray-100 text-gray-700'}`}
+                      <StatusBadge
+                        tone={statusTone[attendee.attendance_status] ?? 'neutral'}
+                        size="sm"
+                        className="max-w-full min-w-0"
                       >
                         {statusLabels[attendee.attendance_status]?.[language] || attendee.attendance_status}
-                      </span>
+                      </StatusBadge>
                     )}
                     {attendee.signed_in_at && (
                       <span className="text-xs text-gray-400 flex items-center gap-1">

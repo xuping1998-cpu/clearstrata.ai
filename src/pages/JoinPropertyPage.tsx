@@ -95,7 +95,7 @@ export function JoinPropertyPage({ resolved, codeParam }: Props) {
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1D9E75] px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-[#178a66]"
               >
                 <LogIn className="h-4 w-4" />
-                进入该物业后台
+                进入物业设置
               </button>
             ) : session && !isMember ? (
               <>

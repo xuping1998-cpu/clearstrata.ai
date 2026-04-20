@@ -332,8 +332,8 @@ export function PropertyAdminInvites() {
           <h1 className="text-2xl font-bold text-gray-900">邀请码管理</h1>
           <p className="mt-1 text-sm text-gray-600">用于邀请业主加入物业系统</p>
         </div>
-        <Link to="/property-admin" className="text-sm font-medium text-[#1D9E75] hover:underline">
-          ← {en ? 'Property admin' : '物业后台'}
+        <Link to="/property-admin/settings" className="text-sm font-medium text-[#1D9E75] hover:underline">
+          ← {en ? 'Property settings' : '物业设置'}
         </Link>
       </div>
 

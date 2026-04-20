@@ -11,7 +11,7 @@ import {
   X,
   LogOut,
   CircleUser as UserCircle,
-  KeyRound,
+  Settings,
   FileText,
   Briefcase,
   CalendarDays,
@@ -19,9 +19,8 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { useProperty } from '../contexts/PropertyContext';
 import {
-  canManagePropertyAdminFromContext,
-  canReviewJoinRequestsFromContext,
-  canManagePropertyInvitesFromContext,
+  canAccessPropertyPeoplePageFromContext,
+  canAccessPropertySettingsPageFromContext,
 } from '../lib/propertyPermissions';
 import { useLanguage, LANGUAGE_USER_STORAGE_KEY } from '../contexts/LanguageContext';
 import { samePropertyId } from '../lib/propertyIdMatch';
@@ -106,10 +105,8 @@ export function Layout({ children }: LayoutProps) {
     }
   }, [profile?.id, profile?.preferred_language, setLanguage]);
 
-  const showPropertyAdmin =
-    canManagePropertyAdminFromContext(roleInProperty, memberships) ||
-    canReviewJoinRequestsFromContext(roleInProperty, memberships);
-  const showInviteCodesNav = canManagePropertyInvitesFromContext(roleInProperty, memberships);
+  const showPeopleNav = canAccessPropertyPeoplePageFromContext(roleInProperty, memberships);
+  const showSettingsNav = canAccessPropertySettingsPageFromContext(roleInProperty, memberships);
 
   const isDashboardHome =
     location.pathname === '/' ||
@@ -166,14 +163,14 @@ export function Layout({ children }: LayoutProps) {
   const systemNavItems = useMemo(
     () =>
       [
-        ...(showInviteCodesNav
-          ? [{ path: '/admin/invites', icon: KeyRound, label: t('nav_invite_codes') }]
+        ...(showPeopleNav
+          ? [{ path: '/property-admin/people', icon: Users, label: t('nav_people_management') }]
           : []),
-        ...(showPropertyAdmin
-          ? [{ path: '/property-admin', icon: Users, label: t('nav_property_admin_sidebar') }]
+        ...(showSettingsNav
+          ? [{ path: '/property-admin/settings', icon: Settings, label: t('nav_property_settings') }]
           : []),
       ] as Array<{ path: string; icon: LucideIcon; label: string }>,
-    [showInviteCodesNav, showPropertyAdmin, t],
+    [showPeopleNav, showSettingsNav, t],
   );
 
   const showSystemSection = !isDemoMode && !isDemoPropertyMock && systemNavItems.length > 0;
@@ -182,10 +179,15 @@ export function Layout({ children }: LayoutProps) {
   const renderSystemNavButton = useCallback(
     (path: string, Icon: LucideIcon, label: string) => {
       const active =
-        path === '/property-admin'
-          ? location.pathname === '/property-admin' || location.pathname.startsWith('/property-admin/')
-          : path === '/admin/invites'
-            ? location.pathname === '/admin/invites' || location.pathname.startsWith('/admin/invites/')
+        path === '/property-admin/people'
+          ? location.pathname === '/property-admin/people' ||
+            location.pathname === '/property-admin/join-requests'
+          : path === '/property-admin/settings'
+            ? location.pathname === '/property-admin/settings' ||
+              location.pathname.startsWith('/property-admin/unit-whitelist') ||
+              location.pathname.startsWith('/property-admin/invite-analytics') ||
+              location.pathname.startsWith('/property-admin/invites') ||
+              location.pathname.startsWith('/property-admin/tasks')
             : location.pathname === path;
       return (
         <button

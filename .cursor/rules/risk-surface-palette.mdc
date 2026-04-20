@@ -1,0 +1,22 @@
+---
+description: 风险区配色（红底/红框）与全项目 className 绿系约束
+globs: "src/**/*.tsx"
+alwaysApply: false
+---
+
+# 颜色约定（仅样式 / ESLint）
+
+## A. 全项目 `src`（`className`）
+
+- 规则：`clearstrata-palette/no-tailwind-green-family`（error）
+- 禁止：`emerald-` / `green-` / `teal-` Tailwind 色阶
+
+## B. 红色风险容器及其子节点
+
+视为风险容器的类名特征包括：`bg-red-*`、`border-red-*`、`ring-red-*`、`outline-red-*`、`from-red-*` / `to-red-*` / `via-red-*` / `divide-red-*`（实现上与「风险卡片、异常发票、红色侧栏」等 UI 一致，请在这些场景使用上述 red 类）。
+
+**禁止**：`clearstrata-ui-primary` / `primaryHover` / `primaryActive`、`clearstrata-brand-*`、`clearstrata-ui-soft*`、`clearstrata-hero`（由 `no-brand-in-risk-surface` 检测）；`emerald-` / `green-` / `teal-` 在全项目由 **A** 检测，在风险区内同样禁止。
+
+**允许**：`red-*`、`slate-*`（中性）、`white` / `bg-white` / `text-white` 等白色系。
+
+规则：`clearstrata-risk-surface/no-brand-in-risk-surface`（error）。不改变业务逻辑，仅约束类名字符串。

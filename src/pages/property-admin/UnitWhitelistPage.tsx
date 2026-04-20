@@ -383,8 +383,8 @@ export function UnitWhitelistPage() {
     <div className="mx-auto max-w-5xl px-4 py-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <Link to="/property-admin" className="text-sm font-medium text-[#1D9E75] hover:underline">
-            ← 物业后台
+          <Link to="/property-admin/settings" className="text-sm font-medium text-[#1D9E75] hover:underline">
+            ← 物业设置
           </Link>
           <h1 className="mt-2 text-2xl font-bold text-gray-900">房号白名单</h1>
           <p className="mt-1 text-sm text-gray-600">

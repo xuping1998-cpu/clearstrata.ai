@@ -106,23 +106,47 @@ export function AdminInvites() {
     setCreating(true);
     setBanner(null);
     setLastLink(null);
-    let expiresAt: string | null = null;
-    if (expiresLocal) {
-      const d = new Date(expiresLocal);
-      if (!Number.isNaN(d.getTime())) expiresAt = d.toISOString();
-    }
-    const { data, error } = await supabase.rpc('create_property_invite', {
-      p_property_id: currentPropertyId,
-      p_role: role,
-      p_max_uses: maxUses,
-      p_expires_at: expiresAt,
-    });
-    setCreating(false);
-    if (error) {
-      setBanner(error.message);
+
+    const pid = String(currentPropertyId).trim();
+    console.log('currentPropertyId', pid, pid?.length);
+
+    const uuid36 =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(pid) && pid.length === 36;
+    if (!uuid36) {
+      setCreating(false);
+      setBanner(
+        en
+          ? `Invalid property id: expected full UUID (36 chars). Got length ${pid.length}: ${pid}`
+          : `物业 ID 无效：应为完整 UUID（36 个字符）。当前长度 ${pid.length}：${pid}`,
+      );
       return;
     }
-    const d = data as { ok?: boolean; code?: string; error?: string };
+
+    const payload: {
+      p_property_id: string;
+      p_role: UserRole;
+      p_max_uses: number;
+      p_expires_at: null;
+    } = {
+      p_property_id: pid,
+      p_role: role,
+      p_max_uses: Number(maxUses) || 0,
+      p_expires_at: null,
+    };
+
+    console.log('create_property_invite payload', payload);
+    const { data, error } = await supabase.rpc('create_property_invite', payload);
+    console.log('create_property_invite result', { data, error });
+    setCreating(false);
+
+    if (error) {
+      const full = [error.message, (error as { hint?: string }).hint, (error as { details?: string }).details]
+        .filter(Boolean)
+        .join('\n');
+      setBanner(full);
+      return;
+    }
+    const d = data as { ok?: boolean; code?: string; error?: string; id?: string };
     if (!d?.ok) {
       setBanner(d?.error ?? (en ? 'Create failed.' : '创建失败。'));
       return;
@@ -130,7 +154,7 @@ export function AdminInvites() {
     const link = `${inviteBase}?code=${encodeURIComponent(d.code ?? '')}`;
     setLastLink(link);
     setBanner(en ? 'Invite created. Copy the link below.' : '邀请码已创建，可复制下方链接。');
-    void load();
+    await load();
   };
 
   const copyLink = async (url: string) => {
@@ -183,11 +207,11 @@ export function AdminInvites() {
           {en ? 'Create shareable links for residents to join this property.' : '创建可分享的链接，供住户加入本物业。'}
         </p>
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm mt-2">
-          <Link to="/admin/join-requests" className="font-medium text-[#1D9E75] hover:underline">
-            {en ? 'Join requests' : '加入申请审核'}
+          <Link to="/property-admin/people?tab=review" className="font-medium text-[#1D9E75] hover:underline">
+            {en ? 'Join requests' : '加入申请'}
           </Link>
-          <Link to="/property-admin" className="font-medium text-[#1D9E75] hover:underline">
-            {en ? 'Property admin hub' : '物业后台'}
+          <Link to="/property-admin/settings" className="font-medium text-[#1D9E75] hover:underline">
+            {en ? 'Property settings' : '物业设置'}
           </Link>
         </div>
       </div>
@@ -243,7 +267,11 @@ export function AdminInvites() {
           </button>
         </div>
 
-        {banner && <p className="mt-4 text-sm text-gray-700">{banner}</p>}
+        {banner && (
+          <p className="mt-4 text-sm text-gray-700 whitespace-pre-wrap break-words" role="status">
+            {banner}
+          </p>
+        )}
 
         {lastLink && (
           <div className="mt-4 p-4 rounded-xl bg-emerald-50 border border-emerald-200">

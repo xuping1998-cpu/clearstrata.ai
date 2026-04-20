@@ -29,6 +29,37 @@ export default {
             heroVia: '#176f4c',
             heroTo: '#1b8a5c',
           },
+          /** 语义状态：供 StatusBadge / StatusAlert，勿在组件内手写散落红黄褐灰 */
+          state: {
+            success: {
+              surface: '#eefbf5',
+              border: '#b2e9cf',
+              text: '#176f4c',
+              solid: '#22a06b',
+              onSolid: '#ffffff',
+            },
+            warning: {
+              surface: '#fffbeb',
+              border: '#fcd34d',
+              text: '#92400e',
+              solid: '#d97706',
+              onSolid: '#ffffff',
+            },
+            danger: {
+              surface: '#fef2f2',
+              border: '#fecaca',
+              text: '#991b1b',
+              solid: '#b91c1c',
+              onSolid: '#ffffff',
+            },
+            neutral: {
+              surface: '#f8fafc',
+              border: '#e2e8f0',
+              text: '#334155',
+              solid: '#475569',
+              onSolid: '#ffffff',
+            },
+          },
         },
       },
       backgroundImage: {

@@ -12,6 +12,7 @@ import {
 import { AiPricingPanel, getTrafficLight, TrafficLightBadge } from './procurement/AiPricingPanel';
 import { VendorSearchPanel } from './procurement/VendorSearchPanel';
 import { getCategoryLabel } from './procurement/VendorRegistry';
+import { StatusBadge, type StatusTone } from '@/components/status';
 
 interface ProcurementJob {
   id: string;
@@ -63,16 +64,16 @@ interface PropertyManager {
   status: string;
 }
 
-const STATUS_CONFIG: Record<string, { en: string; zh: string; color: string; icon: string }> = {
-  collecting_quotes: { en: 'Collecting Quotes', zh: '收集报价中', color: 'bg-yellow-100 text-yellow-800', icon: 'clock' },
-  pending_approval: { en: 'Pending Approval', zh: '待审批', color: 'bg-orange-100 text-orange-800', icon: 'clock' },
-  pm_executing: { en: 'PM Executing', zh: '物业经理执行中', color: 'bg-blue-100 text-blue-800', icon: 'wrench' },
-  pending_inspection: { en: 'Pending Inspection', zh: '待验收', color: 'bg-amber-100 text-amber-800', icon: 'eye' },
-  inspection_passed: { en: 'Inspection Passed', zh: '验收通过', color: 'bg-clearstrata-brand-100 text-clearstrata-brand-800', icon: 'check' },
-  inspection_failed: { en: 'Inspection Failed', zh: '验收不通过', color: 'bg-red-100 text-red-800', icon: 'x' },
-  approved: { en: 'Approved', zh: '已批准', color: 'bg-clearstrata-brand-100 text-clearstrata-brand-800', icon: 'check' },
-  completed: { en: 'Completed', zh: '已完成', color: 'bg-gray-100 text-gray-800', icon: 'check' },
-  cancelled: { en: 'Cancelled', zh: '已取消', color: 'bg-gray-100 text-gray-600', icon: 'x' },
+const STATUS_CONFIG: Record<string, { en: string; zh: string; tone: StatusTone; icon: string }> = {
+  collecting_quotes: { en: 'Collecting Quotes', zh: '收集报价中', tone: 'warning', icon: 'clock' },
+  pending_approval: { en: 'Pending Approval', zh: '待审批', tone: 'warning', icon: 'clock' },
+  pm_executing: { en: 'PM Executing', zh: '物业经理执行中', tone: 'neutral', icon: 'wrench' },
+  pending_inspection: { en: 'Pending Inspection', zh: '待验收', tone: 'warning', icon: 'eye' },
+  inspection_passed: { en: 'Inspection Passed', zh: '验收通过', tone: 'success', icon: 'check' },
+  inspection_failed: { en: 'Inspection Failed', zh: '验收不通过', tone: 'danger', icon: 'x' },
+  approved: { en: 'Approved', zh: '已批准', tone: 'success', icon: 'check' },
+  completed: { en: 'Completed', zh: '已完成', tone: 'neutral', icon: 'check' },
+  cancelled: { en: 'Cancelled', zh: '已取消', tone: 'neutral', icon: 'x' },
 };
 
 const WORKFLOW_STEPS = [
@@ -443,10 +444,10 @@ function JobCard({
               )}
             </div>
           </div>
-          <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap ${sc.color}`}>
+          <StatusBadge tone={sc.tone} size="md" className="whitespace-nowrap">
             <StatusIcon status={job.status} />
-            {l ? sc.en : sc.zh}
-          </span>
+            <span>{l ? sc.en : sc.zh}</span>
+          </StatusBadge>
         </div>
 
         <WorkflowStepper currentStep={stepIdx} language={language} failed={job.status === 'inspection_failed'} />
@@ -482,9 +483,9 @@ function JobCard({
             <>
               <div className="flex items-center gap-2 mb-3">
                 <h4 className="font-semibold text-gray-900 text-sm">供应商报价</h4>
-                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${(job.quotes?.length || 0) >= 3 ? 'bg-clearstrata-brand-100 text-clearstrata-brand-800' : 'bg-orange-100 text-orange-800'}`}>
+                <StatusBadge tone={(job.quotes?.length || 0) >= 3 ? 'success' : 'warning'} size="sm">
                   {job.quotes?.length || 0} / 3
-                </span>
+                </StatusBadge>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 {job.quotes?.map((quote, idx) => {

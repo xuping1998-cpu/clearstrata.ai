@@ -27,6 +27,7 @@ import { supabase } from '../../lib/supabase';
 import { shouldDeferAutoPropertyRedirects } from '../../lib/authRecovery';
 import { samePropertyId } from '../../lib/propertyIdMatch';
 import { labelFormat, labelMeetingType, labelStatus, labelVoteRule, labelVoteStatus, meetingUiStrings } from '../../features/meetings/labels';
+import { StatusAlert, StatusBadge } from '@/components/status';
 
 const initialBundle = (): MeetingDetailBundle => ({
   meeting: null,
@@ -461,16 +462,21 @@ export function MeetingDetail() {
       <div className="max-w-5xl mx-auto px-4 sm:px-6 -mt-6 relative z-10">
         <div className="rounded-2xl border border-gray-200/90 bg-white p-5 sm:p-8 shadow-[0_16px_50px_-12px_rgba(6,61,47,0.14)] space-y-8">
         {inviteToast ? (
-          <div
-            className={`fixed bottom-6 left-1/2 z-50 max-w-lg -translate-x-1/2 rounded-lg px-4 py-3 text-sm text-white shadow-lg ${
-              inviteToast.kind === 'success' ? 'bg-clearstrata-ui-primary' : 'bg-red-700'
-            }`}
-            role="status"
-          >
-            {inviteToast.text}
+          <div className="fixed bottom-6 left-1/2 z-50 max-w-lg w-[min(100%,28rem)] -translate-x-1/2 px-4">
+            <StatusAlert
+              tone={inviteToast.kind === 'success' ? 'success' : 'danger'}
+              variant="solid"
+              className="shadow-lg"
+            >
+              {inviteToast.text}
+            </StatusAlert>
           </div>
         ) : null}
-        {actionErr ? <p className="text-sm text-red-600 mb-4">{actionErr}</p> : null}
+        {actionErr ? (
+          <StatusAlert tone="danger" className="mb-4">
+            {actionErr}
+          </StatusAlert>
+        ) : null}
         {extrasLoading ? (
           <p className="text-xs text-gray-500 mb-4">{en ? 'Loading agenda, votes, and invitations…' : '正在加载议程、投票与邀请…'}</p>
         ) : null}
@@ -516,14 +522,18 @@ export function MeetingDetail() {
                       <div className="flex flex-wrap items-center gap-2 mb-2">
                         <span className="text-xs text-gray-500">#{agenda.sort_order}</span>
                         {agenda.requires_vote ? (
-                          <span className="text-xs px-2 py-0.5 rounded-full border border-clearstrata-ui-softBorder bg-clearstrata-brand-100 text-clearstrata-brand-900 font-medium">{en ? 'Vote required' : '需要表决'}</span>
+                          <StatusBadge tone="success" size="sm">
+                            {en ? 'Vote required' : '需要表决'}
+                          </StatusBadge>
                         ) : (
-                          <span className="text-xs px-2 py-0.5 rounded-full border border-clearstrata-ui-softBorder bg-clearstrata-ui-soft text-clearstrata-ui-softText">{en ? 'Discussion' : '讨论'}</span>
+                          <StatusBadge tone="neutral" size="sm">
+                            {en ? 'Discussion' : '讨论'}
+                          </StatusBadge>
                         )}
                         {agenda.vote_rule && (
-                          <span className="text-xs px-2 py-0.5 rounded-full border border-clearstrata-ui-softBorder bg-clearstrata-brand-50 text-clearstrata-brand-800">
+                          <StatusBadge tone="neutral" size="sm">
                             {labelVoteRule(agenda.vote_rule, en)}
-                          </span>
+                          </StatusBadge>
                         )}
                       </div>
                       <h3 className="font-medium text-gray-900">
@@ -548,7 +558,9 @@ export function MeetingDetail() {
                         <div className="mt-4 space-y-3 border-t border-gray-200 pt-3">
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="text-xs font-medium text-gray-700">{en ? 'Vote status' : '表决状态'}:</span>
-                            <span className="text-xs px-2 py-0.5 rounded-full border border-clearstrata-ui-softBorder bg-clearstrata-ui-soft text-clearstrata-ui-softText font-medium">{labelVoteStatus(vote.status, en)}</span>
+                            <StatusBadge tone="neutral" size="sm">
+                              {labelVoteStatus(vote.status, en)}
+                            </StatusBadge>
                             <span className="text-xs text-gray-600">
                               {en ? 'Vote rule' : '投票规则'}: {labelVoteRule(vote.vote_rule, en)}
                             </span>

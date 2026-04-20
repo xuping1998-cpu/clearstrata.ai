@@ -58,7 +58,7 @@ interface PropertyMemberMeta {
   status: string;
 }
 
-type StaffTab = 'review' | 'members' | 'invites';
+export type StaffTab = 'review' | 'members' | 'invites';
 
 /** Lowercase canonical UUID string, or null if invalid (avoids PostgREST 400 on bad filter values). */
 function normalizeUuid(value: unknown): string | null {
@@ -75,7 +75,20 @@ function alertThenReload(message: string) {
   window.location.reload();
 }
 
-export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) {
+export function UserManagementTab({
+  readOnly = false,
+  controlledStaffTab,
+  onStaffTabChange,
+  hideStaffTabBar = false,
+  hidePageTitle = false,
+}: {
+  readOnly?: boolean;
+  /** 由「人员管理」等父级控制当前分区（成员 / 加入申请 / 邀请码）。 */
+  controlledStaffTab?: StaffTab;
+  onStaffTabChange?: (t: StaffTab) => void;
+  hideStaffTabBar?: boolean;
+  hidePageTitle?: boolean;
+}) {
   const { language, t } = useLanguage();
   const { profile, user, refreshProfile } = useAuth();
   const { currentPropertyId, roleInProperty: currentRole, refreshMemberships } = useProperty();
@@ -87,7 +100,12 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
   const [updating, setUpdating] = useState<string | null>(null);
   const [activationBusy, setActivationBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
-  const [staffTab, setStaffTab] = useState<StaffTab>('review');
+  const [internalStaffTab, setInternalStaffTab] = useState<StaffTab>('review');
+  const staffTab = controlledStaffTab ?? internalStaffTab;
+  const setStaffTab = (t: StaffTab) => {
+    onStaffTabChange?.(t);
+    if (controlledStaffTab === undefined) setInternalStaffTab(t);
+  };
 
   /** All gates use `property_members.role` for this property (`currentRole`). */
   const canEditMembers = canEditPropertyMemberRoles(currentRole);
@@ -656,81 +674,87 @@ export function UserManagementTab({ readOnly = false }: { readOnly?: boolean }) 
   return (
     <div className="space-y-6 relative">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">
-            {readOnly
-              ? language === 'en'
-                ? 'Property members'
-                : '本物业成员'
-              : language === 'en'
-                ? 'User Management'
-                : '用户管理'}
-          </h2>
-          <p className="text-gray-600 text-sm mt-1 max-w-2xl">
-            {readOnly
-              ? language === 'en'
-                ? 'Members and profiles for the current property (read-only).'
-                : '当前物业下的成员与资料（只读）。'
-              : t('user_mgmt_subtitle')}
-          </p>
-          {canShowStaffToolbar && (
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <div
-                className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5"
-                role="tablist"
-                aria-label={language === 'en' ? 'User management sections' : '用户管理分区'}
-              >
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={staffTab === 'review'}
-                  onClick={() => setStaffTab('review')}
-                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                    staffTab === 'review'
-                      ? 'bg-white text-[#1D9E75] shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
+        {!hidePageTitle ? (
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">
+              {readOnly
+                ? language === 'en'
+                  ? 'Property members'
+                  : '本物业成员'
+                : language === 'en'
+                  ? 'People management'
+                  : '人员管理'}
+            </h2>
+            <p className="text-gray-600 text-sm mt-1 max-w-2xl">
+              {readOnly
+                ? language === 'en'
+                  ? 'Members and profiles for the current property (read-only).'
+                  : '当前物业下的成员与资料（只读）。'
+                : t('user_mgmt_subtitle')}
+            </p>
+            {canShowStaffToolbar && !hideStaffTabBar && (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <div
+                  className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5"
+                  role="tablist"
+                  aria-label={language === 'en' ? 'People management sections' : '人员管理分区'}
                 >
-                  {language === 'en' ? 'Review (join_requests)' : '审核（join_requests）'}
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={staffTab === 'members'}
-                  onClick={() => setStaffTab('members')}
-                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                    staffTab === 'members'
-                      ? 'bg-white text-[#1D9E75] shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  {language === 'en' ? 'Members (property_members)' : '成员管理（property_members）'}
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={staffTab === 'invites'}
-                  onClick={() => setStaffTab('invites')}
-                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                    staffTab === 'invites'
-                      ? 'bg-white text-[#1D9E75] shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  {language === 'en' ? 'Invite codes' : '邀请码管理'}
-                </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={staffTab === 'review'}
+                    onClick={() => setStaffTab('review')}
+                    className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                      staffTab === 'review'
+                        ? 'bg-white text-[#1D9E75] shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    {language === 'en' ? 'Join requests' : '加入申请'}
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={staffTab === 'members'}
+                    onClick={() => setStaffTab('members')}
+                    className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                      staffTab === 'members'
+                        ? 'bg-white text-[#1D9E75] shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    {language === 'en' ? 'Members' : '成员管理'}
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={staffTab === 'invites'}
+                    onClick={() => setStaffTab('invites')}
+                    className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                      staffTab === 'invites'
+                        ? 'bg-white text-[#1D9E75] shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    {language === 'en' ? 'Invite codes' : '邀请码管理'}
+                  </button>
+                </div>
               </div>
-            </div>
-          )}
-        </div>
-        <button
-          type="button"
-          onClick={() => void printUserList()}
-          className="flex items-center gap-2 px-4 py-2 bg-[#1D9E75] text-white rounded-lg hover:bg-[#178a66] transition-colors shrink-0"
-        >
-          <Printer size={20} />
-          {language === 'en' ? 'Print User List' : '打印用户列表'}
-        </button>
+            )}
+          </div>
+        ) : (
+          <div className="min-h-0" />
+        )}
+        {!hidePageTitle || staffTab === 'members' ? (
+          <button
+            type="button"
+            onClick={() => void printUserList()}
+            className="flex items-center gap-2 px-4 py-2 bg-[#1D9E75] text-white rounded-lg hover:bg-[#178a66] transition-colors shrink-0"
+          >
+            <Printer size={20} />
+            {language === 'en' ? 'Print User List' : '打印用户列表'}
+          </button>
+        ) : null}
       </div>
 
       {canShowStaffToolbar && currentPropertyId && staffTab === 'review' && (

@@ -7,7 +7,7 @@ export function canApproveJoinRequest(role: UserRole | null | undefined): boolea
   return normalizeRoleKey(role) === 'council';
 }
 
-/** 用户管理（业委会视角）：与审核同一组核心角色（不含 property_admin / manager）。 */
+/** 业委会视角下与「加入申请通过」一致的核心角色（不含 property_admin / manager）。 */
 export function canManageUsersCouncilOrAdmin(role: UserRole | null | undefined): boolean {
   return canApproveJoinRequest(role);
 }
@@ -73,7 +73,7 @@ export function canReviewJoinRequestsAsStaff(role: UserRole | null | undefined):
   return JOIN_REVIEW_STAFF_ONLY.has(r);
 }
 
-/** 物业后台入口：物业管理员或历史 admin 角色 */
+/** 物业设置（名称/公开申请等）：物业管理员或历史 admin 角色 */
 export function canManagePropertyAdmin(role: UserRole | null | undefined): boolean {
   const r = normalizeRoleKey(role);
   return r === 'property_admin' || r === 'admin';
@@ -112,7 +112,7 @@ export function canShowJoinRequestReviewNav(role: UserRole | null | undefined): 
 }
 
 /**
- * User directory / owner-info “用户管理”：可审核、改角色、成员管理（非 owner）。
+ * 系统管理「人员管理」：可审核、改角色、成员管理（非 owner）。
  * Based solely on `property_members.role`.
  */
 export function canManageUsersOnProperty(role: UserRole | null | undefined): boolean {
@@ -126,7 +126,7 @@ export function canManageUsersOnProperty(role: UserRole | null | undefined): boo
 }
 
 /**
- * 用户目录中的「审核 / 修改角色 / 用户管理」Tab：仅 admin、council、物业管理员（不含 manager，与 Edge 限制一致）。
+ * 成员角色编辑：仅 admin、council、物业管理员（不含 manager，与 Edge 限制一致）。
  */
 export function canEditPropertyMemberRoles(role: UserRole | null | undefined): boolean {
   const r = normalizeRoleKey(role);
@@ -169,4 +169,47 @@ export function canManagePropertyInvites(role: UserRole | null | undefined): boo
 
 export function isOwnerOrTenant(role: UserRole | null | undefined): boolean {
   return role === 'owner' || role === 'tenant';
+}
+
+/** 人员管理页：成员 / 加入申请 / 邀请码（与「业主信息」后台能力一致，不含纯 owner）。 */
+export function canAccessPropertyPeoplePage(role: UserRole | null | undefined): boolean {
+  return canManageUsersOnProperty(role);
+}
+
+/**
+ * 物业设置页：基础信息、加入规则、白名单等（物业管理员 / 业委会 / 系统管理员侧；业委会需可见加入规则等）。
+ */
+export function canAccessPropertySettingsPage(role: UserRole | null | undefined): boolean {
+  return (
+    canManagePropertyAdmin(role) ||
+    canManageUnitWhitelist(role) ||
+    canApproveJoinRequest(role)
+  );
+}
+
+export function canAccessPropertyPeoplePageFromContext(
+  roleInProperty: UserRole | null | undefined,
+  memberships: { role: UserRole }[],
+): boolean {
+  if (roleInProperty != null) return canAccessPropertyPeoplePage(roleInProperty);
+  return memberships.some((m) => canAccessPropertyPeoplePage(m.role));
+}
+
+export function canAccessPropertySettingsPageFromContext(
+  roleInProperty: UserRole | null | undefined,
+  memberships: { role: UserRole }[],
+): boolean {
+  if (roleInProperty != null) return canAccessPropertySettingsPage(roleInProperty);
+  return memberships.some((m) => canAccessPropertySettingsPage(m.role));
+}
+
+/** 左侧「系统管理」是否展示（任一子入口可用）。 */
+export function canShowSystemManagementSection(
+  roleInProperty: UserRole | null | undefined,
+  memberships: { role: UserRole }[],
+): boolean {
+  return (
+    canAccessPropertyPeoplePageFromContext(roleInProperty, memberships) ||
+    canAccessPropertySettingsPageFromContext(roleInProperty, memberships)
+  );
 }
