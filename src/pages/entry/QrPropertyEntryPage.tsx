@@ -78,6 +78,7 @@ export function QrPropertyEntryPage() {
   const [toast, setToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
 
   const hasSubmittedRef = useRef(false);
+  const openedLoggedRef = useRef(false);
 
   useEffect(() => {
     if (!toast) return;
@@ -152,16 +153,19 @@ export function QrPropertyEntryPage() {
     });
   }, [location.search, user, propertyIdParam, inviteCodeParam]);
 
-  /** 带邀请码的 /entry 打开（漏斗：entry_opened） */
+  /** URL 含 propertyId 时记录一次 opened（漏斗） */
   useEffect(() => {
-    if (!resolved?.id || !inviteCodeParam) return;
+    if (openedLoggedRef.current) return;
+    const pid = propertyIdParam && UUID_RE.test(propertyIdParam) ? propertyIdParam.toLowerCase() : null;
+    if (!pid) return;
+    openedLoggedRef.current = true;
     void trackPropertyEntryEvent(supabase, {
-      propertyId: resolved.id,
-      inviteCode: inviteCodeParam,
-      source: sourceParam || 'unknown',
-      eventType: 'entry_opened',
+      propertyId: pid,
+      inviteCode: inviteCodeParam || null,
+      source: sourceParam || null,
+      eventType: 'opened',
     });
-  }, [resolved?.id, inviteCodeParam, sourceParam]);
+  }, [propertyIdParam, inviteCodeParam, sourceParam]);
 
   /** 登录后若 query 中没有任何 invite 参数，提示便于排查回跳丢参 */
   useEffect(() => {

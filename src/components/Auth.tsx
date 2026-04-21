@@ -32,6 +32,32 @@ function persistCurrentPropertyId(propertyId: string) {
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** `/entry?propertyId=…` redirect after login — funnel `auth_ok` 归因用 */
+function parseRedirectQueryForEntryFunnel(redirectRaw: string | null): {
+  propertyId: string | null;
+  inviteCode: string | null;
+  source: string | null;
+} {
+  if (!redirectRaw) return { propertyId: null, inviteCode: null, source: null };
+  try {
+    const path = decodeURIComponent(redirectRaw);
+    if (!path.startsWith('/') || path.includes('://')) {
+      return { propertyId: null, inviteCode: null, source: null };
+    }
+    const q = path.indexOf('?');
+    if (q < 0) return { propertyId: null, inviteCode: null, source: null };
+    const sp = new URLSearchParams(path.slice(q + 1));
+    const rawPid = (sp.get('propertyId') || sp.get('property_id') || '').trim();
+    const pid = rawPid && UUID_RE.test(rawPid) ? rawPid.toLowerCase() : null;
+    const inviteCode =
+      (sp.get('inviteCode') || sp.get('invite_code') || sp.get('code') || '').trim() || null;
+    const source = (sp.get('source') || '').trim() || null;
+    return { propertyId: pid, inviteCode, source };
+  } catch {
+    return { propertyId: null, inviteCode: null, source: null };
+  }
+}
+
 /** Property for roster bind: URL propertyId → guest scan → propertyCode resolve → default. */
 async function resolveSignupPropertyIdAsync(): Promise<string> {
   try {
@@ -351,13 +377,6 @@ export function Auth() {
         null;
       const sourceFromUrl = searchParams.get('source')?.trim() || 'web';
 
-      void trackPropertyEntryEvent(supabase, {
-        propertyId: pid,
-        inviteCode: inviteFromUrl,
-        source: sourceFromUrl,
-        eventType: 'auth_started',
-      });
-
       const entryPath = `/entry?propertyId=${encodeURIComponent(pid)}&propertyCode=${encodeURIComponent(code)}&source=web`;
       console.log('[Auth] entry redirect target (flow uses submit in-page then home/pending)', { entryPath });
 
@@ -436,7 +455,8 @@ export function Auth() {
         propertyId: pid,
         inviteCode: inviteFromUrl,
         source: sourceFromUrl,
-        eventType: 'auth_succeeded',
+        eventType: 'auth_ok',
+        userId,
       });
 
       console.log('[Auth] entry auto continue payload', {
@@ -531,6 +551,24 @@ export function Auth() {
         const cleanEmail = email.trim().toLowerCase();
         await signIn(cleanEmail, password);
         clearPublicDemoLocalStorage();
+
+        const funnel = parseRedirectQueryForEntryFunnel(searchParams.get('redirect'));
+        if (funnel.propertyId) {
+          const {
+            data: { session: postLogin },
+          } = await supabase.auth.getSession();
+          const uid = postLogin?.user?.id;
+          if (uid) {
+            void trackPropertyEntryEvent(supabase, {
+              propertyId: funnel.propertyId,
+              inviteCode: funnel.inviteCode,
+              source: funnel.source ?? 'auth_login',
+              eventType: 'auth_ok',
+              userId: uid,
+            });
+          }
+        }
+
         const pendingAfterLogin = consumePendingRedirect();
         if (pendingAfterLogin) {
           navigate(pendingAfterLogin, { replace: true });
@@ -551,6 +589,24 @@ export function Auth() {
 
           const moveInRaw = moveInDateRef.current?.value?.trim() || '';
           const propertyId = await resolveSignupPropertyIdAsync();
+
+          let explicitPropertyInUrl = false;
+          try {
+            const p = new URLSearchParams(window.location.search);
+            const raw = p.get('propertyId')?.trim() ?? '';
+            explicitPropertyInUrl = !!(raw && UUID_RE.test(raw));
+          } catch {
+            explicitPropertyInUrl = false;
+          }
+          if (propertyId !== DEFAULT_PROPERTY_ID || explicitPropertyInUrl) {
+            void trackPropertyEntryEvent(supabase, {
+              propertyId,
+              inviteCode: null,
+              source: 'auth_signup',
+              eventType: 'auth_ok',
+              userId: user.id,
+            });
+          }
 
           const entryResult = await submitUnifiedPropertyEntry(supabase, {
             userId: user.id,

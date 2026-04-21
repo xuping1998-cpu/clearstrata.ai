@@ -170,6 +170,45 @@ function mergeInviteCodeForRpc(explicit: string | null | undefined): string | nu
   return inviteCodeFromBrowserUrl();
 }
 
+function trackSubmitFunnelAfterParse(
+  client: SupabaseClient,
+  input: SubmitUnifiedPropertyEntryInput,
+  parsed: UnifiedPropertyEntryResult,
+  inviteForRpc: string | null,
+): void {
+  if (parsed.kind === 'rpc_error') return;
+  const pid = parsed.propertyId ?? input.p_property_id?.trim() ?? null;
+  if (!pid) return;
+
+  const submittedKinds: UnifiedPropertyEntryResult['kind'][] = [
+    'pending_submitted',
+    'duplicate_pending',
+    'auto_approved',
+    'already_member',
+  ];
+  if (submittedKinds.includes(parsed.kind)) {
+    const requestId = parsed.kind === 'pending_submitted' ? parsed.requestId ?? null : null;
+    void trackPropertyEntryEvent(client, {
+      propertyId: pid,
+      inviteCode: inviteForRpc,
+      source: input.entrySource ?? null,
+      eventType: 'submitted',
+      userId: input.userId,
+      requestId,
+    });
+  }
+  if (parsed.kind === 'auto_approved') {
+    void trackPropertyEntryEvent(client, {
+      propertyId: pid,
+      inviteCode: inviteForRpc,
+      source: input.entrySource ?? null,
+      eventType: 'auto_approved',
+      userId: input.userId,
+      requestId: null,
+    });
+  }
+}
+
 /**
  * 统一入楼提交：仅 `submit_join_request`；结果按后端 `kind` 标准化。
  */
@@ -188,15 +227,6 @@ export async function submitUnifiedPropertyEntry(
   });
 
   const pInviteForRpc = mergeInviteCodeForRpc(input.p_invite_code);
-
-  await trackPropertyEntryEvent(client, {
-    propertyId: pid,
-    inviteCode: pInviteForRpc,
-    source: input.entrySource ?? null,
-    eventType: 'submit_started',
-    unitNo: unit,
-    role: input.p_requested_role,
-  });
 
   const payload = {
     p_property_id: input.p_property_id,
@@ -240,6 +270,7 @@ export async function submitUnifiedPropertyEntry(
   }
 
   const parsed = parseSubmitJoinRow(data);
+  trackSubmitFunnelAfterParse(client, input, parsed, pInviteForRpc);
   if (parsed.kind === 'auto_approved') {
     logUnifiedPropertyEntryLine('submit:auto_join_passed', {
       property_id: parsed.propertyId,

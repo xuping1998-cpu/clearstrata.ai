@@ -1,43 +1,41 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+export type PropertyEntryEventType =
+  | 'opened'
+  | 'auth_ok'
+  | 'submitted'
+  | 'approved'
+  | 'auto_approved';
+
 export type TrackPropertyEntryEventInput = {
-  propertyId?: string | null;
+  propertyId: string;
   inviteCode?: string | null;
   source?: string | null;
-  eventType: string;
-  resultKind?: string | null;
-  unitNo?: string | null;
-  role?: string | null;
+  eventType: PropertyEntryEventType;
+  userId?: string | null;
   requestId?: string | null;
-  membershipStatus?: string | null;
-  meta?: Record<string, unknown>;
 };
 
 /**
- * 邀请码 / 入楼漏斗事件（`property_entry_events`）。失败不抛错、不阻塞主流程。
+ * Best-effort funnel row; failures must not block the main flow.
  */
 export async function trackPropertyEntryEvent(
   client: SupabaseClient,
   input: TrackPropertyEntryEventInput,
 ): Promise<void> {
+  const pid = input.propertyId?.trim();
+  if (!pid) return;
   try {
-    const pid = input.propertyId?.trim() || null;
-    const { error } = await client.rpc('track_property_entry_event', {
-      p_property_id: pid,
-      p_invite_code: input.inviteCode?.trim() || null,
-      p_source: input.source?.trim() || null,
-      p_event_type: input.eventType,
-      p_result_kind: input.resultKind ?? null,
-      p_unit_no: input.unitNo ?? null,
-      p_role: input.role ?? null,
-      p_request_id: input.requestId ?? null,
-      p_membership_status: input.membershipStatus ?? null,
-      p_meta: (input.meta ?? {}) as Record<string, unknown>,
+    const { error } = await client.from('property_entry_events').insert({
+      property_id: pid,
+      invite_code: input.inviteCode ?? null,
+      source: input.source ?? null,
+      event_type: input.eventType,
+      user_id: input.userId ?? null,
+      request_id: input.requestId ?? null,
     });
-    if (error) {
-      console.warn('[property-entry-events]', error.message);
-    }
+    if (error) console.warn('[property_entry_events]', error.message);
   } catch (e) {
-    console.warn('[property-entry-events]', e);
+    console.warn('[property_entry_events]', e);
   }
 }
