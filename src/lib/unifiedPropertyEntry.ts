@@ -17,11 +17,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { UserRole } from './supabase';
-import {
-  firstRpcJsonRow,
-  submitUnifiedPropertyEntry,
-  type SubmitUnifiedPropertyEntryResult,
-} from './propertyEntryUnified';
+import { firstRpcJsonRow, submitUnifiedPropertyEntry, type UnifiedPropertyEntryResult } from './propertyEntryUnified';
 import {
   hasPendingJoinRequestForCurrentUser,
   hasPendingJoinRequestForPropertyEmail,
@@ -212,26 +208,32 @@ export type CreatePendingJoinRequestInput = {
   languagePref: 'en' | 'zh';
   /** 扫码链接中的公开邀请码（`property_invite_codes`），写入 join_requests.invite_code。 */
   inviteCode?: string | null;
-  /** 与 submit 一致：默认做 pending 去重预检 */
-  skipDuplicateCheck?: boolean;
 };
 
 export type CreatePendingJoinRequestResult =
   | { kind: 'created'; joinRequestId: string | null; raw: unknown }
   | { kind: 'already_pending'; raw: unknown | null }
   | { kind: 'auto_approved'; propertyId: string | null; raw: unknown }
+  | { kind: 'already_member'; propertyId: string | null; raw: unknown }
   | { kind: 'rpc_error'; error: { message: string; code?: string }; raw: unknown }
-  | { kind: 'business_reject'; errorKey?: string; message?: string; message_zh?: string; raw: unknown };
+  | { kind: 'submit_failed'; failureKind: string; message: string | null; raw: unknown };
 
-function mapSubmitToPendingResult(r: SubmitUnifiedPropertyEntryResult): CreatePendingJoinRequestResult {
-  if (r.kind === 'pending_submitted') return { kind: 'created', joinRequestId: r.joinRequestId, raw: r.raw };
+function mapSubmitToPendingResult(r: UnifiedPropertyEntryResult): CreatePendingJoinRequestResult {
+  if (r.kind === 'pending_submitted') return { kind: 'created', joinRequestId: r.requestId, raw: r.raw };
   if (r.kind === 'auto_approved') return { kind: 'auto_approved', propertyId: r.propertyId, raw: r.raw };
-  if (r.kind === 'rpc_error') return { kind: 'rpc_error', error: r.error, raw: r.raw };
+  if (r.kind === 'already_member') return { kind: 'already_member', propertyId: r.propertyId, raw: r.raw };
+  if (r.kind === 'rpc_error') {
+    const msg = r.transportError?.message ?? r.message ?? 'rpc_error';
+    const code = r.transportError?.code;
+    return { kind: 'rpc_error', error: { message: msg, code }, raw: r.raw };
+  }
+  if (r.kind === 'duplicate_pending') {
+    return { kind: 'already_pending', raw: r.raw };
+  }
   return {
-    kind: 'business_reject',
-    errorKey: r.errorKey,
+    kind: 'submit_failed',
+    failureKind: r.kind,
     message: r.message,
-    message_zh: r.message_zh,
     raw: r.raw,
   };
 }
@@ -255,14 +257,14 @@ export async function createPendingJoinRequest(
     email: emailNorm,
   });
 
-  if (!input.skipDuplicateCheck && pid && emailNorm) {
+  if (pid && emailNorm) {
     const dupEmail = await hasPendingJoinRequestForPropertyEmail(client, pid, emailNorm);
     if (dupEmail) {
       logUnifiedPropertyEntryLine('create_pending_join:blocked_duplicate_email', { property_id: pid, email: emailNorm });
       return { kind: 'already_pending', raw: null };
     }
   }
-  if (!input.skipDuplicateCheck && pid && input.userId) {
+  if (pid && input.userId) {
     const dupUser = await hasPendingJoinRequestForCurrentUser(client, pid, input.userId);
     if (dupUser) {
       logUnifiedPropertyEntryLine('create_pending_join:blocked_duplicate_user', { property_id: pid, user_id: input.userId });
@@ -287,7 +289,7 @@ export async function createPendingJoinRequest(
     p_inferred_unit_number: null,
     p_move_in_date: null,
     p_language_pref: input.languagePref,
-    skipDuplicateCheck: true,
+    entrySource: 'pending_join',
   });
 
   logPropertyEntrySubmitResult({
@@ -296,7 +298,7 @@ export async function createPendingJoinRequest(
     propertyId: pid,
     unitNo: unit,
     data: 'raw' in sub ? sub.raw : null,
-    error: sub.kind === 'rpc_error' ? sub.error : null,
+    error: sub.kind === 'rpc_error' ? sub.transportError ?? { message: sub.message ?? '' } : null,
   });
 
   const mapped = mapSubmitToPendingResult(sub);

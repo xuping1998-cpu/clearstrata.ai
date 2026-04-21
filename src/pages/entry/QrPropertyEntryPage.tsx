@@ -6,6 +6,8 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useProperty } from '../../contexts/PropertyContext';
 import { supabase } from '../../lib/supabase';
 import { submitUnifiedPropertyEntry } from '../../lib/propertyEntryUnified';
+import { trackPropertyEntryEvent } from '../../lib/propertyEntryEvents';
+import type { UnifiedPropertyEntryResult } from '../../lib/propertyEntryKinds';
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -150,6 +152,17 @@ export function QrPropertyEntryPage() {
     });
   }, [location.search, user, propertyIdParam, inviteCodeParam]);
 
+  /** 带邀请码的 /entry 打开（漏斗：entry_opened） */
+  useEffect(() => {
+    if (!resolved?.id || !inviteCodeParam) return;
+    void trackPropertyEntryEvent(supabase, {
+      propertyId: resolved.id,
+      inviteCode: inviteCodeParam,
+      source: sourceParam || 'unknown',
+      eventType: 'entry_opened',
+    });
+  }, [resolved?.id, inviteCodeParam, sourceParam]);
+
   /** 登录后若 query 中没有任何 invite 参数，提示便于排查回跳丢参 */
   useEffect(() => {
     if (!session?.user || !resolved) return;
@@ -188,19 +201,21 @@ export function QrPropertyEntryPage() {
 
           if (cancelled) return;
 
-          console.log('[entry] payload', {
+          const entryPayload = {
             propertyId,
             inviteCode: inviteCodeParam,
             unitNo: null,
             userId: user?.id,
-          });
+          };
+          console.log('[entry] auto submit payload', entryPayload);
 
+          const entryNote = `entry|source=${sourceParam || 'unknown'}|invite=${inviteCodeParam || 'none'}`;
           const result = await submitUnifiedPropertyEntry(supabase, {
             userId: user.id,
             p_property_id: propertyId,
             p_requested_role: 'owner',
             p_unit_number: null,
-            p_note: 'entry_auto',
+            p_note: entryNote,
             p_full_name: typeof prof?.full_name_en === 'string' ? prof.full_name_en.trim() || null : null,
             p_email: email || null,
             p_phone: typeof prof?.phone === 'string' ? prof.phone.trim() || null : null,
@@ -210,18 +225,19 @@ export function QrPropertyEntryPage() {
             p_inferred_unit_number: null,
             p_move_in_date: null,
             p_language_pref: lang,
+            entrySource: sourceParam || 'unknown',
           });
 
           console.log('[entry] submit result', result);
 
           if (cancelled) return;
 
-          if (result.kind === 'pending_submitted') {
+          if (result.kind === 'pending_submitted' || result.kind === 'duplicate_pending') {
             navigate('/join/pending', { replace: true });
             return;
           }
 
-          if (result.kind === 'auto_approved') {
+          if (result.kind === 'auto_approved' || result.kind === 'already_member') {
             const pid = result.propertyId ?? propertyId;
             persistCurrentPropertyId(pid);
             setCurrentPropertyId(pid);
@@ -230,42 +246,17 @@ export function QrPropertyEntryPage() {
             return;
           }
 
-          if (result.kind === 'rpc_error') {
-            console.error('[entry] submitUnifiedPropertyEntry rpc_error', result);
-            setToast({
-              kind: 'error',
-              text: result.error.message || (en ? 'Request failed.' : '请求失败'),
-            });
-            return;
-          }
-
-          if (result.kind === 'business_reject') {
-            const errKey = result.errorKey;
-            const rawMsg = result.message;
-            if (errKey === 'already_member' || rawMsg === 'ALREADY_MEMBER') {
-              persistCurrentPropertyId(propertyId);
-              setCurrentPropertyId(propertyId);
-              await refreshMemberships();
-              navigate('/dashboard', { replace: true });
-              return;
+          const failText = (r: UnifiedPropertyEntryResult) => {
+            if (r.kind === 'rpc_error') {
+              return r.message ?? r.transportError?.message ?? (en ? 'Request failed.' : '请求失败');
             }
-            if (
-              errKey === 'already_pending' ||
-              errKey === 'pending_exists' ||
-              rawMsg === 'PENDING_EXISTS'
-            ) {
-              navigate('/join/pending', { replace: true });
-              return;
-            }
-            console.error('[entry] submitUnifiedPropertyEntry business_reject', result);
-            setToast({
-              kind: 'error',
-              text:
-                (en ? result.message : result.message_zh) ||
-                result.errorKey ||
-                (en ? 'Could not complete entry.' : '无法完成入楼。'),
-            });
-          }
+            return r.message ?? (en ? 'Could not complete entry.' : '无法完成入楼。');
+          };
+          console.error('[entry] submitUnifiedPropertyEntry failure', result);
+          setToast({
+            kind: 'error',
+            text: failText(result),
+          });
         } finally {
           setAutoSubmitting(false);
         }

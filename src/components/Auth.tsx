@@ -13,9 +13,11 @@ import {
   clearPublicDemoLocalStorage,
 } from '../contexts/PropertyContext';
 import { submitUnifiedPropertyEntry } from '../lib/propertyEntryUnified';
+import { trackPropertyEntryEvent } from '../lib/propertyEntryEvents';
 import { demoEntryPath, MARKETING_DEMO_PROPERTY_CODE } from '@/lib/propertyEntryRoutes';
 import { saveGuestExperienceDraft } from '@/lib/guestExperienceDraft';
-import { savePropertyEntryDraft } from '@/lib/propertyEntryDraft';
+import { clearPropertyEntryDraft, savePropertyEntryDraft } from '@/lib/propertyEntryDraft';
+import type { SubmitUnifiedPropertyEntryResult } from '../lib/propertyEntryUnified';
 import { consumePendingRedirect } from '../lib/pendingRedirect';
 
 function persistCurrentPropertyId(propertyId: string) {
@@ -136,6 +138,14 @@ function isValidEmailBasic(s: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
 }
 
+/** One-time password for email sign-up from「进入物业」; user can reset via forgot password. */
+function generateSecureEntryPassword(): string {
+  const bytes = new Uint8Array(18);
+  crypto.getRandomValues(bytes);
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  return `${hex}Aa1!`;
+}
+
 type MainTab = 'guest' | 'property';
 type LegacyOpen = 'none' | 'login' | 'signup';
 
@@ -212,6 +222,64 @@ export function Auth() {
     }
   };
 
+  /** Same post-RPC navigation as full signup flow in `handleSubmit` (dashboard / pending / home). */
+  const navigateAfterUnifiedPropertyEntry = async (entryResult: SubmitUnifiedPropertyEntryResult) => {
+    const afterJoinHome = async () => {
+      const demoClaimed = await claimPublicDemoPropertyAfterSignUp();
+      if (demoClaimed) {
+        navigate('/', { replace: true });
+        return true;
+      }
+      const guestClaimed = await claimGuestStoredPropertyAfterSignUp();
+      if (guestClaimed) {
+        navigate('/', { replace: true });
+        return true;
+      }
+      const claimedId = await claimPropertyFromUrlIfPresent();
+      if (claimedId) {
+        persistCurrentPropertyId(claimedId);
+        navigate('/', { replace: true });
+        return true;
+      }
+      if (safeRedirectAfterAuth()) return true;
+      navigate('/', { replace: true });
+      return true;
+    };
+
+    if (entryResult.kind === 'rpc_error') {
+      const dup =
+        entryResult.transportError?.code === '23505' ||
+        (entryResult.transportError?.message ?? '').toLowerCase().includes('duplicate') ||
+        (entryResult.transportError?.message ?? '').includes('uniq_pending_request');
+      if (dup) {
+        console.log('[Auth] entry redirect target', { path: '/join/pending' });
+        navigate('/join/pending', { replace: true });
+        return;
+      }
+      throw new Error(entryResult.message ?? entryResult.transportError?.message ?? 'RPC error');
+    }
+
+    if (entryResult.kind === 'duplicate_pending' || entryResult.kind === 'pending_submitted') {
+      console.log('[Auth] entry redirect target', { path: '/join/pending', kind: entryResult.kind });
+      navigate('/join/pending', { replace: true });
+      return;
+    }
+
+    if (entryResult.kind === 'auto_approved' || entryResult.kind === 'already_member') {
+      persistCurrentPropertyId(String(entryResult.propertyId));
+      console.log('[Auth] entry redirect target', { path: '/', kind: entryResult.kind });
+      await afterJoinHome();
+      return;
+    }
+
+    if (entryResult.kind === 'property_not_found') {
+      throw new Error(language === 'zh' ? '物业无效或不存在。' : 'Invalid or unknown property.');
+    }
+
+    const msg = entryResult.message ?? (language === 'zh' ? '无法完成加入申请。' : 'Could not complete join.');
+    throw new Error(msg);
+  };
+
   const handlePropertyEnter = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -220,6 +288,14 @@ export function Auth() {
     const n = epName.trim();
     const em = epEmail.trim().toLowerCase();
     const u = epUnit.trim();
+
+    console.log('[Auth] entry form payload', {
+      propertyCode: code || null,
+      name: n || null,
+      email: em || null,
+      unit: u || null,
+    });
+
     if (!n || !em || !u) {
       setError(language === 'zh' ? '请填写姓名、邮箱与房号。' : 'Please fill in all required fields.');
       return;
@@ -236,25 +312,30 @@ export function Auth() {
       );
       return;
     }
+
     setEpBusy(true);
     try {
       const { data, error } = await supabase.rpc('resolve_property_for_join_request', { p_code: code });
+      console.log('[Auth] resolve_property_for_join_request result', { data, error });
       if (error) {
-        console.warn('resolve_property_for_join_request', error);
-        setError(language === 'zh' ? '无法查询该物业，请稍后重试。' : 'Could not look up this property. Try again later.');
+        const msg = language === 'zh' ? '无法查询该物业，请稍后重试。' : 'Could not look up this property. Try again later.';
+        setError(msg);
+        console.error('[Auth] property resolve failed', error.message);
         return;
       }
       const rows = Array.isArray(data) ? data : data != null ? [data] : [];
       const row = rows[0] as { id?: string } | undefined;
       const pid = row?.id != null ? String(row.id) : '';
       if (!pid) {
-        setError(
+        const msg =
           language === 'zh'
             ? '未找到该物业，或该物业未开放公开加入。请向业委会确认入口。'
-            : 'Property not found or not open for public join. Please confirm with your strata council.',
-        );
+            : 'Property not found or not open for public join. Please confirm with your strata council.';
+        setError(msg);
+        console.error('[Auth] property not resolved — empty property id', { data });
         return;
       }
+
       savePropertyEntryDraft({
         fullName: n,
         email: em,
@@ -262,7 +343,135 @@ export function Auth() {
         propertyId: pid,
         propertyCode: code,
       });
-      navigate(`/join-request?propertyId=${encodeURIComponent(pid)}`, { replace: false });
+
+      const inviteFromUrl =
+        searchParams.get('inviteCode')?.trim() ||
+        searchParams.get('invite_code')?.trim() ||
+        searchParams.get('code')?.trim() ||
+        null;
+      const sourceFromUrl = searchParams.get('source')?.trim() || 'web';
+
+      void trackPropertyEntryEvent(supabase, {
+        propertyId: pid,
+        inviteCode: inviteFromUrl,
+        source: sourceFromUrl,
+        eventType: 'auth_started',
+      });
+
+      const entryPath = `/entry?propertyId=${encodeURIComponent(pid)}&propertyCode=${encodeURIComponent(code)}&source=web`;
+      console.log('[Auth] entry redirect target (flow uses submit in-page then home/pending)', { entryPath });
+
+      const langPref = language === 'zh' ? 'zh' : 'en';
+
+      let userId: string | null = null;
+      const {
+        data: { session: existingSession },
+      } = await supabase.auth.getSession();
+
+      if (existingSession?.user?.id) {
+        userId = existingSession.user.id;
+        console.log('[Auth] entry session: already signed in', { userId });
+      } else {
+        const pwd = generateSecureEntryPassword();
+        console.log('[Auth] entry signUp start', { email: em });
+        try {
+          const newUser = await signUp(em, pwd, n, '', u);
+          console.log('[Auth] entry signUp result', { userId: newUser?.id ?? null, error: null });
+        } catch (signUpErr: unknown) {
+          const msg = getAuthErrorMessage(signUpErr, language === 'zh' ? 'zh' : 'en');
+          const raw =
+            signUpErr && typeof signUpErr === 'object' && 'message' in signUpErr
+              ? String((signUpErr as { message?: string }).message)
+              : '';
+          console.error('[Auth] entry signUp result', { error: signUpErr, message: raw });
+          const dup =
+            raw.toLowerCase().includes('already') ||
+            raw.toLowerCase().includes('registered') ||
+            raw.toLowerCase().includes('exists');
+          if (dup) {
+            setError(
+              language === 'zh'
+                ? '该邮箱已注册。请使用页面下方「直接登录」登录后，再点击「进入物业」。'
+                : 'This email is already registered. Sign in below, then tap Join property again.',
+            );
+            return;
+          }
+          setError(msg);
+          return;
+        }
+
+        const {
+          data: { session: afterSignUp },
+        } = await supabase.auth.getSession();
+        if (afterSignUp?.user?.id) {
+          userId = afterSignUp.user.id;
+        } else {
+          const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({
+            email: em,
+            password: pwd,
+          });
+          console.log('[Auth] entry signIn/signInWithPassword result', {
+            userId: signInData.session?.user?.id ?? null,
+            error: signInErr?.message ?? null,
+          });
+          if (signInErr || !signInData.session?.user?.id) {
+            const hint =
+              signInErr?.message ||
+              (language === 'zh'
+                ? '请查收邮箱完成验证后再试，或使用下方「直接登录」。'
+                : 'Check your email to confirm your account, or sign in below.');
+            setError(hint);
+            return;
+          }
+          userId = signInData.session.user.id;
+        }
+      }
+
+      if (!userId) {
+        setError(language === 'zh' ? '无法建立登录会话，请重试。' : 'Could not establish a session. Please try again.');
+        return;
+      }
+
+      void trackPropertyEntryEvent(supabase, {
+        propertyId: pid,
+        inviteCode: inviteFromUrl,
+        source: sourceFromUrl,
+        eventType: 'auth_succeeded',
+      });
+
+      console.log('[Auth] entry auto continue payload', {
+        propertyId: pid,
+        propertyCode: code,
+        unitNumber: u,
+        userId,
+        entryPath,
+      });
+
+      const entryResult = await submitUnifiedPropertyEntry(supabase, {
+        userId,
+        p_property_id: pid,
+        p_requested_role: 'owner',
+        p_unit_number: u.trim(),
+        p_note: `auth_property_enter|source=${sourceFromUrl}|propertyCode=${encodeURIComponent(code)}`,
+        p_full_name: n.trim(),
+        p_email: em,
+        p_phone: null,
+        p_invite_code: null,
+        p_direct_invite_id: null,
+        p_inferred_role: null,
+        p_inferred_unit_number: null,
+        p_move_in_date: null,
+        p_language_pref: langPref,
+        entrySource: sourceFromUrl,
+      });
+
+      console.log('[Auth] entry unified result', entryResult);
+
+      clearPropertyEntryDraft();
+      await navigateAfterUnifiedPropertyEntry(entryResult);
+    } catch (err) {
+      console.error('[Auth] handlePropertyEnter', err);
+      setError(getAuthErrorMessage(err, language === 'zh' ? 'zh' : 'en'));
     } finally {
       setEpBusy(false);
     }
@@ -358,110 +567,11 @@ export function Auth() {
             p_inferred_unit_number: null,
             p_move_in_date: moveInRaw || null,
             p_language_pref: languagePref,
+            entrySource: 'auth_signup',
           });
 
-          if (entryResult.kind === 'rpc_error') {
-            const dup =
-              entryResult.error.code === '23505' ||
-              (entryResult.error.message ?? '').toLowerCase().includes('duplicate') ||
-              (entryResult.error.message ?? '').includes('uniq_pending_request');
-            if (dup) {
-              navigate('/join/pending', { replace: true });
-              return;
-            }
-            throw new Error(entryResult.error.message);
-          }
-
-          const jr = entryResult.raw as {
-            error?: string;
-            message?: string;
-            message_zh?: string;
-            property_id?: string;
-          } | null;
-
-          if (entryResult.kind === 'business_reject') {
-            if (
-              entryResult.errorKey === 'already_pending' ||
-              entryResult.message === 'PENDING_EXISTS' ||
-              entryResult.errorKey === 'pending_exists'
-            ) {
-              navigate('/join/pending', { replace: true });
-              return;
-            }
-            if (jr?.error === 'property_closed' || jr?.message_zh?.includes('公开')) {
-              throw new Error(
-                language === 'zh'
-                  ? '该物业当前不接受公开加入申请，请联系物业或业委会获取邀请。'
-                  : 'This property is not open for public join requests. Ask your strata for an invite.',
-              );
-            }
-            if (jr?.error === 'bad_property') {
-              throw new Error(
-                language === 'zh' ? '物业无效或不存在。' : 'Invalid or unknown property.',
-              );
-            }
-            if (jr?.error === 'already_member' || entryResult.errorKey === 'already_member') {
-              const pid = jr?.property_id != null ? String(jr.property_id) : propertyId;
-              if (pid) persistCurrentPropertyId(pid);
-              const demoClaimed = await claimPublicDemoPropertyAfterSignUp();
-              if (demoClaimed) {
-                navigate('/', { replace: true });
-                return;
-              }
-              const guestClaimed = await claimGuestStoredPropertyAfterSignUp();
-              if (guestClaimed) {
-                navigate('/', { replace: true });
-                return;
-              }
-              const claimedId = await claimPropertyFromUrlIfPresent();
-              if (claimedId) {
-                persistCurrentPropertyId(claimedId);
-                navigate('/', { replace: true });
-                return;
-              }
-              if (safeRedirectAfterAuth()) return;
-              navigate('/', { replace: true });
-              return;
-            }
-            throw new Error(
-              language === 'zh'
-                ? (jr?.message_zh as string) || entryResult.message_zh || '无法完成加入申请，请稍后再试。'
-                : (jr?.message as string) || entryResult.message || 'Could not complete your join request. Please try again.',
-            );
-          }
-
-          const afterJoinHome = async () => {
-            const demoClaimed = await claimPublicDemoPropertyAfterSignUp();
-            if (demoClaimed) {
-              navigate('/', { replace: true });
-              return true;
-            }
-            const guestClaimed = await claimGuestStoredPropertyAfterSignUp();
-            if (guestClaimed) {
-              navigate('/', { replace: true });
-              return true;
-            }
-            const claimedId = await claimPropertyFromUrlIfPresent();
-            if (claimedId) {
-              persistCurrentPropertyId(claimedId);
-              navigate('/', { replace: true });
-              return true;
-            }
-            if (safeRedirectAfterAuth()) return true;
-            navigate('/', { replace: true });
-            return true;
-          };
-
-          if (entryResult.kind === 'auto_approved' && entryResult.propertyId) {
-            persistCurrentPropertyId(String(entryResult.propertyId));
-            await afterJoinHome();
-            return;
-          }
-
-          if (entryResult.kind === 'pending_submitted') {
-            navigate('/join/pending', { replace: true });
-            return;
-          }
+          console.log('[Auth] entry unified result', entryResult);
+          await navigateAfterUnifiedPropertyEntry(entryResult);
         }
       }
     } catch (err) {

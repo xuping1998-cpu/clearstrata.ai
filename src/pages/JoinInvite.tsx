@@ -22,6 +22,17 @@ type InviteRow = {
 function translateInviteError(message: string | undefined, en: boolean): string {
   const m = (message || 'UNKNOWN').trim();
   const table: Record<string, [string, string]> = {
+    invalid_invite: [
+      'This invite code is invalid or no longer available.',
+      '邀请码无效或不可用。',
+    ],
+    invite_expired: ['This invite has expired.', '该邀请已过期。'],
+    invite_disabled: ['This invite is no longer active.', '该邀请已停用。'],
+    invite_usage_exceeded: ['This invite has reached its use limit.', '该邀请已达到使用次数上限。'],
+    duplicate_pending: [
+      'You already have a pending join request for this property.',
+      '您对该物业的加入申请正在审核中。',
+    ],
     INVALID_INVITE: [
       'This invite code is invalid, expired, disabled, or no longer available.',
       '邀请码无效、已过期、已停用或不可用。',
@@ -238,15 +249,20 @@ export function JoinInvitePage() {
         p_inferred_unit_number: null,
         p_move_in_date: null,
         p_language_pref: en ? 'en' : 'zh',
+        entrySource: 'invite_page',
       });
 
       if (result.kind === 'rpc_error') {
-        setMsg(friendlySubmitFailure(en));
+        setMsg(result.message ?? result.transportError?.message ?? friendlySubmitFailure(en));
         return;
       }
 
-      if (result.kind === 'business_reject') {
-        setMsg(translateInviteError(result.message ?? result.errorKey, en));
+      if (
+        result.kind !== 'auto_approved' &&
+        result.kind !== 'pending_submitted' &&
+        result.kind !== 'already_member'
+      ) {
+        setMsg(result.message ?? translateInviteError(result.kind, en));
         return;
       }
 
@@ -259,6 +275,12 @@ export function JoinInvitePage() {
       if (result.kind === 'pending_submitted') {
         setMyLatestRequest({ status: 'pending', rejection_reason: null });
         setSuccess(true);
+        return;
+      }
+
+      if (result.kind === 'already_member') {
+        setSuccess(true);
+        await loadInvite();
         return;
       }
     } catch {

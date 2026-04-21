@@ -22,14 +22,22 @@ export function logPropertyEntrySubmitResult(opts: {
   console.log('property entry — email', opts.email ?? null);
   console.log('property entry — property_id', opts.propertyId ?? row?.property_id ?? null);
   console.log('property entry — unit_no', opts.unitNo ?? row?.unit_no ?? null);
+  const kind = row?.kind != null ? String(row.kind) : '';
   const autoLabel =
-    row?.auto_approve === 'passed' || row?.entry_path === 'auto_approved'
+    kind === 'auto_approved'
       ? 'passed'
-      : row?.auto_approve === 'skipped'
-        ? 'skipped'
-        : 'failed';
+      : kind === 'pending_submitted'
+        ? 'pending'
+        : kind === 'already_member'
+          ? 'already_member'
+          : row?.auto_approve === 'passed' || row?.entry_path === 'auto_approved'
+            ? 'passed'
+            : row?.auto_approve === 'skipped'
+              ? 'skipped'
+              : 'failed';
+  console.log('property entry — submit kind', kind || '—');
   console.log('property entry — auto-approve', autoLabel);
-  console.log('property entry — pending created', row?.pending_created === true);
+  console.log('property entry — pending created', kind === 'pending_submitted' || row?.pending_created === true);
   console.log('property entry — property_members upsert result', row?.property_members_upsert ?? null);
   console.log('property entry — residents bind/create result', row?.residents_bind ?? null);
   if (opts.error) console.log('property entry — rpc error', opts.error);

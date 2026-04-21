@@ -557,33 +557,21 @@ export function JoinRequestPage() {
           directInviteId || !publicInviteCodeForSubmit ? null : unitNumber.trim() || null,
         p_move_in_date: null,
         p_language_pref: en ? 'en' : 'zh',
+        entrySource: 'join_request',
       });
 
-      const row = result.raw as {
-        ok?: boolean;
-        success?: boolean;
-        error?: string;
-        message?: string;
-        message_zh?: string;
-        join_request_id?: string;
-        property_id?: string;
-        entry_path?: string;
-      } | null;
-
       const rpcFriendlyText = (fallbackEn: string, fallbackZh: string) => {
-        if (en) {
-          if (row?.message) return row.message;
-          return fallbackEn;
+        if (result.kind === 'rpc_error') {
+          return result.message ?? result.transportError?.message ?? (en ? fallbackEn : fallbackZh);
         }
-        if (row?.message_zh) return row.message_zh;
-        return fallbackZh;
+        return result.message ?? (en ? fallbackEn : fallbackZh);
       };
 
       if (result.kind === 'rpc_error') {
         const dup =
-          result.error.code === '23505' ||
-          (result.error.message ?? '').toLowerCase().includes('duplicate') ||
-          (result.error.message ?? '').includes('uniq_pending_request');
+          result.transportError?.code === '23505' ||
+          (result.transportError?.message ?? '').toLowerCase().includes('duplicate') ||
+          (result.transportError?.message ?? '').includes('uniq_pending_request');
         if (dup) {
           setMsg(
             en
@@ -592,49 +580,36 @@ export function JoinRequestPage() {
           );
           return;
         }
-        setMsg(result.error.message || (en ? 'Submit failed.' : '提交失败'));
+        setMsg(result.message ?? result.transportError?.message || (en ? 'Submit failed.' : '提交失败'));
         return;
       }
 
-      if (result.kind === 'business_reject') {
-        console.error('submit join business_reject:', result.raw);
-        const errKey = result.errorKey;
-        const rawMsg = result.message;
-        if (rawMsg === 'INVITE_LIMIT_REACHED' || rawMsg === 'INVALID_INVITE') {
-          setMsg(
-            rpcFriendlyText(
-              'This invite is no longer valid or has reached its use limit.',
-              'invite 无效或已达到使用次数上限。',
-            ),
-          );
-          return;
-        }
-        if (errKey === 'already_member' || rawMsg === 'ALREADY_MEMBER') {
-          setMsg(rpcFriendlyText('You are already a member of this property.', '你已经是该物业成员，无需重复申请。'));
-          return;
-        }
-        if (errKey === 'already_pending' || errKey === 'pending_exists' || rawMsg === 'PENDING_EXISTS') {
-          setMsg(
-            rpcFriendlyText(
-              'You already have a pending request for this property.',
-              '你已提交过该物业的申请，请等待审核。',
-            ),
-          );
-          return;
-        }
-        if (errKey === 'property_closed') {
-          setMsg(rpcFriendlyText('This property is not accepting public applications.', '该物业当前不接受公开申请。'));
-          return;
-        }
-        if (errKey === 'bad_property') {
-          setMsg(rpcFriendlyText('Invalid property. Please refresh and try again.', '物业不存在或无效。'));
-          return;
-        }
-        setMsg(en ? 'Could not submit. Please try again later.' : '操作失败，请稍后重试。');
+      if (result.kind === 'duplicate_pending') {
+        setMsg(
+          rpcFriendlyText(
+            'You already have a pending request for this property.',
+            '你已提交过该物业的申请，请等待审核。',
+          ),
+        );
+        return;
+      }
+
+      if (
+        result.kind !== 'auto_approved' &&
+        result.kind !== 'pending_submitted' &&
+        result.kind !== 'already_member'
+      ) {
+        console.error('submit join failure kind:', result.kind, result.raw);
+        setMsg(rpcFriendlyText('Could not submit. Please try again later.', '操作失败，请稍后重试。'));
         return;
       }
 
       setCodeMatchHint(null);
+
+      if (result.kind === 'already_member') {
+        setMsg(rpcFriendlyText('You are already a member of this property.', '你已经是该物业成员，无需重复申请。'));
+        return;
+      }
 
       if (result.kind === 'auto_approved' && result.propertyId) {
         clearPropertyEntryDraft();
