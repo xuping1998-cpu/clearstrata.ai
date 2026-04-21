@@ -16,7 +16,7 @@ import { submitUnifiedPropertyEntry } from '../lib/propertyEntryUnified';
 import { trackPropertyEntryEvent } from '../lib/propertyEntryEvents';
 import { demoEntryPath, MARKETING_DEMO_PROPERTY_CODE } from '@/lib/propertyEntryRoutes';
 import { saveGuestExperienceDraft } from '@/lib/guestExperienceDraft';
-import { clearPropertyEntryDraft, savePropertyEntryDraft } from '@/lib/propertyEntryDraft';
+import { clearPropertyEntryDraft } from '@/lib/propertyEntryDraft';
 import type { SubmitUnifiedPropertyEntryResult } from '../lib/propertyEntryUnified';
 import { consumePendingRedirect } from '../lib/pendingRedirect';
 
@@ -308,19 +308,13 @@ export function Auth() {
 
   const handlePropertyEnter = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('[Auth] handlePropertyEnter triggered');
     setError('');
     setResetSuccess('');
     const code = (epCode.trim() || searchParams.get('propertyCode')?.trim() || '').trim();
     const n = epName.trim();
     const em = epEmail.trim().toLowerCase();
     const u = epUnit.trim();
-
-    console.log('[Auth] entry form payload', {
-      propertyCode: code || null,
-      name: n || null,
-      email: em || null,
-      unit: u || null,
-    });
 
     if (!n || !em || !u) {
       setError(language === 'zh' ? '请填写姓名、邮箱与房号。' : 'Please fill in all required fields.');
@@ -338,6 +332,13 @@ export function Auth() {
       );
       return;
     }
+
+    console.log('[Auth] entry form payload', {
+      propertyCode: code || null,
+      name: n || null,
+      email: em || null,
+      unit: u || null,
+    });
 
     setEpBusy(true);
     try {
@@ -362,23 +363,12 @@ export function Auth() {
         return;
       }
 
-      savePropertyEntryDraft({
-        fullName: n,
-        email: em,
-        unitNumber: u,
-        propertyId: pid,
-        propertyCode: code,
-      });
-
       const inviteFromUrl =
         searchParams.get('inviteCode')?.trim() ||
         searchParams.get('invite_code')?.trim() ||
         searchParams.get('code')?.trim() ||
         null;
       const sourceFromUrl = searchParams.get('source')?.trim() || 'web';
-
-      const entryPath = `/entry?propertyId=${encodeURIComponent(pid)}&propertyCode=${encodeURIComponent(code)}&source=web`;
-      console.log('[Auth] entry redirect target (flow uses submit in-page then home/pending)', { entryPath });
 
       const langPref = language === 'zh' ? 'zh' : 'en';
 
@@ -392,17 +382,15 @@ export function Auth() {
         console.log('[Auth] entry session: already signed in', { userId });
       } else {
         const pwd = generateSecureEntryPassword();
-        console.log('[Auth] entry signUp start', { email: em });
-        try {
-          const newUser = await signUp(em, pwd, n, '', u);
-          console.log('[Auth] entry signUp result', { userId: newUser?.id ?? null, error: null });
-        } catch (signUpErr: unknown) {
-          const msg = getAuthErrorMessage(signUpErr, language === 'zh' ? 'zh' : 'en');
-          const raw =
-            signUpErr && typeof signUpErr === 'object' && 'message' in signUpErr
-              ? String((signUpErr as { message?: string }).message)
-              : '';
-          console.error('[Auth] entry signUp result', { error: signUpErr, message: raw });
+
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          email: em,
+          password: pwd,
+        });
+        console.log('[Auth] entry signUp result', { data: signUpData, error: signUpError });
+
+        if (signUpError) {
+          const raw = String(signUpError.message ?? '');
           const dup =
             raw.toLowerCase().includes('already') ||
             raw.toLowerCase().includes('registered') ||
@@ -415,8 +403,28 @@ export function Auth() {
             );
             return;
           }
-          setError(msg);
+          setError(getAuthErrorMessage(signUpError, language === 'zh' ? 'zh' : 'en'));
           return;
+        }
+
+        if (signUpData.user) {
+          const { error: profileError } = await supabase.from('profiles').insert({
+            id: signUpData.user.id,
+            email: em,
+            full_name_en: n,
+            full_name_zh: '',
+            role: 'owner',
+            status: 'pending',
+            unit_number: u,
+            preferred_language: 'en',
+          });
+          if (profileError && !String(profileError.message ?? '').toLowerCase().includes('duplicate')) {
+            console.error('[Auth] entry profile insert', profileError);
+            setError(
+              language === 'zh' ? '无法保存资料，请稍后重试。' : 'Could not save your profile. Try again later.',
+            );
+            return;
+          }
         }
 
         const {
@@ -429,10 +437,7 @@ export function Auth() {
             email: em,
             password: pwd,
           });
-          console.log('[Auth] entry signIn/signInWithPassword result', {
-            userId: signInData.session?.user?.id ?? null,
-            error: signInErr?.message ?? null,
-          });
+          console.log('[Auth] entry signInWithPassword result', { data: signInData, error: signInErr });
           if (signInErr || !signInData.session?.user?.id) {
             const hint =
               signInErr?.message ||
@@ -459,14 +464,6 @@ export function Auth() {
         userId,
       });
 
-      console.log('[Auth] entry auto continue payload', {
-        propertyId: pid,
-        propertyCode: code,
-        unitNumber: u,
-        userId,
-        entryPath,
-      });
-
       const entryResult = await submitUnifiedPropertyEntry(supabase, {
         userId,
         p_property_id: pid,
@@ -487,8 +484,41 @@ export function Auth() {
 
       console.log('[Auth] entry unified result', entryResult);
 
-      clearPropertyEntryDraft();
-      await navigateAfterUnifiedPropertyEntry(entryResult);
+      if (entryResult.kind === 'rpc_error') {
+        const dup =
+          entryResult.transportError?.code === '23505' ||
+          (entryResult.transportError?.message ?? '').toLowerCase().includes('duplicate') ||
+          (entryResult.transportError?.message ?? '').includes('uniq_pending_request');
+        if (dup) {
+          clearPropertyEntryDraft();
+          navigate('/join/pending', { replace: true });
+          return;
+        }
+        setError(
+          entryResult.message ??
+            entryResult.transportError?.message ??
+            (language === 'zh' ? '请求失败。' : 'Request failed.'),
+        );
+        return;
+      }
+
+      if (entryResult.kind === 'duplicate_pending' || entryResult.kind === 'pending_submitted') {
+        clearPropertyEntryDraft();
+        navigate('/join/pending', { replace: true });
+        return;
+      }
+
+      if (entryResult.kind === 'auto_approved' || entryResult.kind === 'already_member') {
+        clearPropertyEntryDraft();
+        persistCurrentPropertyId(String(entryResult.propertyId));
+        navigate(`/dashboard?propertyId=${encodeURIComponent(String(entryResult.propertyId))}`, { replace: true });
+        return;
+      }
+
+      setError(
+        entryResult.message ??
+          (language === 'zh' ? '无法完成加入申请。' : 'Could not complete join.'),
+      );
     } catch (err) {
       console.error('[Auth] handlePropertyEnter', err);
       setError(getAuthErrorMessage(err, language === 'zh' ? 'zh' : 'en'));
