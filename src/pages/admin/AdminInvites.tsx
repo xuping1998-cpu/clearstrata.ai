@@ -58,13 +58,33 @@ function inviteStatusBadgeClass(s: InviteDisplayStatus): string {
   }
 }
 
+/** `<input type="datetime-local" />` → timestamptz for `create_property_invite`; empty → null */
+function expiresLocalToIsoOrNull(local: string): string | null {
+  const t = local?.trim() ?? '';
+  if (!t) return null;
+  const d = new Date(t);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
+/**
+ * `property_invites.max_uses` is NOT NULL (see migrations). "Unlimited" is represented as 0 server-side;
+ * RPC uses GREATEST(p_max_uses, 0). Do not send SQL NULL from the client for this column.
+ */
+function maxUsesForRpc(raw: number): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  if (n === 0) return 0;
+  return Math.floor(n);
+}
+
 const INVITE_ROLES: UserRole[] = ['owner', 'tenant', 'viewer', 'manager', 'council'];
 
 export function AdminInvites() {
   const { language } = useLanguage();
   const en = language === 'en';
-  const { profile } = useAuth();
-  const { currentPropertyId } = useProperty();
+  const { user } = useAuth();
+  const { currentPropertyId, ready } = useProperty();
 
   const [rows, setRows] = useState<InviteRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -86,7 +106,7 @@ export function AdminInvites() {
       .eq('property_id', currentPropertyId)
       .order('created_at', { ascending: false });
     if (error) {
-      console.error(error);
+      console.error('load property_invites error:', error);
       setBanner(en ? 'Failed to load invites.' : '加载邀请码失败。');
     } else {
       setRows((data as InviteRow[]) ?? []);
@@ -102,13 +122,13 @@ export function AdminInvites() {
   const inviteBase = typeof window !== 'undefined' ? `${window.location.origin}/invite` : '/invite';
 
   const create = async () => {
-    if (!currentPropertyId || !profile) return;
+    if (!ready || !currentPropertyId || !user?.id) return;
     setCreating(true);
     setBanner(null);
     setLastLink(null);
 
     const pid = String(currentPropertyId).trim();
-    console.log('currentPropertyId', pid, pid?.length);
+    console.log('[AdminInvites] create_property_invite property_id', pid, 'created_by (client session)', user.id);
 
     const uuid36 =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(pid) && pid.length === 36;
@@ -122,16 +142,14 @@ export function AdminInvites() {
       return;
     }
 
-    const payload: {
-      p_property_id: string;
-      p_role: UserRole;
-      p_max_uses: number;
-      p_expires_at: null;
-    } = {
+    const p_max_uses = maxUsesForRpc(maxUses);
+    const p_expires_at = expiresLocalToIsoOrNull(expiresLocal);
+
+    const payload = {
       p_property_id: pid,
       p_role: role,
-      p_max_uses: Number(maxUses) || 0,
-      p_expires_at: null,
+      p_max_uses,
+      p_expires_at,
     };
 
     console.log('create_property_invite payload', payload);
@@ -140,6 +158,7 @@ export function AdminInvites() {
     setCreating(false);
 
     if (error) {
+      console.error('create invite error:', error);
       const full = [error.message, (error as { hint?: string }).hint, (error as { details?: string }).details]
         .filter(Boolean)
         .join('\n');
@@ -148,6 +167,7 @@ export function AdminInvites() {
     }
     const d = data as { ok?: boolean; code?: string; error?: string; id?: string };
     if (!d?.ok) {
+      console.error('create_property_invite business error:', d);
       setBanner(d?.error ?? (en ? 'Create failed.' : '创建失败。'));
       return;
     }
@@ -176,6 +196,7 @@ export function AdminInvites() {
     });
     setDisablingId(null);
     if (error) {
+      console.error('disable_property_invite error:', error);
       alert(error.message);
       return;
     }
@@ -195,6 +216,8 @@ export function AdminInvites() {
       return iso;
     }
   };
+
+  const canGenerate = ready && !!currentPropertyId && !!user?.id;
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6">
@@ -259,7 +282,7 @@ export function AdminInvites() {
           <button
             type="button"
             onClick={() => void create()}
-            disabled={creating || !currentPropertyId}
+            disabled={creating || !canGenerate}
             className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-[#1D9E75] text-white font-semibold text-sm hover:bg-[#178a66] disabled:opacity-50"
           >
             {creating ? <Loader2 className="animate-spin" size={18} /> : null}

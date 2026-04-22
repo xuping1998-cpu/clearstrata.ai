@@ -236,7 +236,7 @@ export function JoinInvitePage() {
     try {
       const result = await submitUnifiedPropertyEntry(supabase, {
         userId: session.user.id,
-        p_property_id: null,
+        p_property_id: invite?.property_id ?? null,
         p_requested_role: 'owner',
         p_unit_number: null,
         p_note: null,

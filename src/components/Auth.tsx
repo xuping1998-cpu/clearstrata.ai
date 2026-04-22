@@ -175,22 +175,103 @@ function generateSecureEntryPassword(): string {
 type MainTab = 'guest' | 'property';
 type LegacyOpen = 'none' | 'login' | 'signup';
 
-type PendingEntryPayload = {
+/** 进入物业待恢复（sessionStorage + localStorage 镜像，供 App 无物业 guard 识别 `pendingEntry`） */
+type PendingPropertyEnterPayload = {
   propertyCode: string;
   name: string;
   email: string;
   unit: string;
+  propertyId?: string | null;
+  inviteCode?: string | null;
+  source?: string;
+  pendingAction?: 'property_enter';
 };
 
 const PENDING_ENTRY_KEY = 'pendingEntry';
+const SESSION_PENDING_PROPERTY_ENTER_KEY = 'clearstrata_pending_property_enter';
 
-function clearPendingEntryAfterSuccess(kind: string) {
-  console.log('[Auth] clear pendingEntry after success kind', kind);
+function readPendingPropertyEnterRaw(): string | null {
+  try {
+    const s = sessionStorage.getItem(SESSION_PENDING_PROPERTY_ENTER_KEY);
+    if (s) return s;
+  } catch {
+    /* ignore */
+  }
+  try {
+    return localStorage.getItem(PENDING_ENTRY_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function parsePendingPropertyEnterFromString(raw: string): PendingPropertyEnterPayload | null {
+  try {
+    const parsed = JSON.parse(raw) as Partial<PendingPropertyEnterPayload>;
+    if (
+      typeof parsed.propertyCode !== 'string' ||
+      typeof parsed.name !== 'string' ||
+      typeof parsed.email !== 'string' ||
+      typeof parsed.unit !== 'string'
+    ) {
+      return null;
+    }
+    return {
+      propertyCode: parsed.propertyCode.trim(),
+      name: parsed.name.trim(),
+      email: parsed.email.trim().toLowerCase(),
+      unit: parsed.unit.trim(),
+      propertyId:
+        parsed.propertyId != null && String(parsed.propertyId).trim()
+          ? String(parsed.propertyId).trim().toLowerCase()
+          : null,
+      inviteCode:
+        parsed.inviteCode != null && String(parsed.inviteCode).trim()
+          ? String(parsed.inviteCode).trim()
+          : null,
+      source: typeof parsed.source === 'string' ? parsed.source.trim() : undefined,
+      pendingAction: parsed.pendingAction === 'property_enter' ? 'property_enter' : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function savePendingPropertyEnter(payload: PendingPropertyEnterPayload) {
+  const json = JSON.stringify(payload);
+  console.log('[Auth] saved pending enter payload', payload);
+  try {
+    sessionStorage.setItem(SESSION_PENDING_PROPERTY_ENTER_KEY, json);
+  } catch {
+    /* ignore */
+  }
+  try {
+    localStorage.setItem(PENDING_ENTRY_KEY, json);
+  } catch {
+    /* ignore */
+  }
+}
+
+function clearPendingPropertyEnter() {
+  try {
+    sessionStorage.removeItem(SESSION_PENDING_PROPERTY_ENTER_KEY);
+  } catch {
+    /* ignore */
+  }
   try {
     localStorage.removeItem(PENDING_ENTRY_KEY);
   } catch {
     /* ignore */
   }
+}
+
+function clearPendingEntryAfterSuccess(kind: string) {
+  console.log('[Auth] clear pendingEntry after success kind', kind);
+  clearPendingPropertyEnter();
+}
+
+function isUserAlreadyRegisteredSignUpError(message: string): boolean {
+  const m = message.toLowerCase();
+  return m.includes('user already registered') || (m.includes('already') && m.includes('registered'));
 }
 
 declare global {
@@ -251,57 +332,38 @@ export function Auth() {
   }, [searchParams]);
 
   useEffect(() => {
+    if (searchParams.get('resumePropertyEnter') !== '1') return;
+    setLegacyOpen('login');
+    setIsLogin(true);
+    setMainTab('property');
+    try {
+      const raw = readPendingPropertyEnterRaw();
+      const parsed = raw ? parsePendingPropertyEnterFromString(raw) : null;
+      if (parsed?.email) {
+        setEmail(parsed.email);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
     if (authLoading) return;
     if (!session?.user?.id) return;
     if (window.__authFromPropertyEnter) return;
 
-    const raw = (() => {
-      try {
-        return localStorage.getItem(PENDING_ENTRY_KEY);
-      } catch {
-        return null;
-      }
-    })();
+    const raw = readPendingPropertyEnterRaw();
     if (!raw) return;
     if (window.__entryResumed) return;
 
-    let data: PendingEntryPayload;
-    try {
-      const parsed = JSON.parse(raw) as Partial<PendingEntryPayload>;
-      if (
-        typeof parsed.propertyCode !== 'string' ||
-        typeof parsed.name !== 'string' ||
-        typeof parsed.email !== 'string' ||
-        typeof parsed.unit !== 'string'
-      ) {
-        try {
-          localStorage.removeItem(PENDING_ENTRY_KEY);
-        } catch {
-          /* ignore */
-        }
-        return;
-      }
-      data = {
-        propertyCode: parsed.propertyCode.trim(),
-        name: parsed.name.trim(),
-        email: parsed.email.trim().toLowerCase(),
-        unit: parsed.unit.trim(),
-      };
-    } catch {
-      try {
-        localStorage.removeItem(PENDING_ENTRY_KEY);
-      } catch {
-        /* ignore */
-      }
+    const data = parsePendingPropertyEnterFromString(raw);
+    if (!data) {
+      clearPendingPropertyEnter();
       return;
     }
 
     if (!data.propertyCode || !data.name || !data.email || !data.unit) {
-      try {
-        localStorage.removeItem(PENDING_ENTRY_KEY);
-      } catch {
-        /* ignore */
-      }
+      clearPendingPropertyEnter();
       return;
     }
 
@@ -316,13 +378,21 @@ export function Auth() {
           p_code: data.propertyCode,
         });
         if (cancelled) return;
-        if (rpcErr || rpcData == null) {
-          console.error('[Auth] resume: resolve_property_for_join_request', rpcErr);
-          return;
+
+        let pid = '';
+        if (!rpcErr && rpcData != null) {
+          const rows = Array.isArray(rpcData) ? rpcData : [rpcData];
+          pid = String((rows[0] as { id?: string } | undefined)?.id ?? '').trim();
         }
-        const rows = Array.isArray(rpcData) ? rpcData : [rpcData];
-        const pid = String((rows[0] as { id?: string } | undefined)?.id ?? '').trim();
+        if (!pid && data.propertyId && UUID_RE.test(String(data.propertyId))) {
+          pid = String(data.propertyId).toLowerCase();
+          console.log('[Auth] resume: using propertyId from pending payload (RPC missing)');
+        }
         if (!pid) {
+          console.error('[Auth] resume: resolve_property_for_join_request', rpcErr ?? 'empty id', {
+            rpcData,
+            storedPropertyId: data.propertyId ?? null,
+          });
           return;
         }
 
@@ -331,12 +401,20 @@ export function Auth() {
           searchParams.get('invite_code')?.trim() ||
           searchParams.get('code')?.trim() ||
           null;
-        const sourceFromUrl = searchParams.get('source')?.trim() || 'web';
+        const storedInvite = data.inviteCode ?? null;
+        const inviteForRpc = storedInvite ?? inviteFromUrl;
+        const sourceFromUrl = data.source ?? (searchParams.get('source')?.trim() || 'web');
         const langPref = language === 'zh' ? 'zh' : 'en';
+
+        console.log('[Auth] post-login resumed target', {
+          path: 'submitUnifiedPropertyEntry',
+          propertyId: pid,
+          pending: data,
+        });
 
         void trackPropertyEntryEvent(supabase, {
           propertyId: pid,
-          inviteCode: inviteFromUrl,
+          inviteCode: inviteForRpc,
           source: sourceFromUrl,
           eventType: 'auth_ok',
           userId: session.user.id,
@@ -351,7 +429,7 @@ export function Auth() {
           p_full_name: data.name,
           p_email: data.email,
           p_phone: null,
-          p_invite_code: null,
+          p_invite_code: inviteForRpc,
           p_direct_invite_id: null,
           p_inferred_role: null,
           p_inferred_unit_number: null,
@@ -553,7 +631,9 @@ export function Auth() {
         searchParams.get('invite_code')?.trim() ||
         searchParams.get('code')?.trim() ||
         null;
-      const sourceFromUrl = searchParams.get('source')?.trim() || 'web';
+      const sourceForEntry =
+        searchParams.get('source')?.trim() ||
+        (typeof window !== 'undefined' && window.location.pathname.includes('/entry') ? 'qr' : 'entry');
 
       const langPref = language === 'zh' ? 'zh' : 'en';
 
@@ -567,21 +647,22 @@ export function Auth() {
         console.log('[Auth] entry session: already signed in', { userId });
       } else {
         window.__authFromPropertyEnter = true;
-        try {
-          localStorage.setItem(
-            PENDING_ENTRY_KEY,
-            JSON.stringify({
-              propertyCode: code,
-              name: n,
-              email: em,
-              unit: u,
-            } satisfies PendingEntryPayload),
-          );
-        } catch {
-          /* ignore */
-        }
+
+        const pendingBeforeSignUp: PendingPropertyEnterPayload = {
+          propertyCode: code,
+          propertyId: pid,
+          name: n,
+          email: em,
+          unit: u,
+          inviteCode: inviteFromUrl,
+          source: sourceForEntry,
+          pendingAction: 'property_enter',
+        };
+        savePendingPropertyEnter(pendingBeforeSignUp);
 
         const pwd = generateSecureEntryPassword();
+        const signUpPayloadLog = { email: em, password: '[redacted-auto-generated]' };
+        console.log('[Auth] entry signUp payload', signUpPayloadLog);
 
         const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
           email: em,
@@ -590,19 +671,31 @@ export function Auth() {
         console.log('[Auth] entry signUp result', { data: signUpData, error: signUpError });
 
         if (signUpError) {
-          const raw = String(signUpError.message ?? '');
-          const dup =
-            raw.toLowerCase().includes('already') ||
-            raw.toLowerCase().includes('registered') ||
-            raw.toLowerCase().includes('exists');
-          if (dup) {
+          const rawMsg = String(signUpError.message ?? '');
+          console.error('[Auth] entry signUp error', signUpError);
+          if (isUserAlreadyRegisteredSignUpError(rawMsg)) {
+            const pendingForLogin: PendingPropertyEnterPayload = {
+              propertyCode: code,
+              propertyId: pid,
+              name: n,
+              email: em,
+              unit: u,
+              inviteCode: inviteFromUrl,
+              source: sourceForEntry,
+              pendingAction: 'property_enter',
+            };
+            savePendingPropertyEnter(pendingForLogin);
+            const resumeTarget = '/login?resumePropertyEnter=1';
+            console.log('[Auth] post-login resumed target', { path: resumeTarget, pending: pendingForLogin });
             setError(
               language === 'zh'
-                ? '该邮箱已注册。请使用页面下方「直接登录」登录后，再点击「进入物业」。'
-                : 'This email is already registered. Sign in below, then tap Join property again.',
+                ? '该邮箱已注册，请先登录，我们会在登录后继续你的入楼申请。'
+                : 'This email is already registered. Please sign in below — we will continue your building application after you log in.',
             );
+            navigate(resumeTarget, { replace: true });
             return;
           }
+          clearPendingPropertyEnter();
           setError(getAuthErrorMessage(signUpError, language === 'zh' ? 'zh' : 'en'));
           return;
         }
@@ -620,6 +713,7 @@ export function Auth() {
           });
           if (profileError && !String(profileError.message ?? '').toLowerCase().includes('duplicate')) {
             console.error('[Auth] entry profile insert', profileError);
+            clearPendingPropertyEnter();
             setError(
               language === 'zh' ? '无法保存资料，请稍后重试。' : 'Could not save your profile. Try again later.',
             );
@@ -661,7 +755,7 @@ export function Auth() {
       void trackPropertyEntryEvent(supabase, {
         propertyId: pid,
         inviteCode: inviteFromUrl,
-        source: sourceFromUrl,
+        source: sourceForEntry,
         eventType: 'auth_ok',
         userId,
       });
@@ -671,17 +765,17 @@ export function Auth() {
         p_property_id: pid,
         p_requested_role: 'owner',
         p_unit_number: u.trim(),
-        p_note: `auth_property_enter|source=${sourceFromUrl}|propertyCode=${encodeURIComponent(code)}`,
+        p_note: `auth_property_enter|source=${sourceForEntry}|propertyCode=${encodeURIComponent(code)}`,
         p_full_name: n.trim(),
         p_email: em,
         p_phone: null,
-        p_invite_code: null,
+        p_invite_code: inviteFromUrl,
         p_direct_invite_id: null,
         p_inferred_role: null,
         p_inferred_unit_number: null,
         p_move_in_date: null,
         p_language_pref: langPref,
-        entrySource: sourceFromUrl,
+        entrySource: sourceForEntry,
       });
 
       console.log('[Auth] entry unified result', entryResult);

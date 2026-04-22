@@ -1,4 +1,4 @@
-﻿-- Unified JSON shape for submit_join_request (ok, kind, message, property_id, request_id, invite_code, unit_no, role, membership_status).
+-- Unified JSON shape for submit_join_request (ok, kind, message, property_id, request_id, invite_code, unit_no, role, membership_status).
 
 CREATE OR REPLACE FUNCTION public._submit_join_unified_response(
   p_ok boolean,

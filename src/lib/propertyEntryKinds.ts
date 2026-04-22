@@ -1,6 +1,6 @@
 /**
- * Standard `kind` values returned by RPC `submit_join_request` (JSON object).
- * Keep in sync with DB migration defining `_submit_join_unified_response` / `submit_join_request`.
+ * Standard `kind` values for unified property entry (legacy RPC shape; now produced by
+ * `submitUnifiedPropertyEntry` from `join_requests` insert + optional `enter_property_by_invite`).
  */
 
 export const SUBMIT_JOIN_SUCCESS_KINDS = ['auto_approved', 'pending_submitted', 'already_member'] as const;
@@ -32,7 +32,7 @@ export type SubmitJoinRequestRpcRow = {
   property_id: string | null;
   request_id: string | null;
   invite_code: string | null;
-  unit_no: string | null;
+  unit_number: string | null;
   role: string | null;
   membership_status: string | null;
 };

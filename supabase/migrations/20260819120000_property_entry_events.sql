@@ -23,12 +23,14 @@ create index if not exists property_entry_events_event_type_created_at_idx
 alter table public.property_entry_events enable row level security;
 
 -- Pre-auth `/entry?propertyId=` needs `opened` before session exists.
+drop policy if exists "property_entry_events_insert_anon" on public.property_entry_events;
 create policy "property_entry_events_insert_anon"
   on public.property_entry_events
   for insert
   to anon
   with check (true);
 
+drop policy if exists "property_entry_events_insert_authenticated" on public.property_entry_events;
 create policy "property_entry_events_insert_authenticated"
   on public.property_entry_events
   for insert
