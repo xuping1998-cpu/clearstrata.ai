@@ -897,6 +897,7 @@ export function Auth() {
           }
         }
 
+        if (safeRedirectAfterAuth()) return;
         const pendingAfterLogin = consumePendingRedirect();
         if (pendingAfterLogin) {
           navigate(pendingAfterLogin, { replace: true });
@@ -908,7 +909,6 @@ export function Auth() {
           navigate('/', { replace: true });
           return;
         }
-        if (safeRedirectAfterAuth()) return;
       } else {
         const user = await signUp(email, password, fullNameEn, fullNameZh, unitNumber);
 

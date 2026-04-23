@@ -40,7 +40,7 @@ export function QrPropertyEntryPage() {
   const [searchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const { session, user } = useAuth();
+  const { session, user, loading: authLoading } = useAuth();
   const { language } = useLanguage();
   const en = language === 'en';
   const { setCurrentPropertyId, refreshMemberships } = useProperty();
@@ -80,13 +80,21 @@ export function QrPropertyEntryPage() {
   const hasSubmittedRef = useRef(false);
   const openedLoggedRef = useRef(false);
 
+  /** 物业已解析且链接有效、且未登录时强制进 /login；无效链接保留在 /entry 展示错误页。 */
+  useEffect(() => {
+    if (authLoading) return;
+    if (session?.user) return;
+    if (resolving) return;
+    if (resolveErr || !resolved) return;
+    const redirectTo = location.pathname + location.search;
+    navigate(`/login?redirect=${encodeURIComponent(redirectTo)}`, { replace: true });
+  }, [authLoading, session, location.pathname, location.search, navigate, resolving, resolveErr, resolved]);
+
   useEffect(() => {
     if (!toast) return;
     const t = window.setTimeout(() => setToast(null), 7000);
     return () => window.clearTimeout(t);
   }, [toast]);
-
-  const redirectBack = `${location.pathname}${location.search}`;
 
   useEffect(() => {
     let cancelled = false;
@@ -284,8 +292,6 @@ export function QrPropertyEntryPage() {
     refreshMemberships,
   ]);
 
-  const loginHref = `/?redirect=${encodeURIComponent(redirectBack || '/entry')}`;
-
   if (resolving) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-clearstrata-ui-soft/40 to-gray-50 flex flex-col items-center justify-center p-6">
@@ -303,6 +309,15 @@ export function QrPropertyEntryPage() {
         <Link to="/" className="mt-6 text-clearstrata-ui-primary font-medium text-sm">
           {en ? 'Home' : '返回首页'}
         </Link>
+      </div>
+    );
+  }
+
+  if (!authLoading && !session?.user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-clearstrata-ui-soft/40 to-gray-50 flex flex-col items-center justify-center p-6">
+        <Loader2 className="w-10 h-10 text-clearstrata-ui-primary animate-spin" aria-hidden />
+        <p className="mt-4 text-sm text-gray-500">{en ? 'Sign in required…' : '正在前往登录…'}</p>
       </div>
     );
   }
@@ -329,15 +344,6 @@ export function QrPropertyEntryPage() {
             ? 'After you sign in, your join request is submitted automatically. You will be redirected when it completes.'
             : '登录后将自动提交入楼申请，完成后会跳转，无需再点按钮。'}
         </p>
-
-        {!session && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-            {en ? 'Sign in to continue.' : '请先登录后继续。'}
-            <Link to={loginHref} className="block mt-2 font-semibold text-clearstrata-ui-primary">
-              {en ? 'Sign in' : '去登录'}
-            </Link>
-          </div>
-        )}
 
         {session && autoSubmitting && (
           <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-800 inline-flex items-center gap-2">
