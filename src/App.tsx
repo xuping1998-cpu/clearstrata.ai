@@ -54,7 +54,6 @@ import { UnitWhitelistPage } from './pages/property-admin/UnitWhitelistPage';
 import { PropertyAdminInvites } from './pages/property-admin/PropertyAdminInvites';
 import { PropertyInviteAnalytics } from './pages/property-admin/PropertyInviteAnalytics';
 import { PropertyTaskDetail } from './pages/property-admin/PropertyTaskDetail';
-import { AdminInvites } from './pages/admin/AdminInvites';
 import { AdminInviteCodes } from './pages/admin/AdminInviteCodes';
 import AdminJoinRequests from './pages/admin/AdminJoinRequests';
 import { JoinAccessGate } from './pages/JoinAccessGate';
@@ -175,10 +174,11 @@ function AdminStaffRoute({
   return <>{children}</>;
 }
 
+/** `/admin/invites` 与 `/admin/invite-codes` 同载 B 方案（公开邀请管理）；旧 A 页面见 `AdminInvites.tsx` LEGACY。 */
 function AdminInvitesRoute() {
   return (
     <AdminStaffRoute canAccess={canManagePropertyInvites}>
-      <AdminInvites />
+      <AdminInviteCodes />
     </AdminStaffRoute>
   );
 }

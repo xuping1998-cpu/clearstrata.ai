@@ -74,10 +74,10 @@ export function PropertySettingsPage() {
                     </Link>
                   </li>
                   <li>
-                    <Link to="/admin/invites" className="font-medium text-clearstrata-ui-primary hover:underline">
-                      链接型邀请码
+                    <Link to="/admin/invite-codes" className="font-medium text-clearstrata-ui-primary hover:underline">
+                      公开邀请管理
                     </Link>
-                    <span className="text-gray-500"> — 适用于 `/invite` 短链邀请</span>
+                    <span className="text-gray-500"> — 公开码与 `/entry?propertyId=…&inviteCode=…` 入楼</span>
                   </li>
                 </>
               ) : null}

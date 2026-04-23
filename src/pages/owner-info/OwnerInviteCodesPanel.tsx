@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Ban, Loader2, Plus, QrCode, Upload } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { InviteQRCode } from '../../components/InviteQRCode';
+import { buildPublicInviteEntryUrl } from '@/lib/publicInviteEntryUrl';
 
 type InviteRow = {
   id: string;
@@ -177,7 +178,7 @@ export function OwnerInviteCodesPanel({
   };
 
   const openQr = (row: InviteRow) => {
-    const url = `${entryBase}?propertyId=${encodeURIComponent(propertyId)}&inviteCode=${encodeURIComponent(row.code)}&source=qr`;
+    const url = buildPublicInviteEntryUrl(origin, propertyId, row.code, 'qr');
     setQrPayload({ title: row.label?.trim() || row.code, url });
     setQrOpen(true);
   };

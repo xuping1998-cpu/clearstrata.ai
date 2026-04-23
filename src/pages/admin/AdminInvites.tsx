@@ -1,3 +1,8 @@
+/**
+ * LEGACY — 方案 A：`property_invites`、`create_property_invite`、`/invite?code=`。
+ * 不再挂主路由；主流程公开邀请见 `AdminInviteCodes` + `property_invite_codes` + `/entry?propertyId&inviteCode`。
+ * 保留本文件仅便于对照旧链路与数据库行为，勿再把此 UI 接回主导航。
+ */
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Copy, Check, Loader2, Ban, Plus } from 'lucide-react';
@@ -80,7 +85,7 @@ function maxUsesForRpc(raw: number): number {
 
 const INVITE_ROLES: UserRole[] = ['owner', 'tenant', 'viewer', 'manager', 'council'];
 
-export function AdminInvites() {
+export function AdminInvitesLegacy() {
   const { language } = useLanguage();
   const en = language === 'en';
   const { user } = useAuth();
@@ -128,7 +133,7 @@ export function AdminInvites() {
     setLastLink(null);
 
     const pid = String(currentPropertyId).trim();
-    console.log('[AdminInvites] create_property_invite property_id', pid, 'created_by (client session)', user.id);
+    console.log('[AdminInvitesLegacy] create_property_invite property_id', pid, 'created_by (client session)', user.id);
 
     const uuid36 =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(pid) && pid.length === 36;

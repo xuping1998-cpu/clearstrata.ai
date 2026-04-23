@@ -30,7 +30,6 @@ import { UserNotificationToast } from './UserNotificationToast';
 import { DemoGeneratedDataProvider } from '../contexts/DemoGeneratedDataContext';
 import { DemoCreatePropertyCtaButton } from './onboarding/DemoCreatePropertyCta';
 import { realPropertyJoinPath } from '@/lib/propertyEntryRoutes';
-import { isPlatformAdmin } from '@/lib/permissions';
 
 interface LayoutProps {
   children: ReactNode;
@@ -174,7 +173,6 @@ export function Layout({ children }: LayoutProps) {
   );
 
   const showSystemSection = !isDemoMode && !isDemoPropertyMock && systemNavItems.length > 0;
-  const showPlatformSection = !isDemoMode && !isDemoPropertyMock && Boolean(session) && isPlatformAdmin(profile as any);
 
   const renderSystemNavButton = useCallback(
     (path: string, Icon: LucideIcon, label: string) => {
@@ -187,7 +185,9 @@ export function Layout({ children }: LayoutProps) {
               location.pathname.startsWith('/property-admin/unit-whitelist') ||
               location.pathname.startsWith('/property-admin/invite-analytics') ||
               location.pathname.startsWith('/property-admin/invites') ||
-              location.pathname.startsWith('/property-admin/tasks')
+              location.pathname.startsWith('/property-admin/tasks') ||
+              location.pathname.startsWith('/admin/invite-codes') ||
+              location.pathname.startsWith('/admin/invites')
             : location.pathname === path;
       return (
         <button
@@ -489,30 +489,6 @@ export function Layout({ children }: LayoutProps) {
                       </p>
                       <div className="space-y-1">
                         {systemNavItems.map((item) => renderSystemNavButton(item.path, item.icon, item.label))}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {showPlatformSection ? (
-                    <div className="border-t border-gray-200 px-3 py-5 pb-8">
-                      <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 text-center">
-                        {language === 'en' ? 'Platform admin' : '平台管理'}
-                      </p>
-                      <div className="mt-2 flex flex-wrap justify-center gap-2">
-                        <Link
-                          to="/admin/overview"
-                          className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-900 hover:bg-gray-50"
-                          onClick={() => setMobileMenuOpen(false)}
-                        >
-                          {language === 'en' ? 'Overview' : '平台总览'}
-                        </Link>
-                        <Link
-                          to="/admin/leads"
-                          className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-900 hover:bg-gray-50"
-                          onClick={() => setMobileMenuOpen(false)}
-                        >
-                          {language === 'en' ? 'Sales leads' : '销售线索'}
-                        </Link>
                       </div>
                     </div>
                   ) : null}

@@ -136,7 +136,7 @@ async function claimPropertyFromUrlIfPresent(): Promise<string | null> {
   return String(data);
 }
 
-/** After /demo/BCS3736 signup: membership on public demo property only (server-enforced). */
+/** After /demo/BCS3736 signup: server records a leads row; does not add property_members or set current property. */
 async function claimPublicDemoPropertyAfterSignUp(): Promise<string | null> {
   let gid: string | null = null;
   try {
@@ -156,7 +156,6 @@ async function claimPublicDemoPropertyAfterSignUp(): Promise<string | null> {
   if (data == null) return null;
   const pid = String(data);
   clearPublicDemoLocalStorage();
-  persistCurrentPropertyId(pid);
   return pid;
 }
 

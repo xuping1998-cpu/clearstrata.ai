@@ -1,5 +1,6 @@
 import { FormEvent, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import {
   buildDemoGenerationSeed,
@@ -15,6 +16,7 @@ import { DemoCreatePropertyCtaCard } from '@/components/onboarding/DemoCreatePro
  * 成交演示页：`/demo-overview`。数据由生成器按 propertyId + unit + visitor 种子计算。
  */
 export function DemoOverviewPage() {
+  const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const propertyId = useMemo(() => searchParams.get('propertyId')?.trim() || '', [searchParams]);
   const unitHint = useMemo(() => searchParams.get('unit')?.trim() || '', [searchParams]);
@@ -64,6 +66,10 @@ export function DemoOverviewPage() {
       setFormError('请填写姓名和邮箱。');
       return;
     }
+    if (!user?.id) {
+      setFormError('请登录后再提交。');
+      return;
+    }
     setSubmitting(true);
     try {
       const { error } = await supabase.from('leads').insert({
@@ -74,6 +80,7 @@ export function DemoOverviewPage() {
         message: 'demo-overview / 联系业委会或完整报告',
         building: unitHint ? `扫码成交页 · 房号 ${unitHint}` : '扫码成交页',
         units: unitHint || null,
+        created_by: user.id,
       });
       if (error) {
         console.error('leads insert', error);

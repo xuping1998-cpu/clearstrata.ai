@@ -383,7 +383,7 @@ export function JoinRequestsReviewPanel({ embedded = false }: JoinRequestsReview
         </p>
         <p className="text-red-800/90 text-xs">
           {en ? 'Your role on this property' : '当前物业角色'}: {String(reviewRole ?? '—')} (
-          {en ? 'required' : '需要'}: property_admin / council / manager / admin)
+          {en ? 'required' : '需要'}: council)
         </p>
       </div>
     );
@@ -527,7 +527,7 @@ export function JoinRequestsReviewPanel({ embedded = false }: JoinRequestsReview
                   </button>
                   <button
                     type="button"
-                    disabled={actingId === r.id || !user?.id}
+                    disabled={actingId === r.id || !user?.id || !canApproveRequests}
                     onClick={() => openReject(r.id)}
                     className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-gray-100 text-gray-800 text-sm font-semibold hover:bg-gray-200 disabled:opacity-50"
                   >

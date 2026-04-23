@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Ban, Loader2, Plus, QrCode } from 'lucide-react';
+import { Ban, Loader2, Plus, QrCode, Copy, Check } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useProperty } from '../../contexts/PropertyContext';
 import { supabase } from '../../lib/supabase';
 import { BackButton } from '../../components/BackButton';
 import { InviteQRCode } from '../../components/InviteQRCode';
+import { buildPublicInviteEntryUrl } from '@/lib/publicInviteEntryUrl';
 
 type InviteCodeRow = {
   id: string;
@@ -14,10 +15,19 @@ type InviteCodeRow = {
   used_count: number;
   max_uses: number;
   is_active: boolean;
+  expires_at: string | null;
 };
 
 function generateCode(): string {
   return Math.random().toString(36).substring(2, 8);
+}
+
+function expiresLocalToIsoOrNull(local: string): string | null {
+  const t = local?.trim() ?? '';
+  if (!t) return null;
+  const d = new Date(t);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
 }
 
 export function AdminInviteCodes() {
@@ -33,27 +43,26 @@ export function AdminInviteCodes() {
 
   const [newLabel, setNewLabel] = useState('');
   const [newMaxUses, setNewMaxUses] = useState(5);
+  const [newExpiresLocal, setNewExpiresLocal] = useState('');
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   const [qrOpen, setQrOpen] = useState(false);
   const [qrPayload, setQrPayload] = useState<{ title: string; url: string } | null>(null);
 
-  const inviteBase = useMemo(
-    () => (typeof window !== 'undefined' ? `${window.location.origin}/join` : '/join'),
-    [],
-  );
+  const origin = useMemo(() => (typeof window !== 'undefined' ? window.location.origin : ''), []);
 
   const load = useCallback(async () => {
     if (!currentPropertyId) return;
     setLoading(true);
     const { data, error } = await supabase
       .from('property_invite_codes')
-      .select('id, code, label, used_count, max_uses, is_active')
+      .select('id, code, label, used_count, max_uses, is_active, expires_at')
       .eq('property_id', currentPropertyId)
       .order('created_at', { ascending: false });
 
     if (error) {
       console.error(error);
-      setBanner(en ? 'Failed to load invite codes.' : '加载邀请码失败。');
+      setBanner(en ? 'Failed to load public invites.' : '加载公开邀请失败。');
       setRows([]);
     } else {
       setRows((data as InviteCodeRow[]) ?? []);
@@ -66,16 +75,35 @@ export function AdminInviteCodes() {
     void load();
   }, [load]);
 
+  const entryUrlForRow = (row: InviteCodeRow): string | null => {
+    const pid = currentPropertyId?.trim();
+    if (!pid) return null;
+    return buildPublicInviteEntryUrl(origin, pid, row.code, 'qr');
+  };
+
   const openQrModal = (row: InviteCodeRow) => {
-    const pid = currentPropertyId ?? '';
-    const url = pid
-      ? `${typeof window !== 'undefined' ? window.location.origin : ''}/entry?propertyId=${encodeURIComponent(pid)}&inviteCode=${encodeURIComponent(row.code)}&source=qr`
-      : `${inviteBase}?code=${encodeURIComponent(row.code)}`;
+    const url = entryUrlForRow(row);
+    if (!url) {
+      setBanner(en ? 'Select a property first.' : '请先选择物业。');
+      return;
+    }
     setQrPayload({
       title: row.label?.trim() || row.code,
       url,
     });
     setQrOpen(true);
+  };
+
+  const copyEntryLink = async (row: InviteCodeRow, key: string) => {
+    const url = entryUrlForRow(row);
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey(null), 2000);
+    } catch {
+      setBanner(en ? 'Copy failed.' : '复制失败');
+    }
   };
 
   const createNew = async () => {
@@ -84,6 +112,7 @@ export function AdminInviteCodes() {
     setBanner(null);
 
     const maxUses = Number.isFinite(newMaxUses) ? Math.max(0, Math.floor(newMaxUses)) : 1;
+    const expiresAt = expiresLocalToIsoOrNull(newExpiresLocal);
 
     for (let attempt = 0; attempt < 8; attempt++) {
       const code = generateCode();
@@ -94,12 +123,14 @@ export function AdminInviteCodes() {
         max_uses: maxUses,
         used_count: 0,
         is_active: true,
+        expires_at: expiresAt,
       });
 
       if (!error) {
         setNewLabel('');
         setNewMaxUses(5);
-        setBanner(en ? 'Invite code created.' : '邀请码已创建。');
+        setNewExpiresLocal('');
+        setBanner(en ? 'Public invite code created.' : '公开邀请码已创建。');
         setCreating(false);
         void load();
         return;
@@ -134,21 +165,30 @@ export function AdminInviteCodes() {
     void load();
   };
 
+  const fmtExp = (iso: string | null) => {
+    if (!iso) return '—';
+    try {
+      return new Date(iso).toLocaleString(en ? 'en-CA' : 'zh-CN');
+    } catch {
+      return iso;
+    }
+  };
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-6">
       <BackButton />
       <div className="mb-6 mt-2">
         <h1 className="text-2xl font-bold text-gray-900">
-          {en ? 'Invite codes (QR)' : '邀请码（二维码）'}
+          {en ? 'Public Invite Management' : '公开邀请管理'}
         </h1>
         <p className="mt-1 text-sm text-gray-600">
           {en
-            ? 'Manage labeled invite codes and share QR links for this property.'
-            : '管理带标签的邀请码，并生成本物业的二维码分享链接。'}
+            ? 'Create public codes (property_invite_codes). Share the /entry link for roster binding and join flow.'
+            : '管理公开邀请码（property_invite_codes）。分享 /entry 链接，用于扫码入楼与入楼申请。'}
         </p>
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
-          <Link to="/admin/invites" className="font-medium text-[#1D9E75] hover:underline">
-            {en ? 'Classic invites' : '经典邀请码'}
+          <Link to="/property-admin/invites" className="font-medium text-[#1D9E75] hover:underline">
+            {en ? 'Direct Invite Management' : '定向邀请管理'}
           </Link>
           <Link to="/admin/join-requests" className="font-medium text-[#1D9E75] hover:underline">
             {en ? 'Join requests' : '加入申请审核'}
@@ -165,9 +205,9 @@ export function AdminInviteCodes() {
       <div className="mb-8 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
         <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-900">
           <Plus size={20} className="text-[#1D9E75]" />
-          {en ? 'New invite code' : '新建邀请码'}
+          {en ? 'Create public invite code' : '创建公开邀请码'}
         </h2>
-        <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end">
+        <div className="flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-end">
           <label className="flex min-w-[200px] flex-1 flex-col gap-1 text-sm">
             <span className="text-gray-700">{en ? 'Label' : '标签'}</span>
             <input
@@ -187,6 +227,16 @@ export function AdminInviteCodes() {
               onChange={(e) => setNewMaxUses(Number(e.target.value))}
               className="rounded-lg border border-gray-300 px-3 py-2"
             />
+            <span className="text-[11px] text-gray-400">{en ? '0 = unlimited' : '0 表示不限'}</span>
+          </label>
+          <label className="flex min-w-[200px] flex-1 flex-col gap-1 text-sm">
+            <span className="text-gray-700">{en ? 'Expires (local, optional)' : '过期时间（本地，可选）'}</span>
+            <input
+              type="datetime-local"
+              value={newExpiresLocal}
+              onChange={(e) => setNewExpiresLocal(e.target.value)}
+              className="rounded-lg border border-gray-300 px-3 py-2"
+            />
           </label>
           <button
             type="button"
@@ -200,8 +250,8 @@ export function AdminInviteCodes() {
         </div>
         <p className="mt-2 text-xs text-gray-500">
           {en
-            ? 'Code is generated automatically (6 alphanumeric characters).'
-            : '邀请码将自动生成（6 位字母数字）。'}
+            ? 'Code is auto-generated (6 chars). Entry link format: /entry?propertyId=…&inviteCode=…'
+            : '邀请码自动生成（6 位）。链接格式：/entry?propertyId=…&inviteCode=…'}
         </p>
       </div>
 
@@ -211,8 +261,8 @@ export function AdminInviteCodes() {
             <tr className="border-b border-gray-200 bg-gray-50 text-gray-700">
               <th className="px-4 py-3 font-semibold">{en ? 'Code' : '邀请码'}</th>
               <th className="px-4 py-3 font-semibold">{en ? 'Label' : '标签'}</th>
-              <th className="px-4 py-3 font-semibold">{en ? 'Used' : '已用'}</th>
-              <th className="px-4 py-3 font-semibold">{en ? 'Max' : '上限'}</th>
+              <th className="px-4 py-3 font-semibold">{en ? 'Used / max' : '已用/上限'}</th>
+              <th className="px-4 py-3 font-semibold">{en ? 'Expires' : '过期'}</th>
               <th className="px-4 py-3 font-semibold">{en ? 'Active' : '启用'}</th>
               <th className="px-4 py-3 font-semibold text-right">{en ? 'Actions' : '操作'}</th>
             </tr>
@@ -227,54 +277,69 @@ export function AdminInviteCodes() {
             ) : rows.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
-                  {en ? 'No invite codes yet.' : '暂无邀请码。'}
+                  {en ? 'No public invite codes yet.' : '暂无公开邀请码。'}
                 </td>
               </tr>
             ) : (
-              rows.map((row) => (
-                <tr key={row.id} className="border-b border-gray-100 last:border-0">
-                  <td className="px-4 py-3 font-mono text-gray-900">{row.code}</td>
-                  <td className="px-4 py-3 text-gray-800">{row.label || '—'}</td>
-                  <td className="px-4 py-3">{row.used_count}</td>
-                  <td className="px-4 py-3">{row.max_uses}</td>
-                  <td className="px-4 py-3">
-                    {row.is_active ? (
-                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800">
-                        {en ? 'Yes' : '是'}
-                      </span>
-                    ) : (
-                      <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs text-gray-700">
-                        {en ? 'No' : '否'}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex flex-wrap justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={() => openQrModal(row)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50"
-                      >
-                        <QrCode size={16} />
-                        {en ? 'Generate QR' : '生成二维码'}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={!row.is_active || disablingId === row.id}
-                        onClick={() => void disableRow(row.id)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
-                      >
-                        {disablingId === row.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Ban size={16} />
-                        )}
-                        {en ? 'Disable' : '禁用'}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
+              rows.map((row) => {
+                const ck = `copy-${row.id}`;
+                return (
+                  <tr key={row.id} className="border-b border-gray-100 last:border-0">
+                    <td className="px-4 py-3 font-mono text-gray-900">{row.code}</td>
+                    <td className="px-4 py-3 text-gray-800">{row.label || '—'}</td>
+                    <td className="px-4 py-3">
+                      {row.used_count} / {row.max_uses}
+                    </td>
+                    <td className="px-4 py-3 text-xs whitespace-nowrap">{fmtExp(row.expires_at)}</td>
+                    <td className="px-4 py-3">
+                      {row.is_active ? (
+                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800">
+                          {en ? 'Yes' : '是'}
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs text-gray-700">
+                          {en ? 'No' : '否'}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <button
+                          type="button"
+                          disabled={!row.is_active || !entryUrlForRow(row)}
+                          onClick={() => void copyEntryLink(row, ck)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                        >
+                          {copiedKey === ck ? <Check size={16} /> : <Copy size={16} />}
+                          {en ? 'Copy entry link' : '复制入楼链接'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openQrModal(row)}
+                          disabled={!entryUrlForRow(row)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                        >
+                          <QrCode size={16} />
+                          {en ? 'QR' : '二维码'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!row.is_active || disablingId === row.id}
+                          onClick={() => void disableRow(row.id)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                        >
+                          {disablingId === row.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Ban size={16} />
+                          )}
+                          {en ? 'Disable' : '停用'}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
@@ -296,7 +361,7 @@ export function AdminInviteCodes() {
               {qrPayload.title}
             </h2>
             <p className="mt-1 text-sm text-gray-600">
-              {en ? 'Scan or share this link.' : '扫码或分享以下链接。'}
+              {en ? 'Scan or share this /entry link.' : '扫码或分享以下 /entry 入楼链接。'}
             </p>
             <div className="mt-4 flex justify-center">
               <InviteQRCode value={qrPayload.url} />
