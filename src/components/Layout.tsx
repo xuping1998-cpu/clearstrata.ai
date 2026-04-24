@@ -109,6 +109,7 @@ export function Layout({ children }: LayoutProps) {
 
   const showPeopleNav = canAccessPropertyPeoplePageFromContext(roleInProperty, memberships);
   const showSettingsNav = canAccessPropertySettingsPageFromContext(roleInProperty, memberships);
+  const showAuditLogNav = canReviewJoinRequestsFromContext(roleInProperty, memberships);
 
   const isDashboardHome =
     location.pathname === '/' ||
