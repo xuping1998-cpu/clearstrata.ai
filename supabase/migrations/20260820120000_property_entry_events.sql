@@ -180,8 +180,12 @@ SET search_path = public
 AS $fn$
 DECLARE
   v_uid uuid := auth.uid();
-  pic public.property_invite_codes%ROWTYPE;
-  v_unit text := NULLIF(trim(both from coalesce(p_unit_no, '')), '');
+  v_pic_id uuid;
+  v_pic_is_active boolean;
+  v_pic_max_uses int;
+  v_pic_used_count int;
+  v_pic_expires_at timestamptz;
+  v_unit_no text := NULLIF(trim(both from coalesce(p_unit_no, '')), '');
   v_name text := NULLIF(trim(both from coalesce(p_name, '')), '');
   v_email_in text := NULLIF(trim(both from coalesce(p_email, '')), '');
   v_lang text;
@@ -199,9 +203,9 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'status', 'auth_required');
   END IF;
 
-  IF p_property_id IS NULL OR v_code = '' OR v_unit = '' OR v_name = '' OR v_email_in = '' THEN
+  IF p_property_id IS NULL OR v_code = '' OR v_unit_no = '' OR v_name = '' OR v_email_in = '' THEN
     PERFORM public._property_entry_event_silent(
-      p_property_id, v_uid, v_email_in, v_name, v_unit, v_code,
+      p_property_id, v_uid, v_email_in, v_name, v_unit_no, v_code,
       'invite_invalid', 'invalid', 'invalid_invite', null, null, null, null, null, null, null, null,
       jsonb_build_object('reason', 'invalid_arguments', 'raw_unit', coalesce(p_unit_no, ''), 'source', 'enter_v2')
     );
@@ -213,25 +217,29 @@ BEGIN
     ELSE 'en'
   END;
 
+  /* 房号归属以 residents 为准；property_members 仅作成员/角色（见 v_mem_id 查询） */
   IF EXISTS (
     SELECT 1
-    FROM public.property_members pm
-    WHERE pm.property_id = p_property_id
-      AND pm.user_id = v_uid
-      AND pm.status = 'active'::public.member_status
+    FROM public.residents r
+    WHERE r.property_id = p_property_id
+      AND lower(trim(r.unit_no)) = lower(v_unit_no)
+      AND r.user_id = v_uid
+      AND r.status = 'active'
   ) THEN
     SELECT name INTO v_prop FROM public.properties p WHERE p.id = p_property_id;
     v_prop := coalesce(v_prop, '');
     PERFORM public._property_entry_event_silent(
-      p_property_id, v_uid, v_email_in, v_name, v_unit, v_code, 'already_member', 'success', 'already_member',
+      p_property_id, v_uid, v_email_in, v_name, v_unit_no, v_code, 'already_member', 'success', 'already_member',
       null, null, null, null, null, null, null, null,
-      jsonb_build_object('source', 'enter_v2', 'property_name', v_prop, 'unit_no', v_unit)
+      jsonb_build_object('source', 'enter_v2', 'property_name', v_prop, 'unit_no', v_unit_no)
     );
     RETURN jsonb_build_object('ok', true, 'status', 'already_member', 'property_id', p_property_id);
   END IF;
 
-  SELECT *
-  INTO pic
+  SELECT
+    c.id, c.is_active, c.max_uses, c.used_count, c.expires_at
+  INTO
+    v_pic_id, v_pic_is_active, v_pic_max_uses, v_pic_used_count, v_pic_expires_at
   FROM public.property_invite_codes c
   WHERE c.property_id = p_property_id
     AND upper(trim(c.code)) = upper(v_code)
@@ -240,35 +248,35 @@ BEGIN
   IF NOT FOUND THEN
     SELECT name INTO v_prop FROM public.properties p WHERE p.id = p_property_id;
     PERFORM public._property_entry_event_silent(
-      p_property_id, v_uid, v_email_in, v_name, v_unit, v_code, 'invite_invalid', 'invalid', 'invalid_invite', null, null, null, null, null, null, null, null,
+      p_property_id, v_uid, v_email_in, v_name, v_unit_no, v_code, 'invite_invalid', 'invalid', 'invalid_invite', null, null, null, null, null, null, null, null,
       jsonb_build_object('reason', 'code_not_found', 'property_name', v_prop, 'source', 'enter_v2')
     );
     RETURN jsonb_build_object('ok', false, 'status', 'invalid_invite');
   END IF;
 
-  IF NOT pic.is_active THEN
+  IF NOT v_pic_is_active THEN
     SELECT name INTO v_prop FROM public.properties p WHERE p.id = p_property_id;
     PERFORM public._property_entry_event_silent(
-      p_property_id, v_uid, v_email_in, v_name, v_unit, v_code, 'invite_invalid', 'invalid', 'invalid_invite', null, null, null, null, null, null, null, null,
+      p_property_id, v_uid, v_email_in, v_name, v_unit_no, v_code, 'invite_invalid', 'invalid', 'invalid_invite', null, null, null, null, null, null, null, null,
       jsonb_build_object('reason', 'invite_inactive', 'property_name', v_prop, 'source', 'enter_v2')
     );
     RETURN jsonb_build_object('ok', false, 'status', 'invalid_invite', 'message', 'invite_inactive');
   END IF;
 
-  IF pic.max_uses > 0 AND pic.used_count >= pic.max_uses THEN
+  IF v_pic_max_uses > 0 AND v_pic_used_count >= v_pic_max_uses THEN
     SELECT name INTO v_prop FROM public.properties p WHERE p.id = p_property_id;
     PERFORM public._property_entry_event_silent(
-      p_property_id, v_uid, v_email_in, v_name, v_unit, v_code, 'invite_invalid', 'invalid', 'invalid_invite', null, null, null, null, null, null, null, null,
-      jsonb_build_object('reason', 'invite_exhausted', 'used_count', pic.used_count, 'max_uses', pic.max_uses, 'source', 'enter_v2')
+      p_property_id, v_uid, v_email_in, v_name, v_unit_no, v_code, 'invite_invalid', 'invalid', 'invalid_invite', null, null, null, null, null, null, null, null,
+      jsonb_build_object('reason', 'invite_exhausted', 'used_count', v_pic_used_count, 'max_uses', v_pic_max_uses, 'source', 'enter_v2')
     );
     RETURN jsonb_build_object('ok', false, 'status', 'invalid_invite', 'message', 'invite_exhausted');
   END IF;
 
-  IF pic.expires_at IS NOT NULL AND pic.expires_at < now() THEN
+  IF v_pic_expires_at IS NOT NULL AND v_pic_expires_at < now() THEN
     SELECT name INTO v_prop FROM public.properties p WHERE p.id = p_property_id;
     PERFORM public._property_entry_event_silent(
-      p_property_id, v_uid, v_email_in, v_name, v_unit, v_code, 'invite_invalid', 'invalid', 'invalid_invite', null, null, null, null, null, null, null, null,
-      jsonb_build_object('reason', 'invite_expired', 'expires_at', pic.expires_at, 'source', 'enter_v2')
+      p_property_id, v_uid, v_email_in, v_name, v_unit_no, v_code, 'invite_invalid', 'invalid', 'invalid_invite', null, null, null, null, null, null, null, null,
+      jsonb_build_object('reason', 'invite_expired', 'expires_at', v_pic_expires_at, 'source', 'enter_v2')
     );
     RETURN jsonb_build_object('ok', false, 'status', 'invalid_invite', 'message', 'invite_expired');
   END IF;
@@ -280,7 +288,7 @@ BEGIN
     SELECT 1
     FROM public.unit_whitelist uw
     WHERE uw.property_id = p_property_id
-      AND lower(trim(uw.unit_no)) = lower(v_unit)
+      AND lower(trim(uw.unit_no)) = lower(v_unit_no)
       AND uw.is_active = true
   );
 
@@ -288,18 +296,18 @@ BEGIN
     SELECT 1
     FROM public.residents r
     WHERE r.property_id = p_property_id
-      AND lower(trim(r.unit_no)) = lower(v_unit)
+      AND lower(trim(r.unit_no)) = lower(v_unit_no)
       AND r.user_id IS NOT NULL
       AND r.user_id IS DISTINCT FROM v_uid
   );
 
   PERFORM public._property_entry_event_silent(
-    p_property_id, v_uid, v_email_in, v_name, v_unit, v_code, 'entry_form_submitted', 'pending', null,
+    p_property_id, v_uid, v_email_in, v_name, v_unit_no, v_code, 'entry_form_submitted', 'pending', null,
     v_in_wl, v_occupied, null, null, null, null, null,
     jsonb_build_object(
       'source', 'enter_v2',
       'property_name', v_prop,
-      'normalized_unit_no', v_unit,
+      'normalized_unit_no', v_unit_no,
       'raw_unit_no', coalesce(p_unit_no, ''),
       'in_whitelist', v_in_wl,
       'unit_occupied_check', v_occupied
@@ -324,7 +332,7 @@ BEGIN
       SET
         full_name = v_name,
         email = v_email_in,
-        unit_no = v_unit,
+        unit_no = v_unit_no,
         invite_code = v_code,
         source = 'public_invite_v2',
         review_flag = 'not_in_whitelist',
@@ -335,7 +343,7 @@ BEGIN
         updated_at = now()
       WHERE id = v_pending_id;
       PERFORM public._property_entry_event_silent(
-        p_property_id, v_uid, v_email_in, v_name, v_unit, v_code, 'duplicate_pending', 'pending', 'duplicate_pending',
+        p_property_id, v_uid, v_email_in, v_name, v_unit_no, v_code, 'duplicate_pending', 'pending', 'duplicate_pending',
         false, v_occupied, v_pending_id, null, null, null, null, null,
         jsonb_build_object('source', 'enter_v2', 'resubmit', 'not_in_whitelist', 'property_name', v_prop, 'not_in_wl', true, 'sub_review_flag', 'not_in_whitelist')
       );
@@ -350,7 +358,7 @@ BEGIN
       SET
         full_name = v_name,
         email = v_email_in,
-        unit_no = v_unit,
+        unit_no = v_unit_no,
         invite_code = v_code,
         source = 'public_invite_v2',
         review_flag = 'unit_occupied',
@@ -360,7 +368,7 @@ BEGIN
         updated_at = now()
       WHERE id = v_pending_id;
       PERFORM public._property_entry_event_silent(
-        p_property_id, v_uid, v_email_in, v_name, v_unit, v_code, 'duplicate_pending', 'pending', 'duplicate_pending',
+        p_property_id, v_uid, v_email_in, v_name, v_unit_no, v_code, 'duplicate_pending', 'pending', 'duplicate_pending',
         true, true, v_pending_id, null, null, null, null, null,
         jsonb_build_object('source', 'enter_v2', 'resubmit', 'unit_occupied', 'property_name', v_prop, 'sub_review_flag', 'unit_occupied')
       );
@@ -376,7 +384,7 @@ BEGIN
   SELECT * INTO v_prof FROM public.profiles WHERE id = v_uid;
   IF NOT FOUND THEN
     PERFORM public._property_entry_event_silent(
-      p_property_id, v_uid, v_email_in, v_name, v_unit, v_code, 'invite_invalid', 'invalid', 'invalid_invite', null, null, null, null, null, null, null, null,
+      p_property_id, v_uid, v_email_in, v_name, v_unit_no, v_code, 'invite_invalid', 'invalid', 'invalid_invite', null, null, null, null, null, null, null, null,
       jsonb_build_object('reason', 'profile_missing', 'source', 'enter_v2')
     );
     RETURN jsonb_build_object('ok', false, 'status', 'invalid_invite', 'message', 'profile_missing');
@@ -391,7 +399,7 @@ BEGIN
 
   /* A: auto approve (whitelist + not occupied) */
   IF v_in_wl AND NOT v_occupied THEN
-    v_bind := public.bind_resident_by_unit(p_property_id, v_unit, NULL::date, v_lang);
+    v_bind := public.bind_resident_by_unit(p_property_id, v_unit_no, NULL::date, v_lang);
 
     IF (coalesce(v_bind ->> 'ok', '') = 'true' OR coalesce((v_bind ->> 'idempotent')::boolean, false) = true) THEN
       UPDATE public.property_invite_codes c
@@ -401,13 +409,13 @@ BEGIN
           WHEN c.max_uses > 0 AND (c.used_count + 1) >= c.max_uses THEN false
           ELSE c.is_active
         END
-      WHERE c.id = pic.id;
+      WHERE c.id = v_pic_id;
 
       INSERT INTO public.join_requests (
         property_id, user_id, requested_role, full_name, email, phone, unit_no, note, status,
         invite_code, review_flag, review_reason, whitelist_matched, unit_occupied, source
       ) VALUES (
-        p_property_id, v_uid, 'owner'::public.user_role, v_name, v_email_in, NULL, v_unit,
+        p_property_id, v_uid, 'owner'::public.user_role, v_name, v_email_in, NULL, v_unit_no,
         'public_invite_v2|auto_approved',
         'approved'::public.join_request_status, v_code, 'auto_approved', NULL, true, false, 'entry'
       )
@@ -419,11 +427,11 @@ BEGIN
       LIMIT 1;
 
       PERFORM public._property_entry_event_silent(
-        p_property_id, v_uid, v_email_in, v_name, v_unit, v_code, 'auto_approved', 'success', 'auto_approved',
+        p_property_id, v_uid, v_email_in, v_name, v_unit_no, v_code, 'auto_approved', 'success', 'auto_approved',
         true, false, v_jr_id, v_mem_id, null, null, null,
         jsonb_build_object('source', 'enter_v2', 'property_name', v_prop, 'bind', v_bind)
       );
-      RETURN jsonb_build_object('ok', true, 'status', 'auto_approved', 'property_id', p_property_id, 'unit_no', v_unit);
+      RETURN jsonb_build_object('ok', true, 'status', 'auto_approved', 'property_id', p_property_id, 'unit_no', v_unit_no);
     END IF;
 
     IF (v_bind ->> 'error') = 'unit_not_found' THEN
@@ -432,8 +440,8 @@ BEGIN
         role, status, strata_fee_status
       )
       VALUES (
-        p_property_id, v_uid, v_unit, v_name, NULL, v_email_in, coalesce(v_prof.phone, ''), NULL,
-        v_lang, 'owner', 'active', 'current'
+        p_property_id, v_uid, v_unit_no, v_name, NULL, v_email_in, coalesce(v_prof.phone, ''), NULL,
+        v_lang, 'owner', 'active'::member_status, 'current'
       );
 
       UPDATE public.profiles prof SET status = 'active', updated_at = now() WHERE prof.id = v_uid;
@@ -445,13 +453,13 @@ BEGIN
           WHEN c.max_uses > 0 AND (c.used_count + 1) >= c.max_uses THEN false
           ELSE c.is_active
         END
-      WHERE c.id = pic.id;
+      WHERE c.id = v_pic_id;
 
       INSERT INTO public.join_requests (
         property_id, user_id, requested_role, full_name, email, phone, unit_no, note, status,
         invite_code, review_flag, review_reason, whitelist_matched, unit_occupied, source
       ) VALUES (
-        p_property_id, v_uid, 'owner'::public.user_role, v_name, v_email_in, NULL, v_unit,
+        p_property_id, v_uid, 'owner'::public.user_role, v_name, v_email_in, NULL, v_unit_no,
         'public_invite_v2|auto_approved_new_resident',
         'approved'::public.join_request_status, v_code, 'auto_approved', NULL, true, false, 'entry'
       )
@@ -463,15 +471,15 @@ BEGIN
       LIMIT 1;
 
       PERFORM public._property_entry_event_silent(
-        p_property_id, v_uid, v_email_in, v_name, v_unit, v_code, 'auto_approved', 'success', 'auto_approved',
+        p_property_id, v_uid, v_email_in, v_name, v_unit_no, v_code, 'auto_approved', 'success', 'auto_approved',
         true, false, v_jr_id, v_mem_id, null, null, null,
         jsonb_build_object('source', 'enter_v2', 'property_name', v_prop, 'new_resident', true)
       );
-      RETURN jsonb_build_object('ok', true, 'status', 'auto_approved', 'property_id', p_property_id, 'unit_no', v_unit);
+      RETURN jsonb_build_object('ok', true, 'status', 'auto_approved', 'property_id', p_property_id, 'unit_no', v_unit_no);
     END IF;
 
     PERFORM public._property_entry_event_silent(
-      p_property_id, v_uid, v_email_in, v_name, v_unit, v_code, 'invite_invalid', 'error', 'invalid_invite', true, v_occupied, null, v_mem_id, null, null, null, null,
+      p_property_id, v_uid, v_email_in, v_name, v_unit_no, v_code, 'invite_invalid', 'error', 'invalid_invite', true, v_occupied, null, v_mem_id, null, null, null, null,
       jsonb_build_object('reason', 'bind_failed', 'source', 'enter_v2', 'property_name', v_prop, 'bind', v_bind)
     );
     RETURN jsonb_build_object('ok', false, 'status', 'invalid_invite', 'bind', v_bind);
@@ -486,13 +494,13 @@ BEGIN
         WHEN c.max_uses > 0 AND (c.used_count + 1) >= c.max_uses THEN false
         ELSE c.is_active
       END
-    WHERE c.id = pic.id;
+    WHERE c.id = v_pic_id;
 
     INSERT INTO public.join_requests (
       property_id, user_id, requested_role, full_name, email, phone, unit_no, note, status,
       invite_code, review_flag, review_reason, whitelist_matched, unit_occupied, source
     ) VALUES (
-      p_property_id, v_uid, 'owner'::public.user_role, v_name, v_email_in, NULL, v_unit,
+      p_property_id, v_uid, 'owner'::public.user_role, v_name, v_email_in, NULL, v_unit_no,
       'public_invite_v2|not_in_whitelist',
       'pending'::public.join_request_status, v_code, 'not_in_whitelist',
       'Unit is not in whitelist', false, false, 'entry'
@@ -500,7 +508,7 @@ BEGIN
     RETURNING id INTO v_jr_id;
 
     PERFORM public._property_entry_event_silent(
-      p_property_id, v_uid, v_email_in, v_name, v_unit, v_code, 'pending_review', 'pending', 'not_in_whitelist',
+      p_property_id, v_uid, v_email_in, v_name, v_unit_no, v_code, 'pending_review', 'pending', 'not_in_whitelist',
       false, false, v_jr_id, null, null, null, null, null,
       jsonb_build_object('source', 'enter_v2', 'property_name', v_prop, 'not_in_wl', true, 'sub_review_flag', 'not_in_whitelist')
     );
@@ -516,13 +524,13 @@ BEGIN
         WHEN c.max_uses > 0 AND (c.used_count + 1) >= c.max_uses THEN false
         ELSE c.is_active
       END
-    WHERE c.id = pic.id;
+    WHERE c.id = v_pic_id;
 
     INSERT INTO public.join_requests (
       property_id, user_id, requested_role, full_name, email, phone, unit_no, note, status,
       invite_code, review_flag, review_reason, whitelist_matched, unit_occupied, source
     ) VALUES (
-      p_property_id, v_uid, 'owner'::public.user_role, v_name, v_email_in, NULL, v_unit,
+      p_property_id, v_uid, 'owner'::public.user_role, v_name, v_email_in, NULL, v_unit_no,
       'public_invite_v2|unit_occupied',
       'pending'::public.join_request_status, v_code, 'unit_occupied',
       'Unit is already occupied', true, true, 'entry'
@@ -530,7 +538,7 @@ BEGIN
     RETURNING id INTO v_jr_id;
 
     PERFORM public._property_entry_event_silent(
-      p_property_id, v_uid, v_email_in, v_name, v_unit, v_code, 'pending_review', 'pending', 'unit_occupied',
+      p_property_id, v_uid, v_email_in, v_name, v_unit_no, v_code, 'pending_review', 'pending', 'unit_occupied',
       true, true, v_jr_id, null, null, null, null, null,
       jsonb_build_object('source', 'enter_v2', 'property_name', v_prop, 'unit_occupied', true, 'sub_review_flag', 'unit_occupied')
     );
@@ -538,7 +546,7 @@ BEGIN
   END IF;
 
   PERFORM public._property_entry_event_silent(
-    p_property_id, v_uid, v_email_in, v_name, v_unit, v_code, 'invite_invalid', 'error', 'invalid_invite', v_in_wl, v_occupied, null, v_mem_id, null, null, null, null,
+    p_property_id, v_uid, v_email_in, v_name, v_unit_no, v_code, 'invite_invalid', 'error', 'invalid_invite', v_in_wl, v_occupied, null, v_mem_id, null, null, null, null,
     jsonb_build_object('reason', 'unexpected_branch', 'source', 'enter_v2', 'property_name', v_prop, 'v_in_wl', v_in_wl, 'v_occupied', v_occupied)
   );
   RETURN jsonb_build_object('ok', false, 'status', 'invalid_invite', 'message', 'unexpected_branch');

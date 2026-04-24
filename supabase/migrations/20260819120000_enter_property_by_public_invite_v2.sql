@@ -70,7 +70,7 @@ BEGIN
     FROM public.property_members pm
     WHERE pm.property_id = p_property_id
       AND pm.user_id = v_uid
-      AND pm.status = 'active'::public.member_status
+      AND pm.status = 'active'::member_status
   ) THEN
     RETURN jsonb_build_object(
       'ok', true,
@@ -221,7 +221,7 @@ BEGIN
       )
       VALUES (
         p_property_id, v_uid, v_unit, v_name, NULL, v_email_in, coalesce(v_prof.phone, ''), NULL,
-        v_lang, 'owner', 'active', 'current'
+        v_lang, 'owner', 'active'::member_status, 'current'
       );
 
       UPDATE public.profiles prof SET status = 'active', updated_at = now() WHERE prof.id = v_uid;
