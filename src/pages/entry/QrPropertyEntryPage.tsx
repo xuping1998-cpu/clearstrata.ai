@@ -241,26 +241,7 @@ export function QrPropertyEntryPage() {
         return;
       }
 
-      const ok = row?.ok === true;
       const status = String(row?.status ?? '');
-
-      if (!ok) {
-        if (status === 'auth_required') {
-          navigate(`/login?redirect=${encodeURIComponent(redirectTo)}`, { replace: true });
-          return;
-        }
-        if (status === 'invalid_invite' || status === 'invalid_arguments') {
-          setToast({
-            kind: 'error',
-            text: en
-              ? 'This invite is invalid, expired, exhausted, or has been disabled.'
-              : '邀请码无效、已停用、已过期或次数已用完。',
-          });
-          return;
-        }
-        setToast({ kind: 'error', text: en ? 'Could not complete entry.' : '无法完成入楼。' });
-        return;
-      }
 
       if (status === 'already_member') {
         const pid = String(row?.property_id ?? effectivePropertyId);
@@ -282,9 +263,24 @@ export function QrPropertyEntryPage() {
         return;
       }
 
-      if (status === 'pending_review' || status === 'duplicate_pending') {
+      if (status === 'pending_review') {
         const rf = String(row?.review_flag ?? '');
         navigate('/join/pending', { replace: true, state: { reviewFlag: rf, propertyName: resolved?.name } });
+        return;
+      }
+
+      if (status === 'auth_required') {
+        navigate(`/login?redirect=${encodeURIComponent(redirectTo)}`, { replace: true });
+        return;
+      }
+
+      if (status === 'invalid_invite' || status === 'invalid_arguments') {
+        setToast({
+          kind: 'error',
+          text: en
+            ? 'This invite is invalid, expired, exhausted, or has been disabled.'
+            : '邀请码无效、已停用、已过期或次数已用完。',
+        });
         return;
       }
 

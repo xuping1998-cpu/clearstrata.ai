@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Building2, Loader2, CheckCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useProperty } from '../contexts/PropertyContext';
@@ -98,6 +98,7 @@ type MyJoinRequestRow = {
 
 export function JoinInvitePage() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const { session, profile } = useAuth();
   const { language, t } = useLanguage();
   const en = language === 'en';
@@ -278,21 +279,7 @@ export function JoinInvitePage() {
         return;
       }
 
-      const ok = row?.ok === true;
       const status = String(row?.status ?? '');
-
-      if (!ok) {
-        if (status === 'invalid_invite' || status === 'invalid_arguments') {
-          setMsg(
-            en
-              ? 'This invite is invalid, expired, exhausted, or has been disabled.'
-              : '邀请码无效、已停用、已过期或次数已用完。',
-          );
-          return;
-        }
-        setMsg(en ? 'Could not complete entry.' : '无法完成入楼。');
-        return;
-      }
 
       if (status === 'already_member') {
         const pid = String(row?.property_id ?? invite.property_id);
@@ -314,9 +301,19 @@ export function JoinInvitePage() {
         return;
       }
 
-      if (status === 'pending_review' || status === 'duplicate_pending') {
+      if (status === 'pending_review') {
+        const rf = String(row?.review_flag ?? '');
         setMyLatestRequest({ status: 'pending', rejection_reason: null });
-        setSuccess(true);
+        navigate('/join/pending', { replace: true, state: { propertyName, reviewFlag: rf } });
+        return;
+      }
+
+      if (status === 'invalid_invite' || status === 'invalid_arguments') {
+        setMsg(
+          en
+            ? 'This invite is invalid, expired, exhausted, or has been disabled.'
+            : '邀请码无效、已停用、已过期或次数已用完。',
+        );
         return;
       }
 
