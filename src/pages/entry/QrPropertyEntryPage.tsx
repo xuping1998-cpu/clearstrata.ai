@@ -81,6 +81,7 @@ export function QrPropertyEntryPage() {
   const [unitNo, setUnitNo] = useState('');
 
   const openedLoggedRef = useRef(false);
+  const entryOpenAuditRef = useRef(false);
 
   useEffect(() => {
     if (!toast) return;
@@ -162,6 +163,22 @@ export function QrPropertyEntryPage() {
       eventType: 'opened',
     });
   }, [propertyIdParam, inviteCodeParam, sourceParam]);
+
+  /** 审计：打开入楼链接（独立销售 demo 勿用 /entry 与真码，见 Qr 页头注释） */
+  useEffect(() => {
+    if (entryOpenAuditRef.current) return;
+    if (!resolved?.id || !hasInviteInSearch) return;
+    entryOpenAuditRef.current = true;
+    void (async () => {
+      const { error } = await supabase.rpc('log_property_entry_client_event', {
+        p_property_id: resolved.id,
+        p_event_type: 'entry_opened',
+        p_invite_code: inviteCodeParam || null,
+        p_metadata: { source: sourceParam || 'entry', has_session: Boolean(session?.user) },
+      });
+      if (error) console.warn('[entry] log_property_entry_client_event', error.message);
+    })();
+  }, [resolved?.id, hasInviteInSearch, inviteCodeParam, sourceParam, session?.user]);
 
   useEffect(() => {
     if (!user?.id) return;

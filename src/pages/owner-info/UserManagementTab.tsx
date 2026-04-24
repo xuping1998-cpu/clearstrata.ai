@@ -13,6 +13,7 @@ import {
   canReviewJoinRequests,
 } from '../../lib/propertyPermissions';
 import { JoinRequestsReviewPanel } from '../../features/join-requests/JoinRequestsReviewPanel';
+import { PropertyEntryAuditPanel } from '../../features/property-entry/PropertyEntryAuditPanel';
 import { MembersList } from './MembersList';
 import { OwnerInviteCodesPanel } from './OwnerInviteCodesPanel';
 
@@ -63,7 +64,7 @@ interface PropertyMemberMeta {
   status: string;
 }
 
-export type StaffTab = 'review' | 'anomaly' | 'members' | 'invites';
+export type StaffTab = 'review' | 'anomaly' | 'members' | 'audits' | 'invites';
 
 /** Lowercase canonical UUID string, or null if invalid (avoids PostgREST 400 on bad filter values). */
 function normalizeUuid(value: unknown): string | null {
@@ -735,6 +736,19 @@ export function UserManagementTab({
                   <button
                     type="button"
                     role="tab"
+                    aria-selected={staffTab === 'audits'}
+                    onClick={() => setStaffTab('audits')}
+                    className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                      staffTab === 'audits'
+                        ? 'bg-white text-[#1D9E75] shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    {language === 'en' ? 'Entry audit' : '入楼审计'}
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
                     aria-selected={staffTab === 'members'}
                     onClick={() => setStaffTab('members')}
                     className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
@@ -786,6 +800,12 @@ export function UserManagementTab({
       {canStaffJoinInvites && currentPropertyId && staffTab === 'anomaly' && (
         <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
           <JoinRequestsReviewPanel embedded anomalyOnly />
+        </div>
+      )}
+
+      {canStaffJoinInvites && currentPropertyId && staffTab === 'audits' && (
+        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+          <PropertyEntryAuditPanel embedded />
         </div>
       )}
 
