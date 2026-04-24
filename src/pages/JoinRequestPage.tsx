@@ -580,7 +580,7 @@ export function JoinRequestPage() {
           );
           return;
         }
-        setMsg(result.message ?? result.transportError?.message || (en ? 'Submit failed.' : '提交失败'));
+        setMsg((result.message ?? result.transportError?.message) || (en ? 'Submit failed.' : '提交失败'));
         return;
       }
 
