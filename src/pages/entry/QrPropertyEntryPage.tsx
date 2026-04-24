@@ -230,10 +230,9 @@ export function QrPropertyEntryPage() {
       const { data, error } = await supabase.rpc('enter_property_by_public_invite_v2', {
         p_property_id: effectivePropertyId,
         p_invite_code: inviteCodeParam.trim(),
-        p_name: name,
-        p_unit_no: unit,
+        p_full_name: name,
         p_email: em,
-        p_language_pref: language === 'zh' ? 'zh' : 'en',
+        p_unit_no: unit,
       });
 
       const row = firstRpcJsonRow(data);

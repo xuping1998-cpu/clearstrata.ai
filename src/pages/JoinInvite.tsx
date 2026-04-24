@@ -267,10 +267,9 @@ export function JoinInvitePage() {
       const { data, error } = await supabase.rpc('enter_property_by_public_invite_v2', {
         p_property_id: invite.property_id,
         p_invite_code: cleanCode,
-        p_name: name,
-        p_unit_no: unit,
+        p_full_name: name,
         p_email: em,
-        p_language_pref: en ? 'en' : 'zh',
+        p_unit_no: unit,
       });
 
       const row = firstRpcJsonRow(data);
