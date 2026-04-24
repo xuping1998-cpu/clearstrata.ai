@@ -11,8 +11,8 @@ CREATE INDEX IF NOT EXISTS idx_join_requests_property_status
   ON public.join_requests (property_id, status);
 
 CREATE INDEX IF NOT EXISTS idx_join_requests_property_unit
-  ON public.join_requests (property_id, lower(trim(unit_number)))
-  WHERE unit_number IS NOT NULL;
+  ON public.join_requests (property_id, lower(trim(unit_no)))
+  WHERE unit_no IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_residents_property_unit_occupied
   ON public.residents (property_id, lower(trim(unit_no)))
@@ -137,7 +137,7 @@ BEGIN
       SET
         full_name = v_name,
         email = v_email_in,
-        unit_number = v_unit,
+        unit_no = v_unit,
         invite_code = v_code,
         source = 'public_invite_v2',
         review_flag = 'not_in_whitelist',
@@ -158,7 +158,7 @@ BEGIN
       SET
         full_name = v_name,
         email = v_email_in,
-        unit_number = v_unit,
+        unit_no = v_unit,
         invite_code = v_code,
         source = 'public_invite_v2',
         review_flag = 'unit_occupied',
@@ -203,7 +203,7 @@ BEGIN
       WHERE c.id = pic.id;
 
       INSERT INTO public.join_requests (
-        property_id, user_id, requested_role, full_name, email, phone, unit_number, note, status,
+        property_id, user_id, requested_role, full_name, email, phone, unit_no, note, status,
         invite_code, review_flag, review_reason, whitelist_matched, unit_occupied, source
       ) VALUES (
         p_property_id, v_uid, 'owner'::public.user_role, v_name, v_email_in, NULL, v_unit,
@@ -236,7 +236,7 @@ BEGIN
       WHERE c.id = pic.id;
 
       INSERT INTO public.join_requests (
-        property_id, user_id, requested_role, full_name, email, phone, unit_number, note, status,
+        property_id, user_id, requested_role, full_name, email, phone, unit_no, note, status,
         invite_code, review_flag, review_reason, whitelist_matched, unit_occupied, source
       ) VALUES (
         p_property_id, v_uid, 'owner'::public.user_role, v_name, v_email_in, NULL, v_unit,
@@ -262,7 +262,7 @@ BEGIN
     WHERE c.id = pic.id;
 
     INSERT INTO public.join_requests (
-      property_id, user_id, requested_role, full_name, email, phone, unit_number, note, status,
+      property_id, user_id, requested_role, full_name, email, phone, unit_no, note, status,
       invite_code, review_flag, review_reason, whitelist_matched, unit_occupied, source
     ) VALUES (
       p_property_id, v_uid, 'owner'::public.user_role, v_name, v_email_in, NULL, v_unit,
@@ -286,7 +286,7 @@ BEGIN
     WHERE c.id = pic.id;
 
     INSERT INTO public.join_requests (
-      property_id, user_id, requested_role, full_name, email, phone, unit_number, note, status,
+      property_id, user_id, requested_role, full_name, email, phone, unit_no, note, status,
       invite_code, review_flag, review_reason, whitelist_matched, unit_occupied, source
     ) VALUES (
       p_property_id, v_uid, 'owner'::public.user_role, v_name, v_email_in, NULL, v_unit,
