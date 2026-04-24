@@ -5,7 +5,9 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useProperty } from '../../contexts/PropertyContext';
 import { supabase } from '../../lib/supabase';
-import { firstRpcJsonRow } from '../../lib/propertyEntryUnified';
+import { samePropertyId } from '../../lib/propertyIdMatch';
+import { readPropertyEntryDraft } from '@/lib/propertyEntryDraft';
+import { firstRpcJsonRow } from '../../lib/rpcJsonRow';
 import { trackPropertyEntryEvent } from '../../lib/propertyEntryEvents';
 
 const UUID_RE =
@@ -196,6 +198,18 @@ export function QrPropertyEntryPage() {
     if (propertyCodeParam && resolved?.id) return resolved.id;
     return null;
   }, [propertyIdParam, propertyCodeParam, resolved?.id]);
+
+  useEffect(() => {
+    if (!effectivePropertyId) return;
+    const d = readPropertyEntryDraft();
+    if (!d?.propertyId || !samePropertyId(d.propertyId, effectivePropertyId)) return;
+    const fn = d.fullName?.trim();
+    const em = d.email?.trim();
+    const un = d.unitNumber?.trim();
+    if (fn) setFullName((s) => s.trim() || fn);
+    if (em) setEmailIn((s) => s.trim() || em);
+    if (un) setUnitNo((s) => s.trim() || un);
+  }, [effectivePropertyId]);
 
   const handleSubmit = async () => {
     if (!session?.user?.id || !effectivePropertyId || !inviteCodeParam.trim()) {

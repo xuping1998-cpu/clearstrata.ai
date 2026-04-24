@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useProperty } from '../contexts/PropertyContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { supabase } from '../lib/supabase';
-import { submitUnifiedPropertyEntry } from '../lib/propertyEntryUnified';
+import { firstRpcJsonRow } from '../lib/rpcJsonRow';
 
 type InviteRow = {
   id: string;
@@ -57,6 +57,15 @@ function friendlySubmitFailure(en: boolean): string {
   return en ? 'Could not submit your request. Please try again.' : '无法提交申请，请稍后再试。';
 }
 
+function persistCurrentPropertyId(propertyId: string) {
+  try {
+    localStorage.setItem('currentPropertyId', propertyId);
+    localStorage.setItem('clearstrata-current-property-id', propertyId);
+  } catch {
+    /* ignore */
+  }
+}
+
 function roleLabel(role: string | undefined, en: boolean): string {
   if (!role) return '—';
   const labels: Record<string, [string, string]> = {
@@ -89,10 +98,10 @@ type MyJoinRequestRow = {
 
 export function JoinInvitePage() {
   const [searchParams] = useSearchParams();
-  const { session } = useAuth();
+  const { session, profile } = useAuth();
   const { language, t } = useLanguage();
   const en = language === 'en';
-  const { memberships } = useProperty();
+  const { memberships, setCurrentPropertyId, refreshMemberships } = useProperty();
 
   const cleanCode = useMemo(
     () => (searchParams.get('code') || '').trim().toUpperCase(),
@@ -109,6 +118,9 @@ export function JoinInvitePage() {
   const [success, setSuccess] = useState(false);
   const [alreadyMember, setAlreadyMember] = useState(false);
   const [myLatestRequest, setMyLatestRequest] = useState<MyJoinRequestRow | null>(null);
+  const [joinFullName, setJoinFullName] = useState('');
+  const [joinEmail, setJoinEmail] = useState('');
+  const [joinUnitNo, setJoinUnitNo] = useState('');
 
   const loadInvite = useCallback(async () => {
     if (!cleanCode) {
@@ -203,7 +215,18 @@ export function JoinInvitePage() {
     void loadInvite();
   }, [loadInvite]);
 
-  const loginHref = `/?redirect=${encodeURIComponent(`/invite?code=${encodeURIComponent(cleanCode)}`)}`;
+  useEffect(() => {
+    if (!session?.user) return;
+    const em = (session.user.email ?? profile?.email ?? '').trim();
+    const name =
+      (profile?.full_name_zh && String(profile.full_name_zh).trim()) ||
+      (profile?.full_name_en && String(profile.full_name_en).trim()) ||
+      '';
+    if (em) setJoinEmail((s) => s.trim() || em);
+    if (name) setJoinFullName((s) => s.trim() || name);
+  }, [session?.user?.id, session?.user?.email, profile]);
+
+  const loginHref = `/login?redirect=${encodeURIComponent(`/invite?code=${encodeURIComponent(cleanCode)}`)}`;
 
   const expired = invite ? isInviteExpired(invite) : false;
 
@@ -225,8 +248,15 @@ export function JoinInvitePage() {
   const submitInviteLockRef = useRef(false);
 
   const submitJoinRequest = async () => {
-    if (!cleanCode || !session) {
+    if (!cleanCode || !session || !invite) {
       setMsg(translateInviteError('NOT_AUTHENTICATED', en));
+      return;
+    }
+    const name = joinFullName.trim();
+    const em = joinEmail.trim().toLowerCase();
+    const unit = joinUnitNo.trim();
+    if (!name || !em || !unit) {
+      setMsg(en ? 'Please fill in your name, email, and unit number.' : '请填写姓名、邮箱与房号。');
       return;
     }
     if (submitting || submitInviteLockRef.current) return;
@@ -234,55 +264,64 @@ export function JoinInvitePage() {
     setSubmitting(true);
     setMsg(null);
     try {
-      const result = await submitUnifiedPropertyEntry(supabase, {
-        userId: session.user.id,
-        p_property_id: null,
-        p_requested_role: 'owner',
-        p_unit_number: null,
-        p_note: null,
-        p_full_name: null,
-        p_email: null,
-        p_phone: null,
+      const { data, error } = await supabase.rpc('enter_property_by_public_invite_v2', {
+        p_property_id: invite.property_id,
         p_invite_code: cleanCode,
-        p_direct_invite_id: null,
-        p_inferred_role: null,
-        p_inferred_unit_number: null,
-        p_move_in_date: null,
+        p_name: name,
+        p_unit_no: unit,
+        p_email: em,
         p_language_pref: en ? 'en' : 'zh',
-        entrySource: 'invite_page',
       });
 
-      if (result.kind === 'rpc_error') {
-        setMsg(result.message ?? result.transportError?.message ?? friendlySubmitFailure(en));
+      const row = firstRpcJsonRow(data);
+      if (error) {
+        setMsg(error.message || friendlySubmitFailure(en));
         return;
       }
 
-      if (
-        result.kind !== 'auto_approved' &&
-        result.kind !== 'pending_submitted' &&
-        result.kind !== 'already_member'
-      ) {
-        setMsg(result.message ?? translateInviteError(result.kind, en));
+      const ok = row?.ok === true;
+      const status = String(row?.status ?? '');
+
+      if (!ok) {
+        if (status === 'invalid_invite' || status === 'invalid_arguments') {
+          setMsg(
+            en
+              ? 'This invite is invalid, expired, exhausted, or has been disabled.'
+              : '邀请码无效、已停用、已过期或次数已用完。',
+          );
+          return;
+        }
+        setMsg(en ? 'Could not complete entry.' : '无法完成入楼。');
         return;
       }
 
-      if (result.kind === 'auto_approved') {
+      if (status === 'already_member') {
+        const pid = String(row?.property_id ?? invite.property_id);
+        persistCurrentPropertyId(pid);
+        setCurrentPropertyId(pid);
+        await refreshMemberships();
         setSuccess(true);
         await loadInvite();
         return;
       }
 
-      if (result.kind === 'pending_submitted') {
+      if (status === 'auto_approved') {
+        const pid = String(row?.property_id ?? invite.property_id);
+        persistCurrentPropertyId(pid);
+        setCurrentPropertyId(pid);
+        await refreshMemberships();
+        setSuccess(true);
+        await loadInvite();
+        return;
+      }
+
+      if (status === 'pending_review' || status === 'duplicate_pending') {
         setMyLatestRequest({ status: 'pending', rejection_reason: null });
         setSuccess(true);
         return;
       }
 
-      if (result.kind === 'already_member') {
-        setSuccess(true);
-        await loadInvite();
-        return;
-      }
+      setMsg(en ? 'Unexpected response.' : '未预期的返回。');
     } catch {
       setMsg(translateInviteError('UNKNOWN', en));
     } finally {
@@ -474,6 +513,37 @@ export function JoinInvitePage() {
                   </p>
                 )}
                 {canSubmit && !success && (
+                  <div className="space-y-3">
+                    <label className="block text-sm text-gray-700">
+                      {en ? 'Full name' : '姓名'}
+                      <input
+                        type="text"
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        value={joinFullName}
+                        onChange={(e) => setJoinFullName(e.target.value)}
+                        autoComplete="name"
+                      />
+                    </label>
+                    <label className="block text-sm text-gray-700">
+                      {en ? 'Email' : '邮箱'}
+                      <input
+                        type="email"
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        value={joinEmail}
+                        onChange={(e) => setJoinEmail(e.target.value)}
+                        autoComplete="email"
+                      />
+                    </label>
+                    <label className="block text-sm text-gray-700">
+                      {en ? 'Unit / suite' : '房号'}
+                      <input
+                        type="text"
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        value={joinUnitNo}
+                        onChange={(e) => setJoinUnitNo(e.target.value)}
+                        autoComplete="off"
+                      />
+                    </label>
                   <button
                     type="button"
                     onClick={() => void submitJoinRequest()}
@@ -489,6 +559,7 @@ export function JoinInvitePage() {
                       t('join_invite_submit_btn')
                     )}
                   </button>
+                  </div>
                 )}
                 {success && (
                   <div className="space-y-3 text-center">

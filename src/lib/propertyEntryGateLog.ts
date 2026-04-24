@@ -1,10 +1,10 @@
-/** Console diagnostics for unified 入楼：`submit_join_request` / `reject_join_request`；审批见 `approve_join_request`。 */
+/** Console diagnostics for 入楼 / 审批：`reject_join_request`、`approve_join_request` 等。 */
 
 export function logPropertyEntryGate(stage: string, payload: Record<string, unknown>) {
   console.log(`[property-entry:${stage}]`, payload);
 }
 
-/** Structured one-line logs for `propertyEntryUnified` (auto / pending / approve / reject). */
+/** Structured one-line logs for property entry / approve / reject flows. */
 export function logUnifiedPropertyEntryLine(stage: string, payload: Record<string, unknown>) {
   console.log(`[property-entry-unified:${stage}]`, payload);
 }

@@ -11,7 +11,7 @@ import { supabase } from '../../lib/supabase';
 import { dedupePendingJoinRequestsByPropertyEmail } from '../../lib/joinRequestGuards';
 import { sendJoinDecisionEmail } from '../../lib/sendJoinDecisionEmail';
 import { logPropertyEntryApproveResult } from '../../lib/propertyEntryGateLog';
-import { firstRpcJsonRow, joinRpcErrorCode } from '../../lib/propertyEntryUnified';
+import { firstRpcJsonRow, joinRpcErrorCode } from '../../lib/rpcJsonRow';
 import { approveJoinRequest, rejectJoinRequest } from '../../lib/unifiedPropertyEntry';
 import { StatusAlert, StatusBadge } from '@/components/status';
 

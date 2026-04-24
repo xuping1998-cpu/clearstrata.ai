@@ -12,12 +12,10 @@ import {
   GUEST_PROPERTY_STORAGE_KEY,
   clearPublicDemoLocalStorage,
 } from '../contexts/PropertyContext';
-import { submitUnifiedPropertyEntry } from '../lib/propertyEntryUnified';
 import { trackPropertyEntryEvent } from '../lib/propertyEntryEvents';
 import { demoEntryPath, MARKETING_DEMO_PROPERTY_CODE } from '@/lib/propertyEntryRoutes';
 import { saveGuestExperienceDraft } from '@/lib/guestExperienceDraft';
-import { clearPropertyEntryDraft, savePropertyEntryDraft } from '@/lib/propertyEntryDraft';
-import type { SubmitUnifiedPropertyEntryResult } from '../lib/propertyEntryUnified';
+import { savePropertyEntryDraft } from '@/lib/propertyEntryDraft';
 import { consumePendingRedirect } from '../lib/pendingRedirect';
 
 function persistCurrentPropertyId(propertyId: string) {
@@ -55,6 +53,20 @@ function parseRedirectQueryForEntryFunnel(redirectRaw: string | null): {
     return { propertyId: pid, inviteCode, source };
   } catch {
     return { propertyId: null, inviteCode: null, source: null };
+  }
+}
+
+/** `redirect` query points at `/entry?…` (扫码入楼回流). */
+function isEntryRedirectPath(redirectRaw: string | null): boolean {
+  if (!redirectRaw) return false;
+  try {
+    const path = decodeURIComponent(redirectRaw);
+    if (!path.startsWith('/') || path.includes('://')) return false;
+    const q = path.indexOf('?');
+    const base = (q >= 0 ? path.slice(0, q) : path).trim();
+    return base === '/entry';
+  } catch {
+    return false;
   }
 }
 
@@ -248,64 +260,6 @@ export function Auth() {
     }
   };
 
-  /** Same post-RPC navigation as full signup flow in `handleSubmit` (dashboard / pending / home). */
-  const navigateAfterUnifiedPropertyEntry = async (entryResult: SubmitUnifiedPropertyEntryResult) => {
-    const afterJoinHome = async () => {
-      const demoClaimed = await claimPublicDemoPropertyAfterSignUp();
-      if (demoClaimed) {
-        navigate('/', { replace: true });
-        return true;
-      }
-      const guestClaimed = await claimGuestStoredPropertyAfterSignUp();
-      if (guestClaimed) {
-        navigate('/', { replace: true });
-        return true;
-      }
-      const claimedId = await claimPropertyFromUrlIfPresent();
-      if (claimedId) {
-        persistCurrentPropertyId(claimedId);
-        navigate('/', { replace: true });
-        return true;
-      }
-      if (safeRedirectAfterAuth()) return true;
-      navigate('/', { replace: true });
-      return true;
-    };
-
-    if (entryResult.kind === 'rpc_error') {
-      const dup =
-        entryResult.transportError?.code === '23505' ||
-        (entryResult.transportError?.message ?? '').toLowerCase().includes('duplicate') ||
-        (entryResult.transportError?.message ?? '').includes('uniq_pending_request');
-      if (dup) {
-        console.log('[Auth] entry redirect target', { path: '/join/pending' });
-        navigate('/join/pending', { replace: true });
-        return;
-      }
-      throw new Error(entryResult.message ?? entryResult.transportError?.message ?? 'RPC error');
-    }
-
-    if (entryResult.kind === 'duplicate_pending' || entryResult.kind === 'pending_submitted') {
-      console.log('[Auth] entry redirect target', { path: '/join/pending', kind: entryResult.kind });
-      navigate('/join/pending', { replace: true });
-      return;
-    }
-
-    if (entryResult.kind === 'auto_approved' || entryResult.kind === 'already_member') {
-      persistCurrentPropertyId(String(entryResult.propertyId));
-      console.log('[Auth] entry redirect target', { path: '/', kind: entryResult.kind });
-      await afterJoinHome();
-      return;
-    }
-
-    if (entryResult.kind === 'property_not_found') {
-      throw new Error(language === 'zh' ? '物业无效或不存在。' : 'Invalid or unknown property.');
-    }
-
-    const msg = entryResult.message ?? (language === 'zh' ? '无法完成加入申请。' : 'Could not complete join.');
-    throw new Error(msg);
-  };
-
   const handlePropertyEnter = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -377,11 +331,12 @@ export function Auth() {
         null;
       const sourceFromUrl = searchParams.get('source')?.trim() || 'web';
 
-      const entryPath = `/entry?propertyId=${encodeURIComponent(pid)}&propertyCode=${encodeURIComponent(code)}&source=web`;
-      console.log('[Auth] entry redirect target (flow uses submit in-page then home/pending)', { entryPath });
-
-      const langPref = language === 'zh' ? 'zh' : 'en';
-
+      const entryQs = new URLSearchParams();
+      entryQs.set('propertyId', pid);
+      entryQs.set('propertyCode', code);
+      entryQs.set('source', sourceFromUrl);
+      if (inviteFromUrl) entryQs.set('inviteCode', inviteFromUrl);
+      const entryPath = `/entry?${entryQs.toString()}`;
       let userId: string | null = null;
       const {
         data: { session: existingSession },
@@ -459,7 +414,7 @@ export function Auth() {
         userId,
       });
 
-      console.log('[Auth] entry auto continue payload', {
+      console.log('[Auth] entry navigate', {
         propertyId: pid,
         propertyCode: code,
         unitNumber: u,
@@ -467,28 +422,7 @@ export function Auth() {
         entryPath,
       });
 
-      const entryResult = await submitUnifiedPropertyEntry(supabase, {
-        userId,
-        p_property_id: pid,
-        p_requested_role: 'owner',
-        p_unit_number: u.trim(),
-        p_note: `auth_property_enter|source=${sourceFromUrl}|propertyCode=${encodeURIComponent(code)}`,
-        p_full_name: n.trim(),
-        p_email: em,
-        p_phone: null,
-        p_invite_code: null,
-        p_direct_invite_id: null,
-        p_inferred_role: null,
-        p_inferred_unit_number: null,
-        p_move_in_date: null,
-        p_language_pref: langPref,
-        entrySource: sourceFromUrl,
-      });
-
-      console.log('[Auth] entry unified result', entryResult);
-
-      clearPropertyEntryDraft();
-      await navigateAfterUnifiedPropertyEntry(entryResult);
+      navigate(entryPath, { replace: true });
     } catch (err) {
       console.error('[Auth] handlePropertyEnter', err);
       setError(getAuthErrorMessage(err, language === 'zh' ? 'zh' : 'en'));
@@ -587,7 +521,19 @@ export function Auth() {
         if (user) {
           await supabase.from('profiles').update({ phone }).eq('id', user.id);
 
-          const moveInRaw = moveInDateRef.current?.value?.trim() || '';
+          const rawRedirectAfterSignup = searchParams.get('redirect');
+          if (isEntryRedirectPath(rawRedirectAfterSignup)) {
+            try {
+              const decoded = decodeURIComponent(rawRedirectAfterSignup!);
+              if (decoded.startsWith('/') && !decoded.includes('://')) {
+                navigate(decoded, { replace: true });
+                return;
+              }
+            } catch {
+              /* fall through to legacy signup join path */
+            }
+          }
+
           const propertyId = await resolveSignupPropertyIdAsync();
 
           let explicitPropertyInUrl = false;
@@ -608,26 +554,24 @@ export function Auth() {
             });
           }
 
-          const entryResult = await submitUnifiedPropertyEntry(supabase, {
-            userId: user.id,
-            p_property_id: propertyId,
-            p_requested_role: 'owner',
-            p_unit_number: unitNumber.trim(),
-            p_note: null,
-            p_full_name: fullNameEn.trim(),
-            p_email: email.trim().toLowerCase(),
-            p_phone: phone.trim() || null,
-            p_invite_code: null,
-            p_direct_invite_id: null,
-            p_inferred_role: null,
-            p_inferred_unit_number: null,
-            p_move_in_date: moveInRaw || null,
-            p_language_pref: languagePref,
-            entrySource: 'auth_signup',
-          });
-
-          console.log('[Auth] entry unified result', entryResult);
-          await navigateAfterUnifiedPropertyEntry(entryResult);
+          const demoClaimed = await claimPublicDemoPropertyAfterSignUp();
+          if (demoClaimed) {
+            navigate('/', { replace: true });
+            return;
+          }
+          const guestClaimed = await claimGuestStoredPropertyAfterSignUp();
+          if (guestClaimed) {
+            navigate('/', { replace: true });
+            return;
+          }
+          const claimedId = await claimPropertyFromUrlIfPresent();
+          if (claimedId) {
+            persistCurrentPropertyId(claimedId);
+            navigate('/', { replace: true });
+            return;
+          }
+          if (safeRedirectAfterAuth()) return;
+          navigate('/', { replace: true });
         }
       }
     } catch (err) {

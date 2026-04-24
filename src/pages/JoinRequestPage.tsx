@@ -3,13 +3,11 @@ import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-do
 import { Building2, Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
-import { useProperty } from '../contexts/PropertyContext';
 import { supabase } from '../lib/supabase';
 import type { UserRole } from '../lib/supabase';
 import { samePropertyId } from '../lib/propertyIdMatch';
 import { resolveJoinCodeFromProperties } from '../lib/joinCodeResolve';
-import { submitUnifiedPropertyEntry } from '../lib/propertyEntryUnified';
-import { clearPropertyEntryDraft, readPropertyEntryDraft } from '@/lib/propertyEntryDraft';
+import { readPropertyEntryDraft } from '@/lib/propertyEntryDraft';
 
 /** Align with DB `properties`: use `code` (not legacy `property_code` in some migrations). */
 type OpenProperty = {
@@ -65,15 +63,6 @@ function matchPropertyByCode(list: OpenProperty[], inputCode: string): OpenPrope
 function canonicalPropertyId(list: OpenProperty[], id: string): string {
   const hit = list.find((p) => samePropertyId(p.id, id));
   return hit?.id ?? id;
-}
-
-function persistCurrentPropertyId(propertyId: string) {
-  try {
-    localStorage.setItem('currentPropertyId', propertyId);
-    localStorage.setItem('clearstrata-current-property-id', propertyId);
-  } catch {
-    /* ignore */
-  }
 }
 
 function parseInviteLinkRpc(data: unknown): OpenProperty | null {
@@ -158,7 +147,6 @@ export function JoinRequestPage() {
   const { session, profile } = useAuth();
   const { language } = useLanguage();
   const en = language === 'en';
-  const { refreshMemberships, setCurrentPropertyId } = useProperty();
   const enRef = useRef(en);
   enRef.current = en;
 
@@ -212,7 +200,7 @@ export function JoinRequestPage() {
     selectedPropertyIdRef.current = selectedPropertyId;
   }, [selectedPropertyId]);
 
-  const loginHref = `/?redirect=${encodeURIComponent(`${location.pathname}${location.search}` || '/join')}`;
+  const loginHref = `/login?redirect=${encodeURIComponent(`${location.pathname}${location.search}` || '/join-request')}`;
 
   const resolvePropertyByCodeRpc = useCallback(async (code: string): Promise<OpenProperty | null> => {
     const { data, error } = await supabase.rpc('resolve_property_for_join_request', { p_code: code });
@@ -540,90 +528,11 @@ export function JoinRequestPage() {
     setLoading(true);
     setMsg(null);
     try {
-      const result = await submitUnifiedPropertyEntry(supabase, {
-        userId: session.user.id,
-        p_property_id: id,
-        p_requested_role: requestedRole,
-        p_unit_number: unitNumber.trim() || null,
-        p_note: note.trim() || null,
-        p_full_name: fullName.trim(),
-        p_email: email.trim().toLowerCase(),
-        p_phone: phone.trim() || null,
-        p_invite_code: directInviteId ? null : publicInviteCodeForSubmit ?? null,
-        p_direct_invite_id: directInviteId,
-        p_inferred_role:
-          directInviteId || !publicInviteCodeForSubmit ? null : String(requestedRole),
-        p_inferred_unit_number:
-          directInviteId || !publicInviteCodeForSubmit ? null : unitNumber.trim() || null,
-        p_move_in_date: null,
-        p_language_pref: en ? 'en' : 'zh',
-        entrySource: 'join_request',
-      });
-
-      const rpcFriendlyText = (fallbackEn: string, fallbackZh: string) => {
-        if (result.kind === 'rpc_error') {
-          return result.message ?? result.transportError?.message ?? (en ? fallbackEn : fallbackZh);
-        }
-        return result.message ?? (en ? fallbackEn : fallbackZh);
-      };
-
-      if (result.kind === 'rpc_error') {
-        const dup =
-          result.transportError?.code === '23505' ||
-          (result.transportError?.message ?? '').toLowerCase().includes('duplicate') ||
-          (result.transportError?.message ?? '').includes('uniq_pending_request');
-        if (dup) {
-          setMsg(
-            en
-              ? 'A pending request for this property already exists. Please wait for review.'
-              : '该物业下已有待审核申请（可能刚由其他窗口提交），请等待审核。',
-          );
-          return;
-        }
-        setMsg((result.message ?? result.transportError?.message) || (en ? 'Submit failed.' : '提交失败'));
-        return;
-      }
-
-      if (result.kind === 'duplicate_pending') {
-        setMsg(
-          rpcFriendlyText(
-            'You already have a pending request for this property.',
-            '你已提交过该物业的申请，请等待审核。',
-          ),
-        );
-        return;
-      }
-
-      if (
-        result.kind !== 'auto_approved' &&
-        result.kind !== 'pending_submitted' &&
-        result.kind !== 'already_member'
-      ) {
-        console.error('submit join failure kind:', result.kind, result.raw);
-        setMsg(rpcFriendlyText('Could not submit. Please try again later.', '操作失败，请稍后重试。'));
-        return;
-      }
-
-      setCodeMatchHint(null);
-
-      if (result.kind === 'already_member') {
-        setMsg(rpcFriendlyText('You are already a member of this property.', '你已经是该物业成员，无需重复申请。'));
-        return;
-      }
-
-      if (result.kind === 'auto_approved' && result.propertyId) {
-        clearPropertyEntryDraft();
-        const pid = canonicalPropertyId(properties, result.propertyId);
-        persistCurrentPropertyId(pid);
-        setCurrentPropertyId(pid);
-        await refreshMemberships();
-        navigate('/', { replace: true });
-        return;
-      }
-
-      clearPropertyEntryDraft();
-      navigate('/join/pending', { replace: true });
-      return;
+      setMsg(
+        en
+          ? 'This page no longer accepts applications. Please scan your building’s invite QR to open /entry with your invite code, or use an administrator invite link.'
+          : '本页已不再接受申请。请扫描物业发放的邀请二维码进入 /entry 并填写邀请码，或使用管理员邀请链接加入。',
+      );
     } catch (err) {
       console.error('submit join request catch:', err);
       setMsg(err instanceof Error ? err.message : en ? 'Request failed.' : '请求失败');

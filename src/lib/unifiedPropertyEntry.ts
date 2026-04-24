@@ -1,33 +1,19 @@
 /**
- * # 系统级统一入楼（对外主入口）
+ * # 物业入楼相关 RPC 封装（审批、旧自动入楼链等）
  *
  * | 场景 | 前端 API | 数据库 |
  * |------|-----------|--------|
- * | Demo / 扫码（含公开邀请码） | `tryAutoJoinProperty` | 有码：`enter_property_by_invite`；无码：`try_auto_join_property_from_qr` |
- * | 自动失败 → 待审核 | `createPendingJoinRequest` | `submit_join_request`（内含自动逻辑，失败写 `join_requests` pending） |
- * | 邀请码 / 表单进楼 | `submitUnifiedPropertyEntry`（`propertyEntryUnified`） | 同上 `submit_join_request` |
- * | 管理端「通过」 | `approveJoinRequest` | **`approve_join_request`（内部调用 `approve_join_request_final`）** |
+ * | Demo / 旧扫码链 | `tryAutoJoinProperty` | 有码：`enter_property_by_invite`；无码：`try_auto_join_property_from_qr` |
+ * | 公开邀请 + 资料 | **`QrPropertyEntryPage` / `JoinInvitePage`** | **`enter_property_by_public_invite_v2`** |
+ * | 管理端「通过」 | `approveJoinRequest` | `approve_join_request` |
  * | 管理端「拒绝」 | `rejectJoinRequest` | `reject_join_request` |
  *
- * **防重复 pending**：`joinRequestGuards` 预检 + 库唯一索引 `uniq_pending_request`（见迁移 `20260724130000_*`）。
- * **residents / property_members 写入**：仅发生在上述 RPC 内（幂等 upsert）；前端禁止直接 `insert` 这两张表。房号仅 `residents.unit_no`。
- *
- * 本文件单向依赖 `propertyEntryUnified` 的 `submitUnifiedPropertyEntry` / `firstRpcJsonRow`，避免与 re-export 循环引用。
+ * **residents / property_members 写入**：仅发生在上述 RPC 内；前端禁止直接 `insert` 这两张表。
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { UserRole } from './supabase';
-import { firstRpcJsonRow, submitUnifiedPropertyEntry, type UnifiedPropertyEntryResult } from './propertyEntryUnified';
-import {
-  hasPendingJoinRequestForCurrentUser,
-  hasPendingJoinRequestForPropertyEmail,
-  normalizeJoinRequestEmail,
-} from './joinRequestGuards';
-import {
-  logPropertyEntryApproveResult,
-  logPropertyEntrySubmitResult,
-  logUnifiedPropertyEntryLine,
-} from './propertyEntryGateLog';
+import { firstRpcJsonRow } from './rpcJsonRow';
+import { logPropertyEntryApproveResult, logUnifiedPropertyEntryLine } from './propertyEntryGateLog';
 
 // --- enterPropertyByInvite (public invite code + roster bind) ---------------
 
@@ -194,121 +180,6 @@ export async function tryAutoJoinProperty(
     residentsUpdateResult: row?.resident_id ?? null,
     propertyMembersUpsertResult: row?.property_members_after ?? row?.property_members_present ?? null,
   };
-}
-
-// --- createPendingJoinRequest -----------------------------------------------
-
-export type CreatePendingJoinRequestInput = {
-  userId: string;
-  propertyId: string;
-  unitNo: string | null;
-  fullName: string | null;
-  email: string | null;
-  phone: string | null;
-  languagePref: 'en' | 'zh';
-  /** 扫码链接中的公开邀请码（`property_invite_codes`），写入 join_requests.invite_code。 */
-  inviteCode?: string | null;
-};
-
-export type CreatePendingJoinRequestResult =
-  | { kind: 'created'; joinRequestId: string | null; raw: unknown }
-  | { kind: 'already_pending'; raw: unknown | null }
-  | { kind: 'auto_approved'; propertyId: string | null; raw: unknown }
-  | { kind: 'already_member'; propertyId: string | null; raw: unknown }
-  | { kind: 'rpc_error'; error: { message: string; code?: string }; raw: unknown }
-  | { kind: 'submit_failed'; failureKind: string; message: string | null; raw: unknown };
-
-function mapSubmitToPendingResult(r: UnifiedPropertyEntryResult): CreatePendingJoinRequestResult {
-  if (r.kind === 'pending_submitted') return { kind: 'created', joinRequestId: r.requestId, raw: r.raw };
-  if (r.kind === 'auto_approved') return { kind: 'auto_approved', propertyId: r.propertyId, raw: r.raw };
-  if (r.kind === 'already_member') return { kind: 'already_member', propertyId: r.propertyId, raw: r.raw };
-  if (r.kind === 'rpc_error') {
-    const msg = r.transportError?.message ?? r.message ?? 'rpc_error';
-    const code = r.transportError?.code;
-    return { kind: 'rpc_error', error: { message: msg, code }, raw: r.raw };
-  }
-  if (r.kind === 'duplicate_pending') {
-    return { kind: 'already_pending', raw: r.raw };
-  }
-  return {
-    kind: 'submit_failed',
-    failureKind: r.kind,
-    message: r.message,
-    raw: r.raw,
-  };
-}
-
-/**
- * 写入 `join_requests` pending：内部单 RPC `submit_join_request`（库内先尝试自动进楼）。
- * 前端预检同物业同邮箱 pending，避免重复插入；数据库有 `uniq_pending_request` 兜底。
- */
-export async function createPendingJoinRequest(
-  client: SupabaseClient,
-  input: CreatePendingJoinRequestInput,
-): Promise<CreatePendingJoinRequestResult> {
-  const pid = input.propertyId?.trim() ?? '';
-  const unit = input.unitNo?.trim() || null;
-  const emailNorm = normalizeJoinRequestEmail(input.email);
-
-  logUnifiedPropertyEntryLine('create_pending_join:start', {
-    property_id: pid,
-    unit_input: unit,
-    user_id: input.userId,
-    email: emailNorm,
-  });
-
-  if (pid && emailNorm) {
-    const dupEmail = await hasPendingJoinRequestForPropertyEmail(client, pid, emailNorm);
-    if (dupEmail) {
-      logUnifiedPropertyEntryLine('create_pending_join:blocked_duplicate_email', { property_id: pid, email: emailNorm });
-      return { kind: 'already_pending', raw: null };
-    }
-  }
-  if (pid && input.userId) {
-    const dupUser = await hasPendingJoinRequestForCurrentUser(client, pid, input.userId);
-    if (dupUser) {
-      logUnifiedPropertyEntryLine('create_pending_join:blocked_duplicate_user', { property_id: pid, user_id: input.userId });
-      return { kind: 'already_pending', raw: null };
-    }
-  }
-
-  const invite = (input.inviteCode ?? '').trim() || null;
-
-  const sub = await submitUnifiedPropertyEntry(client, {
-    userId: input.userId,
-    p_property_id: pid,
-    p_requested_role: 'owner' as UserRole,
-    p_unit_number: unit,
-    p_note: 'unified_property_entry',
-    p_full_name: input.fullName?.trim() || null,
-    p_email: input.email?.trim().toLowerCase() || null,
-    p_phone: input.phone?.trim() || null,
-    p_invite_code: invite,
-    p_direct_invite_id: null,
-    p_inferred_role: null,
-    p_inferred_unit_number: null,
-    p_move_in_date: null,
-    p_language_pref: input.languagePref,
-    entrySource: 'pending_join',
-  });
-
-  logPropertyEntrySubmitResult({
-    userId: input.userId,
-    email: input.email,
-    propertyId: pid,
-    unitNo: unit,
-    data: 'raw' in sub ? sub.raw : null,
-    error: sub.kind === 'rpc_error' ? sub.transportError ?? { message: sub.message ?? '' } : null,
-  });
-
-  const mapped = mapSubmitToPendingResult(sub);
-  if (mapped.kind === 'created') {
-    logUnifiedPropertyEntryLine('create_pending_join:created', {
-      property_id: pid,
-      join_request_id: mapped.joinRequestId,
-    });
-  }
-  return mapped;
 }
 
 // --- approve / reject -------------------------------------------------------

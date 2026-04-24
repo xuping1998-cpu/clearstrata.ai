@@ -21,7 +21,7 @@ export function PostLoginPropertyRedirect() {
   useEffect(() => {
     const path = location.pathname;
     /** Password recovery establishes a temporary session; do not hijack to select-property / join. */
-    if (path === '/reset-password' || path === '/login') return;
+    if (path === '/reset-password' || path === '/login' || path === '/entry') return;
     /** Hash/query still carry Supabase tokens — wait until client finishes (may be wrong pathname). */
     if (shouldDeferAutoPropertyRedirects()) return;
 
@@ -42,7 +42,7 @@ export function PostLoginPropertyRedirect() {
       const pathNow =
         typeof window !== 'undefined' ? window.location.pathname : location.pathname;
 
-      if (pathNow === '/reset-password' || pathNow === '/login') return;
+      if (pathNow === '/reset-password' || pathNow === '/login' || pathNow === '/entry') return;
       if (shouldDeferAutoPropertyRedirects()) return;
 
       /** 填表页：仅在为 pending/rejected 时跳转，避免打断正常申请 */
