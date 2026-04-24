@@ -13,9 +13,7 @@ import {
   canReviewJoinRequests,
 } from '../../lib/propertyPermissions';
 import { JoinRequestsReviewPanel } from '../../features/join-requests/JoinRequestsReviewPanel';
-import { PropertyEntryAuditPanel } from '../../features/property-entry/PropertyEntryAuditPanel';
 import { MembersList } from './MembersList';
-import { OwnerInviteCodesPanel } from './OwnerInviteCodesPanel';
 
 interface Profile {
   id: string;
@@ -64,7 +62,7 @@ interface PropertyMemberMeta {
   status: string;
 }
 
-export type StaffTab = 'review' | 'anomaly' | 'members' | 'audits' | 'invites';
+export type StaffTab = 'review' | 'anomaly' | 'members';
 
 /** Lowercase canonical UUID string, or null if invalid (avoids PostgREST 400 on bad filter values). */
 function normalizeUuid(value: unknown): string | null {
@@ -89,7 +87,7 @@ export function UserManagementTab({
   hidePageTitle = false,
 }: {
   readOnly?: boolean;
-  /** 由「人员管理」等父级控制当前分区（成员 / 加入申请 / 邀请码）。 */
+  /** 由「人员管理」等父级控制当前分区（加入申请、待审核、成员）。 */
   controlledStaffTab?: StaffTab;
   onStaffTabChange?: (t: StaffTab) => void;
   hideStaffTabBar?: boolean;
@@ -116,7 +114,7 @@ export function UserManagementTab({
   /** All gates use `property_members.role` for this property (`currentRole`). */
   const canEditMembers = canEditPropertyMemberRoles(currentRole);
   const canModerateActivation = !readOnly && canEditMembers;
-  /** 加入申请 / 待审核 / 邀请码：与 `canReviewJoinRequests` 一致（含 manager；不含纯 owner） */
+  /** 加入申请与待审核相关：与 `canReviewJoinRequests` 一致（含 manager；不含纯 owner） */
   const canStaffJoinInvites = !readOnly && canReviewJoinRequests(currentRole);
   const canViewMembersTab = !readOnly && canManageUsersOnProperty(currentRole);
   const canShowStaffToolbar = canStaffJoinInvites || canViewMembersTab;
@@ -736,19 +734,6 @@ export function UserManagementTab({
                   <button
                     type="button"
                     role="tab"
-                    aria-selected={staffTab === 'audits'}
-                    onClick={() => setStaffTab('audits')}
-                    className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                      staffTab === 'audits'
-                        ? 'bg-white text-[#1D9E75] shadow-sm'
-                        : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    {language === 'en' ? 'Entry audit' : '入楼审计'}
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
                     aria-selected={staffTab === 'members'}
                     onClick={() => setStaffTab('members')}
                     className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
@@ -758,19 +743,6 @@ export function UserManagementTab({
                     }`}
                   >
                     {language === 'en' ? 'Members' : '成员管理'}
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={staffTab === 'invites'}
-                    onClick={() => setStaffTab('invites')}
-                    className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                      staffTab === 'invites'
-                        ? 'bg-white text-[#1D9E75] shadow-sm'
-                        : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    {language === 'en' ? 'Invite codes' : '邀请码管理'}
                   </button>
                 </div>
               </div>
@@ -803,12 +775,6 @@ export function UserManagementTab({
         </div>
       )}
 
-      {canStaffJoinInvites && currentPropertyId && staffTab === 'audits' && (
-        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-          <PropertyEntryAuditPanel embedded />
-        </div>
-      )}
-
       {canViewMembersTab && currentPropertyId && staffTab === 'members' && (
         <div className="space-y-4">
           <MembersList
@@ -823,10 +789,6 @@ export function UserManagementTab({
             }}
           />
         </div>
-      )}
-
-      {canStaffJoinInvites && currentPropertyId && staffTab === 'invites' && (
-        <OwnerInviteCodesPanel propertyId={currentPropertyId} language={language} />
       )}
 
       <div className="space-y-4">

@@ -7,9 +7,9 @@ import { BackButton } from '../../components/BackButton';
 import { UserManagementTab, type StaffTab } from '../owner-info/UserManagementTab';
 
 function staffFromTabParam(raw: string | null): StaffTab | null {
-  if (raw === 'review' || raw === 'anomaly' || raw === 'audits' || raw === 'members' || raw === 'invites') return raw;
+  if (raw === 'invites') return 'review';
+  if (raw === 'review' || raw === 'anomaly' || raw === 'members') return raw;
   if (raw === 'join') return 'review';
-  if (raw === 'audit') return 'audits';
   return null;
 }
 
@@ -17,6 +17,8 @@ export function PropertyPeoplePage() {
   const { language } = useLanguage();
   const { currentPropertyId, currentRole, isDemoPropertyMock } = useProperty();
   const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const redirectToAudits = tabParam === 'audits' || tabParam === 'audit';
   const [staffTab, setStaffTab] = useState<StaffTab>('members');
 
   useEffect(() => {
@@ -32,6 +34,10 @@ export function PropertyPeoplePage() {
     [setSearchParams],
   );
 
+  if (redirectToAudits) {
+    return <Navigate to="/property-admin/audits" replace />;
+  }
+
   if (!currentPropertyId || (!canAccessPropertyPeoplePage(currentRole) && !isDemoPropertyMock)) {
     return <Navigate to="/" replace />;
   }
@@ -45,8 +51,8 @@ export function PropertyPeoplePage() {
         <h1 className="text-2xl font-bold text-gray-900">{en ? 'People management' : '人员管理'}</h1>
         <p className="text-sm text-gray-600 mt-1 max-w-2xl">
           {en
-            ? 'Manage members, join requests, and invite codes for this property.'
-            : '管理本物业成员、加入申请及邀请码。'}
+            ? 'Members, join requests, and the exception review queue for this property.'
+            : '本物业成员、加入申请与待审核人员。'}
         </p>
       </div>
 
@@ -56,8 +62,6 @@ export function PropertyPeoplePage() {
             { key: 'members' as const, zh: '成员管理', en: 'Members' },
             { key: 'review' as const, zh: '加入申请', en: 'Join requests' },
             { key: 'anomaly' as const, zh: '待审核人员', en: 'Exception queue' },
-            { key: 'audits' as const, zh: '入楼审计', en: 'Entry audit' },
-            { key: 'invites' as const, zh: '邀请码管理', en: 'Invite codes' },
           ] as const
         ).map((row) => (
           <button

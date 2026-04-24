@@ -15,12 +15,14 @@ import {
   FileText,
   Briefcase,
   CalendarDays,
+  FileSearch,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useProperty } from '../contexts/PropertyContext';
 import {
   canAccessPropertyPeoplePageFromContext,
   canAccessPropertySettingsPageFromContext,
+  canReviewJoinRequestsFromContext,
 } from '../lib/propertyPermissions';
 import { useLanguage, LANGUAGE_USER_STORAGE_KEY } from '../contexts/LanguageContext';
 import { samePropertyId } from '../lib/propertyIdMatch';
@@ -169,8 +171,11 @@ export function Layout({ children }: LayoutProps) {
         ...(showSettingsNav
           ? [{ path: '/property-admin/settings', icon: Settings, label: t('nav_property_settings') }]
           : []),
+        ...(showAuditLogNav
+          ? [{ path: '/property-admin/audits', icon: FileSearch, label: t('nav_audit_log') }]
+          : []),
       ] as Array<{ path: string; icon: LucideIcon; label: string }>,
-    [showPeopleNav, showSettingsNav, t],
+    [showPeopleNav, showSettingsNav, showAuditLogNav, t],
   );
 
   const showSystemSection = !isDemoMode && !isDemoPropertyMock && systemNavItems.length > 0;
@@ -182,13 +187,15 @@ export function Layout({ children }: LayoutProps) {
         path === '/property-admin/people'
           ? location.pathname === '/property-admin/people' ||
             location.pathname === '/property-admin/join-requests'
-          : path === '/property-admin/settings'
-            ? location.pathname === '/property-admin/settings' ||
-              location.pathname.startsWith('/property-admin/unit-whitelist') ||
-              location.pathname.startsWith('/property-admin/invite-analytics') ||
-              location.pathname.startsWith('/property-admin/invites') ||
-              location.pathname.startsWith('/property-admin/tasks')
-            : location.pathname === path;
+          : path === '/property-admin/audits'
+            ? location.pathname.startsWith('/property-admin/audits')
+            : path === '/property-admin/settings'
+              ? location.pathname === '/property-admin/settings' ||
+                location.pathname.startsWith('/property-admin/unit-whitelist') ||
+                location.pathname.startsWith('/property-admin/invite-analytics') ||
+                location.pathname.startsWith('/property-admin/invites') ||
+                location.pathname.startsWith('/property-admin/tasks')
+              : location.pathname === path;
       return (
         <button
           key={path}

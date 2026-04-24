@@ -75,6 +75,7 @@ const translations: Record<string, Record<Language, string>> = {
   nav_property_admin_sidebar: { en: 'Property settings', zh: '物业设置' },
   nav_people_management: { en: 'People management', zh: '人员管理' },
   nav_property_settings: { en: 'Property settings', zh: '物业设置' },
+  nav_audit_log: { en: 'Audit log', zh: '审计日志' },
   nav_meetings_records: { en: 'Meetings', zh: '会议记录' },
 
   current_property_not_loaded: {

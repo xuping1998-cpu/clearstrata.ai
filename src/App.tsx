@@ -50,6 +50,7 @@ import { PlatformAdminRoute } from './components/PlatformAdminRoute';
 import { PlatformOverviewPage } from './pages/admin/PlatformOverviewPage';
 import { PropertySettingsPage } from './pages/property-admin/PropertyAdminHub';
 import { PropertyPeoplePage } from './pages/property-admin/PropertyPeoplePage';
+import { PropertyAuditsPage } from './pages/property-admin/PropertyAuditsPage';
 import { UnitWhitelistPage } from './pages/property-admin/UnitWhitelistPage';
 import { PropertyAdminInvites } from './pages/property-admin/PropertyAdminInvites';
 import { PropertyInviteAnalytics } from './pages/property-admin/PropertyInviteAnalytics';
@@ -296,6 +297,20 @@ function PropertyAdminSettingsLayoutRoute() {
   );
 }
 
+function PropertyAdminAuditsLayoutRoute() {
+  const { session } = useAuth();
+  const { memberships, currentPropertyId } = useProperty();
+  if (!session) return <Navigate to="/" replace />;
+  if (!memberships.length || !currentPropertyId) return <Navigate to="/" replace />;
+  return (
+    <Layout>
+      <AdminStaffRoute canAccess={canAccessPropertyPeoplePage}>
+        <PropertyAuditsPage />
+      </AdminStaffRoute>
+    </Layout>
+  );
+}
+
 /** 演示楼：无需登录；子路由 `/demo-property/*` 使用纯 mock，不写库。 */
 function DemoPropertyLayout() {
   return (
@@ -418,6 +433,7 @@ function AppContent() {
       <Route path="/property-admin" element={<PropertyAdminIndexRoute />} />
       <Route path="/property-admin/people" element={<PropertyAdminPeopleLayoutRoute />} />
       <Route path="/property-admin/settings" element={<PropertyAdminSettingsLayoutRoute />} />
+      <Route path="/property-admin/audits" element={<PropertyAdminAuditsLayoutRoute />} />
       <Route
         path="/property-admin/invites"
         element={

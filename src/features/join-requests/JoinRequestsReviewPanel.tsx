@@ -427,7 +427,7 @@ export function JoinRequestsReviewPanel({ embedded = false, anomalyOnly = false 
               <ClipboardList className="text-[#1D9E75]" size={26} />
               {anomalyOnly
                 ? en
-                  ? 'Exception queue (whitelist / unit)'
+                  ? 'Exception queue (entry checks)'
                   : '待审核人员'
                 : en
                   ? 'Join request review'
@@ -436,8 +436,8 @@ export function JoinRequestsReviewPanel({ embedded = false, anomalyOnly = false 
             <p className="text-sm text-gray-600 mt-1">
               {anomalyOnly
                 ? en
-                  ? 'Queue for invites that did not pass automatic whitelist/occupancy checks.'
-                  : '白名单或房号占用的公开邀请入楼申请，将在此列队。'
+                  ? 'Queue for public /entry cases that need manual review (e.g. unit checks).'
+                  : '未通过入楼自动校验、需人工处理的申请，将在此列队。'
                 : en
                   ? 'Only pending join requests for this property.'
                   : '仅展示本物业待处理的加入申请。'}
@@ -448,7 +448,7 @@ export function JoinRequestsReviewPanel({ embedded = false, anomalyOnly = false 
             </p>
           </div>
           <Link
-            to="/property-admin/people?tab=invites"
+            to="/property-admin/invites"
             className="text-sm font-medium text-clearstrata-ui-primary hover:underline shrink-0"
           >
             {en ? 'Invite codes' : '邀请码管理'}
