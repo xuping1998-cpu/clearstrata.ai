@@ -165,10 +165,12 @@ GRANT EXECUTE ON FUNCTION public.log_property_entry_client_event(uuid, text, tex
 -- 3) enter_property_by_public_invite_v2（原逻辑 + 每分支审计）
 -- ---------------------------------------------------------------------------
 
+DROP FUNCTION IF EXISTS public.enter_property_by_public_invite_v2(uuid, text, text, text, text, text);
+
 CREATE OR REPLACE FUNCTION public.enter_property_by_public_invite_v2(
   p_property_id uuid,
   p_invite_code text,
-  p_name text,
+  p_full_name text,
   p_unit_no text,
   p_email text,
   p_language_pref text DEFAULT 'en'
@@ -186,7 +188,7 @@ DECLARE
   v_pic_used_count int;
   v_pic_expires_at timestamptz;
   v_unit_no text := NULLIF(trim(both from coalesce(p_unit_no, '')), '');
-  v_name text := NULLIF(trim(both from coalesce(p_name, '')), '');
+  v_name text := NULLIF(trim(both from coalesce(p_full_name, '')), '');
   v_email_in text := NULLIF(trim(both from coalesce(p_email, '')), '');
   v_lang text;
   v_code text := NULLIF(trim(both from coalesce(p_invite_code, '')), '');
@@ -440,7 +442,14 @@ BEGIN
         role, status, strata_fee_status
       )
       VALUES (
-        p_property_id, v_uid, v_unit_no, v_name, NULL, v_email_in, coalesce(v_prof.phone, ''), NULL,
+        p_property_id,
+        v_uid,
+        v_unit_no,
+        coalesce(NULLIF(trim(p_full_name), ''), NULLIF(trim(p_email), ''), 'Resident'),
+        coalesce(NULLIF(trim(p_full_name), ''), NULLIF(trim(p_email), ''), '业主'),
+        v_email_in,
+        coalesce(v_prof.phone, ''),
+        NULL,
         v_lang, 'owner', 'active'::member_status, 'current'
       );
 
