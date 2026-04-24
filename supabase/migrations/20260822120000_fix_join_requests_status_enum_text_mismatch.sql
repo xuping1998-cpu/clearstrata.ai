@@ -1,85 +1,76 @@
 /*
-  # Fix 42883 / enum-text mismatch on `public.join_requests.status`
+  # Fix 42883: operator does not exist: text = join_request_status
 
   Root cause (typical):
-  - `status` column drifted to **text** while expressions still use **join_request_status**
-    literals (partial indexes, triggers), so PostgreSQL rejects `text = join_request_status`
-    (catalog may also surface as `join_request_status = text`).
+  - `public.join_requests.status` was stored as **text** (schema drift / manual change),
+    while functions compare with `'pending'::public.join_request_status` (enum on the right),
+    which PostgreSQL resolves as **text = join_request_status** â†’ error 42883.
 
-  Dependencies on `join_requests.status` (from repo audit; drop before ALTER, recreate after):
+  This migration:
+  1) If `status` is not already `join_request_status`, cast column to the enum via USING.
+  2) Replaces `trg_join_requests_bump_public_invite_on_approve` body comparisons with
+     **text-normalized** checks (`NEW.status::text`, `OLD.status::text`) so the trigger
+     never mixes bare text with enum literals in `=` (lines 1017â€“1019 previously:
+     `NEW.status = 'approved'::public.join_request_status`).
 
-  | Kind   | Object name |
-  |--------|-------------|
-  | Trigger (non-internal) | `join_requests_bump_public_invite_on_approve` ??? AFTER UPDATE OF status ??? `trg_join_requests_bump_public_invite_on_approve` |
-  | Trigger (non-internal) | `tr_join_requests_updated_at` ??? BEFORE UPDATE ??? `touch_join_requests_updated_at` (no status compare; still dropped so ALTER is not blocked) |
-  | Policy | `jr_select_scope` on `join_requests` ??? does **not** reference `join_requests.status` |
-  | CHECK | none on `join_requests` in migrations |
-  | Index (partial, status predicate) | `join_requests_one_pending_per_user` ??? `WHERE status = 'pending'::join_request_status` (**must** drop before text???enum USING) |
-  | Index (partial, status predicate) | `uniq_pending_request` ??? `WHERE status::text = 'pending'` (drop for same ALTER pass) |
+  3) Re-applies `submit_join_request` / `_try_owner_whitelist_auto_join` from
+     20260722120000 with `(jr.status::text = 'pending')` for duplicate checks.
 
-  Comparisons after rebuild: `status::text = 'pending'` and/or `status = 'literal'::public.join_request_status`.
+  Affected runtime path: `submit_join_request` duplicate-pending EXISTS clauses;
+  bump trigger on UPDATE OF status (invite_codes consumption).
 */
 
 -- ---------------------------------------------------------------------------
--- 1) Normalize column type: text / varchar -> public.join_request_status
+-- 1) Normalize column type: text / varchar â†’ public.join_request_status
 -- ---------------------------------------------------------------------------
 
 DO $$
+DECLARE
+  v_typname text;
 BEGIN
-  IF EXISTS (
-    SELECT 1
-    FROM pg_attribute a
-    JOIN pg_class c ON c.oid = a.attrelid
-    JOIN pg_namespace n ON n.oid = c.relnamespace
-    WHERE n.nspname = 'public'
-      AND c.relname = 'join_requests'
-      AND a.attname = 'status'
-      AND a.attnum > 0
-      AND NOT a.attisdropped
-      AND format_type(a.atttypid, a.atttypmod) <> 'join_request_status'
-  ) THEN
-    DROP TRIGGER IF EXISTS join_requests_bump_public_invite_on_approve ON public.join_requests;
-    DROP TRIGGER IF EXISTS tr_join_requests_updated_at ON public.join_requests;
+  SELECT t.typname
+  INTO v_typname
+  FROM pg_attribute a
+  JOIN pg_class c ON c.oid = a.attrelid
+  JOIN pg_namespace n ON n.oid = c.relnamespace
+  JOIN pg_type t ON t.oid = a.atttypid
+  WHERE n.nspname = 'public'
+    AND c.relname = 'join_requests'
+    AND a.attname = 'status'
+    AND a.attnum > 0
+    AND NOT a.attisdropped;
 
-    DROP INDEX IF EXISTS public.join_requests_one_pending_per_user;
-    DROP INDEX IF EXISTS public.uniq_pending_request;
-
-    ALTER TABLE public.join_requests
-      ALTER COLUMN status DROP DEFAULT;
-
-    ALTER TABLE public.join_requests
-      ALTER COLUMN status TYPE public.join_request_status
-      USING (
-        CASE lower(trim(status::text))
-          WHEN 'pending' THEN 'pending'::public.join_request_status
-          WHEN 'approved' THEN 'approved'::public.join_request_status
-          WHEN 'rejected' THEN 'rejected'::public.join_request_status
-          WHEN 'cancelled' THEN 'cancelled'::public.join_request_status
-          ELSE 'pending'::public.join_request_status
-        END
-      );
-
-    ALTER TABLE public.join_requests
-      ALTER COLUMN status SET DEFAULT 'pending'::public.join_request_status;
+  IF v_typname IS NULL THEN
+    RAISE NOTICE '[join_requests.status] column not found; skip';
+    RETURN;
   END IF;
-END;
+
+  IF v_typname = 'join_request_status' THEN
+    RAISE NOTICE '[join_requests.status] already enum join_request_status; skip ALTER';
+    RETURN;
+  END IF;
+
+  RAISE NOTICE '[join_requests.status] repairing type: % â†’ join_request_status', v_typname;
+
+  ALTER TABLE public.join_requests
+    ALTER COLUMN status DROP DEFAULT;
+
+  ALTER TABLE public.join_requests
+    ALTER COLUMN status TYPE public.join_request_status
+    USING (
+      CASE lower(trim(status::text))
+        WHEN 'pending' THEN 'pending'::public.join_request_status
+        WHEN 'approved' THEN 'approved'::public.join_request_status
+        WHEN 'rejected' THEN 'rejected'::public.join_request_status
+        WHEN 'cancelled' THEN 'cancelled'::public.join_request_status
+        ELSE 'pending'::public.join_request_status
+      END
+    );
+
+  ALTER TABLE public.join_requests
+    ALTER COLUMN status SET DEFAULT 'pending'::public.join_request_status;
+END
 $$;
-
--- Partial unique indexes (recreated after type normalize; predicates avoid enum=text during ALTER)
-CREATE UNIQUE INDEX IF NOT EXISTS join_requests_one_pending_per_user
-  ON public.join_requests (property_id, user_id)
-  WHERE status = 'pending'::public.join_request_status;
-
-CREATE UNIQUE INDEX IF NOT EXISTS uniq_pending_request
-  ON public.join_requests (property_id, (lower(trim(email))))
-  WHERE status = 'pending'::public.join_request_status
-    AND coalesce(trim(email), '') <> '';
-
-DROP TRIGGER IF EXISTS tr_join_requests_updated_at ON public.join_requests;
-CREATE TRIGGER tr_join_requests_updated_at
-  BEFORE UPDATE ON public.join_requests
-  FOR EACH ROW
-  EXECUTE FUNCTION public.touch_join_requests_updated_at();
 
 -- ---------------------------------------------------------------------------
 -- 2) Trigger: avoid text = join_request_status inside function body
@@ -117,19 +108,26 @@ $tr$;
 COMMENT ON FUNCTION public.trg_join_requests_bump_public_invite_on_approve() IS
   'After join_requests.status changes to approved (public invite_code path), bump property_invite_codes.used_count. Comparisons use status::text to avoid text vs enum operator errors.';
 
-DROP TRIGGER IF EXISTS join_requests_bump_public_invite_on_approve ON public.join_requests;
-CREATE TRIGGER join_requests_bump_public_invite_on_approve
-  AFTER UPDATE OF status ON public.join_requests
-  FOR EACH ROW
-  EXECUTE FUNCTION public.trg_join_requests_bump_public_invite_on_approve();
-
 -- ---------------------------------------------------------------------------
 -- 3) submit_join_request + helper (same as 20260722120000; pending checks use text)
 -- ---------------------------------------------------------------------------
 
 /*
-  Unified property entry via submit_join_request (copied from 20260722120000;
-  pending duplicate checks use jr.status::text for type safety).
+  # Unified property entry (å…¥æ¥¼åˆ†æµ) via `submit_join_request`
+
+  - Internal helper `_try_owner_whitelist_auto_join` updates profile fields, then calls
+    `bind_resident_by_unit` (roster row must exist; unit not bound to another user).
+  - **Public branch D**, **invite-code branch C**, and **direct-invite branch A** try auto-join
+    when `requested_role = owner`, application fields are complete, and bind succeeds â€” **no**
+    `join_requests` row is created.
+  - Otherwise existing **pending** insert paths run unchanged.
+  - `submit_join_request` gains optional `p_move_in_date`, `p_language_pref` (defaults preserve callers).
+
+  Response JSON additions:
+  - `entry_path`: `auto_approved` | `pending_submitted`
+  - `pending_created` boolean
+  - `auto_approve`: `passed` | `failed` | `skipped`
+  - `auto_fail_reason` when bind failed but pending was created
 */
 
 CREATE OR REPLACE FUNCTION public._try_owner_whitelist_auto_join(
@@ -269,7 +267,7 @@ BEGIN
       'success', false,
       'error', 'not_authenticated',
       'message', 'NOT_AUTHENTICATED',
-      'message_zh', '????????????????'
+      'message_zh', 'è¯·å…ˆç™»å½•åŽå†æäº¤'
     );
   END IF;
 
@@ -285,7 +283,7 @@ BEGIN
         'ok', false,
         'success', false,
         'message', 'INVALID_INVITE',
-        'message_zh', '??????????'
+        'message_zh', 'é‚€è¯·æ— æ•ˆ'
       );
     END IF;
 
@@ -294,7 +292,7 @@ BEGIN
         'ok', false,
         'success', false,
         'message', 'INVALID_INVITE',
-        'message_zh', '??????????????????'
+        'message_zh', 'ç‰©ä¸šä¸Žé‚€è¯·ä¸åŒ¹é…'
       );
     END IF;
 
@@ -303,7 +301,7 @@ BEGIN
         'ok', false,
         'success', false,
         'message', 'INVALID_INVITE',
-        'message_zh', '??????????'
+        'message_zh', 'é‚€è¯·æ— æ•ˆ'
       );
     END IF;
 
@@ -312,7 +310,7 @@ BEGIN
         'ok', false,
         'success', false,
         'message', 'INVITE_EXPIRED',
-        'message_zh', '???????????'
+        'message_zh', 'é‚€è¯·ç å·²è¿‡æœŸ'
       );
     END IF;
 
@@ -321,7 +319,7 @@ BEGIN
         'ok', false,
         'success', false,
         'message', 'INVITE_LIMIT_REACHED',
-        'message_zh', '????????????????????'
+        'message_zh', 'è¯¥é‚€è¯·ç å·²è¾¾åˆ°ä½¿ç”¨ä¸Šé™'
       );
     END IF;
 
@@ -339,7 +337,7 @@ BEGIN
         'success', false,
         'error', 'already_member',
         'message', 'ALREADY_MEMBER',
-        'message_zh', '??????????????????????????????????'
+        'message_zh', 'ä½ å·²ç»æ˜¯è¯¥ç‰©ä¸šæˆå‘˜ï¼Œæ— éœ€é‡å¤ç”³è¯·'
       );
     END IF;
 
@@ -362,7 +360,7 @@ BEGIN
         'success', false,
         'error', 'already_pending',
         'message', 'You already have a pending request for this property.',
-        'message_zh', '????????????????????????????'
+        'message_zh', 'ä½ å·²æäº¤è¿‡è¯¥ç‰©ä¸šçš„ç”³è¯·ï¼Œè¯·ç­‰å¾…å®¡æ ¸'
       );
     END IF;
 
@@ -378,7 +376,7 @@ BEGIN
         'success', false,
         'error', 'already_pending',
         'message', 'You already have a pending request for this property.',
-        'message_zh', '????????????????????????????'
+        'message_zh', 'ä½ å·²æäº¤è¿‡è¯¥ç‰©ä¸šçš„ç”³è¯·ï¼Œè¯·ç­‰å¾…å®¡æ ¸'
       );
     END IF;
 
@@ -525,7 +523,7 @@ BEGIN
           'success', false,
           'error', 'already_member',
           'message', 'ALREADY_MEMBER',
-          'message_zh', '??????????????????????????????????'
+          'message_zh', 'ä½ å·²ç»æ˜¯è¯¥ç‰©ä¸šæˆå‘˜ï¼Œæ— éœ€é‡å¤ç”³è¯·'
         );
       END IF;
 
@@ -543,7 +541,7 @@ BEGIN
           'success', false,
           'error', 'already_pending',
           'message', 'You already have a pending request for this property.',
-          'message_zh', '????????????????????????????'
+          'message_zh', 'ä½ å·²æäº¤è¿‡è¯¥ç‰©ä¸šçš„ç”³è¯·ï¼Œè¯·ç­‰å¾…å®¡æ ¸'
         );
       END IF;
 
@@ -559,7 +557,7 @@ BEGIN
           'success', false,
           'error', 'already_pending',
           'message', 'You already have a pending request for this property.',
-          'message_zh', '????????????????????????????'
+          'message_zh', 'ä½ å·²æäº¤è¿‡è¯¥ç‰©ä¸šçš„ç”³è¯·ï¼Œè¯·ç­‰å¾…å®¡æ ¸'
         );
       END IF;
 
@@ -623,7 +621,7 @@ BEGIN
           'ok', false,
           'success', false,
           'message', 'INVALID_INVITE',
-          'message_zh', '???????????'
+          'message_zh', 'é‚€è¯·ç å·²è¿‡æœŸ'
         );
       END IF;
 
@@ -632,7 +630,7 @@ BEGIN
           'ok', false,
           'success', false,
           'message', 'INVITE_LIMIT_REACHED',
-          'message_zh', '????????????????????'
+          'message_zh', 'è¯¥é‚€è¯·ç å·²è¾¾åˆ°ä½¿ç”¨ä¸Šé™'
         );
       END IF;
 
@@ -641,7 +639,7 @@ BEGIN
           'ok', false,
           'success', false,
           'message', 'INVALID_INVITE',
-          'message_zh', '???????????????????'
+          'message_zh', 'ç‰©ä¸šä¸Žé‚€è¯·ç ä¸åŒ¹é…'
         );
       END IF;
 
@@ -666,7 +664,7 @@ BEGIN
           'success', false,
           'error', 'already_member',
           'message', 'ALREADY_MEMBER',
-          'message_zh', '??????????????????????????????????'
+          'message_zh', 'ä½ å·²ç»æ˜¯è¯¥ç‰©ä¸šæˆå‘˜ï¼Œæ— éœ€é‡å¤ç”³è¯·'
         );
       END IF;
 
@@ -682,7 +680,7 @@ BEGIN
           'success', false,
           'error', 'already_pending',
           'message', 'You already have a pending request for this property.',
-          'message_zh', '????????????????????????????'
+          'message_zh', 'ä½ å·²æäº¤è¿‡è¯¥ç‰©ä¸šçš„ç”³è¯·ï¼Œè¯·ç­‰å¾…å®¡æ ¸'
         );
       END IF;
 
@@ -698,7 +696,7 @@ BEGIN
           'success', false,
           'error', 'already_pending',
           'message', 'You already have a pending request for this property.',
-          'message_zh', '????????????????????????????'
+          'message_zh', 'ä½ å·²æäº¤è¿‡è¯¥ç‰©ä¸šçš„ç”³è¯·ï¼Œè¯·ç­‰å¾…å®¡æ ¸'
         );
       END IF;
 
@@ -816,7 +814,7 @@ BEGIN
       'success', false,
       'error', 'bad_property',
       'message', 'Invalid or missing property.',
-      'message_zh', '????????????????????'
+      'message_zh', 'ç‰©ä¸šä¸å­˜åœ¨æˆ–æ— æ•ˆ'
     );
   END IF;
 
@@ -831,7 +829,7 @@ BEGIN
       'success', false,
       'error', 'property_closed',
       'message', 'This property is not accepting public applications.',
-      'message_zh', '??????????????????????????'
+      'message_zh', 'è¯¥ç‰©ä¸šå½“å‰ä¸æŽ¥å—å…¬å¼€ç”³è¯·'
     );
   END IF;
 
@@ -856,7 +854,7 @@ BEGIN
       'success', false,
       'error', 'already_member',
       'message', 'You are already a member of this property.',
-      'message_zh', '??????????????????????????????????'
+      'message_zh', 'ä½ å·²ç»æ˜¯è¯¥ç‰©ä¸šæˆå‘˜ï¼Œæ— éœ€é‡å¤ç”³è¯·'
     );
   END IF;
 
@@ -872,7 +870,7 @@ BEGIN
       'success', false,
       'error', 'already_pending',
       'message', 'You already have a pending request for this property.',
-      'message_zh', '????????????????????????????'
+      'message_zh', 'ä½ å·²æäº¤è¿‡è¯¥ç‰©ä¸šçš„ç”³è¯·ï¼Œè¯·ç­‰å¾…å®¡æ ¸'
     );
   END IF;
 
@@ -888,7 +886,7 @@ BEGIN
       'success', false,
       'error', 'already_pending',
       'message', 'You already have a pending request for this property.',
-      'message_zh', '????????????????????????????'
+      'message_zh', 'ä½ å·²æäº¤è¿‡è¯¥ç‰©ä¸šçš„ç”³è¯·ï¼Œè¯·ç­‰å¾…å®¡æ ¸'
     );
   END IF;
 
@@ -981,6 +979,6 @@ GRANT EXECUTE ON FUNCTION public.submit_join_request(
 COMMENT ON FUNCTION public.submit_join_request(
   uuid, public.user_role, text, text, text, text, text, text, uuid, text, text, date, text
 ) IS
-  'Submit join request or auto-approve owner when roster unit is free (unified property entry).';
+  'Submit join request or auto-approve owner when roster unit is free (unified å…¥æ¥¼åˆ†æµ).';
 
 NOTIFY pgrst, 'reload schema';

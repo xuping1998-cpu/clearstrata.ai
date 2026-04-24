@@ -59,16 +59,18 @@ export function canDeleteInvoice(
   return canManageInvoiceWorkflow(role) || role === 'manager';
 }
 
-/**
- * 加入申请（查看 / 通过 / 拒绝）：与 `approve_join_request` + `reject_join_request` 一致，仅 council。
- * manager 等不显示通过/拒绝入口，避免与 RLS/RPC 不一致。
- */
+/** 审核加入申请（/admin/join-requests）：与 staffForPropertyInvitesAndJoinReview 一致 */
 export function canReviewJoinRequests(role: UserRole | null | undefined): boolean {
-  return canApproveJoinRequest(role);
+  return staffForPropertyInvitesAndJoinReview(role);
 }
 
+/** 加入申请审核页：property_admin / council / manager / legacy admin */
+const JOIN_REVIEW_STAFF_ONLY: ReadonlySet<string> = new Set(['property_admin', 'council', 'manager', 'admin']);
+
 export function canReviewJoinRequestsAsStaff(role: UserRole | null | undefined): boolean {
-  return canReviewJoinRequests(role);
+  const r = normalizeRoleKey(role);
+  if (!r) return false;
+  return JOIN_REVIEW_STAFF_ONLY.has(r);
 }
 
 /** 物业设置（名称/公开申请等）：物业管理员或历史 admin 角色 */
@@ -92,8 +94,21 @@ export function canReviewJoinRequestsFromContext(
   return memberships.some((m) => canReviewJoinRequests(m.role));
 }
 
+/**
+ * Core nav “审核申请”: `property_members.role` only — admin, council, property_admin, manager.
+ * (Admin on the property must see the same entry as council.)
+ */
+const JOIN_REVIEW_NAV_ROLES: ReadonlySet<string> = new Set([
+  'admin',
+  'council',
+  'property_admin',
+  'manager',
+]);
+
 export function canShowJoinRequestReviewNav(role: UserRole | null | undefined): boolean {
-  return canReviewJoinRequests(role);
+  if (!canReviewJoinRequests(role)) return false;
+  const r = normalizeRoleKey(role);
+  return JOIN_REVIEW_NAV_ROLES.has(r);
 }
 
 /**
@@ -147,7 +162,7 @@ export function canManagePropertyAdminFromContext(
   return memberships.some((m) => canManagePropertyAdmin(m.role));
 }
 
-/** 公开邀请管理（/admin/invite-codes、/admin/invites）：与 canReviewJoinRequests 同一组物业职员（非 owner） */
+/** /admin/invites 邀请码：与 canReviewJoinRequests 同一组物业职员（非 owner） */
 export function canManagePropertyInvites(role: UserRole | null | undefined): boolean {
   return staffForPropertyInvitesAndJoinReview(role);
 }

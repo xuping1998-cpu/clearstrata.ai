@@ -4,13 +4,13 @@
  * | 场景 | 前端 API | 数据库 |
  * |------|-----------|--------|
  * | Demo / 扫码（含公开邀请码） | `tryAutoJoinProperty` | 有码：`enter_property_by_invite`；无码：`try_auto_join_property_from_qr` |
- * | 自动失败 → 待审核 | `createPendingJoinRequest` | `submitUnifiedPropertyEntry` → `insert join_requests`（+ 公开码时 `enter_property_by_invite`） |
- * | 邀请码 / 表单进楼 | `submitUnifiedPropertyEntry` | `insert join_requests` |
+ * | 自动失败 → 待审核 | `createPendingJoinRequest` | `submit_join_request`（内含自动逻辑，失败写 `join_requests` pending） |
+ * | 邀请码 / 表单进楼 | `submitUnifiedPropertyEntry`（`propertyEntryUnified`） | 同上 `submit_join_request` |
  * | 管理端「通过」 | `approveJoinRequest` | **`approve_join_request`（内部调用 `approve_join_request_final`）** |
  * | 管理端「拒绝」 | `rejectJoinRequest` | `reject_join_request` |
  *
  * **防重复 pending**：`joinRequestGuards` 预检 + 库唯一索引 `uniq_pending_request`（见迁移 `20260724130000_*`）。
- * **residents / property_members 写入（入楼）**：`enter_property_by_invite` 或 `tryAutoJoinProperty`；`submitUnifiedPropertyEntry` 为 `join_requests` insert 并在公开码时调用 `enter_property_by_invite`。房号在 `residents`。
+ * **residents / property_members 写入**：仅发生在上述 RPC 内（幂等 upsert）；前端禁止直接 `insert` 这两张表。房号仅 `residents.unit_no`。
  *
  * 本文件单向依赖 `propertyEntryUnified` 的 `submitUnifiedPropertyEntry` / `firstRpcJsonRow`，避免与 re-export 循环引用。
  */
@@ -239,8 +239,8 @@ function mapSubmitToPendingResult(r: UnifiedPropertyEntryResult): CreatePendingJ
 }
 
 /**
- * 写入 `join_requests`：见 `submitUnifiedPropertyEntry`（`insert` + 公开码时 `enter_property_by_invite`）。
- * 前端预检同物业同邮箱 pending；数据库有 `uniq_pending_request` 兜底。
+ * 写入 `join_requests` pending：内部单 RPC `submit_join_request`（库内先尝试自动进楼）。
+ * 前端预检同物业同邮箱 pending，避免重复插入；数据库有 `uniq_pending_request` 兜底。
  */
 export async function createPendingJoinRequest(
   client: SupabaseClient,

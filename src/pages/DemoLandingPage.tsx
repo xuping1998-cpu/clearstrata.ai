@@ -1,7 +1,5 @@
 import { Link, useParams } from 'react-router-dom';
 import { Building2 } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
-import { isPlatformAdmin } from '../lib/permissions';
 
 const demoStats = {
   waste: 48200,
@@ -20,7 +18,6 @@ function formatMoneyUSD(n: number): string {
 export function DemoLandingPage() {
   const { propertyCode } = useParams<{ propertyCode: string }>();
   const code = (propertyCode ?? '').trim() || 'BCS3736';
-  const { profile } = useAuth();
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-clearstrata-ui-soft/30 via-white to-white">
@@ -84,15 +81,7 @@ export function DemoLandingPage() {
             <p className="mt-4 text-xs text-gray-500">演示数据为模拟结果，仅用于体验产品能力，不会进入真实物业数据流。</p>
           </div>
 
-          <div className="relative rounded-3xl border border-clearstrata-ui-softBorder/60 bg-white p-6 shadow-sm">
-            {isPlatformAdmin(profile) && (
-              <Link
-                to="/admin/overview"
-                className="absolute bottom-3 right-3 z-10 size-7 rounded-full border border-gray-200/80 bg-white/80 opacity-0 hover:opacity-100 focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-clearstrata-ui-primary"
-                title="Platform"
-                aria-label="Open platform admin"
-              />
-            )}
+          <div className="rounded-3xl border border-clearstrata-ui-softBorder/60 bg-white p-6 shadow-sm">
             <div className="text-sm font-extrabold text-gray-900">你将看到什么</div>
             <ul className="mt-3 space-y-2 text-sm text-gray-700">
               <li> - 每一笔发票支出与预算类目的对齐</li>

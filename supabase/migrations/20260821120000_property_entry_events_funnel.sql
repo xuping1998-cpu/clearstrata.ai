@@ -1223,6 +1223,8 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $fn$;
 
+R
+
 REVOKE ALL ON FUNCTION public.submit_join_request(
   uuid, public.user_role, text, text, text, text, text, text, uuid, text, text, date, text
 ) FROM PUBLIC;

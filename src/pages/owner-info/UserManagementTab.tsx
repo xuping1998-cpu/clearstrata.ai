@@ -6,7 +6,12 @@ import { useProperty } from '../../contexts/PropertyContext';
 import { supabase, type UserRole, type ProfileAccountStatus } from '../../lib/supabase';
 import { withProperty } from '../../lib/supabaseTenant';
 import { UserCard } from '../../components/UserCard';
-import { canCouncilManagePropertyMembers, canEditPropertyMemberRoles } from '../../lib/propertyPermissions';
+import {
+  canCouncilManagePropertyMembers,
+  canEditPropertyMemberRoles,
+  canManageUsersOnProperty,
+  canReviewJoinRequests,
+} from '../../lib/propertyPermissions';
 import { JoinRequestsReviewPanel } from '../../features/join-requests/JoinRequestsReviewPanel';
 import { MembersList } from './MembersList';
 import { OwnerInviteCodesPanel } from './OwnerInviteCodesPanel';
@@ -58,7 +63,7 @@ interface PropertyMemberMeta {
   status: string;
 }
 
-export type StaffTab = 'review' | 'members' | 'invites';
+export type StaffTab = 'review' | 'anomaly' | 'members' | 'invites';
 
 /** Lowercase canonical UUID string, or null if invalid (avoids PostgREST 400 on bad filter values). */
 function normalizeUuid(value: unknown): string | null {
@@ -109,9 +114,11 @@ export function UserManagementTab({
 
   /** All gates use `property_members.role` for this property (`currentRole`). */
   const canEditMembers = canEditPropertyMemberRoles(currentRole);
-  const canSelectRoles = !readOnly && canEditMembers;
   const canModerateActivation = !readOnly && canEditMembers;
-  const canShowStaffToolbar = !readOnly && canEditMembers;
+  /** 加入申请 / 待审核 / 邀请码：与 `canReviewJoinRequests` 一致（含 manager；不含纯 owner） */
+  const canStaffJoinInvites = !readOnly && canReviewJoinRequests(currentRole);
+  const canViewMembersTab = !readOnly && canManageUsersOnProperty(currentRole);
+  const canShowStaffToolbar = canStaffJoinInvites || canViewMembersTab;
 
   const loadData = useCallback(async () => {
     if (!currentPropertyId) return;
@@ -715,6 +722,19 @@ export function UserManagementTab({
                   <button
                     type="button"
                     role="tab"
+                    aria-selected={staffTab === 'anomaly'}
+                    onClick={() => setStaffTab('anomaly')}
+                    className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                      staffTab === 'anomaly'
+                        ? 'bg-white text-[#1D9E75] shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    {language === 'en' ? 'Exception queue' : '待审核人员'}
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
                     aria-selected={staffTab === 'members'}
                     onClick={() => setStaffTab('members')}
                     className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
@@ -757,13 +777,19 @@ export function UserManagementTab({
         ) : null}
       </div>
 
-      {canShowStaffToolbar && currentPropertyId && staffTab === 'review' && (
+      {canStaffJoinInvites && currentPropertyId && staffTab === 'review' && (
         <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
           <JoinRequestsReviewPanel embedded />
         </div>
       )}
 
-      {canShowStaffToolbar && currentPropertyId && staffTab === 'members' && (
+      {canStaffJoinInvites && currentPropertyId && staffTab === 'anomaly' && (
+        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+          <JoinRequestsReviewPanel embedded anomalyOnly />
+        </div>
+      )}
+
+      {canViewMembersTab && currentPropertyId && staffTab === 'members' && (
         <div className="space-y-4">
           <MembersList
             propertyId={currentPropertyId}
@@ -779,12 +805,12 @@ export function UserManagementTab({
         </div>
       )}
 
-      {canShowStaffToolbar && currentPropertyId && staffTab === 'invites' && (
+      {canStaffJoinInvites && currentPropertyId && staffTab === 'invites' && (
         <OwnerInviteCodesPanel propertyId={currentPropertyId} language={language} />
       )}
 
       <div className="space-y-4">
-        {(!canShowStaffToolbar || staffTab === 'members') &&
+        {(readOnly || !canStaffJoinInvites || staffTab === 'members') &&
           sortedProfiles.map((user) => {
             const res = residentByUserId[user.id];
             const pending = res?.status === 'pending';

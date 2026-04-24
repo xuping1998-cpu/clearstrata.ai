@@ -1,8 +1,3 @@
-/**
- * LEGACY — 方案 A：`property_invites`、`create_property_invite`、`/invite?code=`。
- * 不再挂主路由；主流程公开邀请见 `AdminInviteCodes` + `property_invite_codes` + `/entry?propertyId&inviteCode`。
- * 保留本文件仅便于对照旧链路与数据库行为，勿再把此 UI 接回主导航。
- */
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Copy, Check, Loader2, Ban, Plus } from 'lucide-react';
@@ -63,33 +58,13 @@ function inviteStatusBadgeClass(s: InviteDisplayStatus): string {
   }
 }
 
-/** `<input type="datetime-local" />` → timestamptz for `create_property_invite`; empty → null */
-function expiresLocalToIsoOrNull(local: string): string | null {
-  const t = local?.trim() ?? '';
-  if (!t) return null;
-  const d = new Date(t);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toISOString();
-}
-
-/**
- * `property_invites.max_uses` is NOT NULL (see migrations). "Unlimited" is represented as 0 server-side;
- * RPC uses GREATEST(p_max_uses, 0). Do not send SQL NULL from the client for this column.
- */
-function maxUsesForRpc(raw: number): number {
-  const n = Number(raw);
-  if (!Number.isFinite(n) || n < 0) return 0;
-  if (n === 0) return 0;
-  return Math.floor(n);
-}
-
 const INVITE_ROLES: UserRole[] = ['owner', 'tenant', 'viewer', 'manager', 'council'];
 
-export function AdminInvitesLegacy() {
+export function AdminInvites() {
   const { language } = useLanguage();
   const en = language === 'en';
-  const { user } = useAuth();
-  const { currentPropertyId, ready } = useProperty();
+  const { profile } = useAuth();
+  const { currentPropertyId } = useProperty();
 
   const [rows, setRows] = useState<InviteRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -111,7 +86,7 @@ export function AdminInvitesLegacy() {
       .eq('property_id', currentPropertyId)
       .order('created_at', { ascending: false });
     if (error) {
-      console.error('load property_invites error:', error);
+      console.error(error);
       setBanner(en ? 'Failed to load invites.' : '加载邀请码失败。');
     } else {
       setRows((data as InviteRow[]) ?? []);
@@ -127,13 +102,13 @@ export function AdminInvitesLegacy() {
   const inviteBase = typeof window !== 'undefined' ? `${window.location.origin}/invite` : '/invite';
 
   const create = async () => {
-    if (!ready || !currentPropertyId || !user?.id) return;
+    if (!currentPropertyId || !profile) return;
     setCreating(true);
     setBanner(null);
     setLastLink(null);
 
     const pid = String(currentPropertyId).trim();
-    console.log('[AdminInvitesLegacy] create_property_invite property_id', pid, 'created_by (client session)', user.id);
+    console.log('currentPropertyId', pid, pid?.length);
 
     const uuid36 =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(pid) && pid.length === 36;
@@ -147,14 +122,16 @@ export function AdminInvitesLegacy() {
       return;
     }
 
-    const p_max_uses = maxUsesForRpc(maxUses);
-    const p_expires_at = expiresLocalToIsoOrNull(expiresLocal);
-
-    const payload = {
+    const payload: {
+      p_property_id: string;
+      p_role: UserRole;
+      p_max_uses: number;
+      p_expires_at: null;
+    } = {
       p_property_id: pid,
       p_role: role,
-      p_max_uses,
-      p_expires_at,
+      p_max_uses: Number(maxUses) || 0,
+      p_expires_at: null,
     };
 
     console.log('create_property_invite payload', payload);
@@ -163,7 +140,6 @@ export function AdminInvitesLegacy() {
     setCreating(false);
 
     if (error) {
-      console.error('create invite error:', error);
       const full = [error.message, (error as { hint?: string }).hint, (error as { details?: string }).details]
         .filter(Boolean)
         .join('\n');
@@ -172,7 +148,6 @@ export function AdminInvitesLegacy() {
     }
     const d = data as { ok?: boolean; code?: string; error?: string; id?: string };
     if (!d?.ok) {
-      console.error('create_property_invite business error:', d);
       setBanner(d?.error ?? (en ? 'Create failed.' : '创建失败。'));
       return;
     }
@@ -201,7 +176,6 @@ export function AdminInvitesLegacy() {
     });
     setDisablingId(null);
     if (error) {
-      console.error('disable_property_invite error:', error);
       alert(error.message);
       return;
     }
@@ -221,8 +195,6 @@ export function AdminInvitesLegacy() {
       return iso;
     }
   };
-
-  const canGenerate = ready && !!currentPropertyId && !!user?.id;
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6">
@@ -287,7 +259,7 @@ export function AdminInvitesLegacy() {
           <button
             type="button"
             onClick={() => void create()}
-            disabled={creating || !canGenerate}
+            disabled={creating || !currentPropertyId}
             className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-[#1D9E75] text-white font-semibold text-sm hover:bg-[#178a66] disabled:opacity-50"
           >
             {creating ? <Loader2 className="animate-spin" size={18} /> : null}

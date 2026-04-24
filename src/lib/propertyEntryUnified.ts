@@ -1,13 +1,18 @@
 /**
  * 统一入楼 — **提交与预检**层（`src/lib/unifiedPropertyEntry.ts` 为对外入口的补充）。
  *
- * - **提交**：`public.join_requests` 直接 INSERT；公开码 + `property_invite_codes` 命中后再 `enter_property_by_invite` 完成成员/住户绑定。
+ * - **提交 / 自动失败转 pending**：单 RPC `submit_join_request`（库内先尝试自动 owner 进楼，失败写 `join_requests`）。
  * - **拒绝 pending**：`reject_join_request`（仅 `join_requests`）。
- * - **管理端通过**：`approve_join_request`（见 `unifiedPropertyEntry`）。
+ * - **管理端通过**：不在此文件；请使用 `unifiedPropertyEntry.approveJoinRequest` → `approve_join_request`。
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { UserRole } from './supabase';
-import { isSubmitJoinFailureKind, type UnifiedPropertyEntryResult, type SubmitUnifiedPropertyEntryResult } from './propertyEntryKinds';
+import {
+  isSubmitJoinFailureKind,
+  type SubmitJoinRequestRpcRow,
+  type UnifiedPropertyEntryResult,
+  type SubmitUnifiedPropertyEntryResult,
+} from './propertyEntryKinds';
 import { logPropertyEntrySubmitResult, logUnifiedPropertyEntryLine } from './propertyEntryGateLog';
 import { trackPropertyEntryEvent } from './propertyEntryEvents';
 
@@ -29,21 +34,105 @@ function str(v: unknown): string | null {
   return t.length ? t : null;
 }
 
-function commonFailureFields(
-  propertyId: string | null,
-  inviteCode: string | null,
-  unitNo: string | null,
-  role: string | null,
-) {
-  return { propertyId, inviteCode, unitNo, role, membershipStatus: null as string | null };
+function nullBase(
+  raw: unknown,
+  message: string | null,
+  transportError?: { message: string; code?: string },
+): UnifiedPropertyEntryResult {
+  return {
+    kind: 'rpc_error',
+    propertyId: null,
+    inviteCode: null,
+    unitNo: null,
+    role: null,
+    membershipStatus: null,
+    message,
+    raw,
+    transportError,
+  };
 }
 
-function mapEnterJsonErrorToKind(err: string | undefined): UnifiedPropertyEntryResult['kind'] {
-  if (!err) return 'rejected';
-  if (err === 'invite_not_found' || err === 'invalid_arguments') return 'invalid_invite';
-  if (err === 'not_authenticated') return 'auth_required';
-  if (isSubmitJoinFailureKind(err)) return err;
-  return 'rejected';
+function parseSubmitJoinRow(raw: unknown, transportError?: { message: string; code?: string }): UnifiedPropertyEntryResult {
+  const row = firstRpcJsonRow(raw);
+  if (row == null) {
+    return nullBase(raw, transportError?.message ?? 'Empty RPC response', transportError);
+  }
+
+  const r = row as unknown as SubmitJoinRequestRpcRow;
+  const kind = str(r.kind) ?? '';
+  const message = r.message != null ? String(r.message) : null;
+  const propertyId = str(r.property_id);
+  const requestId = str(r.request_id);
+  const inviteCode = str(r.invite_code);
+  const unitNo = str(r.unit_no);
+  const role = str(r.role);
+  const membershipStatus = str(r.membership_status);
+
+  if (transportError) {
+    return nullBase(raw, transportError.message, transportError);
+  }
+
+  if (!kind) {
+    return nullBase(raw, message ?? 'Missing kind');
+  }
+
+  if (r.ok === true) {
+    if (kind === 'auto_approved') {
+      if (!propertyId) return nullBase(raw, message ?? 'auto_approved missing property_id');
+      return {
+        kind: 'auto_approved',
+        propertyId,
+        inviteCode,
+        unitNo,
+        role,
+        membershipStatus,
+        message,
+        raw,
+      };
+    }
+    if (kind === 'pending_submitted') {
+      if (!propertyId) return nullBase(raw, message ?? 'pending_submitted missing property_id');
+      return {
+        kind: 'pending_submitted',
+        propertyId,
+        requestId,
+        inviteCode,
+        unitNo,
+        role,
+        message,
+        raw,
+      };
+    }
+    if (kind === 'already_member') {
+      if (!propertyId) return nullBase(raw, message ?? 'already_member missing property_id');
+      return {
+        kind: 'already_member',
+        propertyId,
+        inviteCode,
+        unitNo,
+        role,
+        membershipStatus,
+        message,
+        raw,
+      };
+    }
+    return nullBase(raw, message ?? `Unexpected success kind: ${kind}`);
+  }
+
+  if (r.ok === false && isSubmitJoinFailureKind(kind)) {
+    return {
+      kind,
+      propertyId,
+      inviteCode,
+      unitNo,
+      role,
+      membershipStatus,
+      message,
+      raw,
+    } as UnifiedPropertyEntryResult;
+  }
+
+  return nullBase(raw, message ?? kind);
 }
 
 export type SubmitUnifiedPropertyEntryInput = {
@@ -67,7 +156,7 @@ export type SubmitUnifiedPropertyEntryInput = {
 
 export type { SubmitUnifiedPropertyEntryResult, UnifiedPropertyEntryResult } from './propertyEntryKinds';
 
-/** `?code=` on join / invite pages — merged for `join_requests.invite_code` attribution. */
+/** `?code=` on join / invite pages — merged into RPC `p_invite_code` for `join_requests.invite_code` attribution. */
 function inviteCodeFromBrowserUrl(): string | null {
   if (typeof window === 'undefined') return null;
   const raw = new URLSearchParams(window.location.search).get('code');
@@ -79,22 +168,6 @@ function mergeInviteCodeForRpc(explicit: string | null | undefined): string | nu
   const a = explicit?.trim() ?? '';
   if (a) return a;
   return inviteCodeFromBrowserUrl();
-}
-
-async function resolvePropertyIdForSubmit(
-  client: SupabaseClient,
-  inputPropertyId: string | null,
-  inviteCode: string | null,
-): Promise<string | null> {
-  const p0 = inputPropertyId?.trim() ?? '';
-  if (p0) return p0;
-  const c = inviteCode?.trim() ?? '';
-  if (!c) return null;
-  const { data, error } = await client.rpc('get_invite_preview', { invite_code: c });
-  if (error || data == null) return null;
-  const row = firstRpcJsonRow(data) ?? (data as Record<string, unknown>);
-  const id = str(row.property_id);
-  return id;
 }
 
 function trackSubmitFunnelAfterParse(
@@ -137,17 +210,14 @@ function trackSubmitFunnelAfterParse(
 }
 
 /**
- * 统一入楼提交：`join_requests` 插入 +（公开码命中时）`enter_property_by_invite`。
+ * 统一入楼提交：仅 `submit_join_request`；结果按后端 `kind` 标准化。
  */
 export async function submitUnifiedPropertyEntry(
   client: SupabaseClient,
   input: SubmitUnifiedPropertyEntryInput,
 ): Promise<SubmitUnifiedPropertyEntryResult> {
-  const pInvite = mergeInviteCodeForRpc(input.p_invite_code);
-  const inviteTrim = pInvite?.trim() ?? '';
+  const pid = input.p_property_id?.trim() ?? null;
   const unit = input.p_unit_number?.trim() || null;
-
-  let pid = (await resolvePropertyIdForSubmit(client, input.p_property_id, pInvite)) ?? null;
 
   logUnifiedPropertyEntryLine('submit:start', {
     property_id: pid,
@@ -156,219 +226,77 @@ export async function submitUnifiedPropertyEntry(
     requested_role: input.p_requested_role,
   });
 
-  if (!str(input.userId)) {
-    return {
-      kind: 'auth_required',
-      message: 'Authentication required',
-      ...commonFailureFields(pid, inviteTrim || null, unit, input.p_requested_role),
-      raw: null,
-    };
-  }
+  const pInviteForRpc = mergeInviteCodeForRpc(input.p_invite_code);
 
-  if (!pid) {
-    return {
-      kind: 'property_not_found',
-      message: 'Property not found for this request',
-      ...commonFailureFields(null, inviteTrim || null, unit, input.p_requested_role),
-      raw: null,
-    };
-  }
-
-  let isPublicCodeForProperty = false;
-  if (inviteTrim) {
-    const { data: pubRaw } = await client.rpc('resolve_public_invite_code', { p_code: inviteTrim });
-    const pub = firstRpcJsonRow(pubRaw) ?? (pubRaw as Record<string, unknown> | null);
-    const pPub = str(pub?.property_id);
-    isPublicCodeForProperty = pub?.ok === true && pPub != null && pPub.toLowerCase() === pid.toLowerCase();
-  }
-
-  const shouldAutoApprove = Boolean(inviteTrim) && !input.p_direct_invite_id && isPublicCodeForProperty;
-  const requestedRole = input.p_requested_role;
-
-  const { data: pmEx } = await client
-    .from('property_members')
-    .select('property_id')
-    .eq('property_id', pid)
-    .eq('user_id', input.userId)
-    .eq('status', 'active')
-    .maybeSingle();
-  if (pmEx) {
-    const res: UnifiedPropertyEntryResult = {
-      kind: 'already_member',
-      propertyId: pid,
-      inviteCode: inviteTrim || null,
-      unitNo: unit,
-      role: requestedRole,
-      membershipStatus: 'active',
-      message: null,
-      raw: null,
-    };
-    logUnifiedPropertyEntryLine('submit:already_member', { property_id: pid, unit_input: unit });
-    trackSubmitFunnelAfterParse(client, input, res, pInvite);
-    return res;
-  }
-
-  const statusVal = shouldAutoApprove ? 'approved' : 'pending';
-
-  const row: Record<string, unknown> = {
-    property_id: pid,
-    user_id: input.userId,
-    full_name: input.p_full_name?.trim() || null,
-    email: input.p_email?.trim().toLowerCase() || null,
-    phone: input.p_phone?.trim() || null,
-    unit_number: unit,
-    requested_role: requestedRole,
-    status: statusVal,
-    note: input.p_note?.trim() || null,
-    direct_invite_id: input.p_direct_invite_id?.trim() || null,
-    inferred_role: input.p_inferred_role?.trim() || null,
-    inferred_unit_number: input.p_inferred_unit_number?.trim() || null,
-  };
-  if (inviteTrim) row.invite_code = inviteTrim;
-
-  console.log('[property-entry-unified:submit:insert_payload]', row);
-
-  const { data, error } = await client.from('join_requests').insert([row]).select().single();
-
-  if (error) {
-    console.error('[property-entry-unified:submit:insert_error]', error);
-    const dup =
-      error.code === '23505' ||
-      (error.message ?? '').toLowerCase().includes('duplicate') ||
-      (error.message ?? '').includes('uniq_pending');
-    if (dup) {
-      return {
-        kind: 'duplicate_pending',
-        message: 'Duplicate pending',
-        propertyId: pid,
-        inviteCode: inviteTrim || null,
-        unitNo: unit,
-        role: requestedRole,
-        membershipStatus: null,
-        raw: null,
-      } as UnifiedPropertyEntryResult;
-    }
-    return {
-      kind: 'rpc_error',
-      message: error.message,
-      propertyId: pid,
-      inviteCode: inviteTrim || null,
-      unitNo: unit,
-      role: requestedRole,
-      membershipStatus: null,
-      raw: {
-        ok: false,
-        kind: 'insert_error',
-        source: 'join_requests_insert',
-        supabase: error,
-      },
-      transportError: { message: error.message, code: error.code },
-    };
-  }
-
-  console.log('[property-entry-unified:submit:insert_result]', data);
-
-  const d = data as {
-    id?: string;
-    property_id?: string;
-    invite_code?: string | null;
-    unit_number?: string | null;
-    requested_role?: string | null;
+  const payload = {
+    p_property_id: input.p_property_id,
+    p_requested_role: input.p_requested_role,
+    p_unit_number: input.p_unit_number,
+    p_note: input.p_note,
+    p_full_name: input.p_full_name,
+    p_email: input.p_email,
+    p_phone: input.p_phone,
+    p_invite_code: pInviteForRpc,
+    p_direct_invite_id: input.p_direct_invite_id,
+    p_inferred_role: input.p_inferred_role,
+    p_inferred_unit_number: input.p_inferred_unit_number,
+    p_move_in_date: input.p_move_in_date,
+    p_language_pref: input.p_language_pref,
   };
 
-  const localResult = {
-    ok: true,
-    kind: (shouldAutoApprove ? 'approved' : 'pending_created') as 'approved' | 'pending_created',
-    propertyId: d.property_id ?? pid,
-    requestId: d.id ?? null,
-    inviteCode: (d.invite_code ?? inviteTrim) || null,
-    unitNo: d.unit_number ?? unit,
-    role: d.requested_role ?? requestedRole,
-    membershipStatus: (shouldAutoApprove ? 'active' : 'pending') as 'active' | 'pending',
-  };
-  console.log('[property-entry-unified:submit:local_result]', localResult);
+  console.log('[property-entry] rpc payload', payload);
+
+  const { data, error } = await client.rpc('submit_join_request', payload);
+
+  console.log('[property-entry] rpc raw result', data);
 
   logPropertyEntrySubmitResult({
     userId: input.userId,
     email: input.p_email,
     propertyId: pid,
     unitNo: unit,
-    data: { ...localResult, row: d },
-    error: null,
+    data,
+    error,
   });
 
-  if (shouldAutoApprove && inviteTrim) {
-    const lang = input.p_language_pref === 'zh' ? 'zh' : 'en';
-    const { data: entData, error: entErr } = await client.rpc('enter_property_by_invite', {
-      p_property_id: pid,
-      p_invite_code: inviteTrim,
-      p_unit_no: unit,
-      p_language_pref: lang,
-    });
-
-    if (entErr) {
-      logUnifiedPropertyEntryLine('submit:enter_by_invite_error', { message: entErr.message, code: entErr.code });
-      return {
-        kind: 'rpc_error',
-        message: entErr.message,
-        propertyId: pid,
-        inviteCode: inviteTrim,
-        unitNo: unit,
-        role: requestedRole,
-        membershipStatus: null,
-        raw: { insert: data, enter: null, enterError: entErr },
-        transportError: { message: entErr.message, code: entErr.code },
-      };
-    }
-
-    const ent = firstRpcJsonRow(entData) as { ok?: boolean; error?: string; message?: string } | null;
-    if (ent == null || ent.ok !== true) {
-      const ek = mapEnterJsonErrorToKind(ent?.error);
-      logUnifiedPropertyEntryLine('submit:enter_by_invite_business_error', { error: ent?.error, ent });
-      return {
-        kind: ek,
-        message: ent?.message ?? ent?.error ?? 'enter_property_by_invite failed',
-        propertyId: pid,
-        inviteCode: inviteTrim,
-        unitNo: unit,
-        role: requestedRole,
-        membershipStatus: null,
-        raw: { insert: data, enter: entData },
-      } as UnifiedPropertyEntryResult;
-    }
-    logUnifiedPropertyEntryLine('submit:auto_join_passed', { property_id: pid, unit_input: unit });
-  } else {
-    logUnifiedPropertyEntryLine('submit:pending_created', {
+  if (error) {
+    logUnifiedPropertyEntryLine('submit:rpc_error', {
       property_id: pid,
       unit_input: unit,
-      join_request_id: d.id ?? null,
+      message: error.message,
+      code: error.code,
+    });
+    return parseSubmitJoinRow(data, { message: error.message, code: error.code });
+  }
+
+  const parsed = parseSubmitJoinRow(data);
+  trackSubmitFunnelAfterParse(client, input, parsed, pInviteForRpc);
+  if (parsed.kind === 'auto_approved') {
+    logUnifiedPropertyEntryLine('submit:auto_join_passed', {
+      property_id: parsed.propertyId,
+      unit_input: unit,
+    });
+  } else if (parsed.kind === 'pending_submitted') {
+    logUnifiedPropertyEntryLine('submit:pending_created', {
+      property_id: parsed.propertyId,
+      unit_input: unit,
+      join_request_id: parsed.requestId,
+    });
+  } else if (parsed.kind === 'already_member') {
+    logUnifiedPropertyEntryLine('submit:already_member', {
+      property_id: parsed.propertyId,
+      unit_input: unit,
+    });
+  } else if (parsed.kind !== 'rpc_error') {
+    logUnifiedPropertyEntryLine('submit:failure_kind', {
+      property_id: pid,
+      unit_input: unit,
+      kind: parsed.kind,
+      message: parsed.message,
     });
   }
 
-  const out: UnifiedPropertyEntryResult = shouldAutoApprove
-    ? {
-        kind: 'auto_approved',
-        propertyId: pid,
-        inviteCode: inviteTrim || null,
-        unitNo: (d.unit_number as string | null) ?? unit,
-        role: (d.requested_role as string | null) ?? requestedRole,
-        membershipStatus: 'active',
-        message: null,
-        raw: { insert: data, local: localResult },
-      }
-    : {
-        kind: 'pending_submitted',
-        propertyId: pid,
-        requestId: d.id ?? null,
-        inviteCode: inviteTrim || null,
-        unitNo: (d.unit_number as string | null) ?? unit,
-        role: (d.requested_role as string | null) ?? requestedRole,
-        message: null,
-        raw: { insert: data, local: localResult },
-      };
-
-  trackSubmitFunnelAfterParse(client, input, out, pInvite);
-  return out;
+  return parsed;
 }
 
 function rpcRowSucceeded(data: unknown): boolean {
@@ -382,6 +310,7 @@ function rpcRowErrorCode(data: unknown): string | undefined {
   return row?.error != null ? String(row.error) : undefined;
 }
 
+/** 审批 / 拒绝 / 扫码自动进楼实现见 `unifiedPropertyEntry.ts`（避免与 submit 循环依赖）。 */
 export type {
   ApproveJoinRequestInput,
   ApproveJoinRequestFinalInput,

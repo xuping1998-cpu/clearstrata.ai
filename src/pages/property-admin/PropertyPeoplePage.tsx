@@ -7,7 +7,7 @@ import { BackButton } from '../../components/BackButton';
 import { UserManagementTab, type StaffTab } from '../owner-info/UserManagementTab';
 
 function staffFromTabParam(raw: string | null): StaffTab | null {
-  if (raw === 'review' || raw === 'members' || raw === 'invites') return raw;
+  if (raw === 'review' || raw === 'anomaly' || raw === 'members' || raw === 'invites') return raw;
   if (raw === 'join') return 'review';
   return null;
 }
@@ -54,6 +54,7 @@ export function PropertyPeoplePage() {
           [
             { key: 'members' as const, zh: '成员管理', en: 'Members' },
             { key: 'review' as const, zh: '加入申请', en: 'Join requests' },
+            { key: 'anomaly' as const, zh: '待审核人员', en: 'Exception queue' },
             { key: 'invites' as const, zh: '邀请码管理', en: 'Invite codes' },
           ] as const
         ).map((row) => (

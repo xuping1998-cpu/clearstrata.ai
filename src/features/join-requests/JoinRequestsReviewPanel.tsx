@@ -16,7 +16,7 @@ import { approveJoinRequest, rejectJoinRequest } from '../../lib/unifiedProperty
 import { StatusAlert, StatusBadge } from '@/components/status';
 
 export const JOIN_REQUESTS_SELECT_PENDING =
-  'id, property_id, user_id, requested_role, full_name, email, phone, unit_number, note, status, created_at';
+  'id, property_id, user_id, requested_role, full_name, email, phone, unit_number, note, status, created_at, invite_code, review_flag, review_reason, whitelist_matched, unit_occupied, source';
 
 export type JoinRequestRow = {
   id: string;
@@ -30,6 +30,12 @@ export type JoinRequestRow = {
   note: string | null;
   status: string;
   created_at: string;
+  invite_code?: string | null;
+  review_flag?: string | null;
+  review_reason?: string | null;
+  whitelist_matched?: boolean | null;
+  unit_occupied?: boolean | null;
+  source?: string | null;
 };
 
 export function roleLabel(role: string | undefined, en: boolean): string {
@@ -116,9 +122,29 @@ function joinApproveUserMessage(
 export type JoinRequestsReviewPanelProps = {
   /** When true, omits page-scale heading / invite link row (e.g. embedded in 人员管理). */
   embedded?: boolean;
+  /** Only pending rows with public-invite v2 flags (白名单/占号异常). */
+  anomalyOnly?: boolean;
 };
 
-export function JoinRequestsReviewPanel({ embedded = false }: JoinRequestsReviewPanelProps) {
+function anomalyLabel(flag: string | null | undefined, en: boolean): string {
+  const f = (flag || '').trim();
+  const m: Record<string, [string, string]> = {
+    not_in_whitelist: [
+      'Unit not on the whitelist for this property',
+      '房号不在白名单',
+    ],
+    unit_occupied: [
+      'Unit is already bound to another account',
+      '房号已被其他账户占用',
+    ],
+    manual_review: ['Pending manual review', '待人工审核'],
+  };
+  const row = m[f];
+  if (row) return en ? row[0] : row[1];
+  return en ? '—' : '—';
+}
+
+export function JoinRequestsReviewPanel({ embedded = false, anomalyOnly = false }: JoinRequestsReviewPanelProps) {
   const { user } = useAuth();
   const { language, t } = useLanguage();
   const en = language === 'en';
@@ -157,12 +183,15 @@ export function JoinRequestsReviewPanel({ embedded = false }: JoinRequestsReview
       if (!opts?.preserveSuccessBanner) setSuccessBanner(null);
       setLoading(true);
       try {
-        const { data, error } = await supabase
+        let q = supabase
           .from('join_requests')
           .select(JOIN_REQUESTS_SELECT_PENDING)
           .eq('property_id', currentPropertyId as string)
-          .eq('status', 'pending')
-          .order('created_at', { ascending: false });
+          .eq('status', 'pending');
+        if (anomalyOnly) {
+          q = q.in('review_flag', ['not_in_whitelist', 'unit_occupied', 'manual_review']);
+        }
+        const { data, error } = await q.order('created_at', { ascending: false });
 
         if (error) {
           setRows([]);
@@ -196,7 +225,7 @@ export function JoinRequestsReviewPanel({ embedded = false }: JoinRequestsReview
         setLoading(false);
       }
     },
-    [currentPropertyId, en],
+    [currentPropertyId, en, anomalyOnly],
   );
 
   useEffect(() => {
@@ -383,7 +412,7 @@ export function JoinRequestsReviewPanel({ embedded = false }: JoinRequestsReview
         </p>
         <p className="text-red-800/90 text-xs">
           {en ? 'Your role on this property' : '当前物业角色'}: {String(reviewRole ?? '—')} (
-          {en ? 'required' : '需要'}: council)
+          {en ? 'required' : '需要'}: property_admin / council / manager / admin)
         </p>
       </div>
     );
@@ -396,12 +425,22 @@ export function JoinRequestsReviewPanel({ embedded = false }: JoinRequestsReview
           <div>
             <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
               <ClipboardList className="text-[#1D9E75]" size={26} />
-              {en ? 'Join request review' : '加入申请'}
+              {anomalyOnly
+                ? en
+                  ? 'Exception queue (whitelist / unit)'
+                  : '待审核人员'
+                : en
+                  ? 'Join request review'
+                  : '加入申请'}
             </h2>
             <p className="text-sm text-gray-600 mt-1">
-              {en
-                ? 'Only pending join requests for this property.'
-                : '仅展示本物业待处理的加入申请。'}
+              {anomalyOnly
+                ? en
+                  ? 'Queue for invites that did not pass automatic whitelist/occupancy checks.'
+                  : '白名单或房号占用的公开邀请入楼申请，将在此列队。'
+                : en
+                  ? 'Only pending join requests for this property.'
+                  : '仅展示本物业待处理的加入申请。'}
             </p>
             <p className="text-xs text-gray-400 mt-1">
               {en ? 'Reviewer role (this property)' : '审核角色（当前物业）'}:{' '}
@@ -460,11 +499,18 @@ export function JoinRequestsReviewPanel({ embedded = false }: JoinRequestsReview
         </div>
       ) : pendingRows.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-200 p-10 text-center text-gray-500 text-sm">
-          {t('join_requests_empty_pending')}
+          {anomalyOnly
+            ? en
+              ? 'No exception cases in the queue right now.'
+              : '当前暂无待审核的异常入楼申请。'
+            : t('join_requests_empty_pending')}
         </div>
       ) : (
         <ul className="space-y-4">
-          {pendingRows.map((r) => (
+          {pendingRows.map((r) => {
+            const rf = (r.review_flag || '').trim();
+            const isAnomaly = ['not_in_whitelist', 'unit_occupied', 'manual_review'].includes(rf);
+            return (
             <li key={r.id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 sm:p-5">
               <div className="text-sm space-y-1 text-gray-800">
                 <p>
@@ -487,6 +533,35 @@ export function JoinRequestsReviewPanel({ embedded = false }: JoinRequestsReview
                   <span className="text-gray-500">{en ? 'Unit' : '单元'}: </span>
                   {r.unit_number || '—'}
                 </p>
+                {(r.invite_code && String(r.invite_code).trim()) || anomalyOnly || isAnomaly ? (
+                  <p>
+                    <span className="text-gray-500">{en ? 'Invite code' : '邀请码'}: </span>
+                    <span className="font-mono text-gray-800">
+                      {r.invite_code && String(r.invite_code).trim() ? r.invite_code : '—'}
+                    </span>
+                  </p>
+                ) : null}
+                {anomalyOnly || isAnomaly ? (
+                  <p>
+                    <span className="text-gray-500">{en ? 'Exception' : '异常原因'}: </span>
+                    <span className="font-medium text-amber-900">{anomalyLabel(r.review_flag, en)}</span>
+                  </p>
+                ) : null}
+                {(r.whitelist_matched != null || r.unit_occupied != null) && (anomalyOnly || isAnomaly) ? (
+                  <p className="text-xs text-gray-600">
+                    {en ? 'Whitelist' : '白名单'}:{' '}
+                    {r.whitelist_matched ? (en ? 'on list' : '在名单内') : en ? 'not on list' : '未在名单'}
+                    {r.unit_occupied != null
+                      ? ` · ${en ? 'Unit tied' : '房号状态'}: ${r.unit_occupied ? (en ? 'occupied' : '已被占用/疑似占用') : en ? 'free' : '未占'}`
+                      : ''}
+                  </p>
+                ) : null}
+                {r.review_reason && (anomalyOnly || isAnomaly) ? (
+                  <p>
+                    <span className="text-gray-500">{en ? 'Detail' : '说明'}: </span>
+                    {r.review_reason}
+                  </p>
+                ) : null}
                 {r.note && (
                   <p>
                     <span className="text-gray-500">{en ? 'Note' : '备注'}: </span>
@@ -496,9 +571,9 @@ export function JoinRequestsReviewPanel({ embedded = false }: JoinRequestsReview
                 <p className="text-xs text-gray-400 pt-1">
                   {en ? 'Submitted' : '提交时间'} {fmt(r.created_at)}
                 </p>
-                <p className="pt-2">
+                <p className="pt-2 flex flex-wrap gap-2">
                   <StatusBadge tone="warning" size="sm">
-                    {en ? 'Pending' : '待审核'}
+                    {isAnomaly ? (en ? 'Review (exception)' : '待审（异常）') : en ? 'Pending' : '待审核'}
                   </StatusBadge>
                 </p>
               </div>
@@ -527,7 +602,7 @@ export function JoinRequestsReviewPanel({ embedded = false }: JoinRequestsReview
                   </button>
                   <button
                     type="button"
-                    disabled={actingId === r.id || !user?.id || !canApproveRequests}
+                    disabled={actingId === r.id || !user?.id}
                     onClick={() => openReject(r.id)}
                     className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-gray-100 text-gray-800 text-sm font-semibold hover:bg-gray-200 disabled:opacity-50"
                   >
@@ -537,7 +612,8 @@ export function JoinRequestsReviewPanel({ embedded = false }: JoinRequestsReview
                 </div>
               </div>
             </li>
-          ))}
+          );
+          })}
         </ul>
       )}
 

@@ -54,6 +54,7 @@ import { UnitWhitelistPage } from './pages/property-admin/UnitWhitelistPage';
 import { PropertyAdminInvites } from './pages/property-admin/PropertyAdminInvites';
 import { PropertyInviteAnalytics } from './pages/property-admin/PropertyInviteAnalytics';
 import { PropertyTaskDetail } from './pages/property-admin/PropertyTaskDetail';
+import { AdminInvites } from './pages/admin/AdminInvites';
 import { AdminInviteCodes } from './pages/admin/AdminInviteCodes';
 import AdminJoinRequests from './pages/admin/AdminJoinRequests';
 import { JoinAccessGate } from './pages/JoinAccessGate';
@@ -73,36 +74,6 @@ import {
 import type { UserRole } from './lib/supabase';
 import { useHasActivePropertyMembership } from './hooks/useHasActivePropertyMembership';
 import { samePropertyId } from './lib/propertyIdMatch';
-
-/** Must match `PENDING_ENTRY_KEY` in `Auth.tsx` (join / scan resume). */
-const PENDING_ENTRY_STORAGE_KEY = 'pendingEntry';
-
-/** Logged-in but no `property_members`: allow home / entry / invite / join flows before `JoinAccessGate`. */
-function shouldSkipNoPropertyRedirect(pathname: string, search: URLSearchParams): boolean {
-  try {
-    if (localStorage.getItem(PENDING_ENTRY_STORAGE_KEY)) return true;
-  } catch {
-    /* ignore */
-  }
-  if (search.get('propertyId')?.trim() || search.get('property_id')?.trim()) return true;
-  if (
-    search.get('inviteCode')?.trim() ||
-    search.get('invite_code')?.trim() ||
-    search.get('code')?.trim()
-  ) {
-    return true;
-  }
-  if (pathname === '/') return true;
-  if (pathname === '/entry') return true;
-  if (
-    pathname.startsWith('/join') ||
-    pathname.startsWith('/join-request') ||
-    pathname.startsWith('/invite')
-  ) {
-    return true;
-  }
-  return false;
-}
 
 function PricingRoute() {
   const { session } = useAuth();
@@ -174,11 +145,10 @@ function AdminStaffRoute({
   return <>{children}</>;
 }
 
-/** `/admin/invites` 与 `/admin/invite-codes` 同载 B 方案（公开邀请管理）；旧 A 页面见 `AdminInvites.tsx` LEGACY。 */
 function AdminInvitesRoute() {
   return (
     <AdminStaffRoute canAccess={canManagePropertyInvites}>
-      <AdminInviteCodes />
+      <AdminInvites />
     </AdminStaffRoute>
   );
 }
@@ -577,26 +547,18 @@ function AppMain() {
     return <Auth />;
   }
 
-  const skipNoPropertyGuard = shouldSkipNoPropertyRedirect(location.pathname, searchParams);
-
-  if (hasActiveMembership === false && !isDemoPropertyMock) {
-    if (skipNoPropertyGuard) {
-      console.log(
-        '[Guard] skip no-property redirect because pending entry / invite flow / public home is active',
-      );
-      return <Auth />;
-    }
-    return <JoinAccessGate />;
-  }
-
-  if (!currentPropertyId && !isDemoPropertyMock) {
-    return <Navigate to="/select-property" replace />;
-  }
-
   return (
-    <Layout>
-      <AuthenticatedRoutes />
-    </Layout>
+    <>
+      {hasActiveMembership === false && !isDemoPropertyMock ? (
+        <JoinAccessGate />
+      ) : !currentPropertyId && !isDemoPropertyMock ? (
+        <Navigate to="/select-property" replace />
+      ) : (
+        <Layout>
+          <AuthenticatedRoutes />
+        </Layout>
+      )}
+    </>
   );
 }
 

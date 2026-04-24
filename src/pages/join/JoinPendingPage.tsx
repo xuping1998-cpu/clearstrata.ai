@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -7,16 +7,20 @@ import { useProperty } from '../../contexts/PropertyContext';
 import { getJoinStatus } from '../../lib/joinStatus';
 import { supabase } from '../../lib/supabase';
 
+type JoinPendingLocationState = { reviewFlag?: string; propertyName?: string | null };
+
 export default function JoinPendingPage() {
   const { session, user } = useAuth();
   const { language } = useLanguage();
   const en = language === 'en';
   const navigate = useNavigate();
+  const location = useLocation();
+  const entryState = (location.state as JoinPendingLocationState | null) ?? null;
   const { setCurrentPropertyId, refreshMemberships } = useProperty();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [propertyName, setPropertyName] = useState<string | null>(null);
+  const [propertyName, setPropertyName] = useState<string | null>(entryState?.propertyName ?? null);
 
   const resolveAndRoute = useCallback(async () => {
     if (!user?.id) return;
@@ -89,6 +93,18 @@ export default function JoinPendingPage() {
     return <Navigate to="/" replace />;
   }
 
+  const flag = (entryState?.reviewFlag || '').trim();
+  const statusDetail =
+    !en && flag === 'not_in_whitelist'
+      ? '该房号未在本物业白名单中，申请已提交给业委会审核。'
+      : en && flag === 'not_in_whitelist'
+        ? 'This unit is not on the whitelist; your request was sent to the council for review.'
+        : !en && flag === 'unit_occupied'
+          ? '该房号已有业主账户或申请，申请已转交业委会审核。'
+          : en && flag === 'unit_occupied'
+            ? 'This unit may already be linked; your request was sent to the council for review.'
+            : null;
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
@@ -103,7 +119,11 @@ export default function JoinPendingPage() {
       <div className="max-w-md w-full bg-white rounded-2xl shadow-lg border border-gray-100 p-8">
         <h1 className="text-2xl font-bold text-gray-900">{en ? 'Application submitted' : '申请已提交'}</h1>
         <p className="mt-2 text-gray-600 text-sm">
-          {en ? 'Please wait for the property administrator to review.' : '请等待物业管理员审核'}
+          {statusDetail != null
+            ? statusDetail
+            : en
+              ? 'Please wait for the property team to review.'
+              : '请等待物业或业委会处理你的申请。'}
         </p>
 
         <div className="mt-6 text-sm text-gray-600 space-y-2 text-left rounded-xl bg-gray-50 px-4 py-3">
@@ -113,7 +133,13 @@ export default function JoinPendingPage() {
           </p>
           <p>
             <span className="text-gray-500">{en ? 'Status' : '当前状态'}：</span>
-            {en ? 'Under review' : '审核中'}
+            {statusDetail != null
+              ? en
+                ? 'Exception queue — under review'
+                : '待审核（异常入楼申请）'
+              : en
+                ? 'Under review'
+                : '审核中'}
           </p>
           <p>
             <span className="text-gray-500">{en ? 'Expected' : '预计时间'}：</span>

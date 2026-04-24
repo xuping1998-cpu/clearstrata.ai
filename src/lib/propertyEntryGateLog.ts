@@ -1,4 +1,4 @@
-/** Console diagnostics for unified 入楼：join_requests insert + `enter_property_by_invite`；审批见 `approve_join_request`。 */
+/** Console diagnostics for unified 入楼：`submit_join_request` / `reject_join_request`；审批见 `approve_join_request`。 */
 
 export function logPropertyEntryGate(stage: string, payload: Record<string, unknown>) {
   console.log(`[property-entry:${stage}]`, payload);
@@ -21,7 +21,7 @@ export function logPropertyEntrySubmitResult(opts: {
   console.log('property entry — current user id', opts.userId ?? null);
   console.log('property entry — email', opts.email ?? null);
   console.log('property entry — property_id', opts.propertyId ?? row?.property_id ?? null);
-  console.log('property entry — unit_number', opts.unitNo ?? row?.unit_number ?? row?.unit_no ?? null);
+  console.log('property entry — unit_no', opts.unitNo ?? row?.unit_no ?? null);
   const kind = row?.kind != null ? String(row.kind) : '';
   const autoLabel =
     kind === 'auto_approved'
