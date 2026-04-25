@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -7,7 +7,12 @@ import { useProperty } from '../../contexts/PropertyContext';
 import { getJoinStatus } from '../../lib/joinStatus';
 import { supabase } from '../../lib/supabase';
 
-type JoinPendingLocationState = { reviewFlag?: string; propertyName?: string | null };
+type JoinPendingLocationState = {
+  propertyId?: string;
+  propertyName?: string | null;
+  unitNo?: string;
+  reviewFlag?: string;
+};
 
 export default function JoinPendingPage() {
   const { session, user } = useAuth();
@@ -16,9 +21,13 @@ export default function JoinPendingPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const entryState = (location.state as JoinPendingLocationState | null) ?? null;
+  const hasEntryState = useMemo(
+    () => Boolean(entryState?.propertyId || entryState?.propertyName || entryState?.unitNo || entryState?.reviewFlag),
+    [entryState?.propertyId, entryState?.propertyName, entryState?.unitNo, entryState?.reviewFlag],
+  );
   const { setCurrentPropertyId, refreshMemberships } = useProperty();
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!hasEntryState);
   const [refreshing, setRefreshing] = useState(false);
   const [propertyName, setPropertyName] = useState<string | null>(entryState?.propertyName ?? null);
 
@@ -44,6 +53,12 @@ export default function JoinPendingPage() {
   }, [user?.id, navigate, refreshMemberships, setCurrentPropertyId]);
 
   useEffect(() => {
+    if (hasEntryState) {
+      setPropertyName(entryState?.propertyName ?? null);
+      setLoading(false);
+      return;
+    }
+
     if (!session || !user?.id) {
       setLoading(false);
       return;
@@ -77,7 +92,7 @@ export default function JoinPendingPage() {
     return () => {
       cancelled = true;
     };
-  }, [session, user?.id, navigate, refreshMemberships, setCurrentPropertyId]);
+  }, [hasEntryState, entryState?.propertyName, session, user?.id, navigate, refreshMemberships, setCurrentPropertyId]);
 
   const onRefresh = async () => {
     if (!user?.id) return;
@@ -94,6 +109,8 @@ export default function JoinPendingPage() {
   }
 
   const flag = (entryState?.reviewFlag || '').trim();
+  const pendingPropertyName = propertyName ?? entryState?.propertyName ?? null;
+  const pendingUnitNo = entryState?.unitNo?.trim() || null;
   const statusDetail =
     !en && flag === 'not_in_whitelist'
       ? '该房号未在本物业白名单中，申请已提交给业委会审核。'
@@ -129,8 +146,14 @@ export default function JoinPendingPage() {
         <div className="mt-6 text-sm text-gray-600 space-y-2 text-left rounded-xl bg-gray-50 px-4 py-3">
           <p>
             <span className="text-gray-500">{en ? 'Property' : '物业'}：</span>
-            {propertyName ?? (en ? '—' : '—')}
+            {pendingPropertyName ?? (en ? '—' : '—')}
           </p>
+          {pendingUnitNo ? (
+            <p>
+              <span className="text-gray-500">{en ? 'Unit' : '房号'}：</span>
+              {pendingUnitNo}
+            </p>
+          ) : null}
           <p>
             <span className="text-gray-500">{en ? 'Status' : '当前状态'}：</span>
             {statusDetail != null
