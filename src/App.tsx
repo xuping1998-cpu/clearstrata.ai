@@ -76,6 +76,14 @@ import type { UserRole } from './lib/supabase';
 import { useHasActivePropertyMembership } from './hooks/useHasActivePropertyMembership';
 import { samePropertyId } from './lib/propertyIdMatch';
 
+const isPublicOrJoinFlow = (pathname: string) =>
+  pathname === '/entry' ||
+  pathname === '/login' ||
+  pathname === '/join' ||
+  pathname.startsWith('/join/') ||
+  pathname === '/invite' ||
+  pathname.startsWith('/invite/');
+
 function PricingRoute() {
   const { session } = useAuth();
   const { memberships, currentPropertyId } = useProperty();
@@ -424,6 +432,7 @@ function AppContent() {
       <Route path="/bind-unit" element={<BindUnitPage />} />
       <Route path="/welcome" element={<WelcomeAfterJoinPage />} />
       <Route path="/invite" element={<JoinWithCode />} />
+      <Route path="/invite/*" element={<JoinWithCode />} />
       <Route path="/onboarding/create-property" element={<CreatePropertyPage />} />
       <Route path="/upgrade" element={<SessionLayoutGate><UpgradePage /></SessionLayoutGate>} />
       <Route path="/contact-sales" element={<SessionLayoutGate><UpgradePage /></SessionLayoutGate>} />
@@ -530,17 +539,20 @@ function AppMain() {
     isDemoPropertyMock,
   } = useProperty();
   const hasActiveMembership = useHasActivePropertyMembership(user?.id, propertyReady);
+  const publicOrJoinFlow = isPublicOrJoinFlow(location.pathname);
 
   useEffect(() => {
+    if (publicOrJoinFlow) return;
     if (!session || isDemoPropertyMock || !propertyReady) return;
     if (currentPropertyId || memberships.length === 0) return;
     setCurrentPropertyId(memberships[0].propertyId);
-  }, [session, isDemoPropertyMock, propertyReady, currentPropertyId, memberships, setCurrentPropertyId]);
+  }, [publicOrJoinFlow, session, isDemoPropertyMock, propertyReady, currentPropertyId, memberships, setCurrentPropertyId]);
 
   if (
-    loading ||
-    (session && !isDemoPropertyMock && !propertyReady) ||
-    (session && !isDemoPropertyMock && hasActiveMembership === null)
+    !publicOrJoinFlow &&
+    (loading ||
+      (session && !isDemoPropertyMock && !propertyReady) ||
+      (session && !isDemoPropertyMock && hasActiveMembership === null))
   ) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -576,11 +588,11 @@ function AppMain() {
     return <Auth />;
   }
 
-  if (!isDemoPropertyMock && memberships.length === 0) {
+  if (!publicOrJoinFlow && !isDemoPropertyMock && memberships.length === 0) {
     return <Navigate to="/entry" replace />;
   }
 
-  if (!isDemoPropertyMock && !currentPropertyId) {
+  if (!publicOrJoinFlow && !isDemoPropertyMock && !currentPropertyId) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">

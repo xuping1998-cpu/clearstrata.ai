@@ -12,6 +12,7 @@ type JoinPendingLocationState = {
   propertyName?: string | null;
   unitNo?: string;
   reviewFlag?: string;
+  message?: string | null;
 };
 
 export default function JoinPendingPage() {
@@ -111,8 +112,10 @@ export default function JoinPendingPage() {
   const flag = (entryState?.reviewFlag || '').trim();
   const pendingPropertyName = propertyName ?? entryState?.propertyName ?? null;
   const pendingUnitNo = entryState?.unitNo?.trim() || null;
+  const pendingMessage = entryState?.message?.trim() || null;
   const statusDetail =
-    !en && flag === 'not_in_whitelist'
+    pendingMessage ||
+    (!en && flag === 'not_in_whitelist'
       ? '该房号未在本物业白名单中，申请已提交给业委会审核。'
       : en && flag === 'not_in_whitelist'
         ? 'This unit is not on the whitelist; your request was sent to the council for review.'
@@ -120,7 +123,11 @@ export default function JoinPendingPage() {
           ? '该房号已有业主账户或申请，申请已转交业委会审核。'
           : en && flag === 'unit_occupied'
             ? 'This unit may already be linked; your request was sent to the council for review.'
-            : null;
+            : !en && flag === 'duplicate_unit_pending'
+              ? '该房号已有申请正在审核，你的申请也已提交给业委会处理。'
+              : en && flag === 'duplicate_unit_pending'
+                ? 'This unit already has an application under review; your request was also sent to the council.'
+                : null);
 
   if (loading) {
     return (

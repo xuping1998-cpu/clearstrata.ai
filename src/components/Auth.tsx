@@ -56,20 +56,6 @@ function parseRedirectQueryForEntryFunnel(redirectRaw: string | null): {
   }
 }
 
-/** `redirect` query points at `/entry?…` (扫码入楼回流). */
-function isEntryRedirectPath(redirectRaw: string | null): boolean {
-  if (!redirectRaw) return false;
-  try {
-    const path = decodeURIComponent(redirectRaw);
-    if (!path.startsWith('/') || path.includes('://')) return false;
-    const q = path.indexOf('?');
-    const base = (q >= 0 ? path.slice(0, q) : path).trim();
-    return base === '/entry';
-  } catch {
-    return false;
-  }
-}
-
 /** Property for roster bind: URL propertyId → guest scan → propertyCode resolve → default. */
 async function resolveSignupPropertyIdAsync(): Promise<string> {
   try {
@@ -486,6 +472,8 @@ export function Auth() {
         await signIn(cleanEmail, password);
         clearPublicDemoLocalStorage();
 
+        if (safeRedirectAfterAuth()) return;
+
         const funnel = parseRedirectQueryForEntryFunnel(searchParams.get('redirect'));
         if (funnel.propertyId) {
           const {
@@ -514,25 +502,13 @@ export function Auth() {
           navigate('/', { replace: true });
           return;
         }
-        if (safeRedirectAfterAuth()) return;
       } else {
         const user = await signUp(email, password, fullNameEn, fullNameZh, unitNumber);
 
         if (user) {
           await supabase.from('profiles').update({ phone }).eq('id', user.id);
 
-          const rawRedirectAfterSignup = searchParams.get('redirect');
-          if (isEntryRedirectPath(rawRedirectAfterSignup)) {
-            try {
-              const decoded = decodeURIComponent(rawRedirectAfterSignup!);
-              if (decoded.startsWith('/') && !decoded.includes('://')) {
-                navigate(decoded, { replace: true });
-                return;
-              }
-            } catch {
-              /* fall through to legacy signup join path */
-            }
-          }
+          if (safeRedirectAfterAuth()) return;
 
           const propertyId = await resolveSignupPropertyIdAsync();
 
