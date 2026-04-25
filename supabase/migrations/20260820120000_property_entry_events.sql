@@ -200,6 +200,7 @@ DECLARE
   v_prop text;
   v_jr_id uuid;
   v_mem_id uuid;
+  v_review_flag text;
 BEGIN
   IF v_uid IS NULL THEN
     RETURN jsonb_build_object('ok', false, 'status', 'auth_required');
@@ -496,6 +497,8 @@ BEGIN
 
   /* B: not in whitelist */
   IF NOT v_in_wl THEN
+    v_review_flag := 'not_in_whitelist';
+
     UPDATE public.property_invite_codes c
     SET
       used_count = c.used_count + 1,
@@ -505,16 +508,39 @@ BEGIN
       END
     WHERE c.id = v_pic_id;
 
-    INSERT INTO public.join_requests (
-      property_id, user_id, requested_role, full_name, email, phone, unit_no, note, status,
-      invite_code, review_flag, review_reason, whitelist_matched, unit_occupied, source
-    ) VALUES (
-      p_property_id, v_uid, 'owner'::public.user_role, v_name, v_email_in, NULL, v_unit_no,
-      'public_invite_v2|not_in_whitelist',
-      'pending'::public.join_request_status, v_code, 'not_in_whitelist',
-      'Unit is not in whitelist', false, false, 'entry'
-    )
+    UPDATE public.join_requests
+    SET
+      property_id = p_property_id,
+      unit_no = v_unit_no,
+      email = coalesce(nullif(trim(p_email), ''), auth.email(), 'unknown@example.com'),
+      status = 'pending',
+      review_flag = v_review_flag,
+      source = 'entry_public_invite'
+    WHERE user_id = v_uid
+      AND status::text = 'pending'
     RETURNING id INTO v_jr_id;
+
+    IF NOT FOUND THEN
+      INSERT INTO public.join_requests (
+        user_id,
+        property_id,
+        unit_no,
+        email,
+        status,
+        review_flag,
+        source
+      )
+      VALUES (
+        v_uid,
+        p_property_id,
+        v_unit_no,
+        coalesce(nullif(trim(p_email), ''), auth.email(), 'unknown@example.com'),
+        'pending',
+        v_review_flag,
+        'entry_public_invite'
+      )
+      RETURNING id INTO v_jr_id;
+    END IF;
 
     PERFORM public._property_entry_event_silent(
       p_property_id, v_uid, v_email_in, v_name, v_unit_no, v_code, 'pending_review', 'pending', 'not_in_whitelist',
@@ -526,6 +552,8 @@ BEGIN
 
   /* C: unit occupied (whitelist but taken) */
   IF v_occupied THEN
+    v_review_flag := 'unit_occupied';
+
     UPDATE public.property_invite_codes c
     SET
       used_count = c.used_count + 1,
@@ -535,16 +563,39 @@ BEGIN
       END
     WHERE c.id = v_pic_id;
 
-    INSERT INTO public.join_requests (
-      property_id, user_id, requested_role, full_name, email, phone, unit_no, note, status,
-      invite_code, review_flag, review_reason, whitelist_matched, unit_occupied, source
-    ) VALUES (
-      p_property_id, v_uid, 'owner'::public.user_role, v_name, v_email_in, NULL, v_unit_no,
-      'public_invite_v2|unit_occupied',
-      'pending'::public.join_request_status, v_code, 'unit_occupied',
-      'Unit is already occupied', true, true, 'entry'
-    )
+    UPDATE public.join_requests
+    SET
+      property_id = p_property_id,
+      unit_no = v_unit_no,
+      email = coalesce(nullif(trim(p_email), ''), auth.email(), 'unknown@example.com'),
+      status = 'pending',
+      review_flag = v_review_flag,
+      source = 'entry_public_invite'
+    WHERE user_id = v_uid
+      AND status::text = 'pending'
     RETURNING id INTO v_jr_id;
+
+    IF NOT FOUND THEN
+      INSERT INTO public.join_requests (
+        user_id,
+        property_id,
+        unit_no,
+        email,
+        status,
+        review_flag,
+        source
+      )
+      VALUES (
+        v_uid,
+        p_property_id,
+        v_unit_no,
+        coalesce(nullif(trim(p_email), ''), auth.email(), 'unknown@example.com'),
+        'pending',
+        v_review_flag,
+        'entry_public_invite'
+      )
+      RETURNING id INTO v_jr_id;
+    END IF;
 
     PERFORM public._property_entry_event_silent(
       p_property_id, v_uid, v_email_in, v_name, v_unit_no, v_code, 'pending_review', 'pending', 'unit_occupied',

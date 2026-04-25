@@ -5,7 +5,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { useProperty } from '../contexts/PropertyContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { supabase } from '../lib/supabase';
-import { firstRpcJsonRow } from '../lib/rpcJsonRow';
 
 type InviteRow = {
   id: string;
@@ -53,10 +52,6 @@ function translateInviteError(message: string | undefined, en: boolean): string 
   return en ? row[0] : row[1];
 }
 
-function friendlySubmitFailure(en: boolean): string {
-  return en ? 'Could not submit your request. Please try again.' : '无法提交申请，请稍后再试。';
-}
-
 function persistCurrentPropertyId(propertyId: string) {
   try {
     localStorage.setItem('currentPropertyId', propertyId);
@@ -102,7 +97,7 @@ export function JoinInvitePage() {
   const { session, profile } = useAuth();
   const { language, t } = useLanguage();
   const en = language === 'en';
-  const { memberships, setCurrentPropertyId, refreshMemberships } = useProperty();
+  const { memberships, setCurrentPropertyId } = useProperty();
 
   const cleanCode = useMemo(
     () => (searchParams.get('code') || '').trim().toUpperCase(),
@@ -267,59 +262,47 @@ export function JoinInvitePage() {
     try {
       const { data, error } = await supabase.rpc('enter_property_by_public_invite_v2', {
         p_property_id: invite.property_id,
-        p_invite_code: cleanCode,
+        p_invite_code: cleanCode || null,
         p_full_name: name,
         p_email: em,
         p_unit_no: unit,
       });
 
-      const row = firstRpcJsonRow(data);
+      console.log('JOIN RESULT:', data, error);
+
       if (error) {
-        setMsg(error.message || friendlySubmitFailure(en));
+        console.error('JOIN ERROR:', error);
+        throw new Error(error.message || 'Join failed');
+      }
+
+      if (!data || !data.status) {
+        throw new Error('Invalid join response');
+      }
+
+      if (data.status === 'auto_approved' || data.status === 'already_member') {
+        persistCurrentPropertyId(invite.property_id);
+        setCurrentPropertyId(invite.property_id);
+        navigate('/');
         return;
       }
 
-      const status = String(row?.status ?? '');
-
-      if (status === 'already_member') {
-        const pid = String(row?.property_id ?? invite.property_id);
-        persistCurrentPropertyId(pid);
-        setCurrentPropertyId(pid);
-        await refreshMemberships();
-        setSuccess(true);
-        await loadInvite();
-        return;
-      }
-
-      if (status === 'auto_approved') {
-        const pid = String(row?.property_id ?? invite.property_id);
-        persistCurrentPropertyId(pid);
-        setCurrentPropertyId(pid);
-        await refreshMemberships();
-        setSuccess(true);
-        await loadInvite();
-        return;
-      }
-
-      if (status === 'pending_review') {
-        const rf = String(row?.review_flag ?? '');
+      if (data.status === 'pending_review') {
         setMyLatestRequest({ status: 'pending', rejection_reason: null });
-        navigate('/join/pending', { replace: true, state: { propertyName, reviewFlag: rf } });
+        navigate('/join/pending', {
+          state: {
+            propertyId: invite.property_id,
+            unitNo: unit,
+            propertyName,
+            reviewFlag: data.review_flag,
+          },
+        });
         return;
       }
 
-      if (status === 'invalid_invite' || status === 'invalid_arguments') {
-        setMsg(
-          en
-            ? 'This invite is invalid, expired, exhausted, or has been disabled.'
-            : '邀请码无效、已停用、已过期或次数已用完。',
-        );
-        return;
-      }
-
-      setMsg(en ? 'Unexpected response.' : '未预期的返回。');
-    } catch {
-      setMsg(translateInviteError('UNKNOWN', en));
+      throw new Error(data.message || 'Join rejected');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : translateInviteError('UNKNOWN', en);
+      setMsg(message);
     } finally {
       submitInviteLockRef.current = false;
       setSubmitting(false);

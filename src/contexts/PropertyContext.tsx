@@ -464,6 +464,13 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
 
   const setCurrentPropertyId = useCallback(
     (id: string) => {
+      if (
+        !isDemoPropertyMockRef.current &&
+        !isDemoMode &&
+        !memberships.some((m) => samePropertyId(m.propertyId, id))
+      ) {
+        return;
+      }
       setCurrentPropertyIdState(id);
       setNeedsPropertyChoice(false);
       if (isDemoPropertyMockRef.current) return;
@@ -478,7 +485,7 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
         { replace: true },
       );
     },
-    [setSearchParams, isDemoMode],
+    [setSearchParams, isDemoMode, memberships],
   );
 
   const roleInProperty = useMemo(() => {

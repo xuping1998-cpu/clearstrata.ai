@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useSearchParams, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LanguageProvider } from './contexts/LanguageContext';
@@ -521,8 +521,21 @@ function AppMain() {
   const { session, loading, user } = useAuth();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const { ready: propertyReady, currentPropertyId, isGuest, isDemoPropertyMock } = useProperty();
+  const {
+    ready: propertyReady,
+    memberships,
+    currentPropertyId,
+    setCurrentPropertyId,
+    isGuest,
+    isDemoPropertyMock,
+  } = useProperty();
   const hasActiveMembership = useHasActivePropertyMembership(user?.id, propertyReady);
+
+  useEffect(() => {
+    if (!session || isDemoPropertyMock || !propertyReady) return;
+    if (currentPropertyId || memberships.length === 0) return;
+    setCurrentPropertyId(memberships[0].propertyId);
+  }, [session, isDemoPropertyMock, propertyReady, currentPropertyId, memberships, setCurrentPropertyId]);
 
   if (
     loading ||
@@ -563,18 +576,25 @@ function AppMain() {
     return <Auth />;
   }
 
+  if (!isDemoPropertyMock && memberships.length === 0) {
+    return <Navigate to="/entry" replace />;
+  }
+
+  if (!isDemoPropertyMock && !currentPropertyId) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-clearstrata-ui-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <>
-      {hasActiveMembership === false && !isDemoPropertyMock ? (
-        <JoinAccessGate />
-      ) : !currentPropertyId && !isDemoPropertyMock ? (
-        <Navigate to="/select-property" replace />
-      ) : (
-        <Layout>
-          <AuthenticatedRoutes />
-        </Layout>
-      )}
-    </>
+    <Layout>
+      <AuthenticatedRoutes />
+    </Layout>
   );
 }
 

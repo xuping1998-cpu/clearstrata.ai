@@ -7,7 +7,6 @@ import { useProperty } from '../../contexts/PropertyContext';
 import { supabase } from '../../lib/supabase';
 import { samePropertyId } from '../../lib/propertyIdMatch';
 import { readPropertyEntryDraft } from '@/lib/propertyEntryDraft';
-import { firstRpcJsonRow } from '../../lib/rpcJsonRow';
 import { trackPropertyEntryEvent } from '../../lib/propertyEntryEvents';
 
 const UUID_RE =
@@ -229,62 +228,48 @@ export function QrPropertyEntryPage() {
     try {
       const { data, error } = await supabase.rpc('enter_property_by_public_invite_v2', {
         p_property_id: effectivePropertyId,
-        p_invite_code: inviteCodeParam.trim(),
+        p_invite_code: inviteCodeParam.trim() || null,
         p_full_name: name,
         p_email: em,
         p_unit_no: unit,
       });
 
-      const row = firstRpcJsonRow(data);
+      console.log('JOIN RESULT:', data, error);
+
       if (error) {
-        setToast({ kind: 'error', text: error.message || (en ? 'Request failed.' : '请求失败。') });
-        return;
+        console.error('JOIN ERROR:', error);
+        throw new Error(error.message || 'Join failed');
       }
 
-      const status = String(row?.status ?? '');
+      if (!data || !data.status) {
+        throw new Error('Invalid join response');
+      }
 
-      if (status === 'already_member') {
-        const pid = String(row?.property_id ?? effectivePropertyId);
-        persistCurrentPropertyId(pid);
-        setCurrentPropertyId(pid);
+      if (data.status === 'auto_approved' || data.status === 'already_member') {
         await refreshMemberships();
-        setToast({ kind: 'success', text: en ? 'You are already a member of this property.' : '你已是本物业成员。' });
-        window.setTimeout(() => navigate('/', { replace: true }), 1200);
+        persistCurrentPropertyId(effectivePropertyId);
+        setCurrentPropertyId(effectivePropertyId);
+        navigate('/');
         return;
       }
 
-      if (status === 'auto_approved') {
-        const pid = String(row?.property_id ?? effectivePropertyId);
-        persistCurrentPropertyId(pid);
-        setCurrentPropertyId(pid);
-        await refreshMemberships();
-        setToast({ kind: 'success', text: en ? 'Verified against the whitelist. Welcome to your property.' : '已通过白名单验证，欢迎进入本物业。' });
-        window.setTimeout(() => navigate('/', { replace: true }), 1000);
-        return;
-      }
-
-      if (status === 'pending_review') {
-        const rf = String(row?.review_flag ?? '');
-        navigate('/join/pending', { replace: true, state: { reviewFlag: rf, propertyName: resolved?.name } });
-        return;
-      }
-
-      if (status === 'auth_required') {
-        navigate(`/login?redirect=${encodeURIComponent(redirectTo)}`, { replace: true });
-        return;
-      }
-
-      if (status === 'invalid_invite' || status === 'invalid_arguments') {
-        setToast({
-          kind: 'error',
-          text: en
-            ? 'This invite is invalid, expired, exhausted, or has been disabled.'
-            : '邀请码无效、已停用、已过期或次数已用完。',
+      if (data.status === 'pending_review') {
+        navigate('/join/pending', {
+          replace: true,
+          state: {
+            propertyId: effectivePropertyId,
+            unitNo: unit,
+            propertyName: resolved?.name,
+            reviewFlag: data.review_flag,
+          },
         });
         return;
       }
 
-      setToast({ kind: 'error', text: en ? 'Unexpected response.' : '未预期的返回。' });
+      throw new Error(data.message || 'Join rejected');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : en ? 'Join failed.' : '加入失败。';
+      setToast({ kind: 'error', text: message });
     } finally {
       setSubmitting(false);
     }
