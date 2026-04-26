@@ -588,8 +588,8 @@ function AppMain() {
     return <Auth />;
   }
 
-  if (!publicOrJoinFlow && !isDemoPropertyMock && memberships.length === 0) {
-    return <Navigate to="/entry" replace />;
+  if (!publicOrJoinFlow && !isDemoPropertyMock && (memberships.length === 0 || hasActiveMembership === false)) {
+    return <JoinAccessGate />;
   }
 
   if (!publicOrJoinFlow && !isDemoPropertyMock && !currentPropertyId) {
