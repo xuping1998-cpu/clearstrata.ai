@@ -100,6 +100,8 @@ export interface PropertyMembership {
   propertyId: string;
   name: string;
   role: UserRole;
+  unitNo?: string | null;
+  unitId?: string | null;
 }
 
 /**
@@ -216,7 +218,7 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
 
     const { data: rows, error } = await supabase
       .from('property_members')
-      .select('property_id, role')
+      .select('property_id, role, unit_no, unit_id')
       .eq('user_id', user.id)
       .eq('status', 'active');
 
@@ -249,6 +251,8 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
       propertyId,
       name: names[propertyId] || 'Property',
       role: byPropertyId.get(propertyId)!,
+      unitNo: (list.find((r) => r.property_id === propertyId)?.unit_no as string | null | undefined) ?? null,
+      unitId: (list.find((r) => r.property_id === propertyId)?.unit_id as string | null | undefined) ?? null,
     }));
 
     setMemberships(mems);

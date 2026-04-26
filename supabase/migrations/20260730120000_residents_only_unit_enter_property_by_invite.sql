@@ -9,6 +9,8 @@
   - approve_pending_property_member_with_residents: stop writing pm.unit_number
 */
 ALTER TABLE public.property_members DROP COLUMN IF EXISTS unit_number;
+ALTER TABLE public.property_members ADD COLUMN IF NOT EXISTS unit_no text;
+ALTER TABLE public.join_requests ADD COLUMN IF NOT EXISTS unit_no text;
 
 
 -- ---------------------------------------------------------------------------
@@ -31,8 +33,8 @@ BEGIN
   END;
 
   IF TG_OP = 'INSERT' THEN
-    INSERT INTO public.property_members (property_id, user_id, role, status)
-    SELECT NEW.property_id, NEW.user_id, v_role, 'active'::public.member_status
+    INSERT INTO public.property_members (property_id, user_id, role, status, unit_no)
+    SELECT NEW.property_id, NEW.user_id, v_role, 'active'::public.member_status, NEW.unit_no
     WHERE NOT EXISTS (
       SELECT 1
       FROM public.property_members pm
@@ -44,8 +46,8 @@ BEGIN
 
   IF TG_OP = 'UPDATE' THEN
     IF NEW.property_id IS DISTINCT FROM OLD.property_id OR NEW.user_id IS DISTINCT FROM OLD.user_id THEN
-      INSERT INTO public.property_members (property_id, user_id, role, status)
-      SELECT NEW.property_id, NEW.user_id, v_role, 'active'::public.member_status
+      INSERT INTO public.property_members (property_id, user_id, role, status, unit_no)
+      SELECT NEW.property_id, NEW.user_id, v_role, 'active'::public.member_status, NEW.unit_no
       WHERE NOT EXISTS (
         SELECT 1
         FROM public.property_members pm
@@ -385,12 +387,13 @@ BEGIN
     AND r.user_id = v_uid
     AND lower(trim(r.unit_no)) = lower(trim(v_unit));
 
-  INSERT INTO public.property_members (property_id, user_id, role, status)
-  VALUES (p_property_id, v_uid, v_pm_role, 'active'::public.member_status)
+  INSERT INTO public.property_members (property_id, user_id, role, status, unit_no)
+  VALUES (p_property_id, v_uid, v_pm_role, 'active'::public.member_status, trim(v_unit))
   ON CONFLICT (property_id, user_id) DO UPDATE
   SET
     role = EXCLUDED.role,
-    status = 'active'::public.member_status;
+    status = 'active'::public.member_status,
+    unit_no = COALESCE(NULLIF(trim(EXCLUDED.unit_no), ''), public.property_members.unit_no);
 
   UPDATE public.property_invite_codes c
   SET
@@ -505,7 +508,7 @@ BEGIN
   IF jr.status = 'approved'::public.join_request_status THEN
     v_unit := COALESCE(
       NULLIF(trim(p_unit_no), ''),
-      NULLIF(trim(jr.unit_number), ''),
+      NULLIF(trim(jr.unit_no), ''),
       ''
     );
     RETURN jsonb_build_object(
@@ -610,7 +613,7 @@ BEGIN
 
   v_unit := COALESCE(
     NULLIF(trim(p_unit_no), ''),
-    NULLIF(trim(jr.unit_number), ''),
+    NULLIF(trim(jr.unit_no), ''),
     ''
   );
   IF v_unit = '' THEN
@@ -769,6 +772,7 @@ BEGIN
     user_id,
     role,
     status,
+    unit_no,
     approved_by,
     approved_at
   )
@@ -777,6 +781,7 @@ BEGIN
     v_user_id,
     'owner'::public.user_role,
     'active'::public.member_status,
+    trim(v_unit),
     v_actor,
     now()
   )
@@ -784,6 +789,7 @@ BEGIN
   SET
     role = 'owner'::public.user_role,
     status = 'active'::public.member_status,
+    unit_no = COALESCE(NULLIF(trim(EXCLUDED.unit_no), ''), public.property_members.unit_no),
     approved_by = EXCLUDED.approved_by,
     approved_at = EXCLUDED.approved_at;
 

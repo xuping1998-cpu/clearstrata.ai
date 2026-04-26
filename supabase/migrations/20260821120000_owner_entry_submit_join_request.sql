@@ -7,6 +7,9 @@ ALTER TABLE public.join_requests
   ADD COLUMN IF NOT EXISTS review_reason text,
   ADD COLUMN IF NOT EXISTS source text;
 
+ALTER TABLE public.property_members
+  ADD COLUMN IF NOT EXISTS unit_no text;
+
 -- Product requirement: council may review competing pending applications.
 DROP INDEX IF EXISTS public.join_requests_one_pending_per_user;
 DROP INDEX IF EXISTS public.uniq_pending_request;
@@ -155,8 +158,7 @@ BEGIN
     FROM information_schema.columns c
     WHERE c.table_schema = 'public'
       AND c.table_name = 'property_members'
-      AND c.column_name IN ('unit_no', 'unit_number')
-    ORDER BY CASE c.column_name WHEN 'unit_no' THEN 1 ELSE 2 END
+      AND c.column_name = 'unit_no'
     LIMIT 1;
 
     IF v_pm_unit_column IS NOT NULL THEN
@@ -180,7 +182,7 @@ BEGIN
     SELECT 1
     FROM public.join_requests jr
     WHERE jr.property_id = p_property_id
-      AND lower(trim(coalesce(jr.unit_no, jr.unit_number, ''))) = lower(v_unit_no)
+      AND lower(trim(coalesce(jr.unit_no, ''))) = lower(v_unit_no)
       AND jr.status::text IN ('pending', 'reviewing', 'submitted')
   )
   INTO v_pending_conflict;
@@ -239,6 +241,7 @@ BEGIN
       user_id,
       role,
       status,
+      unit_no,
       approved_at
     )
     VALUES (
@@ -246,12 +249,14 @@ BEGIN
       v_uid,
       'owner'::public.user_role,
       'active'::public.member_status,
+      v_unit_no,
       now()
     )
     ON CONFLICT (property_id, user_id)
     DO UPDATE SET
       role = EXCLUDED.role,
       status = 'active'::public.member_status,
+      unit_no = COALESCE(NULLIF(trim(EXCLUDED.unit_no), ''), public.property_members.unit_no),
       approved_at = coalesce(public.property_members.approved_at, now());
 
     UPDATE public.property_invite_codes c
@@ -292,7 +297,6 @@ BEGIN
     user_id,
     email,
     unit_no,
-    unit_number,
     invite_code,
     status,
     review_flag,
@@ -304,7 +308,6 @@ BEGIN
     p_property_id,
     v_uid,
     v_email,
-    v_unit_no,
     v_unit_no,
     v_invite_code,
     'pending',

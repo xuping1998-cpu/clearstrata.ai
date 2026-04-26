@@ -16,7 +16,7 @@ import { approveJoinRequest, rejectJoinRequest } from '../../lib/unifiedProperty
 import { StatusAlert, StatusBadge } from '@/components/status';
 
 export const JOIN_REQUESTS_SELECT_PENDING =
-  'id, property_id, user_id, requested_role, full_name, email, phone, unit_number, note, status, created_at, invite_code, review_flag, review_reason, whitelist_matched, unit_occupied, source';
+  'id, property_id, user_id, requested_role, full_name, email, phone, unit_no, note, status, created_at, invite_code, review_flag, review_reason, whitelist_matched, unit_occupied, source';
 
 export type JoinRequestRow = {
   id: string;
@@ -26,7 +26,7 @@ export type JoinRequestRow = {
   full_name: string | null;
   email: string | null;
   phone: string | null;
-  unit_number: string | null;
+  unit_no: string | null;
   note: string | null;
   status: string;
   created_at: string;
@@ -531,7 +531,7 @@ export function JoinRequestsReviewPanel({ embedded = false, anomalyOnly = false 
                 </p>
                 <p>
                   <span className="text-gray-500">{en ? 'Unit' : '单元'}: </span>
-                  {r.unit_number || '—'}
+                  {r.unit_no || '—'}
                 </p>
                 {(r.invite_code && String(r.invite_code).trim()) || anomalyOnly || isAnomaly ? (
                   <p>
@@ -587,14 +587,14 @@ export function JoinRequestsReviewPanel({ embedded = false, anomalyOnly = false 
                     value={unitOverride[r.id] ?? ''}
                     onChange={(e) => setUnitOverride((m) => ({ ...m, [r.id]: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                    placeholder={r.unit_number ?? ''}
+                    placeholder={r.unit_no ?? ''}
                   />
                 </div>
                 <div className="flex gap-2 sm:items-end">
                   <button
                     type="button"
                     disabled={actingId === r.id || !user?.id || !canApproveRequests}
-                    onClick={() => void approve(r.id, r.unit_number)}
+                    onClick={() => void approve(r.id, r.unit_no)}
                     className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-clearstrata-ui-primary text-white text-sm font-semibold hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:opacity-50"
                   >
                     {actingId === r.id ? <Loader2 className="animate-spin" size={18} /> : <Check size={18} />}
