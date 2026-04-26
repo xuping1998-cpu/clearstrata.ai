@@ -112,7 +112,7 @@ function NoActiveMembershipGate() {
       try {
         const { data, error } = await supabase
           .from('join_requests')
-          .select('property_id, unit_no, unit_number, review_flag, review_reason, status, created_at')
+          .select('property_id, unit_no, review_flag, review_reason, status, created_at')
           .eq('user_id', user.id)
           .order('created_at', { ascending: false })
           .limit(1)
@@ -133,7 +133,7 @@ function NoActiveMembershipGate() {
             replace: true,
             state: {
               propertyId: data.property_id,
-              unitNo: data.unit_no || data.unit_number || undefined,
+              unitNo: data.unit_no || undefined,
               reviewFlag: data.review_flag || undefined,
               message: data.review_reason || undefined,
             },
