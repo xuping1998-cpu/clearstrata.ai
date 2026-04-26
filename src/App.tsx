@@ -1,5 +1,5 @@
-import { useEffect, type ReactNode } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation, useSearchParams, Outlet } from 'react-router-dom';
+import { useEffect, useState, type ReactNode } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate, useSearchParams, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { PropertyProvider, useProperty } from './contexts/PropertyContext';
@@ -73,6 +73,7 @@ import {
   canReviewJoinRequests,
 } from './lib/propertyPermissions';
 import type { UserRole } from './lib/supabase';
+import { supabase } from './lib/supabase';
 import { useHasActivePropertyMembership } from './hooks/useHasActivePropertyMembership';
 import { samePropertyId } from './lib/propertyIdMatch';
 
@@ -83,6 +84,94 @@ const isPublicOrJoinFlow = (pathname: string) =>
   pathname.startsWith('/join/') ||
   pathname === '/invite' ||
   pathname.startsWith('/invite/');
+
+const PENDING_JOIN_STATUSES = new Set(['pending', 'submitted', 'under_review', 'reviewing']);
+
+function NoActiveMembershipGate() {
+  const { user } = useAuth();
+  const { language } = useLanguage();
+  const navigate = useNavigate();
+  const en = language === 'en';
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const timeout = window.setTimeout(() => {
+      if (!cancelled) {
+        console.log('[JoinAccessGate] no request');
+        setChecking(false);
+      }
+    }, 6000);
+
+    (async () => {
+      console.log('[JoinAccessGate] start');
+      if (!user?.id) {
+        console.log('[JoinAccessGate] no request');
+        if (!cancelled) setChecking(false);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('join_requests')
+          .select('property_id, unit_no, unit_number, review_flag, review_reason, status, created_at')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (cancelled) return;
+        if (error) {
+          console.log('[JoinAccessGate] error', error);
+          setChecking(false);
+          return;
+        }
+
+        const status = String(data?.status ?? '');
+        if (data && PENDING_JOIN_STATUSES.has(status)) {
+          console.log('[JoinAccessGate] pending request found', data);
+          window.clearTimeout(timeout);
+          navigate('/join/pending', {
+            replace: true,
+            state: {
+              propertyId: data.property_id,
+              unitNo: data.unit_no || data.unit_number || undefined,
+              reviewFlag: data.review_flag || undefined,
+              message: data.review_reason || undefined,
+            },
+          });
+          return;
+        }
+
+        console.log('[JoinAccessGate] no request');
+        setChecking(false);
+      } catch (err) {
+        if (!cancelled) {
+          console.log('[JoinAccessGate] error', err);
+          setChecking(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+    };
+  }, [navigate, user?.id]);
+
+  if (checking) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-clearstrata-ui-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-sm text-gray-500">{en ? 'Checking application status...' : '正在检查申请状态...'}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return <JoinAccessGate />;
+}
 
 function PricingRoute() {
   const { session } = useAuth();
@@ -589,7 +678,7 @@ function AppMain() {
   }
 
   if (!publicOrJoinFlow && !isDemoPropertyMock && (memberships.length === 0 || hasActiveMembership === false)) {
-    return <JoinAccessGate />;
+    return <NoActiveMembershipGate />;
   }
 
   if (!publicOrJoinFlow && !isDemoPropertyMock && !currentPropertyId) {
