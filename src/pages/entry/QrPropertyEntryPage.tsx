@@ -227,7 +227,7 @@ console.log('JOIN RESULT:', data, error);
         return;
       }
 
-      if (result.kind === 'pending') {
+      if (result.kind === 'pending' || result.kind === 'pending_submitted') {
         navigate('/join/pending', {
           replace: true,
           state: {
