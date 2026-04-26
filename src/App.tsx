@@ -89,9 +89,7 @@ const PENDING_JOIN_STATUSES = new Set(['pending', 'submitted', 'under_review', '
 
 function NoActiveMembershipGate() {
   const { user } = useAuth();
-  const { language } = useLanguage();
   const navigate = useNavigate();
-  const en = language === 'en';
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
@@ -164,7 +162,7 @@ function NoActiveMembershipGate() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-clearstrata-ui-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-sm text-gray-500">{en ? 'Checking application status...' : '正在检查申请状态...'}</p>
+          <p className="text-sm text-gray-500">Checking application status... / 正在检查申请状态...</p>
         </div>
       </div>
     );
