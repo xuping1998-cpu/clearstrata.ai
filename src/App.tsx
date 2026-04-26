@@ -77,22 +77,34 @@ import { supabase } from './lib/supabase';
 import { useHasActivePropertyMembership } from './hooks/useHasActivePropertyMembership';
 import { samePropertyId } from './lib/propertyIdMatch';
 
-const isPublicOrJoinFlow = (pathname: string) =>
-  pathname === '/entry' ||
-  pathname === '/login' ||
-  pathname === '/join' ||
-  pathname.startsWith('/join/') ||
-  pathname === '/invite' ||
-  pathname.startsWith('/invite/');
+const PUBLIC_PATH_PREFIXES = [
+  '/login',
+  '/register',
+  '/pricing',
+  '/upgrade',
+  '/contact-sales',
+  '/entry',
+  '/invite',
+  '/join',
+];
+
+function isPublicPath(pathname: string) {
+  return pathname === '/' || PUBLIC_PATH_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
 
 const PENDING_JOIN_STATUSES = new Set(['pending', 'submitted', 'under_review', 'reviewing']);
 
 function NoActiveMembershipGate() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
+    if (isPublicPath(location.pathname)) {
+      setChecking(false);
+      return;
+    }
     let cancelled = false;
     const timeout = window.setTimeout(() => {
       if (!cancelled) {
@@ -155,7 +167,11 @@ function NoActiveMembershipGate() {
       cancelled = true;
       window.clearTimeout(timeout);
     };
-  }, [navigate, user?.id]);
+  }, [location.pathname, navigate, user?.id]);
+
+  if (isPublicPath(location.pathname)) {
+    return null;
+  }
 
   if (checking) {
     return (
@@ -521,8 +537,8 @@ function AppContent() {
       <Route path="/invite" element={<JoinWithCode />} />
       <Route path="/invite/*" element={<JoinWithCode />} />
       <Route path="/onboarding/create-property" element={<CreatePropertyPage />} />
-      <Route path="/upgrade" element={<SessionLayoutGate><UpgradePage /></SessionLayoutGate>} />
-      <Route path="/contact-sales" element={<SessionLayoutGate><UpgradePage /></SessionLayoutGate>} />
+      <Route path="/upgrade" element={<UpgradePage />} />
+      <Route path="/contact-sales" element={<UpgradePage />} />
       <Route path="/dashboard" element={<SessionDashboardRoute />} />
       <Route path="/join-request" element={<JoinRequestPage />} />
       <Route path="/select-property" element={<SelectPropertyRoute />} />
@@ -626,17 +642,17 @@ function AppMain() {
     isDemoPropertyMock,
   } = useProperty();
   const hasActiveMembership = useHasActivePropertyMembership(user?.id, propertyReady);
-  const publicOrJoinFlow = isPublicOrJoinFlow(location.pathname);
+  const publicPath = isPublicPath(location.pathname);
 
   useEffect(() => {
-    if (publicOrJoinFlow) return;
+    if (publicPath) return;
     if (!session || isDemoPropertyMock || !propertyReady) return;
     if (currentPropertyId || memberships.length === 0) return;
     setCurrentPropertyId(memberships[0].propertyId);
-  }, [publicOrJoinFlow, session, isDemoPropertyMock, propertyReady, currentPropertyId, memberships, setCurrentPropertyId]);
+  }, [publicPath, session, isDemoPropertyMock, propertyReady, currentPropertyId, memberships, setCurrentPropertyId]);
 
   if (
-    !publicOrJoinFlow &&
+    !publicPath &&
     (loading ||
       (session && !isDemoPropertyMock && !propertyReady) ||
       (session && !isDemoPropertyMock && hasActiveMembership === null))
@@ -675,11 +691,15 @@ function AppMain() {
     return <Auth />;
   }
 
-  if (!publicOrJoinFlow && !isDemoPropertyMock && (memberships.length === 0 || hasActiveMembership === false)) {
+  if ((location.pathname === '/' || location.pathname === '/register') && (memberships.length === 0 || hasActiveMembership === false)) {
+    return <Auth />;
+  }
+
+  if (!publicPath && !isDemoPropertyMock && (memberships.length === 0 || hasActiveMembership === false)) {
     return <NoActiveMembershipGate />;
   }
 
-  if (!publicOrJoinFlow && !isDemoPropertyMock && !currentPropertyId) {
+  if (!publicPath && !isDemoPropertyMock && !currentPropertyId) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">

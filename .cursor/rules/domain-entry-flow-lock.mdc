@@ -1,0 +1,62 @@
+---
+description: Lock ClearStrata domain split and owner entry flow architecture
+alwaysApply: true
+---
+
+# ClearStrata Domain & Entry Flow Lock
+
+This project has one real business entry flow. Before changing scan QR, login, owner entry, join request, pending/rejected pages, review flow, or home/App guards, follow this rule.
+
+## Domains
+
+- Current test business domain: `clearstrataaiserena.vercel.app`.
+- Future production split:
+  - `www.clearstrata.ai` = marketing site, read-only demo, sales conversion.
+  - `app.clearstrata.ai` = only real business app for login, entry, review, admin.
+- During testing, do not mix `www.clearstrata.ai` into real business flows.
+
+## Non-Negotiable Architecture
+
+- Real scan/login/entry/review/admin logic must have one implementation only.
+- Supabase is a single instance; multi-property isolation is by `property_id`.
+- `www` and demo flows must not write business data.
+- Do not add second entry/join RPCs such as `submit_join_request_v2`, `enter_property_v3`, or `new_join_flow`.
+- Unified owner entry RPC is `submit_join_request`.
+
+## Fixed Routes
+
+- `/entry` = owner QR entry.
+- `/login` = login.
+- `/join/pending` = under review.
+- `/join/rejected` = rejected.
+- `/` = home after active membership.
+- `/admin/*` = admin.
+
+## Required Flow
+
+1. QR opens `/entry?propertyId=<uuid>&inviteCode=<code>`.
+2. Unauthenticated user goes to `/login?redirect=<original entry URL>`.
+3. Login must return to the original `/entry` with full query intact.
+4. `/entry` submits through `submit_join_request`.
+5. RPC result controls routing:
+   - whitelist approved: `auto_approved` -> enter app.
+   - non-whitelist / occupied / duplicate pending: confirm or pending -> `/join/pending`.
+6. Council reviews join request.
+7. Approval activates `property_members.status = active`.
+8. Active user entering `/` goes to the property app.
+
+## Guard Rules
+
+- Users without active membership cannot access home/dashboard/admin.
+- Pending users visiting `/` must be redirected to `/join/pending`.
+- `/entry`, `/login`, `/join`, `/join/*`, `/invite`, and `/invite/*` must bypass membership/current-property guards.
+- `/entry` must not depend on `currentPropertyId`, memberships, or `PropertyContext` readiness to render.
+- Only `auto_approved` / `already_member` may set `currentPropertyId` or persist the current property.
+
+## Forbidden
+
+- Do not create `/entry2`, `/join2`, or parallel entry routes.
+- Do not add demo database write paths.
+- Do not create per-property databases.
+- Do not implement separate join flows in different files.
+- Do not change demo flows when fixing real owner entry.
