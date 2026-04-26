@@ -182,14 +182,22 @@ export function QrPropertyEntryPage() {
     setSubmitting(true);
     setToast(null);
     try {
-      const { data, error } = await supabase.rpc('submit_join_request', {
-        p_property_id: effectivePropertyId,
-        p_invite_code: inviteCodeParam.trim() || null,
-        p_unit_no: unit,
-        p_confirm: confirmOverride,
-      });
+      console.log('JOIN PAYLOAD:', {
+  p_property_id: effectivePropertyId,
+  p_invite_code: inviteCodeParam.trim() || null,
+  p_unit_no: unit,
+  p_confirm: confirmOverride,
+});
 
-      console.log('JOIN RESULT:', data, error);
+const { data, error } = await supabase.rpc('submit_join_request', {
+  p_property_id: effectivePropertyId,
+  p_invite_code: inviteCodeParam.trim() || null,
+  p_unit_no: unit,
+  p_confirm: confirmOverride,
+});
+
+console.log('JOIN RESULT:', data, error);
+      
 
       if (error) {
         console.error('JOIN ERROR:', error);
