@@ -54,7 +54,7 @@ export function QrPropertyEntryPage() {
   const [searchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const { session, loading: authLoading } = useAuth();
+  const { session, user, loading: authLoading } = useAuth();
   const { language } = useLanguage();
   const en = language === 'en';
   const { setCurrentPropertyId, refreshMemberships } = useProperty();
@@ -77,6 +77,8 @@ export function QrPropertyEntryPage() {
   const [confirmState, setConfirmState] = useState<{ reason: string | null; message: string; unitNo: string } | null>(null);
   const [confirm, setConfirm] = useState(false);
 
+  const [fullName, setFullName] = useState('');
+  const [emailIn, setEmailIn] = useState('');
   const [unitNo, setUnitNo] = useState('');
 
   const openedLoggedRef = useRef(false);
@@ -163,6 +165,19 @@ export function QrPropertyEntryPage() {
     })();
   }, [resolved?.id, inviteCodeParam, sourceParam, session?.user]);
 
+  useEffect(() => {
+    if (!user?.id) return;
+    (async () => {
+      const { data } = await supabase.from('profiles').select('full_name_en, email').eq('id', user.id).maybeSingle();
+      const prof = data as { full_name_en?: string; email?: string } | null;
+      if (typeof prof?.full_name_en === 'string' && prof.full_name_en.trim()) {
+        setFullName((s) => s || prof.full_name_en!.trim());
+      }
+      const defEmail = (user.email ?? prof?.email ?? '').trim();
+      if (defEmail) setEmailIn((e) => e || defEmail);
+    })();
+  }, [user?.id, user?.email]);
+
   const effectivePropertyId = useMemo(() => {
     if (propertyIdParam && UUID_RE.test(propertyIdParam)) return propertyIdParam.toLowerCase();
     return null;
@@ -174,8 +189,10 @@ export function QrPropertyEntryPage() {
       return;
     }
     const unit = unitNo.trim();
-    if (!unit) {
-      setToast({ kind: 'error', text: en ? 'Please enter your unit number.' : '请输入房号。' });
+    const name = fullName.trim();
+    const email = emailIn.trim();
+    if (!name || !email || !unit) {
+      setToast({ kind: 'error', text: en ? 'Please fill name, email, and unit.' : '请填写姓名、邮箱与房号。' });
       return;
     }
 
@@ -183,21 +200,21 @@ export function QrPropertyEntryPage() {
     setToast(null);
     try {
       console.log('JOIN PAYLOAD:', {
-  p_property_id: effectivePropertyId,
-  p_invite_code: inviteCodeParam.trim() || null,
-  p_unit_no: unit,
-  p_confirm: confirmOverride,
-});
+        p_property_id: effectivePropertyId,
+        p_invite_code: inviteCodeParam.trim() || null,
+        p_unit_no: unit,
+        p_confirm: confirmOverride,
+      });
 
-const { data, error } = await supabase.rpc('submit_join_request', {
-  p_property_id: effectivePropertyId,
-  p_invite_code: inviteCodeParam.trim() || null,
-  p_unit_no: unit,
-  p_confirm: confirmOverride,
-});
+      const { data, error } = await supabase.rpc('submit_join_request', {
+        p_property_id: effectivePropertyId,
+        p_invite_code: inviteCodeParam.trim() || null,
+        p_unit_no: unit,
+        p_confirm: confirmOverride,
+      });
 
-console.log('JOIN RESULT:', data, error);
-      
+      console.log('JOIN RESULT:', data, error);
+
 
       if (error) {
         console.error('JOIN ERROR:', error);
@@ -320,6 +337,28 @@ console.log('JOIN RESULT:', data, error);
         </div>
 
         <div className="space-y-3">
+          <label className="block text-sm text-gray-700">
+            {en ? 'Name' : '姓名'}
+            <input
+              type="text"
+              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              autoComplete="name"
+              required
+            />
+          </label>
+          <label className="block text-sm text-gray-700">
+            {en ? 'Email' : '邮箱'}
+            <input
+              type="email"
+              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              value={emailIn}
+              onChange={(e) => setEmailIn(e.target.value)}
+              autoComplete="email"
+              required
+            />
+          </label>
           <label className="block text-sm text-gray-700">
             {en ? 'Unit / suite' : '房号（必填）'}
             <input
