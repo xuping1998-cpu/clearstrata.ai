@@ -9,7 +9,8 @@ ALTER TABLE public.join_requests
   ADD COLUMN IF NOT EXISTS source text;
 
 ALTER TABLE public.property_members
-  ADD COLUMN IF NOT EXISTS unit_no text;
+  ADD COLUMN IF NOT EXISTS unit_no text,
+  ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
 
 -- Product requirement: council may review competing pending applications.
 DROP INDEX IF EXISTS public.join_requests_one_pending_per_user;
@@ -245,6 +246,7 @@ BEGIN
       role,
       status,
       unit_no,
+      created_at,
       approved_at
     )
     VALUES (
@@ -253,6 +255,7 @@ BEGIN
       'owner'::public.user_role,
       'active'::public.member_status,
       v_unit_no,
+      now(),
       now()
     )
     ON CONFLICT (property_id, user_id)
@@ -260,6 +263,7 @@ BEGIN
       role = EXCLUDED.role,
       status = 'active'::public.member_status,
       unit_no = COALESCE(NULLIF(trim(EXCLUDED.unit_no), ''), public.property_members.unit_no),
+      created_at = COALESCE(public.property_members.created_at, EXCLUDED.created_at),
       approved_at = coalesce(public.property_members.approved_at, now());
 
     UPDATE public.property_invite_codes c
@@ -349,7 +353,7 @@ BEGIN
 
   RETURN jsonb_build_object(
     'ok', true,
-    'kind', 'pending',
+    'kind', 'pending_submitted',
     'reason', v_reason,
     'message', v_message,
     'property_id', p_property_id,

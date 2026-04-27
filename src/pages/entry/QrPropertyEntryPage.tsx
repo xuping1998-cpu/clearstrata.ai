@@ -184,7 +184,11 @@ export function QrPropertyEntryPage() {
   }, [propertyIdParam]);
 
   const submitJoin = async (confirmOverride = confirm) => {
-    if (!session?.user?.id || !effectivePropertyId || !inviteCodeParam.trim()) {
+    if (!session?.user?.id) {
+      navigate(`/login?redirect=${encodeURIComponent(redirectTo)}`, { replace: true });
+      return;
+    }
+    if (!effectivePropertyId || !inviteCodeParam.trim()) {
       setToast({ kind: 'error', text: en ? 'Missing data.' : '数据不完整。' });
       return;
     }
