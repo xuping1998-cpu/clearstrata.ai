@@ -5,6 +5,7 @@ ALTER TABLE public.join_requests
   ADD COLUMN IF NOT EXISTS invite_code text,
   ADD COLUMN IF NOT EXISTS review_flag text,
   ADD COLUMN IF NOT EXISTS review_reason text,
+  ADD COLUMN IF NOT EXISTS whitelist_matched boolean,
   ADD COLUMN IF NOT EXISTS source text;
 
 ALTER TABLE public.property_members
@@ -40,6 +41,7 @@ DECLARE
   v_unit_occupied boolean := false;
   v_pending_conflict boolean := false;
   v_in_whitelist boolean := false;
+  v_whitelist_matched boolean := false;
   v_reason text;
   v_message text;
   v_pm_unit_column text;
@@ -191,10 +193,11 @@ BEGIN
     SELECT 1
     FROM public.unit_whitelist uw
     WHERE uw.property_id = p_property_id
-      AND lower(trim(uw.unit_no)) = lower(v_unit_no)
+      AND trim(uw.unit_no) = trim(p_unit_no)
       AND uw.is_active = true
   )
   INTO v_in_whitelist;
+  v_whitelist_matched := v_in_whitelist;
 
   IF v_unit_occupied AND NOT p_confirm THEN
     RETURN jsonb_build_object(
@@ -267,6 +270,33 @@ BEGIN
         ELSE c.is_active
       END
     WHERE c.id = v_pic_id;
+
+    INSERT INTO public.join_requests (
+      property_id,
+      user_id,
+      email,
+      unit_no,
+      invite_code,
+      status,
+      review_flag,
+      review_reason,
+      whitelist_matched,
+      source,
+      note
+    )
+    VALUES (
+      p_property_id,
+      v_uid,
+      v_email,
+      v_unit_no,
+      v_invite_code,
+      'approved',
+      'auto_approved',
+      'Unit matched active whitelist and was auto-approved.',
+      v_whitelist_matched,
+      'entry_public_invite',
+      'entry_public_invite|auto_approved'
+    );
 
     RETURN jsonb_build_object(
       'ok', true,
