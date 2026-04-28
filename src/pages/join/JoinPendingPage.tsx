@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -15,23 +15,142 @@ type JoinPendingLocationState = {
   message?: string | null;
 };
 
+type PendingInfo = {
+  propertyId?: string;
+  propertyName?: string | null;
+  unitNo?: string | null;
+  reviewFlag?: string | null;
+  reviewReason?: string | null;
+};
+
 export default function JoinPendingPage() {
   const { session, user } = useAuth();
   const { language } = useLanguage();
   const en = language === 'en';
   const navigate = useNavigate();
   const location = useLocation();
-  const entryState = (location.state as JoinPendingLocationState | null) ?? null;
-  const hasEntryState = useMemo(
-    () => Boolean(entryState?.propertyId || entryState?.propertyName || entryState?.unitNo || entryState?.reviewFlag),
-    [entryState?.propertyId, entryState?.propertyName, entryState?.unitNo, entryState?.reviewFlag],
-  );
+  const [searchParams] = useSearchParams();
   const { setCurrentPropertyId, refreshMemberships } = useProperty();
 
-  const [loading, setLoading] = useState(!hasEntryState);
-  const [refreshing, setRefreshing] = useState(false);
-  const [propertyName, setPropertyName] = useState<string | null>(entryState?.propertyName ?? null);
+  // ── Source 1: location.state (passed by older navigate calls)
+  const entryState = (location.state as JoinPendingLocationState | null) ?? null;
 
+  // ── Source 2: URL query params (e.g. ?unitNo=414&reason=unit_occupied)
+  const qUnitNo = searchParams.get('unitNo') || searchParams.get('unit_no') || null;
+  const qReason = searchParams.get('reason') || searchParams.get('reviewFlag') || null;
+  const qPropertyId = searchParams.get('propertyId') || searchParams.get('property_id') || null;
+
+  const hasImmediateInfo = useMemo(
+    () =>
+      Boolean(
+        entryState?.propertyId ||
+          entryState?.propertyName ||
+          entryState?.unitNo ||
+          entryState?.reviewFlag ||
+          qUnitNo ||
+          qReason ||
+          qPropertyId,
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
+  // ── Display state (merged from all sources)
+  const [pending, setPending] = useState<PendingInfo>({
+    propertyId: entryState?.propertyId ?? qPropertyId ?? undefined,
+    propertyName: entryState?.propertyName ?? null,
+    unitNo: entryState?.unitNo ?? qUnitNo ?? null,
+    reviewFlag: entryState?.reviewFlag ?? qReason ?? null,
+    reviewReason: null,
+  });
+
+  const [loading, setLoading] = useState(!hasImmediateInfo);
+  const [refreshing, setRefreshing] = useState(false);
+  const didInitRef = useRef(false);
+
+  // ── Initial load: query join_requests directly (no membership dependency)
+  useEffect(() => {
+    if (didInitRef.current) return;
+    didInitRef.current = true;
+
+    // Already have enough info — show immediately
+    if (hasImmediateInfo) {
+      setLoading(false);
+      return;
+    }
+
+    if (!session || !user?.id) {
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    // Hard 5-second timeout so loading never hangs forever
+    const timeoutId = window.setTimeout(() => {
+      if (!cancelled) {
+        console.warn('[JoinPendingPage] 5s timeout reached, forcing loading=false');
+        setLoading(false);
+      }
+    }, 5000);
+
+    (async () => {
+      try {
+        // Query join_requests directly — does NOT need currentPropertyId or memberships
+        const { data: jr, error: jrErr } = await supabase
+          .from('join_requests')
+          .select('property_id, unit_no, review_reason, status, email')
+          .eq('user_id', user.id)
+          .in('status', ['pending', 'submitted', 'under_review', 'reviewing'])
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (cancelled) return;
+
+        if (jrErr) console.error('[JoinPendingPage] join_requests query error', jrErr);
+
+        if (jr) {
+          const propId = (jr as { property_id?: string }).property_id;
+          const unitNo = (jr as { unit_no?: string }).unit_no ?? null;
+          const reviewReason = (jr as { review_reason?: string }).review_reason ?? null;
+
+          // Load property name if we have a property_id
+          let propName: string | null = null;
+          if (propId) {
+            const { data: prop } = await supabase
+              .from('properties')
+              .select('name')
+              .eq('id', propId)
+              .maybeSingle();
+            if (!cancelled) propName = (prop as { name?: string } | null)?.name ?? null;
+          }
+
+          if (!cancelled) {
+            setPending((prev) => ({
+              ...prev,
+              propertyId: propId,
+              propertyName: propName,
+              unitNo: unitNo ?? prev.unitNo,
+              reviewReason,
+              reviewFlag: reviewReason ?? prev.reviewFlag,
+            }));
+          }
+        }
+      } finally {
+        clearTimeout(timeoutId);
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Refresh: check if approved/rejected, or reload pending info
   const resolveAndRoute = useCallback(async () => {
     if (!user?.id) return;
     await refreshMemberships();
@@ -45,55 +164,19 @@ export default function JoinPendingPage() {
       navigate('/join/rejected', { replace: true });
       return;
     }
-    if (status.type !== 'pending') {
-      navigate('/', { replace: true });
-      return;
+    if (status.type === 'pending') {
+      const { data: prop } = await supabase
+        .from('properties')
+        .select('name')
+        .eq('id', status.propertyId)
+        .maybeSingle();
+      setPending((prev) => ({
+        ...prev,
+        propertyId: status.propertyId,
+        propertyName: (prop as { name?: string } | null)?.name ?? prev.propertyName,
+      }));
     }
-    const { data: prop } = await supabase.from('properties').select('name').eq('id', status.propertyId).maybeSingle();
-    setPropertyName((prop as { name?: string } | null)?.name ?? null);
   }, [user?.id, navigate, refreshMemberships, setCurrentPropertyId]);
-
-  useEffect(() => {
-    if (hasEntryState) {
-      setPropertyName(entryState?.propertyName ?? null);
-      setLoading(false);
-      return;
-    }
-
-    if (!session || !user?.id) {
-      setLoading(false);
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      await refreshMemberships();
-      if (cancelled) return;
-      const status = await getJoinStatus(user.id);
-      if (cancelled) return;
-      if (status.type === 'member') {
-        setCurrentPropertyId(status.propertyId);
-        navigate('/', { replace: true });
-        return;
-      }
-      if (status.type === 'rejected') {
-        navigate('/join/rejected', { replace: true });
-        return;
-      }
-      if (status.type !== 'pending') {
-        navigate('/', { replace: true });
-        return;
-      }
-      const { data: prop } = await supabase.from('properties').select('name').eq('id', status.propertyId).maybeSingle();
-      if (!cancelled) {
-        setPropertyName((prop as { name?: string } | null)?.name ?? null);
-        setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [hasEntryState, entryState?.propertyName, session, user?.id, navigate, refreshMemberships, setCurrentPropertyId]);
 
   const onRefresh = async () => {
     if (!user?.id) return;
@@ -109,26 +192,49 @@ export default function JoinPendingPage() {
     return <Navigate to="/" replace />;
   }
 
-  const flag = (entryState?.reviewFlag || '').trim();
-  const pendingPropertyName = propertyName ?? entryState?.propertyName ?? null;
-  const pendingUnitNo = entryState?.unitNo?.trim() || null;
-  const pendingMessage = entryState?.message?.trim() || null;
-  const statusDetail =
-    pendingMessage ||
-    (!en && flag === 'not_in_whitelist'
-      ? '该房号未在本物业白名单中，申请已提交给业委会审核。'
-      : en && flag === 'not_in_whitelist'
-        ? 'This unit is not on the whitelist; your request was sent to the council for review.'
-        : !en && flag === 'unit_occupied'
-          ? '该房号已有业主账户或申请，申请已转交业委会审核。'
-          : en && flag === 'unit_occupied'
-            ? 'This unit may already be linked; your request was sent to the council for review.'
-            : !en && flag === 'duplicate_unit_pending'
-              ? '该房号已有申请正在审核，你的申请也已提交给业委会处理。'
-              : en && flag === 'duplicate_unit_pending'
-                ? 'This unit already has an application under review; your request was also sent to the council.'
-                : null);
+  // ── Determine display values (state > query params > db result, all merged in `pending`)
+  const displayFlag = (pending.reviewFlag ?? '').toLowerCase();
+  const displayReason = (pending.reviewReason ?? '').toLowerCase();
+  const isOccupied =
+    displayFlag.includes('occupied') ||
+    displayReason.includes('occupied') ||
+    displayFlag === 'unit_occupied';
 
+  const statusDetail: string | null = (() => {
+    // Explicit message from navigation state
+    const stateMsg = entryState?.message?.trim();
+    if (stateMsg) return stateMsg;
+
+    // unit_occupied — specific message as required
+    if (isOccupied) {
+      return en
+        ? 'This unit is already registered by another owner. Your application has been submitted to the council for review. Please wait for confirmation.'
+        : '该房号已被其他业主绑定。你的申请已提交给理事会审核，请等待确认。';
+    }
+
+    const flag = displayFlag;
+    if (flag === 'not_in_whitelist' || flag === 'non_whitelist') {
+      return en
+        ? 'This unit is not on the whitelist. Your request was sent to the council for review.'
+        : '该房号未在本物业白名单中，申请已提交给业委会审核。';
+    }
+    if (flag === 'duplicate_unit_pending') {
+      return en
+        ? 'This unit already has an application under review. Your request was also sent to the council.'
+        : '该房号已有申请正在审核，你的申请也已提交给业委会处理。';
+    }
+    if (flag === 'unit_change_request') {
+      return en
+        ? 'Your unit change request has been submitted to the council for review.'
+        : '你的换房申请已提交给业委会审核。';
+    }
+    return null;
+  })();
+
+  const displayPropertyName = pending.propertyName ?? null;
+  const displayUnitNo = pending.unitNo ?? null;
+
+  // ── Loading screen (max 5 seconds)
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
@@ -141,35 +247,41 @@ export default function JoinPendingPage() {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 px-4 py-10 text-center">
       <div className="max-w-md w-full bg-white rounded-2xl shadow-lg border border-gray-100 p-8">
-        <h1 className="text-2xl font-bold text-gray-900">{en ? 'Application submitted' : '申请已提交'}</h1>
+        <h1 className="text-2xl font-bold text-gray-900">
+          {en ? 'Application submitted' : '申请已提交'}
+        </h1>
         <p className="mt-2 text-gray-600 text-sm">
           {statusDetail != null
             ? statusDetail
             : en
-              ? 'Please wait for the property team to review.'
-              : '请等待物业或业委会处理你的申请。'}
+              ? 'Your application has been submitted. Please wait for the council to review.'
+              : '申请已提交，请等待理事会审核。'}
         </p>
 
         <div className="mt-6 text-sm text-gray-600 space-y-2 text-left rounded-xl bg-gray-50 px-4 py-3">
           <p>
             <span className="text-gray-500">{en ? 'Property' : '物业'}：</span>
-            {pendingPropertyName ?? (en ? '—' : '—')}
+            {displayPropertyName ?? '—'}
           </p>
-          {pendingUnitNo ? (
+          {displayUnitNo ? (
             <p>
               <span className="text-gray-500">{en ? 'Unit' : '房号'}：</span>
-              {pendingUnitNo}
+              {displayUnitNo}
             </p>
           ) : null}
           <p>
             <span className="text-gray-500">{en ? 'Status' : '当前状态'}：</span>
-            {statusDetail != null
+            {isOccupied
               ? en
                 ? 'Exception queue — under review'
                 : '待审核（异常入楼申请）'
-              : en
-                ? 'Under review'
-                : '审核中'}
+              : statusDetail != null
+                ? en
+                  ? 'Exception queue — under review'
+                  : '待审核（异常入楼申请）'
+                : en
+                  ? 'Under review'
+                  : '审核中'}
           </p>
           <p>
             <span className="text-gray-500">{en ? 'Expected' : '预计时间'}：</span>
@@ -183,7 +295,11 @@ export default function JoinPendingPage() {
           onClick={() => void onRefresh()}
           className="mt-8 inline-flex items-center justify-center gap-2 w-full sm:w-auto min-w-[200px] px-6 py-3 rounded-xl bg-clearstrata-ui-primary text-white font-semibold hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:opacity-50"
         >
-          {refreshing ? <Loader2 className="w-5 h-5 animate-spin" /> : <RefreshCw className="w-5 h-5" />}
+          {refreshing ? (
+            <Loader2 className="w-5 h-5 animate-spin" />
+          ) : (
+            <RefreshCw className="w-5 h-5" />
+          )}
           {en ? 'Refresh status' : '刷新状态'}
         </button>
 
