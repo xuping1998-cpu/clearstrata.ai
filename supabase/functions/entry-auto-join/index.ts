@@ -197,25 +197,29 @@ Deno.serve(async (req: Request) => {
         .maybeSingle();
 
       if (occupant) {
-        // B. Unit occupied by someone else
+        // B. Unit occupied by someone else — write join_request before issuing token
         kind = "pending_submitted";
         reason = "unit_occupied";
         finalRedirect = "/join/pending";
-        await admin.from("join_requests").insert({
+
+        const { error: jrErr } = await admin.from("join_requests").insert({
           property_id: propertyId,
           user_id: userId,
-          requested_role: "owner",
           full_name: fullName || email,
           email,
-          unit_number: unitNo,
           unit_no: unitNo,
           invite_code: inviteCode,
           whitelist_matched: true,
           status: "pending",
-          review_flag: "unit_occupied",
           review_reason: "Unit is currently occupied by another active member",
-          source: "entry_auto_join",
+          review_flag: "unit_occupied",
+          created_at: new Date().toISOString(),
         });
+
+        if (jrErr) {
+          console.error("[entry-auto-join] insert pending join_request failed", jrErr);
+          return err("join_request_failed", "Could not create join request: " + jrErr.message, 500);
+        }
       } else {
         // A. Auto approve — unit is free and user is whitelisted
         kind = "auto_approved";
