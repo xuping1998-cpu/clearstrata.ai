@@ -170,21 +170,28 @@ Deno.serve(async (req: Request) => {
         kind = "pending_submitted";
         reason = "unit_change_request";
         finalRedirect = "/join/pending";
-        await admin.from("join_requests").insert({
-          property_id: propertyId,
-          user_id: userId,
-          requested_role: "owner",
-          full_name: fullName || email,
-          email,
-          unit_number: unitNo,
-          unit_no: unitNo,
-          invite_code: inviteCode,
-          whitelist_matched: true,
-          status: "pending",
-          review_flag: "unit_change_request",
-          review_reason: "User is requesting a unit change from their existing active membership",
-          source: "entry_auto_join",
-        });
+
+        const { error: jrErrC } = await admin.from("join_requests").upsert(
+          {
+            property_id: propertyId,
+            user_id: userId,
+            requested_role: "owner",
+            full_name: fullName || email,
+            email,
+            unit_no: unitNo,
+            invite_code: inviteCode,
+            whitelist_matched: true,
+            status: "pending",
+            review_flag: "unit_change_request",
+            review_reason: "User is requesting a unit change from their existing active membership",
+            source: "entry_auto_join",
+          },
+          { onConflict: "property_id,user_id" },
+        );
+        if (jrErrC) {
+          console.error("[entry-auto-join] upsert unit_change_request join_request failed", jrErrC);
+          return err("join_request_failed", "Could not create join request: " + jrErrC.message, 500);
+        }
       }
     } else {
       // Check if unit is occupied by another active member
@@ -197,27 +204,29 @@ Deno.serve(async (req: Request) => {
         .maybeSingle();
 
       if (occupant) {
-        // B. Unit occupied by someone else — write join_request before issuing token
+        // B. Unit occupied by someone else — upsert join_request (conflict = same user re-submits)
         kind = "pending_submitted";
         reason = "unit_occupied";
         finalRedirect = "/join/pending";
 
-        const { error: jrErr } = await admin.from("join_requests").insert({
-          property_id: propertyId,
-          user_id: userId,
-          full_name: fullName || email,
-          email,
-          unit_no: unitNo,
-          invite_code: inviteCode,
-          whitelist_matched: true,
-          status: "pending",
-          review_reason: "Unit is currently occupied by another active member",
-          review_flag: "unit_occupied",
-          created_at: new Date().toISOString(),
-        });
+        const { error: jrErr } = await admin.from("join_requests").upsert(
+          {
+            property_id: propertyId,
+            user_id: userId,
+            full_name: fullName || email,
+            email,
+            unit_no: unitNo,
+            invite_code: inviteCode,
+            whitelist_matched: true,
+            status: "pending",
+            review_reason: "Unit is currently occupied by another active member",
+            review_flag: "unit_occupied",
+          },
+          { onConflict: "property_id,user_id" },
+        );
 
         if (jrErr) {
-          console.error("[entry-auto-join] insert pending join_request failed", jrErr);
+          console.error("[entry-auto-join] upsert pending join_request failed", jrErr);
           return err("join_request_failed", "Could not create join request: " + jrErr.message, 500);
         }
       } else {
