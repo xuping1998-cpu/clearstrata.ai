@@ -66,40 +66,41 @@ export default function JoinPendingPage() {
 
   const [loading, setLoading] = useState(!hasImmediateInfo);
   const [refreshing, setRefreshing] = useState(false);
-  const didInitRef = useRef(false);
+  // Prevents double-query when user.id becomes available after session race
+  const didQueryRef = useRef(false);
 
-  // ── Initial load: query join_requests directly (no membership dependency)
+  // ── Initial load: query join_requests directly (no membership dependency).
+  // Depends on user?.id so it re-runs after EntryAutoLogin's setSession propagates.
   useEffect(() => {
-    if (didInitRef.current) return;
-    didInitRef.current = true;
-
-    // Already have enough info — show immediately
+    // If we already have display info, nothing to load
     if (hasImmediateInfo) {
       setLoading(false);
       return;
     }
 
-    if (!session || !user?.id) {
-      setLoading(false);
-      return;
-    }
+    // Wait for session to propagate — effect re-runs when user.id becomes available
+    if (!user?.id) return;
+
+    // Prevent running twice (React StrictMode / user.id reference changing)
+    if (didQueryRef.current) return;
+    didQueryRef.current = true;
 
     let cancelled = false;
 
-    // Hard 5-second timeout so loading never hangs forever
+    // Hard 5-second timeout — loading never hangs forever
     const timeoutId = window.setTimeout(() => {
       if (!cancelled) {
-        console.warn('[JoinPendingPage] 5s timeout reached, forcing loading=false');
+        console.warn('[JoinPendingPage] 5s timeout, forcing loading=false');
         setLoading(false);
       }
     }, 5000);
 
     (async () => {
       try {
-        // Query join_requests directly — does NOT need currentPropertyId or memberships
+        // SELECT must include review_flag so isOccupied works correctly
         const { data: jr, error: jrErr } = await supabase
           .from('join_requests')
-          .select('property_id, unit_no, review_reason, status, email')
+          .select('property_id, unit_no, review_flag, review_reason, full_name, email, status, created_at')
           .eq('user_id', user.id)
           .in('status', ['pending', 'submitted', 'under_review', 'reviewing'])
           .order('created_at', { ascending: false })
@@ -107,15 +108,22 @@ export default function JoinPendingPage() {
           .maybeSingle();
 
         if (cancelled) return;
-
         if (jrErr) console.error('[JoinPendingPage] join_requests query error', jrErr);
 
         if (jr) {
-          const propId = (jr as { property_id?: string }).property_id;
-          const unitNo = (jr as { unit_no?: string }).unit_no ?? null;
-          const reviewReason = (jr as { review_reason?: string }).review_reason ?? null;
+          type JrRow = {
+            property_id?: string;
+            unit_no?: string;
+            review_flag?: string;
+            review_reason?: string;
+          };
+          const row = jr as JrRow;
+          const propId = row.property_id;
+          const unitNo = row.unit_no ?? null;
+          const reviewFlag = row.review_flag ?? null;
+          const reviewReason = row.review_reason ?? null;
 
-          // Load property name if we have a property_id
+          // Load property name
           let propName: string | null = null;
           if (propId) {
             const { data: prop } = await supabase
@@ -129,11 +137,12 @@ export default function JoinPendingPage() {
           if (!cancelled) {
             setPending((prev) => ({
               ...prev,
-              propertyId: propId,
-              propertyName: propName,
+              propertyId: propId ?? prev.propertyId,
+              propertyName: propName ?? prev.propertyName,
               unitNo: unitNo ?? prev.unitNo,
-              reviewReason,
-              reviewFlag: reviewReason ?? prev.reviewFlag,
+              // Store review_flag and review_reason separately — do NOT conflate them
+              reviewFlag: reviewFlag ?? prev.reviewFlag,
+              reviewReason: reviewReason ?? prev.reviewReason,
             }));
           }
         }
@@ -147,8 +156,9 @@ export default function JoinPendingPage() {
       cancelled = true;
       clearTimeout(timeoutId);
     };
+  // Re-run when user.id becomes available after session race condition
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [user?.id]);
 
   // ── Refresh: check if approved/rejected, or reload pending info
   const resolveAndRoute = useCallback(async () => {
@@ -193,26 +203,26 @@ export default function JoinPendingPage() {
   }
 
   // ── Determine display values (state > query params > db result, all merged in `pending`)
-  const displayFlag = (pending.reviewFlag ?? '').toLowerCase();
-  const displayReason = (pending.reviewReason ?? '').toLowerCase();
+  // Use the exact logic specified: check both review_flag and review_reason for 'occupied'
+  const flag = String(pending.reviewFlag ?? '').toLowerCase();
+  const reasonText = String(pending.reviewReason ?? '').toLowerCase();
   const isOccupied =
-    displayFlag.includes('occupied') ||
-    displayReason.includes('occupied') ||
-    displayFlag === 'unit_occupied';
+    flag === 'unit_occupied' ||
+    flag.includes('occupied') ||
+    reasonText.includes('occupied');
 
   const statusDetail: string | null = (() => {
     // Explicit message from navigation state
     const stateMsg = entryState?.message?.trim();
     if (stateMsg) return stateMsg;
 
-    // unit_occupied — specific message as required
+    // unit_occupied — specific required message
     if (isOccupied) {
       return en
-        ? 'This unit is already registered by another owner. Your application has been submitted to the council for review. Please wait for confirmation.'
+        ? 'This unit is already linked to another resident. Your application has been submitted for council review.'
         : '该房号已被其他业主绑定。你的申请已提交给理事会审核，请等待确认。';
     }
 
-    const flag = displayFlag;
     if (flag === 'not_in_whitelist' || flag === 'non_whitelist') {
       return en
         ? 'This unit is not on the whitelist. Your request was sent to the council for review.'
@@ -231,7 +241,10 @@ export default function JoinPendingPage() {
     return null;
   })();
 
-  const displayPropertyName = pending.propertyName ?? null;
+  // Property: show name if available, otherwise fall back to first 8 chars of property_id
+  const displayPropertyName =
+    pending.propertyName ??
+    (pending.propertyId ? pending.propertyId.slice(0, 8) + '…' : null);
   const displayUnitNo = pending.unitNo ?? null;
 
   // ── Loading screen (max 5 seconds)
@@ -271,17 +284,7 @@ export default function JoinPendingPage() {
           ) : null}
           <p>
             <span className="text-gray-500">{en ? 'Status' : '当前状态'}：</span>
-            {isOccupied
-              ? en
-                ? 'Exception queue — under review'
-                : '待审核（异常入楼申请）'
-              : statusDetail != null
-                ? en
-                  ? 'Exception queue — under review'
-                  : '待审核（异常入楼申请）'
-                : en
-                  ? 'Under review'
-                  : '审核中'}
+            {en ? 'Under review' : '审核中'}
           </p>
           <p>
             <span className="text-gray-500">{en ? 'Expected' : '预计时间'}：</span>
