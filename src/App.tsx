@@ -65,6 +65,7 @@ import PasswordRecoveryUrlNormaliser from './components/PasswordRecoveryUrlNorma
 import { DemoDashboardRoute } from './components/DemoDashboardRoute';
 import { DemoLandingPage } from './pages/DemoLandingPage';
 import { QrPropertyEntryPage } from './pages/entry/QrPropertyEntryPage';
+import { EntryAutoLogin } from './pages/entry/EntryAutoLogin';
 import {
   canAccessPropertyPeoplePage,
   canAccessPropertySettingsPage,
@@ -456,6 +457,7 @@ function AppContent() {
       <PostLoginPropertyRedirect />
       <Routes>
       <Route path="/entry" element={<QrPropertyEntryPage />} />
+      <Route path="/entry/auto-login" element={<EntryAutoLogin />} />
       <Route path="/demo/:propertyCode" element={<DemoLandingPage />} />
       <Route
         path="/demo-dashboard/:propertyCode"

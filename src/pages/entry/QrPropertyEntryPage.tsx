@@ -1,63 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { AlertTriangle, Building2, Loader2 } from 'lucide-react';
+import { Building2, ExternalLink, Loader2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { useProperty } from '../../contexts/PropertyContext';
 import { supabase } from '../../lib/supabase';
 import { trackPropertyEntryEvent } from '../../lib/propertyEntryEvents';
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function persistCurrentPropertyId(propertyId: string) {
-  try {
-    localStorage.setItem('currentPropertyId', propertyId);
-    localStorage.setItem('clearstrata-current-property-id', propertyId);
-  } catch {
-    /* ignore */
-  }
-}
-
-type JoinSubmitResult = {
-  ok?: boolean;
-  kind?: 'auto_approved' | 'pending' | 'need_confirm' | 'already_member' | 'error' | string;
-  reason?: 'non_whitelist' | 'occupied' | 'duplicate_unit_pending' | 'invalid_invite' | 'invalid_property' | string | null;
-  message?: string | null;
-  property_id?: string;
-  property_name?: string | null;
-  unit_no?: string;
-  require_confirm?: boolean;
-};
-
-function confirmMessage(reason: string | null | undefined, fallback: string | null | undefined, en: boolean) {
-  if (reason === 'non_whitelist') {
-    return en
-      ? 'This unit is not on the whitelist. You can still submit an application for administrator review.'
-      : '该房号不在白名单内。你仍可以提交申请，由管理员审核确认。';
-  }
-  if (reason === 'occupied') {
-    return en
-      ? 'This unit is already registered by another owner. If this is your unit, you can continue and submit for administrator review.'
-      : '该房号已被其他业主登记。如果你确认这是你的房号，可以继续提交申请，由管理员审核。';
-  }
-  if (reason === 'duplicate_unit_pending') {
-    return en
-      ? 'This unit already has an application under review. If this is your unit, you can continue and submit for administrator review.'
-      : '该房号已有申请正在审核。如果你确认这是你的房号，可以继续提交，由管理员审核。';
-  }
-  return fallback || (en ? 'Please confirm before continuing.' : '请确认后继续。');
-}
-
-/** 公开邀请 /entry；demo/营销演示走独立入口，勿混用本页。 */
+/** Public QR entry page: /entry?propertyId=...&inviteCode=...
+ *  Demo/marketing flows must NOT use this page.
+ *  Auto-join flow: submit → entry-auto-join Edge Function → /entry/auto-login?token=... */
 export function QrPropertyEntryPage() {
   const [searchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const { session, user, loading: authLoading } = useAuth();
+  const { session, user } = useAuth();
   const { language } = useLanguage();
   const en = language === 'en';
-  const { setCurrentPropertyId, refreshMemberships } = useProperty();
 
   const propertyIdParam = useMemo(
     () => (searchParams.get('propertyId') || searchParams.get('property_id') || '').trim(),
@@ -69,35 +30,25 @@ export function QrPropertyEntryPage() {
   );
   const sourceParam = useMemo(() => (searchParams.get('source') || '').trim(), [searchParams]);
 
+  // Property resolution state
   const [resolved, setResolved] = useState<{ id: string; name: string } | null>(null);
   const [resolveErr, setResolveErr] = useState<string | null>(null);
   const [resolving, setResolving] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [toast, setToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
-  const [confirmState, setConfirmState] = useState<{ reason: string | null; message: string; unitNo: string } | null>(null);
-  const [confirm, setConfirm] = useState(false);
 
+  // Form state
   const [fullName, setFullName] = useState('');
   const [emailIn, setEmailIn] = useState('');
   const [unitNo, setUnitNo] = useState('');
 
-  const openedLoggedRef = useRef(false);
-  const entryOpenAuditRef = useRef(false);
+  // Submission state
+  const [submitting, setSubmitting] = useState(false);
+  const [submitErr, setSubmitErr] = useState<string | null>(null);
+  const [unitNotFound, setUnitNotFound] = useState(false);
 
-  useEffect(() => {
-    if (!toast) return;
-    const t = window.setTimeout(() => setToast(null), 8000);
-    return () => window.clearTimeout(t);
-  }, [toast]);
+  const auditRef = useRef(false);
+  const openedRef = useRef(false);
 
-  const redirectTo = `${location.pathname}${location.search}`;
-
-  useEffect(() => {
-    if (authLoading) return;
-    if (session?.user) return;
-    navigate(`/login?redirect=${encodeURIComponent(redirectTo)}`, { replace: true });
-  }, [authLoading, session, navigate, redirectTo]);
-
+  // Resolve property info
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -109,14 +60,16 @@ export function QrPropertyEntryPage() {
           setResolveErr(en ? 'Invalid or missing propertyId.' : 'propertyId 缺失或无效。');
           return;
         }
-
         if (!inviteCodeParam) {
           setResolveErr(en ? 'Invalid or missing inviteCode.' : 'inviteCode 缺失或无效。');
           return;
         }
-
         const id = propertyIdParam.toLowerCase();
-        const { data, error } = await supabase.from('properties').select('id,name').eq('id', id).maybeSingle();
+        const { data, error } = await supabase
+          .from('properties')
+          .select('id,name')
+          .eq('id', id)
+          .maybeSingle();
         if (cancelled) return;
         if (error) {
           setResolveErr(en ? 'Could not load property.' : '无法加载物业信息。');
@@ -136,11 +89,14 @@ export function QrPropertyEntryPage() {
     };
   }, [propertyIdParam, inviteCodeParam, en]);
 
+  // Audit: entry page opened
   useEffect(() => {
-    if (openedLoggedRef.current) return;
-    const pid = propertyIdParam && UUID_RE.test(propertyIdParam) ? propertyIdParam.toLowerCase() : null;
+    if (openedRef.current) return;
+    const pid = propertyIdParam && UUID_RE.test(propertyIdParam)
+      ? propertyIdParam.toLowerCase()
+      : null;
     if (!pid) return;
-    openedLoggedRef.current = true;
+    openedRef.current = true;
     void trackPropertyEntryEvent(supabase, {
       propertyId: pid,
       inviteCode: inviteCodeParam || null,
@@ -149,11 +105,11 @@ export function QrPropertyEntryPage() {
     });
   }, [propertyIdParam, inviteCodeParam, sourceParam]);
 
-  /** 审计：打开入楼链接（独立销售 demo 勿用 /entry 与真码，见 Qr 页头注释） */
+  // Audit: entry opened with resolved property + invite code
   useEffect(() => {
-    if (entryOpenAuditRef.current) return;
+    if (auditRef.current) return;
     if (!resolved?.id || !inviteCodeParam) return;
-    entryOpenAuditRef.current = true;
+    auditRef.current = true;
     void (async () => {
       const { error } = await supabase.rpc('log_property_entry_client_event', {
         p_property_id: resolved.id,
@@ -165,10 +121,15 @@ export function QrPropertyEntryPage() {
     })();
   }, [resolved?.id, inviteCodeParam, sourceParam, session?.user]);
 
+  // Pre-fill form from logged-in user profile
   useEffect(() => {
     if (!user?.id) return;
     (async () => {
-      const { data } = await supabase.from('profiles').select('full_name_en, email').eq('id', user.id).maybeSingle();
+      const { data } = await supabase
+        .from('profiles')
+        .select('full_name_en, email')
+        .eq('id', user.id)
+        .maybeSingle();
       const prof = data as { full_name_en?: string; email?: string } | null;
       if (typeof prof?.full_name_en === 'string' && prof.full_name_en.trim()) {
         setFullName((s) => s || prof.full_name_en!.trim());
@@ -183,94 +144,95 @@ export function QrPropertyEntryPage() {
     return null;
   }, [propertyIdParam]);
 
-  const submitJoin = async (confirmOverride = confirm) => {
-    if (!session?.user?.id) {
-      navigate(`/login?redirect=${encodeURIComponent(redirectTo)}`, { replace: true });
-      return;
-    }
-    if (!effectivePropertyId || !inviteCodeParam.trim()) {
-      setToast({ kind: 'error', text: en ? 'Missing data.' : '数据不完整。' });
-      return;
-    }
-    const unit = unitNo.trim();
+  const redirectTo = `${location.pathname}${location.search}`;
+
+  const handleSubmit = async () => {
+    setSubmitErr(null);
+    setUnitNotFound(false);
+
     const name = fullName.trim();
     const email = emailIn.trim();
+    const unit = unitNo.trim();
+
     if (!name || !email || !unit) {
-      setToast({ kind: 'error', text: en ? 'Please fill name, email, and unit.' : '请填写姓名、邮箱与房号。' });
+      setSubmitErr(en ? 'Please fill in name, email, and unit.' : '请填写姓名、邮箱与房号。');
+      return;
+    }
+    if (!effectivePropertyId || !inviteCodeParam) {
+      setSubmitErr(en ? 'Missing property or invite code.' : '缺少物业或邀请码。');
       return;
     }
 
     setSubmitting(true);
-    setToast(null);
     try {
-      console.log('JOIN PAYLOAD:', {
-        p_property_id: effectivePropertyId,
-        p_invite_code: inviteCodeParam.trim() || null,
-        p_unit_no: unit,
-        p_confirm: confirmOverride,
+      console.log('[entry] submitting to entry-auto-join', {
+        propertyId: effectivePropertyId,
+        inviteCode: inviteCodeParam,
+        unitNo: unit,
       });
 
-      const { data, error } = await supabase.rpc('submit_join_request', {
-        p_property_id: effectivePropertyId,
-        p_invite_code: inviteCodeParam.trim() || null,
-        p_unit_no: unit,
-        p_confirm: confirmOverride,
+      const { data, error } = await supabase.functions.invoke<{
+        ok?: boolean;
+        reason?: string;
+        message?: string;
+        redirectUrl?: string;
+        kind?: string;
+        propertyName?: string;
+      }>('entry-auto-join', {
+        body: {
+          propertyId: effectivePropertyId,
+          inviteCode: inviteCodeParam,
+          fullName: name,
+          email,
+          unitNo: unit,
+        },
       });
 
-      console.log('JOIN RESULT:', data, error);
-
+      console.log('[entry] entry-auto-join result', data, error);
 
       if (error) {
-        console.error('JOIN ERROR:', error);
-        throw new Error(error.message || 'Join failed');
+        throw new Error(error.message || 'Entry failed');
       }
 
-      const result = data as JoinSubmitResult | null;
-      if (!result || !result.kind) {
-        throw new Error('Invalid join response');
+      if (!data || data.ok !== true) {
+        const reason = data?.reason ?? '';
+        if (reason === 'unit_not_found') {
+          setUnitNotFound(true);
+          setSubmitErr(
+            en
+              ? `Unit "${unit}" is not on the whitelist for this property.`
+              : `房号 "${unit}" 不在本物业白名单内。`,
+          );
+          return;
+        }
+        if (reason === 'invalid_invite') {
+          setSubmitErr(en ? 'Invite code is invalid or expired.' : '邀请码无效或已过期。');
+          return;
+        }
+        if (reason === 'invite_unit_mismatch') {
+          setSubmitErr(
+            en ? 'Invite code does not match this unit.' : '邀请码与房号不匹配。',
+          );
+          return;
+        }
+        throw new Error(data?.message || 'Entry rejected');
       }
 
-      if (result.kind === 'auto_approved' || result.kind === 'already_member') {
-        await refreshMemberships();
-        persistCurrentPropertyId(effectivePropertyId);
-        setCurrentPropertyId(effectivePropertyId);
-        navigate('/');
-        return;
+      if (!data.redirectUrl) {
+        throw new Error('No redirect URL returned from server');
       }
 
-      if (result.kind === 'need_confirm') {
-        setConfirm(false);
-        setConfirmState({
-          reason: result.reason ?? null,
-          message: confirmMessage(result.reason, result.message, en),
-          unitNo: unit,
-        });
-        return;
-      }
-
-      if (result.kind === 'pending' || result.kind === 'pending_submitted') {
-        navigate('/join/pending', {
-          replace: true,
-          state: {
-            propertyId: effectivePropertyId,
-            unitNo: unit,
-            propertyName: resolved?.name,
-            reviewFlag: result.reason,
-            message: result.message,
-          },
-        });
-        return;
-      }
-
-      throw new Error(result.message || 'Join rejected');
-    } catch (err) {
-      const message = err instanceof Error ? err.message : en ? 'Join failed.' : '加入失败。';
-      setToast({ kind: 'error', text: message });
+      // Navigate to /entry/auto-login?token=... which will establish session and navigate to final_redirect
+      navigate(data.redirectUrl, { replace: true });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : en ? 'Entry failed.' : '加入失败。';
+      setSubmitErr(msg);
     } finally {
       setSubmitting(false);
     }
   };
 
+  // Loading: property resolution in progress
   if (resolving) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-clearstrata-ui-soft/40 to-gray-50 flex flex-col items-center justify-center p-6">
@@ -280,11 +242,14 @@ export function QrPropertyEntryPage() {
     );
   }
 
+  // Error: property not found / invalid link
   if (resolveErr || !resolved) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-clearstrata-ui-soft/40 to-gray-50 flex flex-col items-center justify-center p-6">
         <Building2 className="w-12 h-12 text-gray-400 mb-3" />
-        <p className="text-sm text-gray-800 text-center max-w-md">{resolveErr || (en ? 'Invalid link.' : '链接无效。')}</p>
+        <p className="text-sm text-gray-800 text-center max-w-md">
+          {resolveErr || (en ? 'Invalid link.' : '链接无效。')}
+        </p>
         <Link to="/" className="mt-6 text-clearstrata-ui-primary font-medium text-sm">
           {en ? 'Home' : '返回首页'}
         </Link>
@@ -292,29 +257,11 @@ export function QrPropertyEntryPage() {
     );
   }
 
-  if (authLoading || !session?.user) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-clearstrata-ui-soft/40 to-gray-50 flex flex-col items-center justify-center p-6">
-        <Loader2 className="w-10 h-10 text-clearstrata-ui-primary animate-spin" aria-hidden />
-        <p className="mt-4 text-sm text-gray-500">{en ? 'Sign in required…' : '正在前往登录…'}</p>
-      </div>
-    );
-  }
-
-  if (session?.user && resolved && !inviteCodeParam) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-clearstrata-ui-soft/40 to-gray-50 flex flex-col items-center justify-center p-6">
-        <p className="text-sm text-red-800">{en ? 'Missing invite code in entry URL' : '入口链接缺少邀请码'}</p>
-        <Link to="/" className="mt-4 text-clearstrata-ui-primary text-sm">
-          {en ? 'Home' : '首页'}
-        </Link>
-      </div>
-    );
-  }
-
+  // Form
   return (
     <div className="min-h-screen bg-gradient-to-b from-clearstrata-ui-soft/40 to-gray-50 flex items-start justify-center p-4 py-10">
       <div className="w-full max-w-md bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-5">
+        {/* Header */}
         <div className="text-center">
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-clearstrata-ui-primary text-white mb-3">
             <Building2 size={24} />
@@ -324,11 +271,12 @@ export function QrPropertyEntryPage() {
           </h1>
           <p className="text-sm text-gray-600 mt-2 text-left">
             {en
-              ? 'Please enter information that matches this building. The system will check the unit whitelist and decide if you can enter directly.'
+              ? 'Enter information that matches this building. The system checks the unit whitelist and decides if you can enter directly.'
               : '请填写与你所在物业一致的信息。系统会根据本物业白名单自动判断是否可直接进入。'}
           </p>
         </div>
 
+        {/* Property info */}
         <div className="rounded-lg border border-gray-100 bg-gray-50/80 px-3 py-2 text-sm space-y-1">
           <p>
             <span className="text-gray-500">{en ? 'Property' : '物业'}：</span>
@@ -340,15 +288,17 @@ export function QrPropertyEntryPage() {
           </p>
         </div>
 
+        {/* Form fields */}
         <div className="space-y-3">
           <label className="block text-sm text-gray-700">
             {en ? 'Name' : '姓名'}
             <input
               type="text"
-              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-clearstrata-ui-primary/40"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               autoComplete="name"
+              disabled={submitting}
               required
             />
           </label>
@@ -356,10 +306,11 @@ export function QrPropertyEntryPage() {
             {en ? 'Email' : '邮箱'}
             <input
               type="email"
-              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-clearstrata-ui-primary/40"
               value={emailIn}
               onChange={(e) => setEmailIn(e.target.value)}
               autoComplete="email"
+              disabled={submitting}
               required
             />
           </label>
@@ -367,77 +318,65 @@ export function QrPropertyEntryPage() {
             {en ? 'Unit / suite' : '房号（必填）'}
             <input
               type="text"
-              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-clearstrata-ui-primary/40"
               value={unitNo}
               onChange={(e) => {
                 setUnitNo(e.target.value);
-                setConfirmState(null);
-                setConfirm(false);
+                setSubmitErr(null);
+                setUnitNotFound(false);
               }}
+              disabled={submitting}
               required
             />
           </label>
         </div>
 
-        {confirmState ? (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-            <div className="flex items-start gap-2">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              <p className="text-left leading-relaxed">{confirmState.message}</p>
-            </div>
-            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <button
-                type="button"
-                className="rounded-lg border border-amber-300 bg-white px-3 py-2 font-medium text-amber-950 hover:bg-amber-100"
-                onClick={() => {
-                  setConfirmState(null);
-                  setConfirm(false);
-                }}
-                disabled={submitting}
-              >
-                {en ? 'Edit unit' : '返回修改房号'}
-              </button>
-              <button
-                type="button"
-                className="rounded-lg bg-amber-500 text-white px-4 py-2"
-                disabled={submitting}
-                onClick={() => {
-                  setConfirmState(null);
-                  setConfirm(true);
-                  void submitJoin(true);
-                }}
-              >
-                {en ? 'Submit anyway' : '仍然提交'}
-              </button>
-            </div>
-          </div>
-        ) : null}
-
-        {toast && (
+        {/* Error message */}
+        {submitErr && (
           <div
-            role="status"
-            className={`rounded-xl px-3 py-2 text-sm ${
-              toast.kind === 'success'
-                ? 'bg-gray-50 text-gray-900 border border-gray-200'
-                : 'bg-red-50 text-red-900 border border-red-200'
-            }`}
+            role="alert"
+            className="rounded-xl px-3 py-2 text-sm bg-red-50 text-red-900 border border-red-200"
           >
-            {toast.text}
+            {submitErr}
           </div>
         )}
 
+        {/* Demo button — shown when unit is not on whitelist */}
+        {unitNotFound && (
+          <a
+            href="https://www.clearstrata.ai"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl border border-emerald-300 text-emerald-800 bg-emerald-50 font-medium text-sm hover:bg-emerald-100"
+          >
+            <ExternalLink size={14} />
+            {en ? 'View Demo' : '查看 Demo'}
+          </a>
+        )}
+
+        {/* Submit button */}
         <button
           type="button"
-          onClick={() => {
-            setConfirm(false);
-            void submitJoin(false);
-          }}
-          disabled={submitting || Boolean(confirmState)}
-          className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-[#1D9E75] text-white font-semibold text-sm hover:bg-[#178a66] disabled:opacity-50"
+          onClick={() => void handleSubmit()}
+          disabled={submitting}
+          className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-[#1D9E75] text-white font-semibold text-sm hover:bg-[#178a66] disabled:opacity-50 transition-colors"
         >
           {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
           {en ? 'Submit' : '提交并验证'}
         </button>
+
+        {/* Already have an account? */}
+        {!session?.user && (
+          <p className="text-xs text-gray-400 text-center">
+            {en ? 'Already registered? ' : '已有账号？'}
+            <Link
+              to={`/login?redirect=${encodeURIComponent(redirectTo)}`}
+              className="text-clearstrata-ui-primary hover:underline"
+            >
+              {en ? 'Sign in' : '登录'}
+            </Link>
+          </p>
+        )}
 
         <p className="text-xs text-gray-400 text-center">property: {resolved.id.slice(0, 8)}…</p>
       </div>
