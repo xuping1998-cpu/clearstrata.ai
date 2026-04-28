@@ -112,6 +112,15 @@ export function EntryAutoLogin() {
           return;
         }
 
+        // Navigate immediately after session is established.
+        // This must happen before any cancelled / didNavigate guard below, because setSession
+        // fires an auth state change that can trigger App.tsx cleanup (cancelled = true),
+        // which would otherwise block the navigate call.
+        if (payload.final_redirect) {
+          navigate(payload.final_redirect, { replace: true });
+          return;
+        }
+
         // Persist property context for auto_approved and already_member
         if (payload.kind === 'auto_approved' || payload.kind === 'already_member') {
           persistPropertyId(payload.propertyId);
