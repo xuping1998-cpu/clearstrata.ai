@@ -72,6 +72,7 @@ export default function JoinPendingPage() {
   // ── Initial load: query join_requests directly (no membership dependency).
   // Depends on user?.id so it re-runs after EntryAutoLogin's setSession propagates.
   useEffect(() => {
+    if (!user?.email) return;  //
     // If we already have display info, nothing to load
     if (hasImmediateInfo) {
       setLoading(false);
@@ -79,15 +80,15 @@ export default function JoinPendingPage() {
     }
 
     // Wait for session to propagate — effect re-runs when user.id becomes available
-    if (!user?.id) return;
-
+  
     // Prevent running twice (React StrictMode / user.id reference changing)
     if (didQueryRef.current) return;
+    
     didQueryRef.current = true;
 
     let cancelled = false;
-
-    // Hard 5-second timeout — loading never hangs forever
+// Hard 5-second timeout — loading never hangs forever
+    
     const timeoutId = window.setTimeout(() => {
       if (!cancelled) {
         console.warn('[JoinPendingPage] 5s timeout, forcing loading=false');
@@ -101,7 +102,7 @@ export default function JoinPendingPage() {
         const { data: jr, error: jrErr } = await supabase
           .from('join_requests')
           .select('property_id, unit_no, review_flag, review_reason, full_name, email, status, created_at')
-          .eq('user_id', user.id)
+          .eq('email', user?.email)
           .in('status', ['pending', 'submitted', 'under_review', 'reviewing'])
           .order('created_at', { ascending: false })
           .limit(1)
