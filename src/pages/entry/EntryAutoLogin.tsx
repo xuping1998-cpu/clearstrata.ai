@@ -152,7 +152,7 @@ export function EntryAutoLogin() {
             ? `${finalRedirect}&${paramStr}`
             : `${finalRedirect}?${paramStr}`
           : finalRedirect;
-
+console.log('[EntryAutoLogin] target', target, payload);
         navigate(target, {
           replace: true,
           state: {
