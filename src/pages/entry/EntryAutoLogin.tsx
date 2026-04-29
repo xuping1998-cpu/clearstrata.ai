@@ -16,7 +16,15 @@ type ConsumeOk = {
   reason: string | null;
 };
 
-type ConsumeResponse = Partial<ConsumeOk> & { ok?: boolean; message?: string };
+// Backend may return camelCase or snake_case field names
+type ConsumeResponse = Partial<ConsumeOk> & {
+  ok?: boolean;
+  message?: string;
+  // snake_case variants
+  property_id?: string;
+  unit_no?: string;
+  final_redirect?: string;
+};
 
 /** Deduplicates React Strict Mode double-invoke so the token is only consumed once per load. */
 const consumePromises = new Map<string, Promise<ConsumeOk>>();
@@ -34,13 +42,16 @@ function consumeEntryTokenOnce(token: string): Promise<ConsumeOk> {
     if (error) throw new Error(error.message || 'Network error');
 
     const d = data;
+    // Coalesce snake_case fallbacks so we tolerate either naming convention from the backend
+    const resolvedPropertyId = d?.propertyId || d?.property_id || '';
+    const resolvedFinalRedirect = d?.final_redirect || '';
     if (
       !d ||
       d.ok !== true ||
       !d.access_token ||
       !d.refresh_token ||
-      !d.final_redirect ||
-      !d.propertyId
+      !resolvedFinalRedirect ||
+      !resolvedPropertyId
     ) {
       throw new Error(typeof d?.message === 'string' ? d.message : 'Invalid or expired entry link');
     }
@@ -49,9 +60,9 @@ function consumeEntryTokenOnce(token: string): Promise<ConsumeOk> {
       ok: true,
       access_token: d.access_token,
       refresh_token: d.refresh_token,
-      final_redirect: d.final_redirect,
-      propertyId: d.propertyId,
-      unitNo: d.unitNo ?? '',
+      final_redirect: resolvedFinalRedirect,
+      propertyId: resolvedPropertyId,
+      unitNo: d.unitNo || d.unit_no || '',
       kind: d.kind ?? '',
       reason: d.reason ?? null,
     };
@@ -116,19 +127,24 @@ export function EntryAutoLogin() {
         // Must happen before any cancelled / didNavigate guard because setSession fires an
         // auth state change that can trigger App.tsx cleanup (cancelled = true).
 
+        // Coalesce camelCase and snake_case — backend may return either
+        const finalRedirect = payload.final_redirect || '/';
+        const propertyId = payload.propertyId;
+        const unitNo = payload.unitNo;
+        const reason = payload.reason;
+        const kind = payload.kind;
+
         // Persist property context for auto_approved and already_member before navigating
-        if (payload.kind === 'auto_approved' || payload.kind === 'already_member') {
-          persistPropertyId(payload.propertyId);
-          setCurrentPropertyId(payload.propertyId);
+        if (kind === 'auto_approved' || kind === 'already_member') {
+          persistPropertyId(propertyId);
+          setCurrentPropertyId(propertyId);
         }
 
-        const finalRedirect = payload.final_redirect || '/';
         const params = new URLSearchParams();
-
-        if (payload.propertyId) params.set('propertyId', payload.propertyId);
-        if (payload.unitNo) params.set('unitNo', payload.unitNo);
-        if (payload.reason) params.set('reason', payload.reason);
-        if (payload.kind) params.set('kind', payload.kind);
+        if (propertyId) params.set('propertyId', propertyId);
+        if (unitNo) params.set('unitNo', unitNo);
+        if (reason) params.set('reason', reason);
+        if (kind) params.set('kind', kind);
 
         const paramStr = params.toString();
         const target = paramStr
@@ -140,11 +156,11 @@ export function EntryAutoLogin() {
         navigate(target, {
           replace: true,
           state: {
-            propertyId: payload.propertyId,
-            unitNo: payload.unitNo,
-            reason: payload.reason,
-            reviewFlag: payload.reason,
-            kind: payload.kind,
+            propertyId,
+            unitNo,
+            reason,
+            reviewFlag: reason,
+            kind,
           },
         });
       })
