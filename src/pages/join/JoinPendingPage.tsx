@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -11,7 +11,9 @@ type JoinPendingLocationState = {
   propertyId?: string;
   propertyName?: string | null;
   unitNo?: string;
+  reason?: string;
   reviewFlag?: string;
+  kind?: string;
   message?: string | null;
 };
 
@@ -29,66 +31,51 @@ export default function JoinPendingPage() {
   const en = language === 'en';
   const navigate = useNavigate();
   const location = useLocation();
-  const [searchParams] = useSearchParams();
   const { setCurrentPropertyId, refreshMemberships } = useProperty();
 
-  // ── Source 1: location.state (passed by older navigate calls)
+  // ── Source 1: location.state
   const entryState = (location.state as JoinPendingLocationState | null) ?? null;
 
-  // ── Source 2: URL query params (e.g. ?unitNo=414&reason=unit_occupied)
-  const qUnitNo = searchParams.get('unitNo') || searchParams.get('unit_no') || null;
-  const qReason = searchParams.get('reason') || searchParams.get('reviewFlag') || null;
-  const qPropertyId = searchParams.get('propertyId') || searchParams.get('property_id') || null;
+  // ── Source 2: URL query params — read directly from location.search for reliability
+  const params = new URLSearchParams(location.search);
+  const qPropertyId = params.get('propertyId') ?? params.get('property_id') ?? null;
+  const qUnitNo = params.get('unitNo') ?? params.get('unit_no') ?? null;
+  const qReason = params.get('reason') ?? params.get('reviewFlag') ?? null;
+  const qKind = params.get('kind') ?? null;
 
-  const hasImmediateInfo = useMemo(
-    () =>
-      Boolean(
-        entryState?.propertyId ||
-          entryState?.propertyName ||
-          entryState?.unitNo ||
-          entryState?.reviewFlag ||
-          qUnitNo ||
-          qReason ||
-          qPropertyId,
-      ),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
+  const hasUrlParams = Boolean(qPropertyId || qUnitNo || qReason);
 
-  // ── Display state (merged from all sources)
+  // ── Display state — URL params win over location.state; DB fills any remaining gaps
   const [pending, setPending] = useState<PendingInfo>({
-    propertyId: entryState?.propertyId ?? qPropertyId ?? undefined,
+    propertyId: qPropertyId ?? entryState?.propertyId ?? undefined,
     propertyName: entryState?.propertyName ?? null,
-    unitNo: entryState?.unitNo ?? qUnitNo ?? null,
-    reviewFlag: entryState?.reviewFlag ?? qReason ?? null,
+    unitNo: qUnitNo ?? entryState?.unitNo ?? null,
+    reviewFlag: qReason ?? entryState?.reviewFlag ?? entryState?.reason ?? null,
     reviewReason: null,
   });
 
-  const [loading, setLoading] = useState(!hasImmediateInfo);
+  // If URL params are present, never show a loading spinner — show content immediately
+  const [loading, setLoading] = useState(!hasUrlParams);
   const [refreshing, setRefreshing] = useState(false);
-  // Prevents double-query when user.id becomes available after session race
   const didQueryRef = useRef(false);
 
-  // ── Initial load: query join_requests directly (no membership dependency).
-  // Depends on user?.id so it re-runs after EntryAutoLogin's setSession propagates.
+  // ── Step 1: If URL params exist, dismiss loading immediately (no DB query needed)
   useEffect(() => {
-    if (!user?.email) return;  //
-    // If we already have display info, nothing to load
-    if (hasImmediateInfo) {
+    if (hasUrlParams) {
       setLoading(false);
-      return;
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-    // Wait for session to propagate — effect re-runs when user.id becomes available
-  
-    // Prevent running twice (React StrictMode / user.id reference changing)
+  // ── Step 2: If no URL params, query join_requests once user session is available
+  useEffect(() => {
+    if (hasUrlParams) return;
+    if (!user?.id) return;
     if (didQueryRef.current) return;
-    
     didQueryRef.current = true;
 
     let cancelled = false;
-// Hard 5-second timeout — loading never hangs forever
-    
+
     const timeoutId = window.setTimeout(() => {
       if (!cancelled) {
         console.warn('[JoinPendingPage] 5s timeout, forcing loading=false');
@@ -98,11 +85,10 @@ export default function JoinPendingPage() {
 
     (async () => {
       try {
-        // SELECT must include review_flag so isOccupied works correctly
         const { data: jr, error: jrErr } = await supabase
           .from('join_requests')
           .select('property_id, unit_no, review_flag, review_reason, full_name, email, status, created_at')
-          .eq('email', user?.email)
+          .eq('user_id', user.id)
           .in('status', ['pending', 'submitted', 'under_review', 'reviewing'])
           .order('created_at', { ascending: false })
           .limit(1)
@@ -124,7 +110,6 @@ export default function JoinPendingPage() {
           const reviewFlag = row.review_flag ?? null;
           const reviewReason = row.review_reason ?? null;
 
-          // Load property name
           let propName: string | null = null;
           if (propId) {
             const { data: prop } = await supabase
@@ -141,7 +126,6 @@ export default function JoinPendingPage() {
               propertyId: propId ?? prev.propertyId,
               propertyName: propName ?? prev.propertyName,
               unitNo: unitNo ?? prev.unitNo,
-              // Store review_flag and review_reason separately — do NOT conflate them
               reviewFlag: reviewFlag ?? prev.reviewFlag,
               reviewReason: reviewReason ?? prev.reviewReason,
             }));
@@ -157,7 +141,6 @@ export default function JoinPendingPage() {
       cancelled = true;
       clearTimeout(timeoutId);
     };
-  // Re-run when user.id becomes available after session race condition
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
@@ -203,38 +186,36 @@ export default function JoinPendingPage() {
     return <Navigate to="/" replace />;
   }
 
-  // ── Determine display values (state > query params > db result, all merged in `pending`)
-  // Use the exact logic specified: check both review_flag and review_reason for 'occupied'
-  const flag = String(pending.reviewFlag ?? '').toLowerCase();
-  const reasonText = String(pending.reviewReason ?? '').toLowerCase();
+  // ── Determine display values
+  // isOccupied uses exact string matching only — no includes()
   const isOccupied =
-    flag === 'unit_occupied' ||
-    flag.includes('occupied') ||
-    reasonText.includes('occupied');
+    qReason === 'unit_occupied' ||
+    qKind === 'unit_occupied' ||
+    entryState?.reason === 'unit_occupied' ||
+    entryState?.reviewFlag === 'unit_occupied' ||
+    pending.reviewFlag === 'unit_occupied';
 
+  const dbFlag = pending.reviewFlag ?? '';
   const statusDetail: string | null = (() => {
-    // Explicit message from navigation state
     const stateMsg = entryState?.message?.trim();
     if (stateMsg) return stateMsg;
 
-    // unit_occupied — specific required message
     if (isOccupied) {
       return en
         ? 'This unit is already linked to another resident. Your application has been submitted for council review.'
         : '该房号已被其他业主绑定。你的申请已提交给理事会审核，请等待确认。';
     }
-
-    if (flag === 'not_in_whitelist' || flag === 'non_whitelist') {
+    if (dbFlag === 'not_in_whitelist' || dbFlag === 'non_whitelist') {
       return en
         ? 'This unit is not on the whitelist. Your request was sent to the council for review.'
         : '该房号未在本物业白名单中，申请已提交给业委会审核。';
     }
-    if (flag === 'duplicate_unit_pending') {
+    if (dbFlag === 'duplicate_unit_pending') {
       return en
         ? 'This unit already has an application under review. Your request was also sent to the council.'
         : '该房号已有申请正在审核，你的申请也已提交给业委会处理。';
     }
-    if (flag === 'unit_change_request') {
+    if (dbFlag === 'unit_change_request' || entryState?.reviewFlag === 'unit_change_request' || qReason === 'unit_change_request') {
       return en
         ? 'Your unit change request has been submitted to the council for review.'
         : '你的换房申请已提交给业委会审核。';
@@ -242,11 +223,9 @@ export default function JoinPendingPage() {
     return null;
   })();
 
-  // Property: show name if available, otherwise fall back to first 8 chars of property_id
-  const displayPropertyName =
-    pending.propertyName ??
-    (pending.propertyId ? pending.propertyId.slice(0, 8) + '…' : null);
-  const displayUnitNo = pending.unitNo ?? null;
+  // Property: show name only — never show UUID or its prefix
+  const displayPropertyName = pending.propertyName ?? null;
+  const displayUnitNo = qUnitNo ?? pending.unitNo ?? null;
 
   // ── Loading screen (max 5 seconds)
   if (loading) {
