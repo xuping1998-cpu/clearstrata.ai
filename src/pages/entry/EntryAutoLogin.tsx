@@ -113,25 +113,40 @@ export function EntryAutoLogin() {
         }
 
         // Navigate immediately after session is established.
-        // This must happen before any cancelled / didNavigate guard below, because setSession
-        // fires an auth state change that can trigger App.tsx cleanup (cancelled = true),
-        // which would otherwise block the navigate call.
-        if (payload.final_redirect) {
-          navigate(payload.final_redirect, { replace: true });
-          return;
-        }
+        // Must happen before any cancelled / didNavigate guard because setSession fires an
+        // auth state change that can trigger App.tsx cleanup (cancelled = true).
 
-        // Persist property context for auto_approved and already_member
+        // Persist property context for auto_approved and already_member before navigating
         if (payload.kind === 'auto_approved' || payload.kind === 'already_member') {
           persistPropertyId(payload.propertyId);
           setCurrentPropertyId(payload.propertyId);
         }
 
-        if (didNavigate.current) return;
-        didNavigate.current = true;
+        const finalRedirect = payload.final_redirect || '/';
+        const params = new URLSearchParams();
 
-        // Navigate to the final destination determined by the backend
-        navigate(payload.final_redirect, { replace: true });
+        if (payload.propertyId) params.set('propertyId', payload.propertyId);
+        if (payload.unitNo) params.set('unitNo', payload.unitNo);
+        if (payload.reason) params.set('reason', payload.reason);
+        if (payload.kind) params.set('kind', payload.kind);
+
+        const paramStr = params.toString();
+        const target = paramStr
+          ? finalRedirect.includes('?')
+            ? `${finalRedirect}&${paramStr}`
+            : `${finalRedirect}?${paramStr}`
+          : finalRedirect;
+
+        navigate(target, {
+          replace: true,
+          state: {
+            propertyId: payload.propertyId,
+            unitNo: payload.unitNo,
+            reason: payload.reason,
+            reviewFlag: payload.reason,
+            kind: payload.kind,
+          },
+        });
       })
       .catch((e: unknown) => {
         if (cancelled) return;
