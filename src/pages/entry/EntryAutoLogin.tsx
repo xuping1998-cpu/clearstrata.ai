@@ -94,27 +94,26 @@ export function EntryAutoLogin() {
 
   const token = (searchParams.get('token') || '').trim();
   const [error, setError] = useState<string | null>(null);
-  const didNavigate = useRef(false);
+  // Prevents StrictMode double-invoke from consuming the token twice
+  const didConsumeRef = useRef(false);
 
   useEffect(() => {
+    if (didConsumeRef.current) return;
+    didConsumeRef.current = true;
+
     if (!token) {
       setError(zh ? '链接无效：缺少 token。' : 'Invalid link: missing token.');
       return;
     }
 
-    let cancelled = false;
-
-    void consumeEntryTokenOnce(token)
+    consumeEntryTokenOnce(token)
       .then(async (payload) => {
-        if (cancelled) return;
+        if (!payload?.access_token) return;
 
-        // Establish the Supabase session using the one-time tokens
         const { error: sessionErr } = await supabase.auth.setSession({
           access_token: payload.access_token,
           refresh_token: payload.refresh_token,
         });
-
-        if (cancelled) return;
 
         if (sessionErr) {
           setError(
@@ -123,28 +122,19 @@ export function EntryAutoLogin() {
           return;
         }
 
-        // Navigate immediately after session is established.
-        // Must happen before any cancelled / didNavigate guard because setSession fires an
-        // auth state change that can trigger App.tsx cleanup (cancelled = true).
-
-        // Coalesce camelCase and snake_case — backend may return either
-        const finalRedirect = payload.final_redirect || '/';
-        const propertyId = payload.propertyId;
-        const unitNo = payload.unitNo;
-        const reason = payload.reason;
-        const kind = payload.kind;
-
         // Persist property context for auto_approved and already_member before navigating
-        if (kind === 'auto_approved' || kind === 'already_member') {
-          persistPropertyId(propertyId);
-          setCurrentPropertyId(propertyId);
+        if (payload.kind === 'auto_approved' || payload.kind === 'already_member') {
+          persistPropertyId(payload.propertyId);
+          setCurrentPropertyId(payload.propertyId);
         }
 
+        const finalRedirect = payload.final_redirect || '/';
+
         const params = new URLSearchParams();
-        if (propertyId) params.set('propertyId', propertyId);
-        if (unitNo) params.set('unitNo', unitNo);
-        if (reason) params.set('reason', reason);
-        if (kind) params.set('kind', kind);
+        if (payload.propertyId) params.set('propertyId', payload.propertyId);
+        if (payload.unitNo) params.set('unitNo', payload.unitNo);
+        if (payload.reason) params.set('reason', payload.reason);
+        if (payload.kind) params.set('kind', payload.kind);
 
         const paramStr = params.toString();
         const target = paramStr
@@ -152,29 +142,26 @@ export function EntryAutoLogin() {
             ? `${finalRedirect}&${paramStr}`
             : `${finalRedirect}?${paramStr}`
           : finalRedirect;
-console.log('[EntryAutoLogin] target', target, payload);
+
+        console.log('[FINAL TARGET]', target, payload);
+
         navigate(target, {
           replace: true,
           state: {
-            propertyId,
-            unitNo,
-            reason,
-            reviewFlag: reason,
-            kind,
+            propertyId: payload.propertyId,
+            unitNo: payload.unitNo,
+            reason: payload.reason,
+            reviewFlag: payload.reason,
+            kind: payload.kind,
           },
         });
       })
       .catch((e: unknown) => {
-        if (cancelled) return;
         const msg = e instanceof Error ? e.message : String(e);
         setError(msg || (zh ? '入楼链接无效或已使用。' : 'This entry link is invalid or has already been used.'));
       });
-
-    return () => {
-      cancelled = true;
-    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, []);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 flex flex-col">
