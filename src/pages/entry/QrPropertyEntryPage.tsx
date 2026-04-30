@@ -48,6 +48,7 @@ export function QrPropertyEntryPage() {
 
   const auditRef = useRef(false);
   const openedRef = useRef(false);
+  const unitInputRef = useRef<HTMLInputElement>(null);
 
   // Apply lang param from QR URL immediately — must run before any render that uses `en`
   useEffect(() => {
@@ -271,8 +272,12 @@ export function QrPropertyEntryPage() {
       <div className="w-full max-w-md bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-5">
         {/* Header */}
         <div className="text-center">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-clearstrata-ui-primary text-white mb-3">
-            <Building2 size={24} />
+          <div className="w-full flex justify-center mb-5">
+            <img
+              src="/clearstrata-hero-logo.png"
+              alt="ClearStrata"
+              className="w-20 h-auto"
+            />
           </div>
           <h1 className="text-xl font-bold text-gray-900">
             {en ? 'Resident identity confirmation' : '业主身份确认'}
@@ -325,6 +330,7 @@ export function QrPropertyEntryPage() {
           <label className="block text-sm text-gray-700">
             {en ? 'Unit / suite' : '房号（必填）'}
             <input
+              ref={unitInputRef}
               type="text"
               className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-clearstrata-ui-primary/40"
               value={unitNo}
@@ -349,29 +355,41 @@ export function QrPropertyEntryPage() {
           </div>
         )}
 
-        {/* Demo button — shown when unit is not on whitelist */}
-        {unitNotFound && (
-          <a
-            href="https://www.clearstrata.ai"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl border border-emerald-300 text-emerald-800 bg-emerald-50 font-medium text-sm hover:bg-emerald-100"
+        {/* unit_not_found: show demo link + edit-unit button; hide submit */}
+        {unitNotFound ? (
+          <div className="space-y-2">
+            <a
+              href="https://www.clearstrata.ai"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl border border-emerald-300 text-emerald-800 bg-emerald-50 font-medium text-sm hover:bg-emerald-100"
+            >
+              <ExternalLink size={14} />
+              {en ? 'View Demo' : '查看 Demo'}
+            </a>
+            <button
+              type="button"
+              onClick={() => {
+                setSubmitErr(null);
+                setUnitNotFound(false);
+                setTimeout(() => unitInputRef.current?.focus(), 0);
+              }}
+              className="w-full py-2.5 rounded-xl border border-gray-300 text-gray-700 bg-white font-medium text-sm hover:bg-gray-50 transition-colors"
+            >
+              {en ? 'Change unit number' : '修改房号'}
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => void handleSubmit()}
+            disabled={submitting}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-[#1D9E75] text-white font-semibold text-sm hover:bg-[#178a66] disabled:opacity-50 transition-colors"
           >
-            <ExternalLink size={14} />
-            {en ? 'View Demo' : '查看 Demo'}
-          </a>
+            {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+            {en ? 'Submit' : '提交并验证'}
+          </button>
         )}
-
-        {/* Submit button */}
-        <button
-          type="button"
-          onClick={() => void handleSubmit()}
-          disabled={submitting}
-          className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-[#1D9E75] text-white font-semibold text-sm hover:bg-[#178a66] disabled:opacity-50 transition-colors"
-        >
-          {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-          {en ? 'Submit' : '提交并验证'}
-        </button>
 
         {/* Already have an account? */}
         {!session?.user && (
