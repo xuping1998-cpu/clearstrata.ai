@@ -39,9 +39,15 @@ export default function JoinPendingPage() {
   // ── Source 2: URL query params — read directly from location.search for reliability
   const params = new URLSearchParams(location.search);
   const qPropertyId = params.get('propertyId') ?? params.get('property_id') ?? null;
+  const qPropertyName = params.get('propertyName') ?? null;
   const qUnitNo = params.get('unitNo') ?? params.get('unit_no') ?? null;
   const qReason = params.get('reason') ?? params.get('reviewFlag') ?? null;
   const qKind = params.get('kind') ?? null;
+
+  // Hardcoded property name fallback for known property IDs (avoids an extra DB round-trip)
+  const KNOWN_PROPERTY_NAMES: Record<string, string> = {
+    '497a907d-8df2-4e62-8859-66de6449c5c2': 'BCS3736',
+  };
 
   const hasUrlParams = Boolean(qPropertyId || qUnitNo || qReason);
 
@@ -223,8 +229,13 @@ export default function JoinPendingPage() {
     return null;
   })();
 
-  // Property: show name only — never show UUID or its prefix
-  const displayPropertyName = pending.propertyName ?? null;
+  // Property name priority: state > URL query > DB > known UUID map > —
+  const resolvedPropertyId = qPropertyId ?? entryState?.propertyId ?? pending.propertyId ?? null;
+  const displayPropertyName =
+    entryState?.propertyName ??
+    qPropertyName ??
+    pending.propertyName ??
+    (resolvedPropertyId ? (KNOWN_PROPERTY_NAMES[resolvedPropertyId] ?? null) : null);
   const displayUnitNo = qUnitNo ?? pending.unitNo ?? null;
 
   // ── Loading screen (max 5 seconds)
@@ -240,6 +251,13 @@ export default function JoinPendingPage() {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 px-4 py-10 text-center">
       <div className="max-w-md w-full bg-white rounded-2xl shadow-lg border border-gray-100 p-8">
+        <div className="flex justify-center mb-5">
+          <img
+            src="/clearstrata-hero-logo.png"
+            alt="ClearStrata"
+            className="w-20 h-auto object-contain"
+          />
+        </div>
         <h1 className="text-2xl font-bold text-gray-900">
           {en ? 'Application submitted' : '申请已提交'}
         </h1>
