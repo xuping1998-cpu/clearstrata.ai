@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Building2, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useProperty } from '@/contexts/PropertyContext';
@@ -102,7 +102,7 @@ export function EntryAutoLogin() {
     didConsumeRef.current = true;
 
     if (!token) {
-      setError(zh ? '链接无效：缺少 token。' : 'Invalid link: missing token.');
+      setError('invalid_or_used');
       return;
     }
 
@@ -116,9 +116,7 @@ export function EntryAutoLogin() {
         });
 
         if (sessionErr) {
-          setError(
-            sessionErr.message || (zh ? '无法建立登录会话。' : 'Could not establish session.'),
-          );
+          setError('invalid_or_used');
           return;
         }
 
@@ -156,46 +154,65 @@ export function EntryAutoLogin() {
           },
         });
       })
-      .catch((e: unknown) => {
-        const msg = e instanceof Error ? e.message : String(e);
-        setError(msg || (zh ? '入楼链接无效或已使用。' : 'This entry link is invalid or has already been used.'));
+      .catch(() => {
+        // All consume-entry-token errors (non-2xx, expired, already used) show a friendly message
+        setError('invalid_or_used');
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 flex flex-col">
-      <header className="flex items-center justify-between px-4 py-3 border-b border-slate-200/80 bg-white/80 backdrop-blur">
-        <Link to="/" className="flex items-center gap-2 text-slate-800 font-semibold">
-          <Building2 className="h-6 w-6 text-emerald-600" />
-          ClearStrata
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-blue-50 flex flex-col">
+      {/* Top nav */}
+      <header className="w-full flex items-center justify-between px-6 py-4 bg-white/70 backdrop-blur border-b border-slate-100">
+        <Link to="/">
+          <img src="/clearstrata-hero-logo.png" alt="ClearStrata" className="h-9 w-auto" />
         </Link>
         <button
           type="button"
           onClick={toggleLanguage}
-          className="text-sm text-slate-600 hover:text-slate-900"
+          className="text-sm text-slate-500 hover:text-slate-800 transition-colors"
         >
           {zh ? 'English' : '中文'}
         </button>
       </header>
 
-      <main className="flex-1 flex items-center justify-center p-6">
-        <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-8 shadow-sm text-center">
+      <main className="flex-1 flex items-center justify-center px-4 py-12">
+        <div className="w-full max-w-md bg-white rounded-3xl border border-slate-100 shadow-xl p-10 text-center">
+          {/* Card logo */}
+          <div className="flex justify-center mb-6">
+            <img src="/clearstrata-hero-logo.png" alt="ClearStrata" className="w-28 h-auto" />
+          </div>
+
           {error ? (
             <>
-              <Building2 className="h-10 w-10 text-slate-400 mx-auto mb-4" />
-              <p className="text-red-600 text-sm mb-4">{error}</p>
-              <Link
-                to="/entry"
-                className="text-emerald-700 text-sm font-medium hover:underline"
-              >
-                {zh ? '重新扫码入楼' : 'Try scanning again'}
-              </Link>
+              <h1 className="text-xl font-bold text-gray-900 mb-2">
+                {zh ? '入楼链接无效或已使用' : 'Entry link invalid or already used'}
+              </h1>
+              <p className="text-gray-500 text-sm leading-relaxed mb-8">
+                {zh
+                  ? '该入楼链接已失效或已被使用。请重新扫描二维码获取新的入楼链接。'
+                  : 'This entry link is invalid or has already been used. Please scan the QR code again.'}
+              </p>
+              <div className="flex flex-col gap-3">
+                <Link
+                  to="/entry"
+                  className="w-full py-3 rounded-2xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition-colors text-center"
+                >
+                  {zh ? '重新扫码入楼' : 'Scan QR code again'}
+                </Link>
+                <Link
+                  to="/"
+                  className="w-full py-3 rounded-2xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors text-center"
+                >
+                  {zh ? '返回首页' : 'Back to home'}
+                </Link>
+              </div>
             </>
           ) : (
             <>
-              <Loader2 className="h-10 w-10 animate-spin text-emerald-600 mx-auto mb-4" />
-              <p className="text-slate-700 text-sm">
+              <Loader2 className="h-10 w-10 animate-spin text-emerald-500 mx-auto mb-4" />
+              <p className="text-slate-600 text-sm">
                 {zh ? '正在验证身份并进入系统…' : 'Verifying your entry and signing in…'}
               </p>
             </>

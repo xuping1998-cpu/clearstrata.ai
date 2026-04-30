@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -246,30 +246,55 @@ export default function JoinPendingPage() {
     (resolvedPropertyId ? (KNOWN_PROPERTY_NAMES[resolvedPropertyId] ?? null) : null);
   const displayUnitNo = qUnitNo ?? pending.unitNo ?? null;
 
-  // ── Loading screen (max 5 seconds)
+  // ── Shared page shell (used for both loading and content states)
+  const PageShell = ({ children }: { children: React.ReactNode }) => (
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-blue-50 flex flex-col">
+      {/* Top nav */}
+      <header className="w-full flex items-center justify-between px-6 py-4 bg-white/70 backdrop-blur border-b border-slate-100">
+        <Link to="/">
+          <img src="/clearstrata-hero-logo.png" alt="ClearStrata" className="h-9 w-auto" />
+        </Link>
+        <button
+          type="button"
+          onClick={() => setLanguage(en ? 'zh' : 'en')}
+          className="text-sm text-slate-500 hover:text-slate-800 transition-colors"
+        >
+          {en ? '中文' : 'English'}
+        </button>
+      </header>
+      <main className="flex-1 flex items-center justify-center px-4 py-12">
+        {children}
+      </main>
+    </div>
+  );
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
-        <Loader2 className="w-10 h-10 text-clearstrata-ui-primary animate-spin" aria-hidden />
-        <p className="mt-4 text-sm text-gray-500">{en ? 'Loading…' : '加载中…'}</p>
-      </div>
+      <PageShell>
+        <div className="w-full max-w-md bg-white rounded-3xl border border-slate-100 shadow-xl p-10 text-center">
+          <div className="flex justify-center mb-6">
+            <img src="/clearstrata-hero-logo.png" alt="ClearStrata" className="w-28 h-auto" />
+          </div>
+          <Loader2 className="w-8 h-8 text-emerald-500 animate-spin mx-auto mb-3" aria-hidden />
+          <p className="text-sm text-slate-500">{en ? 'Loading…' : '加载中…'}</p>
+        </div>
+      </PageShell>
     );
   }
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 px-4 py-10 text-center">
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-lg border border-gray-100 p-8">
-        <div className="flex justify-center mb-5">
-          <img
-            src="/clearstrata-hero-logo.png"
-            alt="ClearStrata"
-            className="w-20 h-auto object-contain"
-          />
+    <PageShell>
+      <div className="w-full max-w-md bg-white rounded-3xl border border-slate-100 shadow-xl p-10 text-center">
+        {/* Card logo */}
+        <div className="flex justify-center mb-6">
+          <img src="/clearstrata-hero-logo.png" alt="ClearStrata" className="w-28 h-auto" />
         </div>
-        <h1 className="text-2xl font-bold text-gray-900">
+
+        <h1 className="text-2xl font-bold text-gray-900 mb-3">
           {en ? 'Application submitted' : '申请已提交'}
         </h1>
-        <p className="mt-2 text-gray-600 text-sm">
+
+        <p className="text-gray-600 text-sm leading-relaxed mb-6">
           {statusDetail != null
             ? statusDetail
             : en
@@ -277,47 +302,52 @@ export default function JoinPendingPage() {
               : '申请已提交，请等待理事会审核。'}
         </p>
 
-        <div className="mt-6 text-sm text-gray-600 space-y-2 text-left rounded-xl bg-gray-50 px-4 py-3">
-          <p>
-            <span className="text-gray-500">{en ? 'Property' : '物业'}：</span>
-            {displayPropertyName ?? '—'}
-          </p>
-          {displayUnitNo ? (
-            <p>
-              <span className="text-gray-500">{en ? 'Unit' : '房号'}：</span>
-              {displayUnitNo}
-            </p>
-          ) : null}
-          <p>
-            <span className="text-gray-500">{en ? 'Status' : '当前状态'}：</span>
-            {en ? 'Under review' : '审核中'}
-          </p>
-          <p>
-            <span className="text-gray-500">{en ? 'Expected' : '预计时间'}：</span>
-            {en ? 'Within 24 hours' : '24 小时内'}
-          </p>
+        {/* Info box */}
+        <div className="rounded-2xl bg-slate-50 border border-slate-100 px-5 py-4 text-sm text-left space-y-2 mb-8">
+          <div className="flex justify-between">
+            <span className="text-slate-500">{en ? 'Property' : '物业'}</span>
+            <span className="font-medium text-slate-800">{displayPropertyName ?? '—'}</span>
+          </div>
+          {displayUnitNo && (
+            <div className="flex justify-between">
+              <span className="text-slate-500">{en ? 'Unit' : '房号'}</span>
+              <span className="font-medium text-slate-800">{displayUnitNo}</span>
+            </div>
+          )}
+          <div className="flex justify-between">
+            <span className="text-slate-500">{en ? 'Status' : '当前状态'}</span>
+            <span className="font-medium text-amber-600">{en ? 'Under review' : '审核中'}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-500">{en ? 'Expected' : '预计时间'}</span>
+            <span className="font-medium text-slate-800">{en ? 'Within 24 hours' : '24 小时内'}</span>
+          </div>
         </div>
 
-        <button
-          type="button"
-          disabled={refreshing}
-          onClick={() => void onRefresh()}
-          className="mt-8 inline-flex items-center justify-center gap-2 w-full sm:w-auto min-w-[200px] px-6 py-3 rounded-xl bg-clearstrata-ui-primary text-white font-semibold hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:opacity-50"
-        >
-          {refreshing ? (
-            <Loader2 className="w-5 h-5 animate-spin" />
-          ) : (
-            <RefreshCw className="w-5 h-5" />
-          )}
-          {en ? 'Refresh status' : '刷新状态'}
-        </button>
+        {/* Buttons */}
+        <div className="flex flex-col gap-3">
+          <button
+            type="button"
+            disabled={refreshing}
+            onClick={() => void onRefresh()}
+            className="w-full inline-flex items-center justify-center gap-2 py-3 rounded-2xl bg-emerald-600 text-white font-semibold text-sm hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+          >
+            {refreshing ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <RefreshCw className="w-4 h-4" />
+            )}
+            {en ? 'Refresh status' : '刷新状态'}
+          </button>
 
-        <p className="mt-6 text-xs text-gray-400">
-          <Link to="/" className="text-clearstrata-ui-primary hover:underline">
+          <Link
+            to="/"
+            className="w-full py-3 rounded-2xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors text-center"
+          >
             {en ? 'Back to home' : '返回首页'}
           </Link>
-        </p>
+        </div>
       </div>
-    </div>
+    </PageShell>
   );
 }
