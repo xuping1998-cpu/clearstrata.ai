@@ -68,9 +68,12 @@ export function AdminInviteCodes() {
 
   const openQrModal = (row: InviteCodeRow) => {
     const pid = currentPropertyId ?? '';
+    const rawLang = localStorage.getItem('language') || localStorage.getItem('i18nextLng') || 'zh';
+    const lang = rawLang === 'en' ? 'en' : 'zh';
     const url = pid
-      ? `${typeof window !== 'undefined' ? window.location.origin : ''}/entry?propertyId=${encodeURIComponent(pid)}&inviteCode=${encodeURIComponent(row.code)}&source=qr`
+      ? `${typeof window !== 'undefined' ? window.location.origin : ''}/entry?propertyId=${encodeURIComponent(pid)}&inviteCode=${encodeURIComponent(row.code)}&source=qr&lang=${lang}`
       : `${inviteBase}?code=${encodeURIComponent(row.code)}`;
+
     setQrPayload({
       title: row.label?.trim() || row.code,
       url,

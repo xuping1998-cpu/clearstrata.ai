@@ -17,7 +17,7 @@ export function QrPropertyEntryPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const { session, user } = useAuth();
-  const { language } = useLanguage();
+  const { language, setLanguage } = useLanguage();
   const en = language === 'en';
 
   const propertyIdParam = useMemo(
@@ -29,6 +29,7 @@ export function QrPropertyEntryPage() {
     [searchParams],
   );
   const sourceParam = useMemo(() => (searchParams.get('source') || '').trim(), [searchParams]);
+  const langParam = useMemo(() => (searchParams.get('lang') || '').trim(), [searchParams]);
 
   // Property resolution state
   const [resolved, setResolved] = useState<{ id: string; name: string } | null>(null);
@@ -47,6 +48,13 @@ export function QrPropertyEntryPage() {
 
   const auditRef = useRef(false);
   const openedRef = useRef(false);
+
+  // Apply lang param from QR URL immediately — must run before any render that uses `en`
+  useEffect(() => {
+    if (langParam === 'en') setLanguage('en');
+    else if (langParam === 'zh') setLanguage('zh');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [langParam]);
 
   // Resolve property info
   useEffect(() => {

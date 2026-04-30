@@ -27,7 +27,7 @@ type PendingInfo = {
 
 export default function JoinPendingPage() {
   const { session, user } = useAuth();
-  const { language } = useLanguage();
+  const { language, setLanguage } = useLanguage();
   const en = language === 'en';
   const navigate = useNavigate();
   const location = useLocation();
@@ -43,6 +43,7 @@ export default function JoinPendingPage() {
   const qUnitNo = params.get('unitNo') ?? params.get('unit_no') ?? null;
   const qReason = params.get('reason') ?? params.get('reviewFlag') ?? null;
   const qKind = params.get('kind') ?? null;
+  const qLang = params.get('lang') ?? null;
 
   // Hardcoded property name fallback for known property IDs (avoids an extra DB round-trip)
   const KNOWN_PROPERTY_NAMES: Record<string, string> = {
@@ -64,6 +65,13 @@ export default function JoinPendingPage() {
   const [loading, setLoading] = useState(!hasUrlParams);
   const [refreshing, setRefreshing] = useState(false);
   const didQueryRef = useRef(false);
+
+  // Apply lang param carried through the navigate chain (/entry → /join/pending)
+  useEffect(() => {
+    if (qLang === 'en') setLanguage('en');
+    else if (qLang === 'zh') setLanguage('zh');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qLang]);
 
   // ── Step 1: If URL params exist, dismiss loading immediately (no DB query needed)
   useEffect(() => {

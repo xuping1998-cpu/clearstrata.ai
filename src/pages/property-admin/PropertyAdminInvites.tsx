@@ -53,10 +53,13 @@ function genInviteToken(): string {
 
 /** 公开码扫码 / 复制链接：统一走 `/entry`，与 `QrPropertyEntryPage` 自动提交一致。 */
 function publicInviteEntryUrl(origin: string, propertyId: string, code: string): string {
+  const rawLang = localStorage.getItem('language') || localStorage.getItem('i18nextLng') || 'zh';
+  const lang = rawLang === 'en' ? 'en' : 'zh';
   const q = new URLSearchParams({
     propertyId,
     inviteCode: code,
     source: 'qr',
+    lang,
   });
   return `${origin}/entry?${q.toString()}`;
 }
