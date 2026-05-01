@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Pencil, X } from 'lucide-react';
+import { Bell, Loader2, Pencil, X } from 'lucide-react';
+import type { AnnouncementPriority } from '../../lib/supabase';
 import { supabase, type UserRole } from '../../lib/supabase';
 import { withProperty } from '../../lib/supabaseTenant';
 import {
@@ -109,6 +110,14 @@ export function MembersList({ propertyId, language, canOperate, currentUserId, o
   const [unitSaving, setUnitSaving] = useState(false);
   const unitInputRef = useRef<HTMLInputElement>(null);
 
+  // Notify modal state
+  type NotifyTarget = { userId: string; fullName: string };
+  const [notifyTarget, setNotifyTarget] = useState<NotifyTarget | null>(null);
+  const [notifyTitle, setNotifyTitle] = useState('');
+  const [notifyMessage, setNotifyMessage] = useState('');
+  const [notifyPriority, setNotifyPriority] = useState<AnnouncementPriority>('normal');
+  const [notifySending, setNotifySending] = useState(false);
+
   useEffect(() => {
     if (!toast) return;
     const t = window.setTimeout(() => setToast(null), 4200);
@@ -130,6 +139,7 @@ export function MembersList({ propertyId, language, canOperate, currentUserId, o
       freeze: en ? 'Freeze' : '冻结',
       kick: en ? 'Remove' : '踢出',
       editUnit: en ? 'Edit unit' : '修改房号',
+      notify: en ? 'Notify' : '通知',
       readOnlyHint: en ? 'Only active council members can manage this list.' : '仅业委会（council）可管理成员。',
       notEditableRole: en ? 'Role managed elsewhere' : '此类角色不在此编辑',
       lastCouncilHint: en ? 'Last active council member' : '唯一在任业委会成员',
@@ -235,6 +245,52 @@ export function MembersList({ propertyId, language, canOperate, currentUserId, o
   const closeUnitEdit = () => {
     setUnitEditTarget(null);
     setNewUnitNo('');
+  };
+
+  const openNotify = (row: MembersListRow) => {
+    setNotifyTarget({ userId: row.userId, fullName: row.fullName });
+    setNotifyTitle('');
+    setNotifyMessage('');
+    setNotifyPriority('normal');
+  };
+
+  const closeNotify = () => {
+    setNotifyTarget(null);
+    setNotifyTitle('');
+    setNotifyMessage('');
+    setNotifyPriority('normal');
+  };
+
+  const handleSendNotification = async () => {
+    if (!notifyTarget) return;
+    const t = notifyTitle.trim();
+    const m = notifyMessage.trim();
+    if (!t || !m) {
+      setToast({ kind: 'error', message: '请填写标题和内容' });
+      return;
+    }
+    setNotifySending(true);
+    try {
+      const { error } = await supabase.rpc('send_member_notification', {
+        p_property_id: propertyId,
+        p_recipient_user_id: notifyTarget.userId,
+        p_title: t,
+        p_message: m,
+        p_priority: notifyPriority,
+      });
+      if (error) {
+        console.error('[MembersList] send_member_notification', error);
+        setToast({ kind: 'error', message: '发送失败，请重试' });
+        return;
+      }
+      setToast({ kind: 'success', message: '通知已发送' });
+      closeNotify();
+    } catch (e) {
+      console.error('[MembersList] send_member_notification', e);
+      setToast({ kind: 'error', message: '发送失败，请重试' });
+    } finally {
+      setNotifySending(false);
+    }
   };
 
   const handleUpdateUnitNo = async () => {
@@ -462,6 +518,18 @@ export function MembersList({ propertyId, language, canOperate, currentUserId, o
                                 {labels.editUnit}
                               </button>
                             )}
+                            {/* 通知 — only for council/admin (canOperate) */}
+                            {canOperate && row.status !== 'removed' && (
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() => openNotify(row)}
+                                className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-800 hover:bg-blue-100 disabled:opacity-45"
+                              >
+                                <Bell size={11} />
+                                {labels.notify}
+                              </button>
+                            )}
                           </div>
                           {hint ? <p className="text-[11px] text-gray-500 max-w-xs">{hint}</p> : null}
                         </div>
@@ -532,6 +600,99 @@ export function MembersList({ propertyId, language, canOperate, currentUserId, o
                 {unitSaving ? (
                   <><Loader2 size={14} className="animate-spin" />保存中...</>
                 ) : '保存'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 通知 Modal ── */}
+      {notifyTarget && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="发送通知"
+          onClick={(e) => { if (e.target === e.currentTarget) closeNotify(); }}
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-xl flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3 shrink-0">
+              <h3 className="text-base font-semibold text-gray-900">
+                {en ? 'Send notification' : '发送通知'}
+              </h3>
+              <button type="button" onClick={closeNotify} className="text-gray-400 hover:text-gray-600" aria-label="关闭">
+                <X size={18} />
+              </button>
+            </div>
+            {/* Body */}
+            <div className="px-5 py-4 space-y-4 overflow-y-auto flex-1">
+              <p className="text-sm text-gray-500">
+                {en ? 'To: ' : '接收人：'}
+                <span className="font-medium text-gray-800">{notifyTarget.fullName}</span>
+              </p>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {en ? 'Title' : '标题'}
+                </label>
+                <input
+                  type="text"
+                  value={notifyTitle}
+                  onChange={(e) => setNotifyTitle(e.target.value)}
+                  maxLength={200}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1D9E75]/50 focus:border-[#1D9E75]"
+                  placeholder={en ? 'Notification title' : '请输入标题'}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {en ? 'Priority' : '重要程度'}
+                </label>
+                <select
+                  value={notifyPriority}
+                  onChange={(e) => setNotifyPriority(e.target.value as AnnouncementPriority)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1D9E75]/50 focus:border-[#1D9E75]"
+                >
+                  <option value="normal">{en ? 'Normal' : '普通'}</option>
+                  <option value="important">{en ? 'Important' : '重要'}</option>
+                  <option value="urgent">{en ? 'Urgent' : '紧急'}</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {en ? 'Content' : '内容'}
+                </label>
+                <textarea
+                  value={notifyMessage}
+                  onChange={(e) => setNotifyMessage(e.target.value)}
+                  rows={5}
+                  maxLength={2000}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1D9E75]/50 focus:border-[#1D9E75] resize-y"
+                  placeholder={en ? 'Notification content' : '请输入通知内容'}
+                />
+              </div>
+            </div>
+            {/* Footer */}
+            <div className="flex justify-end gap-2 border-t border-gray-100 px-5 py-3 bg-gray-50 rounded-b-2xl shrink-0">
+              <button
+                type="button"
+                onClick={closeNotify}
+                disabled={notifySending}
+                className="px-4 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+              >
+                {en ? 'Cancel' : '取消'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSendNotification()}
+                disabled={notifySending}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#1D9E75] text-white text-sm font-medium hover:bg-[#178a66] disabled:opacity-50"
+              >
+                {notifySending ? (
+                  <><Loader2 size={14} className="animate-spin" />{en ? 'Sending…' : '发送中…'}</>
+                ) : (
+                  en ? 'Send' : '发送'
+                )}
               </button>
             </div>
           </div>

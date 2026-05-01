@@ -37,6 +37,8 @@ export function UserNotificationToast() {
       .select('id, title, message, link, is_read, created_at')
       .eq('user_id', user.id)
       .eq('is_read', false)
+      // Direct messages are shown in the owner-info announcements tab, not as toasts
+      .neq('type', 'direct_message')
       .order('created_at', { ascending: false })
       .limit(5);
 

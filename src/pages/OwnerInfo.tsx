@@ -8,6 +8,7 @@ import { MyProfileTab } from './owner-info/MyProfileTab';
 import { LedgerTab } from './owner-info/LedgerTab';
 import { FormsTab } from './owner-info/FormsTab';
 import { OwnerNotificationsSection } from './owner-info/OwnerNotificationsSection';
+import { DirectNotificationsSection } from './owner-info/DirectNotificationsSection';
 import { AnnouncementList } from '../components/AnnouncementList';
 
 type TabType = 'profile' | 'ledger' | 'forms' | 'announcements';
@@ -140,7 +141,12 @@ export function OwnerInfo() {
       )}
       {activeTab === 'ledger' && <LedgerTab />}
       {activeTab === 'forms' && <FormsTab />}
-      {activeTab === 'announcements' && <OwnerNotificationsSection />}
+      {activeTab === 'announcements' && (
+        <>
+          <DirectNotificationsSection />
+          <OwnerNotificationsSection />
+        </>
+      )}
     </div>
   );
 }
