@@ -314,10 +314,19 @@ export function JoinRequestsReviewPanel({ embedded = false, anomalyOnly = false 
     } catch (e) {
       console.warn('[JoinRequestsReviewPanel] refresh join list after approve', e);
     }
-    void sendJoinDecisionEmail({
+    // Fire email and update banner softly — never treat email failure as approval failure
+    sendJoinDecisionEmail({
       joinRequestId: id,
       decision: 'approved',
       locale: en ? 'en' : 'zh',
+    }).then(({ sent }) => {
+      if (!sent) {
+        setSuccessBanner(
+          en
+            ? 'Approved. The user has been added. (Email notification could not be sent.)'
+            : '审批通过，用户已加入物业（邮件通知未发出，审批操作已成功）',
+        );
+      }
     });
   };
 
@@ -358,14 +367,24 @@ export function JoinRequestsReviewPanel({ embedded = false, anomalyOnly = false 
     const rejectedId = rejectFor;
     setRejectFor(null);
     setRejectReason('');
+    // Show rejection success immediately — email result is a secondary concern
     const rejMsg = en ? 'Application rejected.' : '已拒绝申请';
     setSuccessBanner(rejMsg);
     setToast({ kind: 'success', text: rejMsg });
     void loadJoinRequests();
-    void sendJoinDecisionEmail({
+    // Fire email and update banner softly — never treat email failure as rejection failure
+    sendJoinDecisionEmail({
       joinRequestId: rejectedId,
       decision: 'rejected',
       locale: en ? 'en' : 'zh',
+    }).then(({ sent }) => {
+      if (!sent) {
+        setSuccessBanner(
+          en
+            ? 'Application rejected. (Email notification could not be sent.)'
+            : '已拒绝申请（邮件通知未发出，拒绝操作已成功）',
+        );
+      }
     });
   };
 
