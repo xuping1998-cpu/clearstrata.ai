@@ -145,126 +145,111 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // 5. Determine outcome based on existing membership state
-    let kind: string;
-    let reason: string | null = null;
-    let finalRedirect: string;
-
-    // Check if this user already has an active membership for this property
+    // 5. Check if this user is already an active member of this property.
+    //    This check takes highest priority — no unit_change_request, no pending, no token.
+    //    If already a member regardless of which unit_no they submitted, return immediately.
     const { data: myMembership } = await admin
       .from("property_members")
-      .select("id, unit_no, status")
+      .select("id, unit_no")
       .eq("property_id", propertyId)
       .eq("user_id", userId)
       .eq("status", "active")
       .maybeSingle();
 
     if (myMembership) {
-      const myUnit = (myMembership as { unit_no?: string | null }).unit_no?.trim() ?? "";
-      if (myUnit.toLowerCase() === unitNo.toLowerCase()) {
-        // A. Same unit — already a member, just issue token to log them in
-        kind = "already_member";
-        finalRedirect = "/";
-      } else {
-        // C. Different unit — unit change request (do NOT overwrite property_members)
-        kind = "pending_submitted";
-        reason = "unit_change_request";
-        finalRedirect = "/join/pending";
+      const existingUnit =
+        (myMembership as { unit_no?: string | null }).unit_no?.trim() ?? "";
+      console.log(
+        `[entry-auto-join] already_member property=${propertyId} user=${userId} unit=${existingUnit}`,
+      );
+      // Return directly — no entry_token needed (caller already has a session)
+      return json({
+        ok: true,
+        kind: "already_member",
+        message:
+          "你已是本物业业主。如需更改房号，请联系理事会/管理员处理。",
+        property_id: propertyId,
+        propertyId,
+        propertyName: (property as { name?: string }).name ?? "",
+        unit_no: existingUnit,
+        unitNo: existingUnit,
+      });
+    }
 
-        const { error: jrErrC } = await admin.from("join_requests").upsert(
-          {
-            property_id: propertyId,
-            user_id: userId,
-            requested_role: "owner",
-            full_name: fullName || email,
-            email,
-            unit_no: unitNo,
-            invite_code: inviteCode,
-            whitelist_matched: true,
-            status: "pending",
-            review_flag: "unit_change_request",
-            review_reason: "User is requesting a unit change from their existing active membership",
-            source: "entry_auto_join",
-          },
-          { onConflict: "property_id,user_id" },
-        );
-        if (jrErrC) {
-          console.error("[entry-auto-join] upsert unit_change_request join_request failed", jrErrC);
-          return err("join_request_failed", "Could not create join request: " + jrErrC.message, 500);
-        }
-      }
-    } else {
-      // Check if unit is occupied by another active member
-      const { data: occupant } = await admin
-        .from("property_members")
-        .select("id")
-        .eq("property_id", propertyId)
-        .eq("unit_no", unitNo)
-        .eq("status", "active")
-        .maybeSingle();
+    // 6. User is not yet a member — check unit occupancy and decide outcome
+    let kind: string;
+    let reason: string | null = null;
+    let finalRedirect: string;
 
-      if (occupant) {
-        // B. Unit occupied by someone else — upsert join_request (conflict = same user re-submits)
-        kind = "pending_submitted";
-        reason = "unit_occupied";
-        finalRedirect = "/join/pending";
+    // Check if the requested unit is occupied by another active member
+    const { data: occupant } = await admin
+      .from("property_members")
+      .select("id")
+      .eq("property_id", propertyId)
+      .eq("unit_no", unitNo)
+      .eq("status", "active")
+      .maybeSingle();
 
-        const { error: jrErr } = await admin.from("join_requests").upsert(
-          {
-            property_id: propertyId,
-            user_id: userId,
-            full_name: fullName || email,
-            email,
-            unit_no: unitNo,
-            invite_code: inviteCode,
-            whitelist_matched: true,
-            status: "pending",
-            review_reason: "Unit is currently occupied by another active member",
-            review_flag: "unit_occupied",
-          },
-          { onConflict: "property_id,user_id" },
-        );
+    if (occupant) {
+      // Unit occupied by someone else — submit a pending join_request
+      kind = "pending_submitted";
+      reason = "unit_occupied";
+      finalRedirect = "/join/pending";
 
-        if (jrErr) {
-          console.error("[entry-auto-join] upsert pending join_request failed", jrErr);
-          return err("join_request_failed", "Could not create join request: " + jrErr.message, 500);
-        }
-      } else {
-        // A. Auto approve — unit is free and user is whitelisted
-        kind = "auto_approved";
-        finalRedirect = "/";
-
-        const { error: pmErr } = await admin.from("property_members").insert({
+      const { error: jrErr } = await admin.from("join_requests").upsert(
+        {
           property_id: propertyId,
           user_id: userId,
-          role: "owner",
-          status: "active",
-          unit_no: unitNo,
-          created_at: new Date().toISOString(),
-        });
-        if (pmErr) {
-          console.error("[entry-auto-join] property_members insert error", pmErr);
-          return err("membership_failed", "Could not create membership record", 500);
-        }
-
-        await admin.from("join_requests").insert({
-          property_id: propertyId,
-          user_id: userId,
-          requested_role: "owner",
           full_name: fullName || email,
           email,
-          unit_number: unitNo,
           unit_no: unitNo,
           invite_code: inviteCode,
           whitelist_matched: true,
-          status: "approved",
-          review_flag: "auto_approved",
-          source: "entry_auto_join",
-        });
+          status: "pending",
+          review_reason: "Unit is currently occupied by another active member",
+          review_flag: "unit_occupied",
+        },
+        { onConflict: "property_id,user_id" },
+      );
+
+      if (jrErr) {
+        console.error("[entry-auto-join] upsert pending join_request failed", jrErr);
+        return err("join_request_failed", "Could not create join request: " + jrErr.message, 500);
       }
+    } else {
+      // Unit is free and user is whitelisted — auto approve
+      kind = "auto_approved";
+      finalRedirect = "/";
+
+      const { error: pmErr } = await admin.from("property_members").insert({
+        property_id: propertyId,
+        user_id: userId,
+        role: "owner",
+        status: "active",
+        unit_no: unitNo,
+        created_at: new Date().toISOString(),
+      });
+      if (pmErr) {
+        console.error("[entry-auto-join] property_members insert error", pmErr);
+        return err("membership_failed", "Could not create membership record", 500);
+      }
+
+      await admin.from("join_requests").insert({
+        property_id: propertyId,
+        user_id: userId,
+        requested_role: "owner",
+        full_name: fullName || email,
+        email,
+        unit_no: unitNo,
+        invite_code: inviteCode,
+        whitelist_matched: true,
+        status: "approved",
+        review_flag: "auto_approved",
+        source: "entry_auto_join",
+      });
     }
 
-    // 6. Create one-time entry_token (10-minute TTL)
+    // 7. Create one-time entry_token (10-minute TTL) for non-already_member outcomes
     const token =
       crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();

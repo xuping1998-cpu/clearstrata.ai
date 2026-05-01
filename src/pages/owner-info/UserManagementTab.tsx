@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Printer, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { Printer, CheckCircle, XCircle, Loader2, Pencil, X } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useProperty } from '../../contexts/PropertyContext';
@@ -104,6 +104,19 @@ export function UserManagementTab({
   const [updating, setUpdating] = useState<string | null>(null);
   const [activationBusy, setActivationBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<{ kind: 'success' | 'error'; message: string } | null>(null);
+
+  // ── Unit-no edit modal state
+  type UnitEditTarget = {
+    userId: string;
+    userName: string;
+    email: string;
+    currentUnitNo: string;
+  };
+  const [unitEditTarget, setUnitEditTarget] = useState<UnitEditTarget | null>(null);
+  const [newUnitNo, setNewUnitNo] = useState('');
+  const [unitSaving, setUnitSaving] = useState(false);
+  const unitInputRef = useRef<HTMLInputElement>(null);
+
   const [internalStaffTab, setInternalStaffTab] = useState<StaffTab>('review');
   const staffTab = controlledStaffTab ?? internalStaffTab;
   const setStaffTab = (t: StaffTab) => {
@@ -114,6 +127,8 @@ export function UserManagementTab({
   /** All gates use `property_members.role` for this property (`currentRole`). */
   const canEditMembers = canEditPropertyMemberRoles(currentRole);
   const canModerateActivation = !readOnly && canEditMembers;
+  /** Only council/admin may change a member's unit_no; manager/owner cannot. */
+  const canEditUnitNo = !readOnly && canCouncilManagePropertyMembers(currentRole);
   /** 加入申请与待审核相关：与 `canReviewJoinRequests` 一致（含 manager；不含纯 owner） */
   const canStaffJoinInvites = !readOnly && canReviewJoinRequests(currentRole);
   const canViewMembersTab = !readOnly && canManageUsersOnProperty(currentRole);
@@ -357,6 +372,74 @@ export function UserManagementTab({
   const formatDbError = (err: { message: string; hint?: string | null }) => {
     const hint = err.hint ? ` ${err.hint}` : '';
     return `${err.message}${hint}`;
+  };
+
+  /** Maps RPC errors to user-friendly Chinese messages. */
+  const mapUnitUpdateError = (
+    error: { code?: string; message?: string },
+    unit: string,
+  ): string => {
+    const code = String(error.code ?? '');
+    const msg = String(error.message ?? '').toLowerCase();
+    if (code === 'unit_already_occupied' || msg.includes('occupied')) {
+      return `房号 ${unit} 已被其他业主占用`;
+    }
+    if (code === 'not_authorized' || msg.includes('not authorized') || msg.includes('permission')) {
+      return '权限不足，无法修改';
+    }
+    if (code === 'member_not_found' || msg.includes('member not found')) {
+      return '找不到该成员';
+    }
+    if (code === 'invalid_unit_no' || msg.includes('invalid') || msg.includes('empty')) {
+      return '房号不能为空';
+    }
+    return '保存失败，请重试';
+  };
+
+  const openUnitEdit = (p: Profile) => {
+    const res = residentByUserId[p.id];
+    setUnitEditTarget({
+      userId: p.id,
+      userName: p.full_name_zh || p.full_name_en || p.email,
+      email: p.email,
+      currentUnitNo: res?.unit_no ?? '',
+    });
+    setNewUnitNo(res?.unit_no ?? '');
+    setTimeout(() => unitInputRef.current?.focus(), 80);
+  };
+
+  const closeUnitEdit = () => {
+    setUnitEditTarget(null);
+    setNewUnitNo('');
+  };
+
+  const handleUpdateUnitNo = async () => {
+    if (!unitEditTarget || !currentPropertyId) return;
+    const trimmed = newUnitNo.trim();
+    if (!trimmed) {
+      setToast({ kind: 'error', message: '房号不能为空' });
+      return;
+    }
+    setUnitSaving(true);
+    try {
+      const { error } = await supabase.rpc('update_member_unit_no', {
+        p_property_id: currentPropertyId,
+        p_member_user_id: unitEditTarget.userId,
+        p_unit_no: trimmed,
+      });
+      if (error) {
+        setToast({ kind: 'error', message: mapUnitUpdateError(error, trimmed) });
+        return;
+      }
+      setToast({ kind: 'success', message: `房号已更新为 ${trimmed}` });
+      closeUnitEdit();
+      await loadData();
+    } catch (e) {
+      setToast({ kind: 'error', message: '保存失败，请重试' });
+      console.error('[UserManagementTab] handleUpdateUnitNo', e);
+    } finally {
+      setUnitSaving(false);
+    }
   };
 
   const approveActivation = async (residentId: string, profileUserId: string) => {
@@ -861,10 +944,100 @@ export function UserManagementTab({
                   onSaveEdit={() => saveEdit(user.id)}
                   onFormChange={updateEditForm}
                 />
+                {canEditUnitNo && (
+                  <div className="px-4 pb-3 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => openUnitEdit(user)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 text-xs font-medium hover:bg-gray-50 hover:text-gray-900 transition-colors"
+                    >
+                      <Pencil size={12} />
+                      修改房号
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })}
       </div>
+
+      {/* ── 修改房号 Modal ── */}
+      {unitEditTarget && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="修改房号"
+          onClick={(e) => { if (e.target === e.currentTarget) closeUnitEdit(); }}
+        >
+          <div className="w-full max-w-sm rounded-2xl bg-white shadow-xl p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-semibold text-gray-900">修改房号</h3>
+              <button
+                type="button"
+                onClick={closeUnitEdit}
+                className="text-gray-400 hover:text-gray-600"
+                aria-label="关闭"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-1 text-sm text-gray-600">
+              <p>
+                <span className="font-medium text-gray-800">{unitEditTarget.userName}</span>
+              </p>
+              <p className="text-xs text-gray-400">{unitEditTarget.email}</p>
+              {unitEditTarget.currentUnitNo && (
+                <p>当前房号：<span className="font-medium text-gray-800">{unitEditTarget.currentUnitNo}</span></p>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700" htmlFor="unit-no-input">
+                新房号
+              </label>
+              <input
+                id="unit-no-input"
+                ref={unitInputRef}
+                type="text"
+                value={newUnitNo}
+                onChange={(e) => setNewUnitNo(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !unitSaving) void handleUpdateUnitNo(); }}
+                disabled={unitSaving}
+                placeholder="请输入新房号"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1D9E75]/50 focus:border-[#1D9E75] disabled:opacity-50"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={closeUnitEdit}
+                disabled={unitSaving}
+                className="px-4 py-2 rounded-lg border border-gray-200 bg-white text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleUpdateUnitNo()}
+                disabled={unitSaving}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#1D9E75] text-white text-sm font-medium hover:bg-[#178a66] disabled:opacity-50 transition-colors"
+              >
+                {unitSaving ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    保存中...
+                  </>
+                ) : (
+                  '保存'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {toast && (
         <div

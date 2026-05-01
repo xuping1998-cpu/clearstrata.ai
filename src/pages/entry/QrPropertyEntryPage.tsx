@@ -45,6 +45,7 @@ export function QrPropertyEntryPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitErr, setSubmitErr] = useState<string | null>(null);
   const [unitNotFound, setUnitNotFound] = useState(false);
+  const [alreadyMemberMsg, setAlreadyMemberMsg] = useState<string | null>(null);
 
   const auditRef = useRef(false);
   const openedRef = useRef(false);
@@ -158,6 +159,7 @@ export function QrPropertyEntryPage() {
   const handleSubmit = async () => {
     setSubmitErr(null);
     setUnitNotFound(false);
+    setAlreadyMemberMsg(null);
 
     const name = fullName.trim();
     const email = emailIn.trim();
@@ -225,6 +227,17 @@ export function QrPropertyEntryPage() {
           return;
         }
         throw new Error(data?.message || 'Entry rejected');
+      }
+
+      // Already a member — show info message and navigate home (no token flow needed)
+      if (data.kind === 'already_member') {
+        setAlreadyMemberMsg(
+          en
+            ? 'You are already a member of this property. To change your unit, please contact the council or administrator.'
+            : '你已是本物业业主。如需更改房号，请联系理事会/管理员处理。',
+        );
+        setTimeout(() => navigate('/', { replace: true }), 2500);
+        return;
       }
 
       if (!data.redirectUrl) {
@@ -352,6 +365,16 @@ export function QrPropertyEntryPage() {
             className="rounded-xl px-3 py-2 text-sm bg-red-50 text-red-900 border border-red-200"
           >
             {submitErr}
+          </div>
+        )}
+
+        {/* Already-member info message (blue, not red) */}
+        {alreadyMemberMsg && (
+          <div
+            role="status"
+            className="rounded-xl px-3 py-2 text-sm bg-blue-50 text-blue-900 border border-blue-200"
+          >
+            {alreadyMemberMsg}
           </div>
         )}
 
