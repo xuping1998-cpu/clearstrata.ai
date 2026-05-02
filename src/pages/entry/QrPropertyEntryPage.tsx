@@ -77,10 +77,12 @@ export function QrPropertyEntryPage() {
   const [unitNotFound, setUnitNotFound] = useState(false);
   const [alreadyMemberMsg, setAlreadyMemberMsg] = useState<string | null>(null);
   const [otpSent, setOtpSent] = useState(false);
+  const [checkingMembership, setCheckingMembership] = useState(false);
 
   const auditRef = useRef(false);
   const openedRef = useRef(false);
   const autoSubmitFiredRef = useRef(false);
+  const memberCheckFiredRef = useRef(false);
   const unitInputRef = useRef<HTMLInputElement>(null);
 
   // Apply lang param immediately
@@ -363,13 +365,44 @@ export function QrPropertyEntryPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user, resolved]);
 
+  // If already an active member of this property, skip the form and go straight to the app
+  useEffect(() => {
+    if (!session?.user) return;
+    if (!effectivePropertyId) return;
+    if (memberCheckFiredRef.current) return;
+    memberCheckFiredRef.current = true;
+
+    setCheckingMembership(true);
+    void (async () => {
+      const { data } = await supabase
+        .from('property_members')
+        .select('id, role, status, property_id')
+        .eq('property_id', effectivePropertyId)
+        .eq('user_id', session.user.id)
+        .eq('status', 'active')
+        .maybeSingle();
+
+      if (data) {
+        console.log('[entry] active member detected, redirect to app', data);
+        navigate('/?propertyId=' + effectivePropertyId, { replace: true });
+      } else {
+        setCheckingMembership(false);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user, effectivePropertyId]);
+
   // ── Render ────────────────────────────────────────────────────────────────
 
-  if (resolving) {
+  if (resolving || checkingMembership) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-clearstrata-ui-soft/40 to-gray-50 flex flex-col items-center justify-center p-6">
         <Loader2 className="w-10 h-10 text-clearstrata-ui-primary animate-spin" aria-hidden />
-        <p className="mt-4 text-sm text-gray-500">{en ? 'Loading…' : '加载中…'}</p>
+        <p className="mt-4 text-sm text-gray-500">
+          {checkingMembership
+            ? (en ? 'Verifying membership…' : '正在验证身份，请稍候…')
+            : (en ? 'Loading…' : '加载中…')}
+        </p>
       </div>
     );
   }
