@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
@@ -8,53 +8,46 @@ import { supabase } from '../../lib/supabase';
  *  This page waits for the session to be established, then forwards the user to `redirect`. */
 export function AuthCallback() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
-    const tryGetSession = async () => {
-      // Supabase automatically exchanges the token from the URL hash/query params
-      // when the page loads. We poll briefly to wait for the session.
-      let attempt = 0;
-      const maxAttempts = 10;
-
-      while (attempt < maxAttempts) {
-        const { data, error: sessionErr } = await supabase.auth.getSession();
+    const waitForSession = async () => {
+      for (let i = 0; i < 10; i++) {
+        const { data } = await supabase.auth.getSession();
         if (cancelled) return;
 
-        if (sessionErr) {
-          setError('登录失败或链接已过期');
-          return;
-        }
+        if (data.session) return data.session;
 
-        if (data.session?.user) {
-          const raw = searchParams.get('redirect');
-          let target = '/';
-          if (raw) {
-            try {
-              const decoded = decodeURIComponent(raw);
-              if (decoded.startsWith('/') && !decoded.startsWith('//') && !decoded.includes('://')) {
-                target = decoded;
-              }
-            } catch { /* ignore malformed redirect */ }
-          }
-          navigate(target, { replace: true });
-          return;
-        }
-
-        // Session not ready yet — wait 300ms before retrying
-        await new Promise((res) => setTimeout(res, 300));
-        attempt++;
+        await new Promise((resolve) => setTimeout(resolve, 300));
       }
-
-      if (!cancelled) {
-        setError('登录失败或链接已过期');
-      }
+      return null;
     };
 
-    void tryGetSession();
+    const run = async () => {
+      const session = await waitForSession();
+      if (cancelled) return;
+
+      if (!session) {
+        setError('登录失败或链接已过期');
+        return;
+      }
+
+      const raw = new URLSearchParams(window.location.search).get('redirect');
+      let target = '/';
+      if (raw) {
+        try {
+          const decoded = decodeURIComponent(raw);
+          if (decoded.startsWith('/') && !decoded.startsWith('//') && !decoded.includes('://')) {
+            target = decoded;
+          }
+        } catch { /* ignore malformed redirect */ }
+      }
+      navigate(target, { replace: true });
+    };
+
+    void run();
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

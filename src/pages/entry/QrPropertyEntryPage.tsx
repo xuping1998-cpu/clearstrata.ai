@@ -304,8 +304,13 @@ export function QrPropertyEntryPage() {
       const appOrigin =
         (import.meta.env.VITE_APP_BASE_URL as string | undefined) ||
         window.location.origin;
-      const entryPath = `${location.pathname}${location.search}`;
-      const emailRedirectTo = `${appOrigin}/auth/callback?redirect=${encodeURIComponent(entryPath)}`;
+
+      const entryPath = location.pathname + location.search;
+
+      const emailRedirectTo =
+        appOrigin +
+        '/auth/callback?redirect=' +
+        encodeURIComponent(entryPath);
 
       const { error: otpErr } = await supabase.auth.signInWithOtp({
         email,
@@ -324,29 +329,37 @@ export function QrPropertyEntryPage() {
     }
   };
 
-  // Auto-submit once when session appears + draft exists (user clicked OTP link)
+  // Auto-submit once when session appears + draft exists (user returned via OTP link)
   useEffect(() => {
     if (!session?.user) return;
+    if (!effectivePropertyId) return;
+    if (!inviteCodeParam) return;
+    if (!resolved) return;
     if (autoSubmitFiredRef.current) return;
-    if (!resolved) return; // wait for property to resolve first
 
-    const draft = loadDraft();
-    if (!draft) return; // no pending draft — user was already logged in before
+    const draftName = sessionStorage.getItem(DRAFT_NAME_KEY) ?? '';
+    const draftUnit = sessionStorage.getItem(DRAFT_UNIT_KEY) ?? '';
+
+    if (!draftUnit) return; // no pending draft — user was already logged in
 
     autoSubmitFiredRef.current = true;
-    clearDraft();
 
-    const email = (user?.email ?? session.user.email ?? '').trim();
-    const name = fullName.trim() || draft.name;
+    // Clear draft before submitting to prevent re-fire on remount
+    sessionStorage.removeItem(DRAFT_NAME_KEY);
+    sessionStorage.removeItem(DRAFT_UNIT_KEY);
 
-    if (!email || !draft.unit) return;
+    const email = session.user.email ?? '';
+    const name = draftName || fullName.trim();
+
+    if (!email) return;
 
     // Restore into form state for visual feedback
-    if (draft.name) setFullName((s) => s || draft.name);
-    setUnitNo((s) => s || draft.unit);
+    if (draftName) setFullName((s) => s || draftName);
+    setUnitNo((s) => s || draftUnit);
+    if (email) setEmailIn((s) => s || email);
 
-    console.log('[entry] session detected + draft found — auto-submitting join', { email, unit: draft.unit });
-    void runJoin(name, email, draft.unit);
+    console.log('[entry] session + draft — auto-submitting join', { email, unit: draftUnit });
+    void runJoin(name, email, draftUnit);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user, resolved]);
 
