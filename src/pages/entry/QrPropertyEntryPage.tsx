@@ -300,9 +300,16 @@ export function QrPropertyEntryPage() {
     setSubmitting(true);
     try {
       saveDraft(name, unit);
+
+      const appOrigin =
+        (import.meta.env.VITE_APP_BASE_URL as string | undefined) ||
+        window.location.origin;
+      const entryPath = `${location.pathname}${location.search}`;
+      const emailRedirectTo = `${appOrigin}/auth/callback?redirect=${encodeURIComponent(entryPath)}`;
+
       const { error: otpErr } = await supabase.auth.signInWithOtp({
         email,
-        options: { emailRedirectTo: entryUrl },
+        options: { emailRedirectTo },
       });
       if (otpErr) {
         clearDraft();
