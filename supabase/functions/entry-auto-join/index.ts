@@ -132,17 +132,58 @@ Deno.serve(async (req: Request) => {
         email_confirm: true,
         user_metadata: { full_name: fullName || email },
       });
-      if (createErr || !newUser?.user?.id) {
-        console.error("[entry-auto-join] createUser error", createErr);
-        return err("user_creation_failed", createErr?.message ?? "Could not create user", 500);
-      }
-      userId = newUser.user.id;
 
-      // Attempt to create profile row (ignore conflict — trigger may have already done it)
-      await admin.from("profiles").upsert(
-        { id: userId, email, full_name_en: fullName || email },
-        { onConflict: "id", ignoreDuplicates: true },
-      );
+      if (createErr || !newUser?.user?.id) {
+        const msg = (createErr?.message ?? "").toLowerCase();
+        const isAlreadyRegistered =
+          msg.includes("already registered") ||
+          msg.includes("already exists") ||
+          msg.includes("user already registered");
+
+        if (isAlreadyRegistered) {
+          // User exists in auth.users but has no profiles row (e.g. magic-link signup without
+          // completing profile creation). Scan listUsers to recover their ID.
+          console.warn("[entry-auto-join] createUser 'already registered' — scanning listUsers for", email);
+          let foundId: string | null = null;
+          for (let page = 1; page <= 20 && !foundId; page++) {
+            const { data: listData } = await admin.auth.admin.listUsers({ page, perPage: 100 });
+            if (!listData?.users?.length) break;
+            type AuthUser = { id: string; email?: string };
+            const found = (listData.users as AuthUser[]).find(
+              (u) => u.email?.toLowerCase() === email.toLowerCase(),
+            );
+            if (found) foundId = found.id;
+            if (listData.users.length < 100) break;
+          }
+
+          if (!foundId) {
+            // Cannot locate user — return structured error so frontend can show login redirect
+            console.error("[entry-auto-join] already_registered but listUsers found no match for", email);
+            return err(
+              "already_registered",
+              "该邮箱已注册，请直接登录后继续进入物业。",
+            );
+          }
+
+          userId = foundId;
+          // Ensure profile row exists so future RPC lookups succeed
+          await admin.from("profiles").upsert(
+            { id: userId, email, full_name_en: fullName || email },
+            { onConflict: "id", ignoreDuplicates: true },
+          );
+          console.log("[entry-auto-join] recovered user from listUsers", userId);
+        } else {
+          console.error("[entry-auto-join] createUser error", createErr);
+          return err("user_creation_failed", createErr?.message ?? "Could not create user", 500);
+        }
+      } else {
+        userId = newUser.user.id;
+        // Attempt to create profile row (ignore conflict — trigger may have already done it)
+        await admin.from("profiles").upsert(
+          { id: userId, email, full_name_en: fullName || email },
+          { onConflict: "id", ignoreDuplicates: true },
+        );
+      }
     }
 
     // 5. Check if this user is already an active member of this property.

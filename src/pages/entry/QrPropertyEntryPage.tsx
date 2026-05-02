@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { Building2, ExternalLink, Loader2 } from 'lucide-react';
+import { Building2, ExternalLink, Loader2, MailCheck } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { supabase } from '../../lib/supabase';
@@ -9,9 +9,39 @@ import { trackPropertyEntryEvent } from '../../lib/propertyEntryEvents';
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+const DRAFT_NAME_KEY = 'entry_draft_name';
+const DRAFT_UNIT_KEY = 'entry_draft_unit';
+
+function saveDraft(name: string, unit: string) {
+  try {
+    sessionStorage.setItem(DRAFT_NAME_KEY, name);
+    sessionStorage.setItem(DRAFT_UNIT_KEY, unit);
+  } catch { /* ignore */ }
+}
+
+function loadDraft(): { name: string; unit: string } | null {
+  try {
+    const name = sessionStorage.getItem(DRAFT_NAME_KEY);
+    const unit = sessionStorage.getItem(DRAFT_UNIT_KEY);
+    if (unit) return { name: name ?? '', unit };
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function clearDraft() {
+  try {
+    sessionStorage.removeItem(DRAFT_NAME_KEY);
+    sessionStorage.removeItem(DRAFT_UNIT_KEY);
+  } catch { /* ignore */ }
+}
+
 /** Public QR entry page: /entry?propertyId=...&inviteCode=...
- *  Demo/marketing flows must NOT use this page.
- *  Auto-join flow: submit → entry-auto-join Edge Function → /entry/auto-login?token=... */
+ *  Unified OTP flow:
+ *  1. No session → fill form → signInWithOtp → "check email" screen
+ *  2. Email link click → back to /entry with session → auto-submit entry-auto-join
+ *  3. Has session → direct submit → entry-auto-join → token → /entry/auto-login */
 export function QrPropertyEntryPage() {
   const [searchParams] = useSearchParams();
   const location = useLocation();
@@ -41,17 +71,19 @@ export function QrPropertyEntryPage() {
   const [emailIn, setEmailIn] = useState('');
   const [unitNo, setUnitNo] = useState('');
 
-  // Submission state
+  // Submission / UI state
   const [submitting, setSubmitting] = useState(false);
   const [submitErr, setSubmitErr] = useState<string | null>(null);
   const [unitNotFound, setUnitNotFound] = useState(false);
   const [alreadyMemberMsg, setAlreadyMemberMsg] = useState<string | null>(null);
+  const [otpSent, setOtpSent] = useState(false);
 
   const auditRef = useRef(false);
   const openedRef = useRef(false);
+  const autoSubmitFiredRef = useRef(false);
   const unitInputRef = useRef<HTMLInputElement>(null);
 
-  // Apply lang param from QR URL immediately — must run before any render that uses `en`
+  // Apply lang param immediately
   useEffect(() => {
     if (langParam === 'en') setLanguage('en');
     else if (langParam === 'zh') setLanguage('zh');
@@ -94,9 +126,7 @@ export function QrPropertyEntryPage() {
         if (!cancelled) setResolving(false);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [propertyIdParam, inviteCodeParam, en]);
 
   // Audit: entry page opened
@@ -154,27 +184,19 @@ export function QrPropertyEntryPage() {
     return null;
   }, [propertyIdParam]);
 
-  const redirectTo = `${location.pathname}${location.search}`;
+  // Current full entry URL — used as emailRedirectTo for OTP
+  const entryUrl = `${window.location.origin}${location.pathname}${location.search}`;
 
-  const handleSubmit = async () => {
-    setSubmitErr(null);
-    setUnitNotFound(false);
-    setAlreadyMemberMsg(null);
-
-    const name = fullName.trim();
-    const email = emailIn.trim();
-    const unit = unitNo.trim();
-
-    if (!name || !email || !unit) {
-      setSubmitErr(en ? 'Please fill in name, email, and unit.' : '请填写姓名、邮箱与房号。');
-      return;
-    }
+  /** Core join logic — calls entry-auto-join and handles all outcomes. */
+  const runJoin = async (name: string, email: string, unit: string) => {
     if (!effectivePropertyId || !inviteCodeParam) {
       setSubmitErr(en ? 'Missing property or invite code.' : '缺少物业或邀请码。');
       return;
     }
-
     setSubmitting(true);
+    setSubmitErr(null);
+    setUnitNotFound(false);
+    setAlreadyMemberMsg(null);
     try {
       console.log('[entry] submitting to entry-auto-join', {
         propertyId: effectivePropertyId,
@@ -201,9 +223,7 @@ export function QrPropertyEntryPage() {
 
       console.log('[entry] entry-auto-join result', data, error);
 
-      if (error) {
-        throw new Error(error.message || 'Entry failed');
-      }
+      if (error) throw new Error(error.message || 'Entry failed');
 
       if (!data || data.ok !== true) {
         const reason = data?.reason ?? '';
@@ -229,7 +249,7 @@ export function QrPropertyEntryPage() {
         throw new Error(data?.message || 'Entry rejected');
       }
 
-      // Already a member — show info message and navigate home (no token flow needed)
+      // Already a member — show info and navigate home
       if (data.kind === 'already_member') {
         setAlreadyMemberMsg(
           en
@@ -240,11 +260,8 @@ export function QrPropertyEntryPage() {
         return;
       }
 
-      if (!data.redirectUrl) {
-        throw new Error('No redirect URL returned from server');
-      }
+      if (!data.redirectUrl) throw new Error('No redirect URL returned from server');
 
-      // Navigate to /entry/auto-login?token=... which will establish session and navigate to final_redirect
       navigate(data.redirectUrl, { replace: true });
     } catch (e) {
       const msg = e instanceof Error ? e.message : en ? 'Entry failed.' : '加入失败。';
@@ -254,7 +271,80 @@ export function QrPropertyEntryPage() {
     }
   };
 
-  // Loading: property resolution in progress
+  /** Button click handler. */
+  const handleSubmit = async () => {
+    setSubmitErr(null);
+    setUnitNotFound(false);
+    setAlreadyMemberMsg(null);
+
+    const name = fullName.trim();
+    const email = emailIn.trim();
+    const unit = unitNo.trim();
+
+    if (!name || !email || !unit) {
+      setSubmitErr(en ? 'Please fill in name, email, and unit.' : '请填写姓名、邮箱与房号。');
+      return;
+    }
+    if (!effectivePropertyId || !inviteCodeParam) {
+      setSubmitErr(en ? 'Missing property or invite code.' : '缺少物业或邀请码。');
+      return;
+    }
+
+    // Already logged in — go straight to join
+    if (session?.user) {
+      await runJoin(name, email, unit);
+      return;
+    }
+
+    // Not logged in — send OTP magic-link and save draft
+    setSubmitting(true);
+    try {
+      saveDraft(name, unit);
+      const { error: otpErr } = await supabase.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: entryUrl },
+      });
+      if (otpErr) {
+        clearDraft();
+        throw new Error(otpErr.message);
+      }
+      setOtpSent(true);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : en ? 'Could not send email.' : '发送失败，请重试。';
+      setSubmitErr(msg);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Auto-submit once when session appears + draft exists (user clicked OTP link)
+  useEffect(() => {
+    if (!session?.user) return;
+    if (autoSubmitFiredRef.current) return;
+    if (!resolved) return; // wait for property to resolve first
+
+    const draft = loadDraft();
+    if (!draft) return; // no pending draft — user was already logged in before
+
+    autoSubmitFiredRef.current = true;
+    clearDraft();
+
+    const email = (user?.email ?? session.user.email ?? '').trim();
+    const name = fullName.trim() || draft.name;
+
+    if (!email || !draft.unit) return;
+
+    // Restore into form state for visual feedback
+    if (draft.name) setFullName((s) => s || draft.name);
+    setUnitNo((s) => s || draft.unit);
+
+    console.log('[entry] session detected + draft found — auto-submitting join', { email, unit: draft.unit });
+    void runJoin(name, email, draft.unit);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user, resolved]);
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
   if (resolving) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-clearstrata-ui-soft/40 to-gray-50 flex flex-col items-center justify-center p-6">
@@ -264,7 +354,6 @@ export function QrPropertyEntryPage() {
     );
   }
 
-  // Error: property not found / invalid link
   if (resolveErr || !resolved) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-clearstrata-ui-soft/40 to-gray-50 flex flex-col items-center justify-center p-6">
@@ -279,26 +368,54 @@ export function QrPropertyEntryPage() {
     );
   }
 
-  // Form
+  // OTP sent screen
+  if (otpSent) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-clearstrata-ui-soft/40 to-gray-50 flex items-start justify-center p-4 py-10">
+        <div className="w-full max-w-md bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center space-y-4">
+          <div className="flex justify-center mb-2">
+            <img src="/clearstrata-hero-logo.png" alt="ClearStrata" className="w-16 h-auto" />
+          </div>
+          <MailCheck className="mx-auto w-12 h-12 text-[#1D9E75]" />
+          <h2 className="text-lg font-bold text-gray-900">
+            {en ? 'Check your email' : '请查收登录邮件'}
+          </h2>
+          <p className="text-sm text-gray-600">
+            {en
+              ? 'We sent a login link to your email. Click the link to continue joining this property.'
+              : '登录链接已发送到你的邮箱，点击邮件中的链接继续进入物业。'}
+          </p>
+          <p className="text-xs text-gray-400">
+            {en ? 'You can close this tab.' : '收到邮件后点击链接，本页面可关闭。'}
+          </p>
+          <button
+            type="button"
+            onClick={() => setOtpSent(false)}
+            className="text-sm text-clearstrata-ui-primary hover:underline"
+          >
+            {en ? '← Change email' : '← 修改邮箱重新发送'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Main form
   return (
     <div className="min-h-screen bg-gradient-to-b from-clearstrata-ui-soft/40 to-gray-50 flex items-start justify-center p-4 py-10">
       <div className="w-full max-w-md bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-5">
         {/* Header */}
         <div className="text-center">
           <div className="w-full flex justify-center mb-5">
-            <img
-              src="/clearstrata-hero-logo.png"
-              alt="ClearStrata"
-              className="w-20 h-auto"
-            />
+            <img src="/clearstrata-hero-logo.png" alt="ClearStrata" className="w-20 h-auto" />
           </div>
           <h1 className="text-xl font-bold text-gray-900">
             {en ? 'Resident identity confirmation' : '业主身份确认'}
           </h1>
           <p className="text-sm text-gray-600 mt-2 text-left">
             {en
-              ? 'Enter information that matches this building. The system checks the unit whitelist and decides if you can enter directly.'
-              : '请填写与你所在物业一致的信息。系统会根据本物业白名单自动判断是否可直接进入。'}
+              ? 'Enter your information. A login link will be sent to your email to verify identity and join this property.'
+              : '请填写你的信息，系统将发送邮件链接完成身份验证并加入物业。'}
           </p>
         </div>
 
@@ -313,6 +430,14 @@ export function QrPropertyEntryPage() {
             <span className="font-mono font-medium text-gray-900">{inviteCodeParam}</span>
           </p>
         </div>
+
+        {/* Auto-submitting overlay */}
+        {submitting && session?.user && (
+          <div className="rounded-xl bg-blue-50 border border-blue-100 px-4 py-3 text-sm text-blue-900 flex items-center gap-2">
+            <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+            {en ? 'Verifying membership…' : '正在验证身份，请稍候…'}
+          </div>
+        )}
 
         {/* Form fields */}
         <div className="space-y-3">
@@ -336,7 +461,7 @@ export function QrPropertyEntryPage() {
               value={emailIn}
               onChange={(e) => setEmailIn(e.target.value)}
               autoComplete="email"
-              disabled={submitting}
+              disabled={submitting || Boolean(session?.user)}
               required
             />
           </label>
@@ -358,27 +483,21 @@ export function QrPropertyEntryPage() {
           </label>
         </div>
 
-        {/* Error message */}
+        {/* Error */}
         {submitErr && (
-          <div
-            role="alert"
-            className="rounded-xl px-3 py-2 text-sm bg-red-50 text-red-900 border border-red-200"
-          >
+          <div role="alert" className="rounded-xl px-3 py-2 text-sm bg-red-50 text-red-900 border border-red-200">
             {submitErr}
           </div>
         )}
 
-        {/* Already-member info message (blue, not red) */}
+        {/* Already-member info (blue) */}
         {alreadyMemberMsg && (
-          <div
-            role="status"
-            className="rounded-xl px-3 py-2 text-sm bg-blue-50 text-blue-900 border border-blue-200"
-          >
+          <div role="status" className="rounded-xl px-3 py-2 text-sm bg-blue-50 text-blue-900 border border-blue-200">
             {alreadyMemberMsg}
           </div>
         )}
 
-        {/* unit_not_found: show demo link + edit-unit button; hide submit */}
+        {/* unit_not_found: demo link + edit unit */}
         {unitNotFound ? (
           <div className="space-y-2">
             <a
@@ -410,21 +529,10 @@ export function QrPropertyEntryPage() {
             className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-[#1D9E75] text-white font-semibold text-sm hover:bg-[#178a66] disabled:opacity-50 transition-colors"
           >
             {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-            {en ? 'Submit' : '提交并验证'}
+            {session?.user
+              ? (en ? 'Submit' : '提交并验证')
+              : (en ? 'Send login link' : '发送登录链接')}
           </button>
-        )}
-
-        {/* Already have an account? */}
-        {!session?.user && (
-          <p className="text-xs text-gray-400 text-center">
-            {en ? 'Already registered? ' : '已有账号？'}
-            <Link
-              to={`/login?redirect=${encodeURIComponent(redirectTo)}`}
-              className="text-clearstrata-ui-primary hover:underline"
-            >
-              {en ? 'Sign in' : '登录'}
-            </Link>
-          </p>
         )}
 
         <p className="text-xs text-gray-400 text-center">property: {resolved.id.slice(0, 8)}…</p>
