@@ -204,7 +204,7 @@ export function Auth() {
   const [step, setStep] = useState<1 | 2>(1);
   const [showPassword, setShowPassword] = useState(false);
 
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, session } = useAuth();
   const { t, language, toggleLanguage } = useLanguage();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -296,6 +296,23 @@ export function Auth() {
             : 'Property not found or not open for public join. Please confirm with your strata council.',
         );
         return;
+      }
+
+      // If already an active member, skip entry form and go straight to the app
+      if (session?.user) {
+        const { data: membership } = await supabase
+          .from('property_members')
+          .select('id, role, status, property_id')
+          .eq('property_id', pid)
+          .eq('user_id', session.user.id)
+          .eq('status', 'active')
+          .maybeSingle();
+
+        if (membership) {
+          console.log('[Auth property tab] active member enter directly', membership);
+          navigate('/?propertyId=' + pid, { replace: true });
+          return;
+        }
       }
 
       // Save draft so QrPropertyEntryPage can restore name/unit after OTP login
