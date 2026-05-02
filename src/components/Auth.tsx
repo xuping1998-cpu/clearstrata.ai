@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+﻿import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -15,7 +15,7 @@ import {
 import { trackPropertyEntryEvent } from '../lib/propertyEntryEvents';
 import { demoEntryPath, MARKETING_DEMO_PROPERTY_CODE } from '@/lib/propertyEntryRoutes';
 import { saveGuestExperienceDraft } from '@/lib/guestExperienceDraft';
-import { savePropertyEntryDraft } from '@/lib/propertyEntryDraft';
+
 import { consumePendingRedirect } from '../lib/pendingRedirect';
 
 function persistCurrentPropertyId(propertyId: string) {
@@ -784,6 +784,7 @@ export function Auth() {
                 </div>
 
                 <div className="mt-auto w-full shrink-0 space-y-3">
+            {mainTab !== 'property' && (
             <div className="border-t border-gray-100 bg-gray-50/60 px-6 py-4">
               <div className="mt-4 text-center text-sm text-gray-500">
                 {language === 'zh' ? '已有账号？' : 'Already have an account?'}
@@ -1124,6 +1125,7 @@ export function Auth() {
                 </form>
               ) : null}
             </div>
+            )}
 
             {error && (
               <div className="mx-6 mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>

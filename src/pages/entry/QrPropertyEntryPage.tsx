@@ -464,6 +464,19 @@ export function QrPropertyEntryPage() {
               disabled={submitting || Boolean(session?.user)}
               required
             />
+            {session?.user && (
+              <button
+                type="button"
+                onClick={async () => {
+                  clearDraft();
+                  await supabase.auth.signOut();
+                  setEmailIn('');
+                }}
+                className="mt-1 text-xs text-clearstrata-ui-primary hover:underline"
+              >
+                {en ? 'Switch email' : '切换邮箱'}
+              </button>
+            )}
           </label>
           <label className="block text-sm text-gray-700">
             {en ? 'Unit / suite' : '房号（必填）'}
