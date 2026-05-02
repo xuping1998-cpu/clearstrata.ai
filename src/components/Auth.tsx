@@ -255,13 +255,6 @@ export function Auth() {
     const em = epEmail.trim().toLowerCase();
     const u = epUnit.trim();
 
-    console.log('[Auth] entry form payload', {
-      propertyCode: code || null,
-      name: n || null,
-      email: em || null,
-      unit: u || null,
-    });
-
     if (!n || !em || !u) {
       setError(language === 'zh' ? '请填写姓名、邮箱与房号。' : 'Please fill in all required fields.');
       return;
@@ -282,135 +275,40 @@ export function Auth() {
     setEpBusy(true);
     try {
       const { data, error } = await supabase.rpc('resolve_property_for_join_request', { p_code: code });
-      console.log('[Auth] resolve_property_for_join_request result', { data, error });
       if (error) {
-        const msg = language === 'zh' ? '无法查询该物业，请稍后重试。' : 'Could not look up this property. Try again later.';
-        setError(msg);
-        console.error('[Auth] property resolve failed', error.message);
+        setError(language === 'zh' ? '无法查询该物业，请稍后重试。' : 'Could not look up this property. Try again later.');
         return;
       }
       const rows = Array.isArray(data) ? data : data != null ? [data] : [];
       const row = rows[0] as { id?: string } | undefined;
       const pid = row?.id != null ? String(row.id) : '';
       if (!pid) {
-        const msg =
+        setError(
           language === 'zh'
             ? '未找到该物业，或该物业未开放公开加入。请向业委会确认入口。'
-            : 'Property not found or not open for public join. Please confirm with your strata council.';
-        setError(msg);
-        console.error('[Auth] property not resolved — empty property id', { data });
+            : 'Property not found or not open for public join. Please confirm with your strata council.',
+        );
         return;
       }
 
-      savePropertyEntryDraft({
-        fullName: n,
-        email: em,
-        unitNumber: u,
-        propertyId: pid,
-        propertyCode: code,
-      });
+      // Save draft so QrPropertyEntryPage can restore name/unit after OTP login
+      try {
+        sessionStorage.setItem('entry_draft_name', n);
+        sessionStorage.setItem('entry_draft_unit', u);
+      } catch { /* ignore */ }
 
       const inviteFromUrl =
         searchParams.get('inviteCode')?.trim() ||
         searchParams.get('invite_code')?.trim() ||
         searchParams.get('code')?.trim() ||
         null;
-      const sourceFromUrl = searchParams.get('source')?.trim() || 'web';
 
       const entryQs = new URLSearchParams();
       entryQs.set('propertyId', pid);
-      entryQs.set('propertyCode', code);
-      entryQs.set('source', sourceFromUrl);
       if (inviteFromUrl) entryQs.set('inviteCode', inviteFromUrl);
-      const entryPath = `/entry?${entryQs.toString()}`;
-      let userId: string | null = null;
-      const {
-        data: { session: existingSession },
-      } = await supabase.auth.getSession();
 
-      if (existingSession?.user?.id) {
-        userId = existingSession.user.id;
-        console.log('[Auth] entry session: already signed in', { userId });
-      } else {
-        const pwd = generateSecureEntryPassword();
-        console.log('[Auth] entry signUp start', { email: em });
-        try {
-          const newUser = await signUp(em, pwd, n, '', u);
-          console.log('[Auth] entry signUp result', { userId: newUser?.id ?? null, error: null });
-        } catch (signUpErr: unknown) {
-          const msg = getAuthErrorMessage(signUpErr, language === 'zh' ? 'zh' : 'en');
-          const raw =
-            signUpErr && typeof signUpErr === 'object' && 'message' in signUpErr
-              ? String((signUpErr as { message?: string }).message)
-              : '';
-          console.error('[Auth] entry signUp result', { error: signUpErr, message: raw });
-          const dup =
-            raw.toLowerCase().includes('already') ||
-            raw.toLowerCase().includes('registered') ||
-            raw.toLowerCase().includes('exists');
-          if (dup) {
-            setError(
-              language === 'zh'
-                ? '该邮箱已注册。请使用页面下方「直接登录」登录后，再点击「进入物业」。'
-                : 'This email is already registered. Sign in below, then tap Join property again.',
-            );
-            return;
-          }
-          setError(msg);
-          return;
-        }
-
-        const {
-          data: { session: afterSignUp },
-        } = await supabase.auth.getSession();
-        if (afterSignUp?.user?.id) {
-          userId = afterSignUp.user.id;
-        } else {
-          const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({
-            email: em,
-            password: pwd,
-          });
-          console.log('[Auth] entry signIn/signInWithPassword result', {
-            userId: signInData.session?.user?.id ?? null,
-            error: signInErr?.message ?? null,
-          });
-          if (signInErr || !signInData.session?.user?.id) {
-            const hint =
-              signInErr?.message ||
-              (language === 'zh'
-                ? '请查收邮箱完成验证后再试，或使用下方「直接登录」。'
-                : 'Check your email to confirm your account, or sign in below.');
-            setError(hint);
-            return;
-          }
-          userId = signInData.session.user.id;
-        }
-      }
-
-      if (!userId) {
-        setError(language === 'zh' ? '无法建立登录会话，请重试。' : 'Could not establish a session. Please try again.');
-        return;
-      }
-
-      void trackPropertyEntryEvent(supabase, {
-        propertyId: pid,
-        inviteCode: inviteFromUrl,
-        source: sourceFromUrl,
-        eventType: 'auth_ok',
-        userId,
-      });
-
-      console.log('[Auth] entry navigate', {
-        propertyId: pid,
-        propertyCode: code,
-        unitNumber: u,
-        userId,
-        entryPath,
-      });
-
-      navigate(entryPath, { replace: true });
+      navigate(`/entry?${entryQs.toString()}`, { replace: false });
     } catch (err) {
-      console.error('[Auth] handlePropertyEnter', err);
       setError(getAuthErrorMessage(err, language === 'zh' ? 'zh' : 'en'));
     } finally {
       setEpBusy(false);
