@@ -286,13 +286,11 @@ export function MembersList({ propertyId, language, canOperate, currentUserId, o
       };
       console.log('[direct-message] payload', payload);
 
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('notifications')
-        .insert(payload)
-        .select('id, property_id, user_id, type, title, content, priority, created_by, read, created_at')
-        .single();
+        .insert(payload);
 
-      console.log('[direct-message] result', data, error);
+      console.log('[direct-message] result', error ?? 'ok');
 
       if (error) {
         console.warn('[direct-message] insert failed', error);
