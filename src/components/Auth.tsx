@@ -275,12 +275,19 @@ export function Auth() {
     setEpBusy(true);
     try {
       const { data, error } = await supabase.rpc('resolve_property_for_join_request', { p_code: code });
+      console.log('[resolve result]', data, error);
       if (error) {
         setError(language === 'zh' ? '无法查询该物业，请稍后重试。' : 'Could not look up this property. Try again later.');
         return;
       }
       const rows = Array.isArray(data) ? data : data != null ? [data] : [];
-      const row = rows[0] as { id?: string } | undefined;
+      const row = rows[0] as {
+        id?: string;
+        invite_code?: string;
+        inviteCode?: string;
+        code?: string;
+        property_code?: string;
+      } | undefined;
       const pid = row?.id != null ? String(row.id) : '';
       if (!pid) {
         setError(
@@ -297,15 +304,32 @@ export function Auth() {
         sessionStorage.setItem('entry_draft_unit', u);
       } catch { /* ignore */ }
 
+      // Prefer inviteCode from URL, then from resolve result
       const inviteFromUrl =
         searchParams.get('inviteCode')?.trim() ||
         searchParams.get('invite_code')?.trim() ||
         searchParams.get('code')?.trim() ||
         null;
 
+      const inviteCode =
+        inviteFromUrl ||
+        (row?.invite_code ? String(row.invite_code) : null) ||
+        (row?.inviteCode ? String(row.inviteCode) : null) ||
+        (row?.code ? String(row.code) : null) ||
+        null;
+
+      if (!inviteCode) {
+        alert(
+          language === 'zh'
+            ? '未找到邀请码，请联系业委会生成邀请码'
+            : 'No invite code found. Please contact your strata council to generate an invite code.',
+        );
+        return;
+      }
+
       const entryQs = new URLSearchParams();
       entryQs.set('propertyId', pid);
-      if (inviteFromUrl) entryQs.set('inviteCode', inviteFromUrl);
+      entryQs.set('inviteCode', inviteCode);
 
       navigate(`/entry?${entryQs.toString()}`, { replace: false });
     } catch (err) {
