@@ -35,7 +35,7 @@ export function AuthCallback() {
       }
 
       const raw = new URLSearchParams(window.location.search).get('redirect');
-      let target = '/';
+      let target = '/entry';
       if (raw) {
         try {
           const decoded = decodeURIComponent(raw);

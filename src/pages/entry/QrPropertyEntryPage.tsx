@@ -104,10 +104,8 @@ export function QrPropertyEntryPage() {
           setResolveErr(en ? 'Invalid or missing propertyId.' : 'propertyId 缺失或无效。');
           return;
         }
-        if (!inviteCodeParam) {
-          setResolveErr(en ? 'Invalid or missing inviteCode.' : 'inviteCode 缺失或无效。');
-          return;
-        }
+        // inviteCode is validated at submit time; don't block here so active members
+        // (who may lack inviteCode in the URL) can still be detected and redirected.
         const id = propertyIdParam.toLowerCase();
         const { data, error } = await supabase
           .from('properties')
@@ -129,7 +127,7 @@ export function QrPropertyEntryPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, [propertyIdParam, inviteCodeParam, en]);
+  }, [propertyIdParam, en]);
 
   // Audit: entry page opened
   useEffect(() => {
@@ -251,20 +249,24 @@ export function QrPropertyEntryPage() {
         throw new Error(data?.message || 'Entry rejected');
       }
 
-      // Already a member — show info and navigate home
-      if (data.kind === 'already_member') {
-        setAlreadyMemberMsg(
-          en
-            ? 'You are already a member of this property. To change your unit, please contact the council or administrator.'
-            : '你已是本物业业主。如需更改房号，请联系理事会/管理员处理。',
-        );
-        setTimeout(() => navigate('/', { replace: true }), 2500);
+      const kind = data.kind ?? '';
+
+      // already_member and auto_approved → go directly to the dashboard.
+      // For auto_approved the user already has a session (OTP), so the token
+      // redirect flow is not needed.
+      if (kind === 'already_member' || kind === 'auto_approved') {
+        navigate('/?propertyId=' + (effectivePropertyId ?? ''), { replace: true });
         return;
       }
 
-      if (!data.redirectUrl) throw new Error('No redirect URL returned from server');
+      // pending_submitted and other states — use the server's redirectUrl
+      if (data.redirectUrl) {
+        navigate(data.redirectUrl, { replace: true });
+        return;
+      }
 
-      navigate(data.redirectUrl, { replace: true });
+      // fallback for pending
+      navigate('/join/pending', { replace: true });
     } catch (e) {
       const msg = e instanceof Error ? e.message : en ? 'Entry failed.' : '加入失败。';
       setSubmitErr(msg);
@@ -400,7 +402,7 @@ export function QrPropertyEntryPage() {
         <Loader2 className="w-10 h-10 text-clearstrata-ui-primary animate-spin" aria-hidden />
         <p className="mt-4 text-sm text-gray-500">
           {checkingMembership
-            ? (en ? 'Verifying membership…' : '正在验证身份，请稍候…')
+            ? (en ? 'Verifying entry info…' : '正在验证入楼信息…')
             : (en ? 'Loading…' : '加载中…')}
         </p>
       </div>
@@ -488,7 +490,7 @@ export function QrPropertyEntryPage() {
         {submitting && session?.user && (
           <div className="rounded-xl bg-blue-50 border border-blue-100 px-4 py-3 text-sm text-blue-900 flex items-center gap-2">
             <Loader2 className="w-4 h-4 animate-spin shrink-0" />
-            {en ? 'Verifying membership…' : '正在验证身份，请稍候…'}
+            {en ? 'Verifying entry info…' : '正在验证入楼信息…'}
           </div>
         )}
 
