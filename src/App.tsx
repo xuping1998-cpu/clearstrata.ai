@@ -709,19 +709,23 @@ function AppMain() {
   }
 
   // ── Property-specific Home guard (/?propertyId=xxx) ─────────────────────
-  // Only activate when a propertyId is explicitly in the URL at the home route.
+  // Default-deny: only allow through once active membership is confirmed.
   const urlPropertyId = (searchParams.get('propertyId') || '').trim();
   if (!isGuest && location.pathname === '/' && urlPropertyId) {
+    // 1. No session → funnel to /entry for OTP flow
     if (!session) {
-      // No session — funnel through /entry so OTP flow applies
       return <Navigate to={'/entry?propertyId=' + encodeURIComponent(urlPropertyId)} replace />;
     }
-    if (propertyReady && hasActiveMembership !== null) {
-      // Must be an active member of the SPECIFIC requested property
-      const isMemberOfProperty = memberships.some((m) => samePropertyId(m.propertyId, urlPropertyId));
-      if (!isMemberOfProperty) {
-        return <Navigate to="/demo" replace />;
-      }
+
+    // 2. Memberships / property context not yet loaded → hold; never default-allow
+    if (!propertyReady || hasActiveMembership === null) {
+      return null;
+    }
+
+    // 3. Only an active member of this specific property may enter Home
+    const isMemberOfProperty = memberships.some((m) => samePropertyId(m.propertyId, urlPropertyId));
+    if (!isMemberOfProperty) {
+      return <Navigate to="/demo" replace />;
     }
   }
   // ─────────────────────────────────────────────────────────────────────────
