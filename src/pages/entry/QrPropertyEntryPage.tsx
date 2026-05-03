@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { Building2, ExternalLink, Loader2, MailCheck } from 'lucide-react';
+import { Building2, Loader2, MailCheck } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { supabase } from '../../lib/supabase';
@@ -74,7 +74,6 @@ export function QrPropertyEntryPage() {
   // Submission / UI state
   const [submitting, setSubmitting] = useState(false);
   const [submitErr, setSubmitErr] = useState<string | null>(null);
-  const [unitNotFound, setUnitNotFound] = useState(false);
   const [alreadyMemberMsg, setAlreadyMemberMsg] = useState<string | null>(null);
   const [otpSent, setOtpSent] = useState(false);
   const [checkingMembership, setCheckingMembership] = useState(false);
@@ -228,12 +227,8 @@ export function QrPropertyEntryPage() {
       if (!data || data.ok !== true) {
         const reason = data?.reason ?? '';
         if (reason === 'unit_not_found') {
-          setUnitNotFound(true);
-          setSubmitErr(
-            en
-              ? `Unit "${unit}" is not on the whitelist for this property.`
-              : `房号 "${unit}" 不在本物业白名单内。`,
-          );
+          // Unit not on whitelist → send to demo
+          navigate('/demo', { replace: true });
           return;
         }
         if (reason === 'invalid_invite') {
@@ -278,7 +273,6 @@ export function QrPropertyEntryPage() {
   /** Button click handler. */
   const handleSubmit = async () => {
     setSubmitErr(null);
-    setUnitNotFound(false);
     setAlreadyMemberMsg(null);
 
     const name = fullName.trim();
@@ -543,7 +537,6 @@ export function QrPropertyEntryPage() {
               onChange={(e) => {
                 setUnitNo(e.target.value);
                 setSubmitErr(null);
-                setUnitNotFound(false);
               }}
               disabled={submitting}
               required
@@ -565,43 +558,18 @@ export function QrPropertyEntryPage() {
           </div>
         )}
 
-        {/* unit_not_found: demo link + edit unit */}
-        {unitNotFound ? (
-          <div className="space-y-2">
-            <a
-              href="https://www.clearstrata.ai"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl border border-emerald-300 text-emerald-800 bg-emerald-50 font-medium text-sm hover:bg-emerald-100"
-            >
-              <ExternalLink size={14} />
-              {en ? 'View Demo' : '查看 Demo'}
-            </a>
-            <button
-              type="button"
-              onClick={() => {
-                setSubmitErr(null);
-                setUnitNotFound(false);
-                setTimeout(() => unitInputRef.current?.focus(), 0);
-              }}
-              className="w-full py-2.5 rounded-xl border border-gray-300 text-gray-700 bg-white font-medium text-sm hover:bg-gray-50 transition-colors"
-            >
-              {en ? 'Change unit number' : '修改房号'}
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => void handleSubmit()}
-            disabled={submitting}
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-[#1D9E75] text-white font-semibold text-sm hover:bg-[#178a66] disabled:opacity-50 transition-colors"
-          >
-            {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-            {session?.user
-              ? (en ? 'Submit' : '提交并验证')
-              : (en ? 'Send login link' : '发送登录链接')}
-          </button>
-        )}
+        {/* Submit */}
+        <button
+          type="button"
+          onClick={() => void handleSubmit()}
+          disabled={submitting}
+          className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-[#1D9E75] text-white font-semibold text-sm hover:bg-[#178a66] disabled:opacity-50 transition-colors"
+        >
+          {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+          {session?.user
+            ? (en ? 'Submit' : '提交并验证')
+            : (en ? 'Send login link' : '发送登录链接')}
+        </button>
 
         <p className="text-xs text-gray-400 text-center">property: {resolved.id.slice(0, 8)}…</p>
       </div>

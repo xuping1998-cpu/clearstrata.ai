@@ -450,6 +450,42 @@ function SelectPropertyRoute() {
   return <PropertyPicker />;
 }
 
+/** /demo — fallback for non-whitelist / non-member users. */
+function DemoFallbackPage() {
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-blue-50 flex flex-col items-center justify-center p-6 gap-5 text-center">
+      <img src="/clearstrata-hero-logo.png" alt="ClearStrata" className="w-20 h-auto" />
+      <h1 className="text-xl font-bold text-gray-800">
+        非本楼房号 / Not a resident unit
+      </h1>
+      <p className="text-sm text-gray-600 max-w-sm">
+        你所在的房号不在本物业白名单内，无法进入首页。
+        <br />
+        Your unit is not registered in this property's whitelist.
+      </p>
+      <p className="text-sm text-gray-600 max-w-sm">
+        请进入 Demo 浏览系统功能，或联系业委会确认入口。
+        <br />
+        Explore the Demo, or contact your strata council.
+      </p>
+      <div className="flex gap-3 flex-wrap justify-center">
+        <a
+          href="/demo-overview"
+          className="px-5 py-2.5 rounded-xl bg-[#1D9E75] text-white font-semibold text-sm hover:bg-[#178a66] transition-colors"
+        >
+          进入 Demo / Explore Demo
+        </a>
+        <a
+          href="/entry"
+          className="px-5 py-2.5 rounded-xl border border-gray-300 text-gray-700 font-medium text-sm hover:bg-gray-50 transition-colors"
+        >
+          重新入楼 / Re-enter
+        </a>
+      </div>
+    </div>
+  );
+}
+
 function AppContent() {
   return (
     <>
@@ -460,6 +496,7 @@ function AppContent() {
       <Route path="/entry" element={<QrPropertyEntryPage />} />
       <Route path="/entry/auto-login" element={<EntryAutoLogin />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
+      <Route path="/demo" element={<DemoFallbackPage />} />
       <Route path="/demo/:propertyCode" element={<DemoLandingPage />} />
       <Route
         path="/demo-dashboard/:propertyCode"
@@ -670,6 +707,24 @@ function AppMain() {
       </div>
     );
   }
+
+  // ── Property-specific Home guard (/?propertyId=xxx) ─────────────────────
+  // Only activate when a propertyId is explicitly in the URL at the home route.
+  const urlPropertyId = (searchParams.get('propertyId') || '').trim();
+  if (!isGuest && location.pathname === '/' && urlPropertyId) {
+    if (!session) {
+      // No session — funnel through /entry so OTP flow applies
+      return <Navigate to={'/entry?propertyId=' + encodeURIComponent(urlPropertyId)} replace />;
+    }
+    if (propertyReady && hasActiveMembership !== null) {
+      // Must be an active member of the SPECIFIC requested property
+      const isMemberOfProperty = memberships.some((m) => samePropertyId(m.propertyId, urlPropertyId));
+      if (!isMemberOfProperty) {
+        return <Navigate to="/demo" replace />;
+      }
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   const guestHome =
     !session &&
