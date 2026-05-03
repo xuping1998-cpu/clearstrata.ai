@@ -298,15 +298,20 @@ export function Auth() {
         return;
       }
 
+      console.log('[Auth property tab] resolved pid', pid);
+      console.log('[Auth property tab] current session user', session?.user?.id, session?.user?.email);
+
       // If already an active member, skip entry form and go straight to the app
       if (session?.user) {
-        const { data: membership } = await supabase
+        const { data: membership, error: membershipError } = await supabase
           .from('property_members')
-          .select('id, role, status, property_id')
+          .select('id, role, status, property_id, user_id')
           .eq('property_id', pid)
           .eq('user_id', session.user.id)
           .eq('status', 'active')
           .maybeSingle();
+
+        console.log('[Auth property tab] membership result', membership, membershipError);
 
         if (membership) {
           console.log('[Auth property tab] active member enter directly', membership);
