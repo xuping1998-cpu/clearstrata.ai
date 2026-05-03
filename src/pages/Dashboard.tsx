@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { GUEST_PROPERTY_STORAGE_KEY, useProperty } from '../contexts/PropertyContext';
 import HomeBudgetPanel from '@/components/dashboard/HomeBudgetPanel';
@@ -9,12 +10,15 @@ import { TrialUpgradeCard } from '@/components/billing/TrialUpgradeCard';
 import { supabase } from '@/lib/supabase';
 import { getTrialDaysRemaining, getTrialState } from '@/lib/subscription';
 import { realPropertyJoinPath } from '@/lib/propertyEntryRoutes';
+import { samePropertyId } from '@/lib/propertyIdMatch';
 
 export function Dashboard() {
   const { language } = useLanguage();
   const en = language === 'en';
   const navigate = useNavigate();
-  const { isGuest, isDemoMode, guestPropertyCode, isDemoPropertyMock, currentPropertyId } = useProperty();
+  const location = useLocation();
+  const { session } = useAuth();
+  const { isGuest, isDemoMode, guestPropertyCode, isDemoPropertyMock, currentPropertyId, memberships, ready: propertyReady } = useProperty();
 
   const [trialRow, setTrialRow] = useState<{ subscription_status?: string | null; trial_ends_at?: string | null } | null>(null);
 
@@ -90,6 +94,36 @@ export function Dashboard() {
       </>
     );
   }
+
+  // demo/mock/guest early-returns above — only real Home reaches this gate
+  // ── Dashboard hard gate: second enforcer after App.tsx guard ─────────────
+  {
+    const urlPropertyId = new URLSearchParams(location.search).get('propertyId');
+
+    if (!session) {
+      return <Navigate to="/entry" replace />;
+    }
+
+    if (!propertyReady || memberships == null) {
+      return (
+        <div className="flex items-center justify-center py-16">
+          <div className="w-10 h-10 border-4 border-clearstrata-ui-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      );
+    }
+
+    if (!memberships.length) {
+      return <Navigate to="/demo" replace />;
+    }
+
+    if (urlPropertyId) {
+      const isMember = memberships.some((m) => samePropertyId(m.propertyId, urlPropertyId));
+      if (!isMember) {
+        return <Navigate to="/demo" replace />;
+      }
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   return (
     <>
