@@ -1,6 +1,6 @@
 ﻿import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
+import { Loader2, MailCheck } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { supabase } from '../lib/supabase';
@@ -184,6 +184,7 @@ export function Auth() {
   const [epUnit, setEpUnit] = useState('');
   const [epCode, setEpCode] = useState('');
   const [epBusy, setEpBusy] = useState(false);
+  const [epOtpSent, setEpOtpSent] = useState(false);
 
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
@@ -320,13 +321,14 @@ export function Auth() {
         }
       }
 
-      // Save draft so QrPropertyEntryPage can restore name/unit after OTP login
+      // Save draft so QrPropertyEntryPage can restore name/unit/code after OTP login
       try {
         sessionStorage.setItem('entry_draft_name', n);
         sessionStorage.setItem('entry_draft_unit', u);
+        sessionStorage.setItem('entry_draft_property_code', code);
       } catch { /* ignore */ }
 
-      // Prefer inviteCode from URL, then from resolve result
+      // Optional inviteCode from URL or resolve result — no hard block for missing inviteCode
       const inviteFromUrl =
         searchParams.get('inviteCode')?.trim() ||
         searchParams.get('invite_code')?.trim() ||
@@ -340,20 +342,29 @@ export function Auth() {
         (row?.code ? String(row.code) : null) ||
         null;
 
-      if (!inviteCode) {
-        alert(
-          language === 'zh'
-            ? '未找到邀请码，请联系业委会生成邀请码'
-            : 'No invite code found. Please contact your strata council to generate an invite code.',
-        );
+      // Build entryPath — include inviteCode only when available
+      let entryPath = '/entry?propertyId=' + pid;
+      if (inviteCode) entryPath += '&inviteCode=' + encodeURIComponent(inviteCode);
+
+      // Send OTP; /auth/callback restores session then forwards to /entry
+      const appOrigin =
+        (import.meta.env.VITE_APP_BASE_URL as string | undefined) ||
+        window.location.origin;
+
+      const { error: otpErr } = await supabase.auth.signInWithOtp({
+        email: em,
+        options: {
+          emailRedirectTo:
+            appOrigin + '/auth/callback?redirect=' + encodeURIComponent(entryPath),
+        },
+      });
+
+      if (otpErr) {
+        setError(getAuthErrorMessage(otpErr, language === 'zh' ? 'zh' : 'en'));
         return;
       }
 
-      const entryQs = new URLSearchParams();
-      entryQs.set('propertyId', pid);
-      entryQs.set('inviteCode', inviteCode);
-
-      navigate(`/entry?${entryQs.toString()}`, { replace: false });
+      setEpOtpSent(true);
     } catch (err) {
       setError(getAuthErrorMessage(err, language === 'zh' ? 'zh' : 'en'));
     } finally {
@@ -646,6 +657,25 @@ export function Auth() {
                   {language === 'zh' ? '立即查看账单' : 'View bills now'}
                 </button>
               </form>
+            ) : epOtpSent ? (
+              <div className="p-5 text-center space-y-4">
+                <MailCheck className="mx-auto w-12 h-12 text-[#1D9E75]" />
+                <h3 className="text-base font-bold text-gray-900">
+                  {language === 'zh' ? '请查收登录邮件' : 'Check your email'}
+                </h3>
+                <p className="text-sm text-gray-600">
+                  {language === 'zh'
+                    ? '登录链接已发送到你的邮箱，点击链接继续进入物业。'
+                    : 'A login link has been sent to your email. Click the link to continue joining this property.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setEpOtpSent(false)}
+                  className="text-sm text-clearstrata-ui-primary hover:underline"
+                >
+                  {language === 'zh' ? '← 修改邮箱重新发送' : '← Change email'}
+                </button>
+              </div>
             ) : (
               <form onSubmit={(e) => void handlePropertyEnter(e)} className="space-y-3 p-5">
                 <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-800">
