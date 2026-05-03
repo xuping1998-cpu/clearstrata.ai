@@ -708,25 +708,44 @@ function AppMain() {
     );
   }
 
-  // ── Property-specific Home guard (/?propertyId=xxx) ─────────────────────
-  // Default-deny: only allow through once active membership is confirmed.
+  // ── Home guard: default-deny for ALL '/' access ─────────────────────────
+  // isGuest and isDemoPropertyMock are exempt — they have their own code paths.
+  // Note: '/' is treated as a public path by isPublicPath(), so the generic
+  // loading spinner above does NOT cover it. This guard owns its own loading.
   const urlPropertyId = (searchParams.get('propertyId') || '').trim();
-  if (!isGuest && location.pathname === '/' && urlPropertyId) {
-    // 1. No session → funnel to /entry for OTP flow
+  if (!isGuest && !isDemoPropertyMock && location.pathname === '/') {
+    // 1. No session → /entry (carry propertyId when present)
     if (!session) {
-      return <Navigate to={'/entry?propertyId=' + encodeURIComponent(urlPropertyId)} replace />;
+      const entryTo = urlPropertyId
+        ? '/entry?propertyId=' + encodeURIComponent(urlPropertyId)
+        : '/entry';
+      return <Navigate to={entryTo} replace />;
     }
 
-    // 2. Memberships / property context not yet loaded → hold; never default-allow
-    if (!propertyReady || hasActiveMembership === null) {
-      return null;
+    // 2. Auth or membership data still loading → hold; never default-allow
+    if (loading || !propertyReady || hasActiveMembership === null) {
+      return (
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="w-16 h-16 border-4 border-clearstrata-ui-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      );
     }
 
-    // 3. Only an active member of this specific property may enter Home
-    const isMemberOfProperty = memberships.some((m) => samePropertyId(m.propertyId, urlPropertyId));
-    if (!isMemberOfProperty) {
+    // 3. No active membership at all → /demo
+    if (hasActiveMembership === false || memberships.length === 0) {
       return <Navigate to="/demo" replace />;
     }
+
+    // 4. Specific propertyId requested → must be a member of THAT property
+    if (urlPropertyId) {
+      const isMember = memberships.some((m) => samePropertyId(m.propertyId, urlPropertyId));
+      if (!isMember) {
+        return <Navigate to="/demo" replace />;
+      }
+    }
+
+    // 5. No urlPropertyId: user has ≥1 active membership → allow through;
+    //    PropertyContext will pick the default property.
   }
   // ─────────────────────────────────────────────────────────────────────────
 
