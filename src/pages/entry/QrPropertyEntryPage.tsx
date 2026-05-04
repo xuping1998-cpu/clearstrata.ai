@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Building2, Loader2, MailCheck } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -77,6 +77,8 @@ export function QrPropertyEntryPage() {
   const [alreadyMemberMsg, setAlreadyMemberMsg] = useState<string | null>(null);
   const [otpSent, setOtpSent] = useState(false);
   const [checkingMembership, setCheckingMembership] = useState(false);
+  const [preflighting, setPreflighting] = useState(false);
+  const [occupiedConfirm, setOccupiedConfirm] = useState(false);
 
   const auditRef = useRef(false);
   const openedRef = useRef(false);
@@ -194,7 +196,6 @@ export function QrPropertyEntryPage() {
     }
     setSubmitting(true);
     setSubmitErr(null);
-    setUnitNotFound(false);
     setAlreadyMemberMsg(null);
     try {
       console.log('[entry] submitting to entry-auto-join', {
@@ -246,6 +247,12 @@ export function QrPropertyEntryPage() {
 
       const kind = data.kind ?? '';
 
+      // need_confirm: unit occupied — let user decide whether to submit pending
+      if (kind === 'need_confirm') {
+        setOccupiedConfirm(true);
+        return;
+      }
+
       // already_member and auto_approved → go directly to the dashboard.
       // For auto_approved the user already has a session (OTP), so the token
       // redirect flow is not needed.
@@ -270,46 +277,17 @@ export function QrPropertyEntryPage() {
     }
   };
 
-  /** Button click handler. */
-  const handleSubmit = async () => {
-    setSubmitErr(null);
-    setAlreadyMemberMsg(null);
-
-    const name = fullName.trim();
-    const email = emailIn.trim();
-    const unit = unitNo.trim();
-
-    if (!name || !email || !unit) {
-      setSubmitErr(en ? 'Please fill in name, email, and unit.' : '请填写姓名、邮箱与房号。');
-      return;
-    }
-    if (!effectivePropertyId) {
-      setSubmitErr(en ? 'Missing property ID.' : '缺少物业信息。');
-      return;
-    }
-
-    // Already logged in — go straight to join
-    if (session?.user) {
-      await runJoin(name, email, unit);
-      return;
-    }
-
-    // Not logged in — send OTP magic-link and save draft
+  /** Send OTP magic-link — shared by handleSubmit and handleContinueAfterOccupied. */
+  const doSendOtp = async (name: string, email: string, unit: string) => {
     setSubmitting(true);
     try {
       saveDraft(name, unit);
-
       const appOrigin =
         (import.meta.env.VITE_APP_BASE_URL as string | undefined) ||
         window.location.origin;
-
       const entryPath = location.pathname + location.search;
-
       const emailRedirectTo =
-        appOrigin +
-        '/auth/callback?redirect=' +
-        encodeURIComponent(entryPath);
-
+        appOrigin + '/auth/callback?redirect=' + encodeURIComponent(entryPath);
       const { error: otpErr } = await supabase.auth.signInWithOtp({
         email,
         options: { emailRedirectTo },
@@ -324,6 +302,116 @@ export function QrPropertyEntryPage() {
       setSubmitErr(msg);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  /** Called when user confirms to proceed after seeing the "unit occupied" warning. */
+  const handleContinueAfterOccupied = async () => {
+    const name = fullName.trim();
+    const email = emailIn.trim();
+    const unit = unitNo.trim();
+    setOccupiedConfirm(false);
+    if (session?.user) {
+      await runJoin(name, email, unit); // entry-auto-join will return pending_submitted
+    } else {
+      await doSendOtp(name, email, unit); // OTP → auto-submit → pending
+    }
+  };
+
+  /** Button click handler — includes pre-OTP preflight checks. */
+  const handleSubmit = async () => {
+    setSubmitErr(null);
+    setAlreadyMemberMsg(null);
+    setOccupiedConfirm(false);
+
+    const name = fullName.trim();
+    const email = emailIn.trim();
+    const unit = unitNo.trim();
+
+    if (!name || !email || !unit) {
+      setSubmitErr(en ? 'Please fill in name, email, and unit.' : '请填写姓名、邮箱与房号。');
+      return;
+    }
+    if (!effectivePropertyId) {
+      setSubmitErr(en ? 'Missing property ID.' : '缺少物业信息。');
+      return;
+    }
+
+    // ── Session present ────────────────────────────────────────────────────
+    if (session?.user) {
+      // Check if already active member of this property → go to Home
+      setSubmitting(true);
+      try {
+        const { data: selfMem, error: selfMemErr } = await supabase
+          .from('property_members')
+          .select('id')
+          .eq('property_id', effectivePropertyId)
+          .eq('user_id', session.user.id)
+          .eq('status', 'active')
+          .maybeSingle();
+        if (selfMemErr) {
+          setSubmitErr(en ? 'Verification failed, please try again later.' : '系统验证中，请稍后再试。');
+          return;
+        }
+        if (selfMem) {
+          navigate('/?propertyId=' + effectivePropertyId, { replace: true });
+          return;
+        }
+      } finally {
+        setSubmitting(false);
+      }
+      // Not yet a member → entry-auto-join handles the rest
+      await runJoin(name, email, unit);
+      return;
+    }
+
+    // ── No session: pre-flight checks before sending OTP ──────────────────
+    setPreflighting(true);
+    try {
+      // 1. Whitelist check — unit must exist in unit_whitelist for this property.
+      const { data: wlRow, error: wlErr } = await supabase
+        .from('unit_whitelist')
+        .select('id')
+        .eq('property_id', effectivePropertyId)
+        .eq('unit_no', unit)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (wlErr) {
+        // Query failed — block flow, do not send OTP
+        setSubmitErr(en ? 'Verification failed, please try again later.' : '系统验证中，请稍后再试。');
+        return;
+      }
+      if (!wlRow) {
+        // Unit not in whitelist → Demo, no email sent
+        navigate('/demo', { replace: true });
+        return;
+      }
+
+      // 2. Occupancy check — is this unit already bound to an active member?
+      const { data: occupant, error: occupantErr } = await supabase
+        .from('property_members')
+        .select('id')
+        .eq('property_id', effectivePropertyId)
+        .eq('unit_no', unit)
+        .eq('status', 'active')
+        .maybeSingle();
+
+      if (occupantErr) {
+        // Query failed — block flow, do not send OTP
+        setSubmitErr(en ? 'Verification failed, please try again later.' : '系统验证中，请稍后再试。');
+        return;
+      }
+      if (occupant) {
+        // Unit occupied — show confirmation dialog, do not send email yet
+        setOccupiedConfirm(true);
+        return;
+      }
+
+      // 3. All checks passed → send OTP
+      await doSendOtp(name, email, unit);
+    } finally {
+      setPreflighting(false);
     }
   };
 
@@ -457,6 +545,51 @@ export function QrPropertyEntryPage() {
     );
   }
 
+  // Unit-occupied confirmation screen
+  if (occupiedConfirm) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-clearstrata-ui-soft/40 to-gray-50 flex items-start justify-center p-4 py-10">
+        <div className="w-full max-w-md bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center space-y-4">
+          <div className="flex justify-center mb-2">
+            <img src="/clearstrata-hero-logo.png" alt="ClearStrata" className="w-16 h-auto" />
+          </div>
+          <h2 className="text-lg font-bold text-gray-900">
+            {en ? 'Unit already registered' : '该房号已被绑定'}
+          </h2>
+          <p className="text-sm text-gray-600">
+            {en
+              ? `Unit "${unitNo}" is already bound to another owner. Do you still want to submit an application?`
+              : `房号 "${unitNo}" 已有业主登记。是否仍要继续提交申请？`}
+          </p>
+          <p className="text-xs text-gray-400">
+            {en
+              ? 'Your request will be reviewed by the strata council.'
+              : '提交后将等待业委会审核处理。'}
+          </p>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => void handleContinueAfterOccupied()}
+              disabled={submitting}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#1D9E75] text-white font-semibold text-sm hover:bg-[#178a66] disabled:opacity-50 transition-colors"
+            >
+              {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              {en ? 'Continue application' : '继续申请'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setOccupiedConfirm(false)}
+              disabled={submitting}
+              className="flex-1 py-2.5 rounded-xl border border-gray-300 text-gray-700 font-medium text-sm hover:bg-gray-50 disabled:opacity-50 transition-colors"
+            >
+              {en ? 'Cancel' : '取消'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Main form
   return (
     <div className="min-h-screen bg-gradient-to-b from-clearstrata-ui-soft/40 to-gray-50 flex items-start justify-center p-4 py-10">
@@ -490,11 +623,13 @@ export function QrPropertyEntryPage() {
           )}
         </div>
 
-        {/* Auto-submitting overlay */}
-        {submitting && session?.user && (
+        {/* Auto-submitting / pre-flight overlay */}
+        {(preflighting || (submitting && session?.user)) && (
           <div className="rounded-xl bg-blue-50 border border-blue-100 px-4 py-3 text-sm text-blue-900 flex items-center gap-2">
             <Loader2 className="w-4 h-4 animate-spin shrink-0" />
-            {en ? 'Verifying entry info…' : '正在验证入楼信息…'}
+            {preflighting
+              ? (en ? 'Checking unit…' : '正在验证房号…')
+              : (en ? 'Verifying entry info…' : '正在验证入楼信息…')}
           </div>
         )}
 
@@ -508,7 +643,7 @@ export function QrPropertyEntryPage() {
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               autoComplete="name"
-              disabled={submitting}
+              disabled={submitting || preflighting}
               required
             />
           </label>
@@ -520,7 +655,7 @@ export function QrPropertyEntryPage() {
               value={emailIn}
               onChange={(e) => setEmailIn(e.target.value)}
               autoComplete="email"
-              disabled={submitting || Boolean(session?.user)}
+              disabled={submitting || preflighting || Boolean(session?.user)}
               required
             />
             {session?.user && (
@@ -548,7 +683,7 @@ export function QrPropertyEntryPage() {
                 setUnitNo(e.target.value);
                 setSubmitErr(null);
               }}
-              disabled={submitting}
+              disabled={submitting || preflighting}
               required
             />
           </label>
@@ -572,13 +707,15 @@ export function QrPropertyEntryPage() {
         <button
           type="button"
           onClick={() => void handleSubmit()}
-          disabled={submitting}
+          disabled={submitting || preflighting}
           className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-[#1D9E75] text-white font-semibold text-sm hover:bg-[#178a66] disabled:opacity-50 transition-colors"
         >
-          {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-          {session?.user
-            ? (en ? 'Submit' : '提交并验证')
-            : (en ? 'Send login link' : '发送登录链接')}
+          {(submitting || preflighting) ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+          {preflighting
+            ? (en ? 'Checking…' : '验证中…')
+            : session?.user
+              ? (en ? 'Submit' : '提交并验证')
+              : (en ? 'Send login link' : '发送登录链接')}
         </button>
 
         <p className="text-xs text-gray-400 text-center">property: {resolved.id.slice(0, 8)}…</p>
