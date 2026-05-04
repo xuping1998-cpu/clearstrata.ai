@@ -188,8 +188,8 @@ export function QrPropertyEntryPage() {
 
   /** Core join logic — calls entry-auto-join and handles all outcomes. */
   const runJoin = async (name: string, email: string, unit: string) => {
-    if (!effectivePropertyId || !inviteCodeParam) {
-      setSubmitErr(en ? 'Missing property or invite code.' : '缺少物业或邀请码。');
+    if (!effectivePropertyId) {
+      setSubmitErr(en ? 'Missing property ID.' : '缺少物业信息。');
       return;
     }
     setSubmitting(true);
@@ -283,8 +283,8 @@ export function QrPropertyEntryPage() {
       setSubmitErr(en ? 'Please fill in name, email, and unit.' : '请填写姓名、邮箱与房号。');
       return;
     }
-    if (!effectivePropertyId || !inviteCodeParam) {
-      setSubmitErr(en ? 'Missing property or invite code.' : '缺少物业或邀请码。');
+    if (!effectivePropertyId) {
+      setSubmitErr(en ? 'Missing property ID.' : '缺少物业信息。');
       return;
     }
 
@@ -331,7 +331,6 @@ export function QrPropertyEntryPage() {
   useEffect(() => {
     if (!session?.user) return;
     if (!effectivePropertyId) return;
-    if (!inviteCodeParam) return;
     if (!resolved) return;
     if (autoSubmitFiredRef.current) return;
 
@@ -389,6 +388,15 @@ export function QrPropertyEntryPage() {
   }, [session?.user, effectivePropertyId]);
 
   // ── Render ────────────────────────────────────────────────────────────────
+
+  // If /entry is opened without a propertyId, redirect out immediately.
+  // This prevents the "propertyId 缺失或无效" dead-page when the guard in
+  // App.tsx redirected here without params.
+  if (!propertyIdParam) {
+    return session?.user
+      ? <Navigate to="/" replace />
+      : <Navigate to="/login" replace />;
+  }
 
   if (resolving || checkingMembership) {
     return (
@@ -474,10 +482,12 @@ export function QrPropertyEntryPage() {
             <span className="text-gray-500">{en ? 'Property' : '物业'}：</span>
             <span className="font-medium text-gray-900">{resolved.name}</span>
           </p>
-          <p>
-            <span className="text-gray-500">{en ? 'Invite' : '邀请码'}：</span>
-            <span className="font-mono font-medium text-gray-900">{inviteCodeParam}</span>
-          </p>
+          {inviteCodeParam && (
+            <p>
+              <span className="text-gray-500">{en ? 'Invite' : '邀请码'}：</span>
+              <span className="font-mono font-medium text-gray-900">{inviteCodeParam}</span>
+            </p>
+          )}
         </div>
 
         {/* Auto-submitting overlay */}

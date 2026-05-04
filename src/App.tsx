@@ -708,44 +708,43 @@ function AppMain() {
     );
   }
 
-  // ── Home guard: default-deny for ALL '/' access ─────────────────────────
-  // isGuest and isDemoPropertyMock are exempt — they have their own code paths.
-  // Note: '/' is treated as a public path by isPublicPath(), so the generic
-  // loading spinner above does NOT cover it. This guard owns its own loading.
+  // ── Home guard: default-deny for authenticated '/' access ──────────────
+  // isGuest and isDemoPropertyMock are exempt.
+  // NOTE: '/' is treated as a public path by isPublicPath(), so the generic
+  // loading spinner does NOT cover it — this guard owns its own loading state.
   const urlPropertyId = (searchParams.get('propertyId') || '').trim();
   if (!isGuest && !isDemoPropertyMock && location.pathname === '/') {
-    // 1. No session → /entry (carry propertyId when present)
-    if (!session) {
-      const entryTo = urlPropertyId
-        ? '/entry?propertyId=' + encodeURIComponent(urlPropertyId)
-        : '/entry';
-      return <Navigate to={entryTo} replace />;
+    // 1a. No session + specific property in URL → /entry for OTP flow
+    if (!session && urlPropertyId) {
+      return <Navigate to={'/entry?propertyId=' + encodeURIComponent(urlPropertyId)} replace />;
     }
+    // 1b. No session + no propertyId → fall through; existing `if (!session)` below renders <Auth />
 
-    // 2. Auth or membership data still loading → hold; never default-allow
-    if (loading || !propertyReady || hasActiveMembership === null) {
-      return (
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-          <div className="w-16 h-16 border-4 border-clearstrata-ui-primary border-t-transparent rounded-full animate-spin" />
-        </div>
-      );
-    }
+    // 2. Session present: enforce active membership
+    if (session) {
+      // Wait for auth and membership data — never default-allow
+      if (loading || !propertyReady || hasActiveMembership === null) {
+        return (
+          <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+            <div className="w-16 h-16 border-4 border-clearstrata-ui-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+        );
+      }
 
-    // 3. No active membership at all → /demo
-    if (hasActiveMembership === false || memberships.length === 0) {
-      return <Navigate to="/demo" replace />;
-    }
-
-    // 4. Specific propertyId requested → must be a member of THAT property
-    if (urlPropertyId) {
-      const isMember = memberships.some((m) => samePropertyId(m.propertyId, urlPropertyId));
-      if (!isMember) {
+      // No active membership at all → /demo
+      if (hasActiveMembership === false || memberships.length === 0) {
         return <Navigate to="/demo" replace />;
       }
-    }
 
-    // 5. No urlPropertyId: user has ≥1 active membership → allow through;
-    //    PropertyContext will pick the default property.
+      // Specific propertyId: must be a member of THAT property
+      if (urlPropertyId) {
+        const isMember = memberships.some((m) => samePropertyId(m.propertyId, urlPropertyId));
+        if (!isMember) {
+          return <Navigate to="/demo" replace />;
+        }
+      }
+      // No urlPropertyId: ≥1 active membership → allow; PropertyContext picks default
+    }
   }
   // ─────────────────────────────────────────────────────────────────────────
 

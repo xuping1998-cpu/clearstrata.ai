@@ -101,7 +101,7 @@ export function Dashboard() {
     const urlPropertyId = new URLSearchParams(location.search).get('propertyId');
 
     if (!session) {
-      return <Navigate to="/entry" replace />;
+      return <Navigate to="/login" replace />;
     }
 
     if (!propertyReady || memberships == null) {
