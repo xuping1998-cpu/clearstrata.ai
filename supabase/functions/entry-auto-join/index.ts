@@ -67,8 +67,8 @@ Deno.serve(async (req: Request) => {
   const email = (body.email ?? "").trim().toLowerCase();
   const unitNo = (body.unitNo ?? "").trim();
 
-  if (!propertyId || !inviteCode || !email || !unitNo) {
-    return err("missing_fields", "propertyId, inviteCode, email, and unitNo are required", 400);
+  if (!propertyId || !email || !unitNo) {
+    return err("missing_fields", "propertyId, email, and unitNo are required", 400);
   }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return err("invalid_email", "Invalid email format", 400);
@@ -83,27 +83,29 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
     if (!property) return err("invalid_property", "Property not found");
 
-    // 2. Validate invite code: fetch all active codes for property, compare case-insensitively
-    const { data: pics } = await admin
-      .from("property_invite_codes")
-      .select("id, unit_no, code")
-      .eq("property_id", propertyId)
-      .eq("is_active", true);
+    // 2. Validate invite code only when one was provided
+    if (inviteCode) {
+      const { data: pics } = await admin
+        .from("property_invite_codes")
+        .select("id, unit_no, code")
+        .eq("property_id", propertyId)
+        .eq("is_active", true);
 
-    type PicRow = { id: string; unit_no: string | null; code: string };
-    const pic = (pics as PicRow[] | null)?.find(
-      (p) => p.code?.toLowerCase() === inviteCode.toLowerCase(),
-    ) ?? null;
+      type PicRow = { id: string; unit_no: string | null; code: string };
+      const pic = (pics as PicRow[] | null)?.find(
+        (p) => p.code?.toLowerCase() === inviteCode.toLowerCase(),
+      ) ?? null;
 
-    if (!pic) return err("invalid_invite", "Invalid or inactive invite code");
+      if (!pic) return err("invalid_invite", "Invalid or inactive invite code");
 
-    // If invite is unit-scoped, submitted unitNo must match
-    if (
-      pic.unit_no &&
-      pic.unit_no.trim() !== "" &&
-      pic.unit_no.trim().toLowerCase() !== unitNo.toLowerCase()
-    ) {
-      return err("invite_unit_mismatch", "Invite code is bound to a different unit");
+      // If invite is unit-scoped, submitted unitNo must match
+      if (
+        pic.unit_no &&
+        pic.unit_no.trim() !== "" &&
+        pic.unit_no.trim().toLowerCase() !== unitNo.toLowerCase()
+      ) {
+        return err("invite_unit_mismatch", "Invite code is bound to a different unit");
+      }
     }
 
     // 3. Check unit_whitelist — non-whitelist units are rejected immediately, nothing is written
@@ -244,7 +246,7 @@ Deno.serve(async (req: Request) => {
           full_name: fullName || email,
           email,
           unit_no: unitNo,
-          invite_code: inviteCode,
+          invite_code: inviteCode || null,
           whitelist_matched: true,
           status: "pending",
           review_reason: "Unit is currently occupied by another active member",
@@ -282,7 +284,7 @@ Deno.serve(async (req: Request) => {
         full_name: fullName || email,
         email,
         unit_no: unitNo,
-        invite_code: inviteCode,
+        invite_code: inviteCode || null,
         whitelist_matched: true,
         status: "approved",
         review_flag: "auto_approved",
