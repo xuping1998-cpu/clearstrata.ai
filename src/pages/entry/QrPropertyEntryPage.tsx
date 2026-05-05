@@ -604,8 +604,14 @@ export function QrPropertyEntryPage() {
                 type="button"
                 onClick={async () => {
                   clearDraft();
-                  await supabase.auth.signOut();
+                  setFullName('');
                   setEmailIn('');
+                  setUnitNo('');
+                  setSubmitErr(null);
+                  setAlreadyMemberMsg(null);
+                  setOccupiedConfirm(false);
+                  await supabase.auth.signOut();
+                  navigate('/', { replace: true });
                 }}
                 className="mt-1 text-xs text-clearstrata-ui-primary hover:underline"
               >
