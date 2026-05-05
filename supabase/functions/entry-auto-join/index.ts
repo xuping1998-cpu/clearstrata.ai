@@ -229,15 +229,45 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     if (occupant) {
-      // Unit is occupied — do NOT write anything; let the caller confirm first
+      // Unit occupied — write pending join_request, do NOT touch property_members
       console.log(
-        `[entry-auto-join] need_confirm (occupied) property=${propertyId} unit=${unitNo}`,
+        `[entry-auto-join] occupied → pending property=${propertyId} unit=${unitNo} user=${userId}`,
       );
+
+      const { data: pendingRow, error: insertErr } = await admin
+        .from("join_requests")
+        .upsert(
+          {
+            property_id: propertyId,
+            user_id: userId,
+            full_name: fullName || email,
+            email,
+            unit_no: unitNo,
+            status: "pending",
+            requested_role: "owner",
+            invite_code: inviteCode || null,
+            whitelist_matched: true,
+            review_flag: "occupied",
+            review_reason: "房号已被占用，等待业委会审核",
+            source: "entry",
+          },
+          { onConflict: "property_id,user_id" },
+        )
+        .select("id")
+        .single();
+
+      if (insertErr) {
+        console.error("[entry-auto-join] occupied join_request upsert failed", insertErr);
+        return err("insert_failed", insertErr.message, 400);
+      }
+
       return json({
         ok: true,
-        kind: "need_confirm",
+        kind: "pending_submitted",
         reason: "occupied",
-        message: "Unit already occupied",
+        message: "房号已被占用，已提交业委会审核",
+        request_id: (pendingRow as { id: string } | null)?.id ?? null,
+        redirectUrl: "/join/pending",
       });
     }
 
