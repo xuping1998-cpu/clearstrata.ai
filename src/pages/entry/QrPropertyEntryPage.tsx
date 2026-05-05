@@ -247,7 +247,17 @@ export function QrPropertyEntryPage() {
       const kind = data.kind ?? '';
 
       if (kind === 'pending_submitted') {
-        navigate('/join/pending', { replace: true });
+        navigate('/join/pending', {
+          replace: true,
+          state: {
+            propertyId: effectivePropertyId,
+            propertyName: data.propertyName,
+            unitNo: unit,
+            reason: data.reason || 'occupied',
+            requestId: (data as Record<string, unknown>).request_id,
+            reviewFlag: 'occupied',
+          },
+        });
         return;
       }
 

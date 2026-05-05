@@ -196,7 +196,11 @@ export default function JoinPendingPage() {
     }
   };
 
-  if (!session) {
+  const hasStateInfo = Boolean(
+    entryState?.propertyId || entryState?.unitNo ||
+    (location.state as { requestId?: string } | null)?.requestId
+  );
+  if (!session && !hasStateInfo && !hasUrlParams) {
     return <Navigate to="/" replace />;
   }
 
