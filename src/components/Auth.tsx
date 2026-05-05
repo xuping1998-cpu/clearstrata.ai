@@ -1,6 +1,6 @@
 ﻿import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Loader2, MailCheck } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { supabase } from '../lib/supabase';
@@ -179,12 +179,8 @@ export function Auth() {
   const [guestName, setGuestName] = useState('');
   const [guestEmail, setGuestEmail] = useState('');
   const [guestBusy, setGuestBusy] = useState(false);
-  const [epName, setEpName] = useState('');
-  const [epEmail, setEpEmail] = useState('');
-  const [epUnit, setEpUnit] = useState('');
   const [epCode, setEpCode] = useState('');
   const [epBusy, setEpBusy] = useState(false);
-  const [epOtpSent, setEpOtpSent] = useState(false);
 
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
@@ -251,127 +247,40 @@ export function Auth() {
     e.preventDefault();
     setError('');
     setResetSuccess('');
-    const code = (epCode.trim() || searchParams.get('propertyCode')?.trim() || '').trim();
-    const n = epName.trim();
-    const em = epEmail.trim().toLowerCase();
-    const u = epUnit.trim();
 
-    if (!n || !em || !u) {
-      setError(language === 'zh' ? '请填写姓名、邮箱与房号。' : 'Please fill in all required fields.');
-      return;
-    }
-    if (!isValidEmailBasic(em)) {
-      setError(language === 'zh' ? '邮箱格式不正确。' : 'Please enter a valid email address.');
-      return;
-    }
+    const code = (epCode.trim() || searchParams.get('propertyCode')?.trim() || '').trim();
     if (!code) {
-      setError(
-        language === 'zh'
-          ? '请填写物业代号，或使用物业专属入口链接（含 propertyCode）。'
-          : 'Enter your property code, or open your building’s dedicated link.',
-      );
+      setError(language === 'zh' ? '请填写物业代号。' : 'Please enter your property code.');
       return;
     }
 
     setEpBusy(true);
     try {
       const { data, error } = await supabase.rpc('resolve_property_for_join_request', { p_code: code });
-      console.log('[resolve result]', data, error);
       if (error) {
         setError(language === 'zh' ? '无法查询该物业，请稍后重试。' : 'Could not look up this property. Try again later.');
         return;
       }
       const rows = Array.isArray(data) ? data : data != null ? [data] : [];
-      const row = rows[0] as {
-        id?: string;
-        invite_code?: string;
-        inviteCode?: string;
-        code?: string;
-        property_code?: string;
-      } | undefined;
+      const row = rows[0] as { id?: string } | undefined;
       const pid = row?.id != null ? String(row.id) : '';
       if (!pid) {
         setError(
           language === 'zh'
-            ? '未找到该物业，或该物业未开放公开加入。请向业委会确认入口。'
-            : 'Property not found or not open for public join. Please confirm with your strata council.',
+            ? '未找到该物业，请向业委会确认物业代号。'
+            : 'Property not found. Please confirm the code with your strata council.',
         );
         return;
       }
 
-      console.log('[Auth property tab] resolved pid', pid);
-      console.log('[Auth property tab] current session user', session?.user?.id, session?.user?.email);
-
-      // If already an active member, skip entry form and go straight to the app
-      if (session?.user) {
-        const { data: membership, error: membershipError } = await supabase
-          .from('property_members')
-          .select('id, role, status, property_id, user_id')
-          .eq('property_id', pid)
-          .eq('user_id', session.user.id)
-          .eq('status', 'active')
-          .maybeSingle();
-
-        console.log('[Auth property tab] membership result', membership, membershipError);
-
-        if (membership) {
-          console.log('[Auth property tab] active member enter directly', membership);
-          navigate('/?propertyId=' + pid, { replace: true });
-          return;
-        }
-      }
-
-      // Save draft so QrPropertyEntryPage can restore name/unit/code after OTP login
-      try {
-        sessionStorage.setItem('entry_draft_name', n);
-        sessionStorage.setItem('entry_draft_unit', u);
-        sessionStorage.setItem('entry_draft_property_code', code);
-      } catch { /* ignore */ }
-
-      // Optional inviteCode from URL or resolve result — no hard block for missing inviteCode
-      const inviteFromUrl =
-        searchParams.get('inviteCode')?.trim() ||
-        searchParams.get('invite_code')?.trim() ||
-        searchParams.get('code')?.trim() ||
-        null;
-
-      const inviteCode =
-        inviteFromUrl ||
-        (row?.invite_code ? String(row.invite_code) : null) ||
-        (row?.inviteCode ? String(row.inviteCode) : null) ||
-        (row?.code ? String(row.code) : null) ||
-        null;
-
-      // Build entryPath — include inviteCode only when available
-      let entryPath = '/entry?propertyId=' + pid;
-      if (inviteCode) entryPath += '&inviteCode=' + encodeURIComponent(inviteCode);
-
-      // Send OTP; /auth/callback restores session then forwards to /entry
-      const appOrigin =
-        (import.meta.env.VITE_APP_BASE_URL as string | undefined) ||
-        window.location.origin;
-
-      const { error: otpErr } = await supabase.auth.signInWithOtp({
-        email: em,
-        options: {
-          emailRedirectTo:
-            appOrigin + '/auth/callback?redirect=' + encodeURIComponent(entryPath),
-        },
-      });
-
-      if (otpErr) {
-        setError(getAuthErrorMessage(otpErr, language === 'zh' ? 'zh' : 'en'));
-        return;
-      }
-
-      setEpOtpSent(true);
+      // Hand off everything to /entry — it handles OTP, whitelist, occupancy, and join
+      navigate('/entry?propertyId=' + pid);
     } catch (err) {
       setError(getAuthErrorMessage(err, language === 'zh' ? 'zh' : 'en'));
     } finally {
       setEpBusy(false);
     }
   };
-
   const safeRedirectAfterAuth = (): boolean => {
     const raw = searchParams.get('redirect');
     if (!raw) return false;
@@ -657,38 +566,8 @@ export function Auth() {
                   {language === 'zh' ? '立即查看账单' : 'View bills now'}
                 </button>
               </form>
-            ) : epOtpSent ? (
-              <div className="p-5 text-center space-y-4">
-                <MailCheck className="mx-auto w-12 h-12 text-[#1D9E75]" />
-                <h3 className="text-base font-bold text-gray-900">
-                  {language === 'zh' ? '请查收登录邮件' : 'Check your email'}
-                </h3>
-                <p className="text-sm text-gray-600">
-                  {language === 'zh'
-                    ? '登录链接已发送到你的邮箱，点击链接继续进入物业。'
-                    : 'A login link has been sent to your email. Click the link to continue joining this property.'}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setEpOtpSent(false)}
-                  className="text-sm text-clearstrata-ui-primary hover:underline"
-                >
-                  {language === 'zh' ? '← 修改邮箱重新发送' : '← Change email'}
-                </button>
-              </div>
             ) : (
-              <form onSubmit={(e) => void handlePropertyEnter(e)} className="space-y-3 p-5">
-                <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-800">
-                  {language === 'zh'
-                    ? '真实物业入口：提交后将前往加入申请页（非 Demo）。'
-                    : 'Real property path: you will continue on the join request page (not the demo).'}
-                </p>
-                {(epCode.trim() || searchParams.get('propertyCode')?.trim()) && (
-                  <p className="text-center text-sm font-bold text-slate-900">
-                    {language === 'zh' ? '正在进入：' : 'Joining: '}
-                    <span className="font-mono">{(epCode.trim() || searchParams.get('propertyCode') || '').toUpperCase()}</span>
-                  </p>
-                )}
+              <form onSubmit={(e) => void handlePropertyEnter(e)} className="space-y-4 p-5">
                 <div>
                   <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="ep-code">
                     {language === 'zh' ? '物业代号' : 'Property code'} <span className="text-red-500">*</span>
@@ -703,46 +582,8 @@ export function Auth() {
                     autoComplete="off"
                   />
                   <p className="mt-1 text-xs text-gray-500">
-                    {language === 'zh' ? '请使用业委会提供的专属代号或链接。' : 'Use the code from your strata / manager.'}
+                    {language === 'zh' ? '请使用业委会提供的专属代号。' : 'Use the code provided by your strata council.'}
                   </p>
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="ep-name">
-                    {language === 'zh' ? '姓名' : 'Name'} <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    id="ep-name"
-                    type="text"
-                    value={epName}
-                    onChange={(e) => setEpName(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-clearstrata-ui-primary focus:ring-2 focus:ring-clearstrata-ui-primary/20"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="ep-email">
-                    {language === 'zh' ? '邮箱' : 'Email'} <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    id="ep-email"
-                    type="email"
-                    value={epEmail}
-                    onChange={(e) => setEpEmail(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-clearstrata-ui-primary focus:ring-2 focus:ring-clearstrata-ui-primary/20"
-                    placeholder="name@example.com"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="ep-unit">
-                    {language === 'zh' ? '房号 / 单元号' : 'Unit'} <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    id="ep-unit"
-                    type="text"
-                    value={epUnit}
-                    onChange={(e) => setEpUnit(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-clearstrata-ui-primary focus:ring-2 focus:ring-clearstrata-ui-primary/20"
-                    placeholder="1204"
-                  />
                 </div>
                 <button
                   type="submit"
@@ -750,7 +591,7 @@ export function Auth() {
                   className="flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 py-3 font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {epBusy ? <Loader2 size={18} className="animate-spin" /> : null}
-                  {language === 'zh' ? '进入物业' : 'Continue to join'}
+                  {language === 'zh' ? '进入业主身份确认' : 'Continue to owner verification'}
                 </button>
               </form>
             )}
