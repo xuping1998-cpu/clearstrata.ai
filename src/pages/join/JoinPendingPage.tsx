@@ -296,12 +296,17 @@ export default function JoinPendingPage() {
           {en ? 'Application submitted' : '申请已提交'}
         </h1>
 
-        <p className="text-gray-600 text-sm leading-relaxed mb-6">
+        <p className="text-gray-600 text-sm leading-relaxed mb-2">
           {statusDetail != null
             ? statusDetail
             : en
               ? 'Your application has been submitted. Please wait for the council to review.'
               : '申请已提交，请等待理事会审核。'}
+        </p>
+        <p className="text-slate-400 text-xs leading-relaxed mb-6">
+          {en
+            ? 'This unit is already registered. Your request has been submitted for council review.'
+            : '房号已被占用，申请已提交业委会审核。'}
         </p>
 
         {/* Info box */}

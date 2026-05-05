@@ -202,6 +202,11 @@ export function QrPropertyEntryPage() {
         inviteCode: inviteCodeParam,
         unitNo: unit,
       });
+      console.log('[ENTRY FLOW] submit', {
+        propertyId: effectivePropertyId,
+        unit,
+        email,
+      });
 
       const { data, error } = await supabase.functions.invoke<{
         ok?: boolean;
@@ -221,6 +226,11 @@ export function QrPropertyEntryPage() {
       });
 
       console.log('[entry] entry-auto-join result', data, error);
+      console.log('[ENTRY FLOW] result', {
+        ok: data?.ok,
+        kind: data?.kind,
+        reason: data?.reason,
+      });
 
       if (error) throw new Error(error.message || 'Entry failed');
 
