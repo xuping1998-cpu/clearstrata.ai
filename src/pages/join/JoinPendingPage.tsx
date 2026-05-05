@@ -201,8 +201,19 @@ export default function JoinPendingPage() {
     }
   };
 
-  if (!session && !hasAnyInfo) {
-    return <Navigate to="/" replace />;
+  if (!hasAnyInfo) {
+    if (!session) return <Navigate to="/" replace />;
+    if (loading) return (
+      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-blue-50 flex flex-col items-center justify-center">
+        <div className="w-full max-w-md bg-white rounded-3xl border border-slate-100 shadow-xl p-10 text-center">
+          <div className="flex justify-center mb-6">
+            <img src="/clearstrata-hero-logo.png" alt="ClearStrata" className="w-28 h-auto" />
+          </div>
+          <Loader2 className="w-8 h-8 text-emerald-500 animate-spin mx-auto mb-3" aria-hidden />
+          <p className="text-sm text-slate-500">{en ? 'Loading…' : '加载中…'}</p>
+        </div>
+      </div>
+    );
   }
 
   // ── Determine display values
@@ -272,20 +283,6 @@ export default function JoinPendingPage() {
       </main>
     </div>
   );
-
-  if (loading) {
-    return (
-      <PageShell>
-        <div className="w-full max-w-md bg-white rounded-3xl border border-slate-100 shadow-xl p-10 text-center">
-          <div className="flex justify-center mb-6">
-            <img src="/clearstrata-hero-logo.png" alt="ClearStrata" className="w-28 h-auto" />
-          </div>
-          <Loader2 className="w-8 h-8 text-emerald-500 animate-spin mx-auto mb-3" aria-hidden />
-          <p className="text-sm text-slate-500">{en ? 'Loading…' : '加载中…'}</p>
-        </div>
-      </PageShell>
-    );
-  }
 
   return (
     <PageShell>
