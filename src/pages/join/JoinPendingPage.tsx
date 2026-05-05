@@ -11,6 +11,7 @@ type JoinPendingLocationState = {
   propertyId?: string;
   propertyName?: string | null;
   unitNo?: string;
+  requestId?: string;
   reason?: string;
   reviewFlag?: string;
   kind?: string;
@@ -51,6 +52,10 @@ export default function JoinPendingPage() {
   };
 
   const hasUrlParams = Boolean(qPropertyId || qUnitNo || qReason);
+  // location.state from runJoin carries propertyId + unitNo + requestId — treat as sufficient
+  const hasStateInfo = Boolean(entryState?.propertyId || entryState?.unitNo || entryState?.requestId);
+  // Either source means we can render immediately without DB
+  const hasAnyInfo = hasStateInfo || hasUrlParams;
 
   // ── Display state — URL params win over location.state; DB fills any remaining gaps
   const [pending, setPending] = useState<PendingInfo>({
@@ -61,8 +66,8 @@ export default function JoinPendingPage() {
     reviewReason: null,
   });
 
-  // If URL params are present, never show a loading spinner — show content immediately
-  const [loading, setLoading] = useState(!hasUrlParams);
+  // If any info is already present, skip loading spinner entirely
+  const [loading, setLoading] = useState(!hasAnyInfo);
   const [refreshing, setRefreshing] = useState(false);
   const didQueryRef = useRef(false);
 
@@ -73,17 +78,17 @@ export default function JoinPendingPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qLang]);
 
-  // ── Step 1: If URL params exist, dismiss loading immediately (no DB query needed)
+  // ── Step 1: If any info is available, dismiss loading immediately (no DB query needed)
   useEffect(() => {
-    if (hasUrlParams) {
+    if (hasAnyInfo) {
       setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Step 2: If no URL params, query join_requests once user session is available
+  // ── Step 2: Only query join_requests when there's no state/query info AND a session exists
   useEffect(() => {
-    if (hasUrlParams) return;
+    if (hasAnyInfo) return;
     if (!user?.id) return;
     if (didQueryRef.current) return;
     didQueryRef.current = true;
@@ -196,11 +201,7 @@ export default function JoinPendingPage() {
     }
   };
 
-  const hasStateInfo = Boolean(
-    entryState?.propertyId || entryState?.unitNo ||
-    (location.state as { requestId?: string } | null)?.requestId
-  );
-  if (!session && !hasStateInfo && !hasUrlParams) {
+  if (!session && !hasAnyInfo) {
     return <Navigate to="/" replace />;
   }
 
