@@ -272,6 +272,7 @@ export function QrPropertyEntryPage() {
       }
 
       if (kind === 'already_member') {
+        console.log('[ENTRY FLOW] already_member redirect home', effectivePropertyId);
         navigate('/?propertyId=' + effectivePropertyId, { replace: true });
         return;
       }
