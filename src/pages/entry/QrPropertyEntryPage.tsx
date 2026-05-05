@@ -272,8 +272,13 @@ export function QrPropertyEntryPage() {
       }
 
       if (kind === 'already_member') {
-        console.log('[ENTRY FLOW] already_member redirect home', effectivePropertyId);
-        navigate('/?propertyId=' + effectivePropertyId, { replace: true });
+        if (session?.user) {
+          console.log('[ENTRY FLOW] already_member with session redirect home', effectivePropertyId);
+          navigate('/?propertyId=' + effectivePropertyId, { replace: true });
+          return;
+        }
+        console.log('[ENTRY FLOW] already_member without session send OTP', effectivePropertyId);
+        await doSendOtp(name, email, unit);
         return;
       }
 
