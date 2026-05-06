@@ -188,80 +188,12 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // 5. Check if this user is already an active member of this property.
-    //    Only return already_member if the submitted unitNo matches their existing unit.
-    //    If they submit a different unit, fall through to Step 6 (occupancy check).
-    const { data: myMembership } = await admin
-      .from("property_members")
-      .select("id, unit_no")
-      .eq("property_id", propertyId)
-      .eq("user_id", userId)
-      .eq("status", "active")
-      .maybeSingle();
-
-    if (myMembership) {
-      const existingUnit =
-        (myMembership as { unit_no?: string | null }).unit_no?.trim() ?? "";
-      if (existingUnit === unitNo.trim()) {
-        // Same unit — already a member, nothing to do
-        console.log(
-          `[entry-auto-join] already_member (unit match) property=${propertyId} user=${userId} unit=${existingUnit}`,
-        );
-        return json({
-          ok: true,
-          kind: "already_member",
-          message: "你已是本物业业主。如需更改房号，请联系理事会/管理员处理。",
-          property_id: propertyId,
-          propertyId,
-          propertyName: (property as { name?: string }).name ?? "",
-          unit_no: existingUnit,
-          unitNo: existingUnit,
-        });
-      }
-      // Different unit submitted — fall through to Step 6 (check if that unit is occupied)
-      console.log(
-        `[entry-auto-join] user is member of unit=${existingUnit} but submitted unit=${unitNo} — checking occupancy`,
-      );
-    }
-
-    // 6. User is not yet a member — check unit occupancy with occupant email comparison
-    //    Priority: if occupant email === submitter email → already_member (must come before pending)
-    const { data: occupantRow } = await admin
-      .from("property_members")
-      .select("id, user_id")
-      .eq("property_id", propertyId)
-      .eq("unit_no", unitNo)
-      .eq("status", "active")
-      .maybeSingle();
-
-    if (occupantRow) {
-      // Fetch occupant's email to determine if it's the same person
-      const occupantUserId = (occupantRow as { id: string; user_id: string }).user_id;
-      const { data: occupantAuthUser } = await admin.auth.admin.getUserById(occupantUserId);
-      const occupantEmail = (occupantAuthUser?.user?.email ?? "").toLowerCase();
-
-      if (occupantEmail === email) {
-        // Same person re-submitting for their own unit — treat as already_member
-        console.log(
-          `[entry-auto-join] already_member (unit email match) property=${propertyId} unit=${unitNo} user=${userId}`,
-        );
-        return json({
-          ok: true,
-          kind: "already_member",
-          message: "你已是本物业业主。如需更改房号，请联系理事会/管理员处理。",
-          property_id: propertyId,
-          propertyId,
-          propertyName: (property as { name?: string }).name ?? "",
-          unit_no: unitNo,
-          unitNo,
-        });
-      }
-
-      // Different email occupying the unit — write pending join_request
-      console.log(
-        `[entry-auto-join] occupied → pending property=${propertyId} unit=${unitNo} user=${userId} occupant=${occupantEmail}`,
-      );
-
+    // ── Helper: upsert a pending join_request and return pending_submitted response ────────────
+    async function writePending(
+      flag: string,
+      reason: string,
+      reasonMsg: string,
+    ): Promise<Response> {
       const { data: pendingRow, error: insertErr } = await admin
         .from("join_requests")
         .upsert(
@@ -275,8 +207,8 @@ Deno.serve(async (req: Request) => {
             requested_role: "owner",
             invite_code: inviteCode || null,
             whitelist_matched: true,
-            review_flag: "occupied",
-            review_reason: "房号已被占用，等待业委会审核",
+            review_flag: flag,
+            review_reason: reasonMsg,
             source: "entry",
           },
           { onConflict: "property_id,user_id" },
@@ -285,21 +217,142 @@ Deno.serve(async (req: Request) => {
         .single();
 
       if (insertErr) {
-        console.error("[entry-auto-join] occupied join_request upsert failed", insertErr);
+        console.error("[entry-auto-join] join_request upsert failed", flag, insertErr);
         return err("insert_failed", insertErr.message, 400);
       }
 
+      console.log(`[entry-auto-join] pending_submitted flag=${flag} property=${propertyId} unit=${unitNo} user=${userId}`);
       return json({
         ok: true,
         kind: "pending_submitted",
-        reason: "occupied",
-        message: "房号已被占用，已提交业委会审核",
+        reason,
+        message: reasonMsg,
         request_id: (pendingRow as { id: string } | null)?.id ?? null,
         redirectUrl: "/join/pending",
+        propertyName: (property as { name?: string }).name ?? "",
       });
     }
 
-    // Unit is free and user is whitelisted — auto approve
+    // 5. Fetch submitter's active membership for this property (if any)
+    type MemberRow = { id: string; unit_no: string | null };
+    const { data: submitterMembership } = await admin
+      .from("property_members")
+      .select("id, unit_no")
+      .eq("property_id", propertyId)
+      .eq("user_id", userId)
+      .eq("status", "active")
+      .maybeSingle();
+
+    const memberRow = submitterMembership as MemberRow | null;
+
+    if (memberRow) {
+      const existingUnit = (memberRow.unit_no ?? "").trim();
+      const membershipId = memberRow.id;
+
+      if (existingUnit !== "") {
+        // ── Case A: active member with a recorded unit ──────────────────────────
+        if (existingUnit === unitNo.trim()) {
+          // Exact match — nothing to do
+          console.log(`[entry-auto-join] already_member (unit match) property=${propertyId} user=${userId} unit=${existingUnit}`);
+          return json({
+            ok: true,
+            kind: "already_member",
+            message: "你已是本物业业主。如需更改房号，请联系理事会/管理员处理。",
+            property_id: propertyId,
+            propertyId,
+            propertyName: (property as { name?: string }).name ?? "",
+            unit_no: existingUnit,
+            unitNo: existingUnit,
+          });
+        }
+
+        // Different unit submitted — must NOT silently update; route to pending
+        console.log(`[entry-auto-join] member unit=${existingUnit} submitted different unit=${unitNo} — checking occupancy`);
+
+        const { data: occupantOfTarget } = await admin
+          .from("property_members")
+          .select("id, user_id")
+          .eq("property_id", propertyId)
+          .eq("unit_no", unitNo)
+          .eq("status", "active")
+          .maybeSingle();
+
+        const targetOccupantUserId = occupantOfTarget
+          ? (occupantOfTarget as { user_id: string }).user_id
+          : null;
+
+        if (targetOccupantUserId && targetOccupantUserId !== userId) {
+          // Target unit occupied by someone else
+          return writePending("occupied", "occupied", "房号已被占用，已提交业委会审核");
+        }
+
+        // Target unit free (or edge-case: same user somehow appears there)
+        return writePending(
+          "unit_change_request",
+          "unit_change_request",
+          "该账号已绑定其他房号，申请更换房号需业委会审核",
+        );
+
+      } else {
+        // ── Case B: active member but unit_no is blank — fill it in if safe ──────
+        const { data: occupantOfTarget } = await admin
+          .from("property_members")
+          .select("id, user_id")
+          .eq("property_id", propertyId)
+          .eq("unit_no", unitNo)
+          .eq("status", "active")
+          .maybeSingle();
+
+        const targetOccupantUserId = occupantOfTarget
+          ? (occupantOfTarget as { user_id: string }).user_id
+          : null;
+
+        if (!targetOccupantUserId || targetOccupantUserId === userId) {
+          // Safe to assign — update the existing membership row
+          const { error: updateErr } = await admin
+            .from("property_members")
+            .update({ unit_no: unitNo })
+            .eq("id", membershipId);
+
+          if (updateErr) {
+            console.error("[entry-auto-join] unit update failed", updateErr);
+            return err("update_failed", updateErr.message, 500);
+          }
+
+          console.log(`[entry-auto-join] already_member (unit filled) property=${propertyId} user=${userId} unit=${unitNo}`);
+          return json({
+            ok: true,
+            kind: "already_member",
+            message: "房号已更新，欢迎回来。",
+            property_id: propertyId,
+            propertyId,
+            propertyName: (property as { name?: string }).name ?? "",
+            unit_no: unitNo,
+            unitNo,
+          });
+        }
+
+        // Target unit occupied by someone else
+        return writePending("occupied", "occupied", "房号已被占用，已提交业委会审核");
+      }
+    }
+
+    // 6. No active membership — check unit occupancy for new-user flow
+    const { data: occupantRow } = await admin
+      .from("property_members")
+      .select("id, user_id")
+      .eq("property_id", propertyId)
+      .eq("unit_no", unitNo)
+      .eq("status", "active")
+      .maybeSingle();
+
+    if (occupantRow) {
+      // Unit is taken by someone else (this user has no membership, so it's definitely another user)
+      console.log(`[entry-auto-join] occupied (new user) property=${propertyId} unit=${unitNo} user=${userId}`);
+      return writePending("occupied", "occupied", "房号已被占用，已提交业委会审核");
+    }
+
+    // Unit is free and user has no membership — eligible for auto approve
     const kind = "auto_approved";
     const finalRedirect = "/";
     const reason: string | null = null;
