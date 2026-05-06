@@ -9,6 +9,8 @@ import { trackPropertyEntryEvent } from '../../lib/propertyEntryEvents';
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+const OTP_LENGTH = 8;
+
 const DRAFT_NAME_KEY = 'entry_draft_name';
 const DRAFT_UNIT_KEY = 'entry_draft_unit';
 
@@ -317,7 +319,7 @@ export function QrPropertyEntryPage() {
     return () => clearInterval(id);
   }, [otpSent]);
 
-  /** Send OTP 6-digit code — no magic link, user stays on this page and enters the code. */
+  /** Send OTP code (OTP_LENGTH digits) — no magic link, user stays on this page and enters the code. */
   const doSendOtp = async (name: string, email: string, unit: string) => {
     setSubmitting(true);
     setSubmitErr(null);
@@ -525,24 +527,23 @@ export function QrPropertyEntryPage() {
           </h2>
           <p className="text-sm text-gray-600">
             {en
-              ? `A 6-digit code was sent to ${emailIn}. Open your email, copy the code, and paste it below.`
-              : `验证码已发送到 ${emailIn}。请打开邮箱，复制 6 位验证码后粘贴到下方。`}
+              ? `A verification code was sent to ${emailIn}. Open your email, copy the code, and paste it below.`
+              : `验证码已发送到 ${emailIn}。请打开邮箱，复制验证码后粘贴到下方。`}
           </p>
 
           <input
             type="text"
             inputMode="numeric"
-            maxLength={6}
+            maxLength={OTP_LENGTH}
             autoFocus
             className="w-full text-center text-2xl font-mono tracking-[0.4em] border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-clearstrata-ui-primary/40"
-            placeholder="──────"
+            placeholder={'─'.repeat(OTP_LENGTH)}
             value={otpCode}
             onChange={(e) => {
-              const digits = e.target.value.replace(/\D/g, '').slice(0, 6);
+              const digits = e.target.value.replace(/\D/g, '').slice(0, OTP_LENGTH);
               setOtpCode(digits);
               setSubmitErr(null);
-              if (digits.length === 6) {
-                // auto-submit when 6 digits are entered / pasted
+              if (digits.length === OTP_LENGTH) {
                 setTimeout(() => void handleVerifyOtp(), 0);
               }
             }}
@@ -558,7 +559,7 @@ export function QrPropertyEntryPage() {
           <button
             type="button"
             onClick={() => void handleVerifyOtp()}
-            disabled={otpVerifying || otpCode.length < 6}
+            disabled={otpVerifying || otpCode.length < OTP_LENGTH}
             className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-[#1D9E75] text-white font-semibold text-sm hover:bg-[#178a66] disabled:opacity-50 transition-colors"
           >
             {otpVerifying ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
