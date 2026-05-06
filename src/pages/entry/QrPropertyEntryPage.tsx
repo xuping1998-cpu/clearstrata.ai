@@ -361,7 +361,7 @@ export function QrPropertyEntryPage() {
       const { error: verifyErr } = await supabase.auth.verifyOtp({
         email,
         token: code,
-        type: 'email',
+        type: 'magiclink',
       });
       if (verifyErr) {
         console.error('[ENTRY FLOW] verifyOtp failed', verifyErr.message);
