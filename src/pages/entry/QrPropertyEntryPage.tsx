@@ -76,6 +76,9 @@ export function QrPropertyEntryPage() {
   const [submitErr, setSubmitErr] = useState<string | null>(null);
   const [alreadyMemberMsg, setAlreadyMemberMsg] = useState<string | null>(null);
   const [otpSent, setOtpSent] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [otpVerifying, setOtpVerifying] = useState(false);
+  const [resendCountdown, setResendCountdown] = useState(0);
   const [checkingMembership, setCheckingMembership] = useState(false);
   const [occupiedConfirm, setOccupiedConfirm] = useState(false);
 
@@ -301,31 +304,76 @@ export function QrPropertyEntryPage() {
     }
   };
 
-  /** Send OTP magic-link — shared by handleSubmit and handleContinueAfterOccupied. */
+  // Resend countdown: starts at 60 whenever otpSent becomes true
+  useEffect(() => {
+    if (!otpSent) return;
+    setResendCountdown(60);
+    const id = window.setInterval(() => {
+      setResendCountdown((c) => {
+        if (c <= 1) { clearInterval(id); return 0; }
+        return c - 1;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [otpSent]);
+
+  /** Send OTP 6-digit code — no magic link, user stays on this page and enters the code. */
   const doSendOtp = async (name: string, email: string, unit: string) => {
     setSubmitting(true);
+    setSubmitErr(null);
     try {
-      saveDraft(name, unit);
-      const appOrigin =
-        (import.meta.env.VITE_APP_BASE_URL as string | undefined) ||
-        window.location.origin;
-      const entryPath = location.pathname + location.search;
-      const emailRedirectTo =
-        appOrigin + '/auth/callback?redirect=' + encodeURIComponent(entryPath);
       const { error: otpErr } = await supabase.auth.signInWithOtp({
         email,
-        options: { emailRedirectTo },
+        options: {
+          shouldCreateUser: true,
+          data: {
+            full_name: name,
+            unit_no: unit,
+            property_id: effectivePropertyId ?? undefined,
+          },
+        },
       });
-      if (otpErr) {
-        clearDraft();
-        throw new Error(otpErr.message);
-      }
+      if (otpErr) throw new Error(otpErr.message);
+      setOtpCode('');
+      setResendCountdown(60);
       setOtpSent(true);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : en ? 'Could not send email.' : '发送失败，请重试。';
+      const msg = e instanceof Error ? e.message : en ? 'Could not send code.' : '发送失败，请重试。';
       setSubmitErr(msg);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  /** Verify the 6-digit code entered by user; on success, re-run join with established session. */
+  const handleVerifyOtp = async () => {
+    const email = emailIn.trim().toLowerCase();
+    const code = otpCode.trim();
+    if (!email || !code) return;
+
+    setOtpVerifying(true);
+    setSubmitErr(null);
+    try {
+      console.log('[ENTRY FLOW] verifyOtp', { email, code: code.slice(0, 2) + '****' });
+      const { error: verifyErr } = await supabase.auth.verifyOtp({
+        email,
+        token: code,
+        type: 'email',
+      });
+      if (verifyErr) {
+        console.error('[ENTRY FLOW] verifyOtp failed', verifyErr.message);
+        setSubmitErr(en ? 'Invalid or expired code. Please try again.' : '验证码无效或已过期，请重新输入。');
+        return;
+      }
+      // Session established — proceed with join
+      console.log('[ENTRY FLOW] verifyOtp ok, running join');
+      setOtpSent(false);
+      await runJoin(fullName.trim(), email, unitNo.trim());
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : en ? 'Verification failed.' : '验证失败，请重试。';
+      setSubmitErr(msg);
+    } finally {
+      setOtpVerifying(false);
     }
   };
 
@@ -462,8 +510,9 @@ export function QrPropertyEntryPage() {
     );
   }
 
-  // OTP sent screen
+  // OTP code input screen
   if (otpSent) {
+    const resendDisabled = submitting || resendCountdown > 0;
     return (
       <div className="min-h-screen bg-gradient-to-b from-clearstrata-ui-soft/40 to-gray-50 flex items-start justify-center p-4 py-10">
         <div className="w-full max-w-md bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center space-y-4">
@@ -472,23 +521,75 @@ export function QrPropertyEntryPage() {
           </div>
           <MailCheck className="mx-auto w-12 h-12 text-[#1D9E75]" />
           <h2 className="text-lg font-bold text-gray-900">
-            {en ? 'Check your email' : '请查收登录邮件'}
+            {en ? 'Enter verification code' : '输入邮箱验证码'}
           </h2>
           <p className="text-sm text-gray-600">
             {en
-              ? 'We sent a login link to your email. Click the link to continue joining this property.'
-              : '登录链接已发送到你的邮箱，点击邮件中的链接继续进入物业。'}
+              ? `A 6-digit code was sent to ${emailIn}. Open your email, copy the code, and paste it below.`
+              : `验证码已发送到 ${emailIn}。请打开邮箱，复制 6 位验证码后粘贴到下方。`}
           </p>
-          <p className="text-xs text-gray-400">
-            {en ? 'You can close this tab.' : '收到邮件后点击链接，本页面可关闭。'}
-          </p>
+
+          <input
+            type="text"
+            inputMode="numeric"
+            maxLength={6}
+            autoFocus
+            className="w-full text-center text-2xl font-mono tracking-[0.4em] border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-clearstrata-ui-primary/40"
+            placeholder="──────"
+            value={otpCode}
+            onChange={(e) => {
+              const digits = e.target.value.replace(/\D/g, '').slice(0, 6);
+              setOtpCode(digits);
+              setSubmitErr(null);
+              if (digits.length === 6) {
+                // auto-submit when 6 digits are entered / pasted
+                setTimeout(() => void handleVerifyOtp(), 0);
+              }
+            }}
+            disabled={otpVerifying}
+          />
+
+          {submitErr && (
+            <div role="alert" className="rounded-xl px-3 py-2 text-sm bg-red-50 text-red-900 border border-red-200">
+              {submitErr}
+            </div>
+          )}
+
           <button
             type="button"
-            onClick={() => setOtpSent(false)}
-            className="text-sm text-clearstrata-ui-primary hover:underline"
+            onClick={() => void handleVerifyOtp()}
+            disabled={otpVerifying || otpCode.length < 6}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-[#1D9E75] text-white font-semibold text-sm hover:bg-[#178a66] disabled:opacity-50 transition-colors"
           >
-            {en ? '← Change email' : '← 修改邮箱重新发送'}
+            {otpVerifying ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+            {en ? 'Verify and enter' : '验证并进入物业'}
           </button>
+
+          <div className="flex justify-between text-sm pt-1">
+            <button
+              type="button"
+              onClick={() => {
+                setOtpSent(false);
+                setOtpCode('');
+                setSubmitErr(null);
+                setResendCountdown(0);
+              }}
+              className="text-clearstrata-ui-primary hover:underline"
+            >
+              {en ? '← Edit info' : '← 修改信息'}
+            </button>
+            <button
+              type="button"
+              disabled={resendDisabled}
+              onClick={() => void doSendOtp(fullName.trim(), emailIn.trim(), unitNo.trim())}
+              className="text-gray-400 hover:text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {submitting && <Loader2 className="w-3 h-3 animate-spin inline mr-1" />}
+              {resendCountdown > 0
+                ? (en ? `Resend code (${resendCountdown}s)` : `重新发送验证码（${resendCountdown}s）`)
+                : (en ? 'Resend code' : '重新发送验证码')}
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -553,8 +654,8 @@ export function QrPropertyEntryPage() {
           </h1>
           <p className="text-sm text-gray-600 mt-2 text-left">
             {en
-              ? 'Enter your information. A login link will be sent to your email to verify identity and join this property.'
-              : '请填写你的信息，系统将发送邮件链接完成身份验证并加入物业。'}
+              ? 'Enter your information. A 6-digit verification code will be sent to your email.'
+              : '请填写你的信息，系统将向邮箱发送 6 位验证码完成身份验证。'}
           </p>
         </div>
 
