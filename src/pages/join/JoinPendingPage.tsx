@@ -210,7 +210,7 @@ export default function JoinPendingPage() {
             <img src="/clearstrata-hero-logo.png" alt="ClearStrata" className="w-28 h-auto" />
           </div>
           <Loader2 className="w-8 h-8 text-emerald-500 animate-spin mx-auto mb-3" aria-hidden />
-          <p className="text-sm text-slate-500">{en ? 'Loading…' : '加载中…'}</p>
+          <p className="text-sm text-slate-500">加载中…</p>
         </div>
       </div>
     );
@@ -231,24 +231,16 @@ export default function JoinPendingPage() {
     if (stateMsg) return stateMsg;
 
     if (isOccupied) {
-      return en
-        ? 'This unit is already linked to another resident. Your application has been submitted for council review.'
-        : '该房号已被其他业主绑定。你的申请已提交给理事会审核，请等待确认。';
+      return '该房号已被其他业主绑定。你的申请已提交给理事会审核，请等待确认。';
     }
     if (dbFlag === 'not_in_whitelist' || dbFlag === 'non_whitelist') {
-      return en
-        ? 'This unit is not on the whitelist. Your request was sent to the council for review.'
-        : '该房号未在本物业白名单中，申请已提交给业委会审核。';
+      return '该房号未在本物业白名单中，申请已提交给业委会审核。';
     }
     if (dbFlag === 'duplicate_unit_pending') {
-      return en
-        ? 'This unit already has an application under review. Your request was also sent to the council.'
-        : '该房号已有申请正在审核，你的申请也已提交给业委会处理。';
+      return '该房号已有申请正在审核，你的申请也已提交给业委会处理。';
     }
     if (dbFlag === 'unit_change_request' || entryState?.reviewFlag === 'unit_change_request' || qReason === 'unit_change_request') {
-      return en
-        ? 'Your unit change request has been submitted to the council for review.'
-        : '你的换房申请已提交给业委会审核。';
+      return '你的换房申请已提交给业委会审核。';
     }
     return null;
   })();
@@ -292,42 +284,46 @@ export default function JoinPendingPage() {
           <img src="/clearstrata-hero-logo.png" alt="ClearStrata" className="w-28 h-auto" />
         </div>
 
-        <h1 className="text-2xl font-bold text-gray-900 mb-3">
-          {en ? 'Application submitted' : '申请已提交'}
+        <h1 className="text-2xl font-bold text-gray-900 mb-1">
+          申请已提交
+          <span className="block text-sm font-normal text-gray-400 mt-0.5">Application submitted</span>
         </h1>
 
-        <p className="text-gray-600 text-sm leading-relaxed mb-2">
+        <p className="text-gray-600 text-sm leading-relaxed mb-1 mt-3">
           {statusDetail != null
             ? statusDetail
-            : en
-              ? 'Your application has been submitted. Please wait for the council to review.'
-              : '申请已提交，请等待理事会审核。'}
+            : '申请已提交，请等待理事会审核。'}
         </p>
         <p className="text-slate-400 text-xs leading-relaxed mb-6">
-          {en
-            ? 'This unit is already registered. Your request has been submitted for council review.'
-            : '房号已被占用，申请已提交业委会审核。'}
+          房号已被占用，申请已提交业委会审核。
+          <span className="block mt-0.5">This unit is already registered. Your request has been submitted for council review.</span>
         </p>
 
         {/* Info box */}
         <div className="rounded-2xl bg-slate-50 border border-slate-100 px-5 py-4 text-sm text-left space-y-2 mb-8">
           <div className="flex justify-between">
-            <span className="text-slate-500">{en ? 'Property' : '物业'}</span>
+            <span className="text-slate-500">物业</span>
             <span className="font-medium text-slate-800">{displayPropertyName ?? '—'}</span>
           </div>
           {displayUnitNo && (
             <div className="flex justify-between">
-              <span className="text-slate-500">{en ? 'Unit' : '房号'}</span>
+              <span className="text-slate-500">房号</span>
               <span className="font-medium text-slate-800">{displayUnitNo}</span>
             </div>
           )}
           <div className="flex justify-between">
-            <span className="text-slate-500">{en ? 'Status' : '当前状态'}</span>
-            <span className="font-medium text-amber-600">{en ? 'Under review' : '审核中'}</span>
+            <span className="text-slate-500">当前状态</span>
+            <span className="font-medium text-amber-600">
+              审核中
+              <span className="block text-xs font-normal text-amber-400">Under review</span>
+            </span>
           </div>
           <div className="flex justify-between">
-            <span className="text-slate-500">{en ? 'Expected' : '预计时间'}</span>
-            <span className="font-medium text-slate-800">{en ? 'Within 24 hours' : '24 小时内'}</span>
+            <span className="text-slate-500">预计时间</span>
+            <span className="font-medium text-slate-800">
+              24 小时内
+              <span className="block text-xs font-normal text-slate-400">Within 24 hours</span>
+            </span>
           </div>
         </div>
 
@@ -344,14 +340,14 @@ export default function JoinPendingPage() {
             ) : (
               <RefreshCw className="w-4 h-4" />
             )}
-            {en ? 'Refresh status' : '刷新状态'}
+            刷新状态
           </button>
 
           <Link
             to="/"
             className="w-full py-3 rounded-2xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50 transition-colors text-center"
           >
-            {en ? 'Back to home' : '返回首页'}
+            返回首页
           </Link>
         </div>
       </div>

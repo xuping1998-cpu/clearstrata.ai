@@ -106,7 +106,7 @@ export function QrPropertyEntryPage() {
       setResolved(null);
       try {
         if (!propertyIdParam || !UUID_RE.test(propertyIdParam)) {
-          setResolveErr(en ? 'Invalid or missing propertyId.' : 'propertyId 缺失或无效。');
+          setResolveErr('propertyId 缺失或无效。');
           return;
         }
         // inviteCode is validated at submit time; don't block here so active members
@@ -119,14 +119,14 @@ export function QrPropertyEntryPage() {
           .maybeSingle();
         if (cancelled) return;
         if (error) {
-          setResolveErr(en ? 'Could not load property.' : '无法加载物业信息。');
+          setResolveErr('无法加载物业信息。');
           return;
         }
         if (data?.id) {
           setResolved({ id: data.id, name: typeof data.name === 'string' ? data.name : '' });
           return;
         }
-        setResolveErr(en ? 'Property not found.' : '未找到该物业。');
+        setResolveErr('未找到该物业。');
       } finally {
         if (!cancelled) setResolving(false);
       }
@@ -195,7 +195,7 @@ export function QrPropertyEntryPage() {
   /** Core join logic — calls entry-auto-join and handles all outcomes. */
   const runJoin = async (name: string, email: string, unit: string) => {
     if (!effectivePropertyId) {
-      setSubmitErr(en ? 'Missing property ID.' : '缺少物业信息。');
+      setSubmitErr('缺少物业信息。');
       return;
     }
     setSubmitting(true);
@@ -248,14 +248,14 @@ export function QrPropertyEntryPage() {
           return;
         }
         if (reason === 'invalid_invite') {
-          setSubmitErr(en ? 'Invite code is invalid or expired.' : '邀请码无效或已过期。');
+          setSubmitErr('邀请码无效或已过期。');
           return;
         }
         if (reason === 'invite_unit_mismatch') {
-          setSubmitErr(en ? 'Invite code does not match this unit.' : '邀请码与房号不匹配。');
+          setSubmitErr('邀请码与房号不匹配。');
           return;
         }
-        throw new Error(data?.message || 'Entry rejected');
+        throw new Error(data?.message || '加入失败');
       }
 
       // ── ok:true 分支 ───────────────────────────────────────────────────────
@@ -299,7 +299,7 @@ export function QrPropertyEntryPage() {
       // 未知返回 — 兜底报错
       throw new Error(data?.message || 'Unexpected response from server');
     } catch (e) {
-      const msg = e instanceof Error ? e.message : en ? 'Entry failed.' : '加入失败。';
+      const msg = e instanceof Error ? e.message : '加入失败。';
       setSubmitErr(msg);
     } finally {
       setSubmitting(false);
@@ -341,7 +341,7 @@ export function QrPropertyEntryPage() {
       setResendCountdown(60);
       setOtpSent(true);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : en ? 'Could not send code.' : '发送失败，请重试。';
+      const msg = e instanceof Error ? e.message : '发送失败，请重试。';
       setSubmitErr(msg);
     } finally {
       setSubmitting(false);
@@ -365,14 +365,14 @@ export function QrPropertyEntryPage() {
       });
       if (verifyErr) {
         console.error('[ENTRY FLOW] verifyOtp failed', verifyErr.message);
-        setSubmitErr(en ? 'Invalid or expired code. Please try again.' : '验证码无效或已过期，请重新输入。');
+        setSubmitErr('验证码无效或已过期，请重新输入。');
         return;
       }
       console.log('[ENTRY FLOW] verifyOtp ok, running join');
       setOtpSent(false);
       await runJoin(fullName.trim(), email, unitNo.trim());
     } catch (e) {
-      const msg = e instanceof Error ? e.message : en ? 'Verification failed.' : '验证失败，请重试。';
+      const msg = e instanceof Error ? e.message : '验证失败，请重试。';
       setSubmitErr(msg);
     } finally {
       setOtpVerifying(false);
@@ -403,11 +403,11 @@ export function QrPropertyEntryPage() {
     const unit = unitNo.trim();
 
     if (!name || !email || !unit) {
-      setSubmitErr(en ? 'Please fill in name, email, and unit.' : '请填写姓名、邮箱与房号。');
+      setSubmitErr('请填写姓名、邮箱与房号。');
       return;
     }
     if (!effectivePropertyId) {
-      setSubmitErr(en ? 'Missing property ID.' : '缺少物业信息。');
+      setSubmitErr('缺少物业信息。');
       return;
     }
 
@@ -490,9 +490,7 @@ export function QrPropertyEntryPage() {
       <div className="min-h-screen bg-gradient-to-b from-clearstrata-ui-soft/40 to-gray-50 flex flex-col items-center justify-center p-6">
         <Loader2 className="w-10 h-10 text-clearstrata-ui-primary animate-spin" aria-hidden />
         <p className="mt-4 text-sm text-gray-500">
-          {checkingMembership
-            ? (en ? 'Verifying entry info…' : '正在验证入楼信息…')
-            : (en ? 'Loading…' : '加载中…')}
+          {checkingMembership ? '正在验证入楼信息…' : '加载中…'}
         </p>
       </div>
     );
@@ -503,10 +501,10 @@ export function QrPropertyEntryPage() {
       <div className="min-h-screen bg-gradient-to-b from-clearstrata-ui-soft/40 to-gray-50 flex flex-col items-center justify-center p-6">
         <Building2 className="w-12 h-12 text-gray-400 mb-3" />
         <p className="text-sm text-gray-800 text-center max-w-md">
-          {resolveErr || (en ? 'Invalid link.' : '链接无效。')}
+          {resolveErr || '链接无效。'}
         </p>
         <Link to="/" className="mt-6 text-clearstrata-ui-primary font-medium text-sm">
-          {en ? 'Home' : '返回首页'}
+          返回首页
         </Link>
       </div>
     );
@@ -523,12 +521,14 @@ export function QrPropertyEntryPage() {
           </div>
           <MailCheck className="mx-auto w-12 h-12 text-[#1D9E75]" />
           <h2 className="text-lg font-bold text-gray-900">
-            {en ? 'Enter verification code' : '输入邮箱验证码'}
+            输入邮箱验证码
+            <span className="block text-xs font-normal text-gray-400 mt-0.5">Enter verification code</span>
           </h2>
           <p className="text-sm text-gray-600">
-            {en
-              ? `A ${OTP_LENGTH}-digit code was sent to ${emailIn}. Open your email, copy the code, and paste it below.`
-              : `验证码已发送到 ${emailIn}。请打开邮箱，复制 ${OTP_LENGTH} 位验证码后粘贴到下方。`}
+            验证码已发送到 <span className="font-medium">{emailIn}</span>。请打开邮箱，复制 {OTP_LENGTH} 位验证码后粘贴到下方。
+            <span className="block text-xs text-gray-400 mt-1">
+              A {OTP_LENGTH}-digit code was sent to {emailIn}. Open your email, copy and paste it below.
+            </span>
           </p>
 
           <input
@@ -563,7 +563,7 @@ export function QrPropertyEntryPage() {
             className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-[#1D9E75] text-white font-semibold text-sm hover:bg-[#178a66] disabled:opacity-50 transition-colors"
           >
             {otpVerifying ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-            {en ? 'Verify and enter' : '验证并进入物业'}
+            验证并进入物业
           </button>
 
           <div className="flex justify-between text-sm pt-1">
@@ -572,7 +572,7 @@ export function QrPropertyEntryPage() {
               onClick={() => { setOtpSent(false); setOtpCode(''); setSubmitErr(null); setResendCountdown(0); }}
               className="text-clearstrata-ui-primary hover:underline"
             >
-              {en ? '← Edit info' : '← 修改信息'}
+              ← 修改信息
             </button>
             <button
               type="button"
@@ -581,9 +581,7 @@ export function QrPropertyEntryPage() {
               className="text-gray-400 hover:text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {submitting && <Loader2 className="w-3 h-3 animate-spin inline mr-1" />}
-              {resendCountdown > 0
-                ? (en ? `Resend (${resendCountdown}s)` : `重新发送（${resendCountdown}s）`)
-                : (en ? 'Resend code' : '重新发送验证码')}
+              {resendCountdown > 0 ? `重新发送（${resendCountdown}s）` : '重新发送验证码'}
             </button>
           </div>
         </div>
@@ -600,18 +598,16 @@ export function QrPropertyEntryPage() {
             <img src="/clearstrata-hero-logo.png" alt="ClearStrata" className="w-16 h-auto" />
           </div>
           <h2 className="text-lg font-bold text-gray-900">
-            {en ? 'Unit already registered' : '该房号已被绑定'}
+            该房号已被绑定
+            <span className="block text-xs font-normal text-gray-400 mt-0.5">Unit already registered</span>
           </h2>
           <p className="text-sm text-gray-600">
-            {en
-              ? `Unit "${unitNo}" is already bound to another owner. Do you still want to submit an application?`
-              : `房号 "${unitNo}" 已有业主登记。是否仍要继续提交申请？`}
+            房号 &ldquo;{unitNo}&rdquo; 已有业主登记，是否仍要继续提交申请？
+            <span className="block text-xs text-gray-400 mt-1">
+              Unit &ldquo;{unitNo}&rdquo; is already bound to another owner. Submit anyway?
+            </span>
           </p>
-          <p className="text-xs text-gray-400">
-            {en
-              ? 'Your request will be reviewed by the strata council.'
-              : '提交后将等待业委会审核处理。'}
-          </p>
+          <p className="text-xs text-gray-400">提交后将等待业委会审核处理。</p>
           <div className="flex gap-3">
             <button
               type="button"
@@ -620,7 +616,7 @@ export function QrPropertyEntryPage() {
               className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#1D9E75] text-white font-semibold text-sm hover:bg-[#178a66] disabled:opacity-50 transition-colors"
             >
               {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-              {en ? 'Continue application' : '继续申请'}
+              继续申请
             </button>
             <button
               type="button"
@@ -628,7 +624,7 @@ export function QrPropertyEntryPage() {
               disabled={submitting}
               className="flex-1 py-2.5 rounded-xl border border-gray-300 text-gray-700 font-medium text-sm hover:bg-gray-50 disabled:opacity-50 transition-colors"
             >
-              {en ? 'Cancel' : '取消'}
+              取消
             </button>
           </div>
         </div>
@@ -646,24 +642,26 @@ export function QrPropertyEntryPage() {
             <img src="/clearstrata-hero-logo.png" alt="ClearStrata" className="w-20 h-auto" />
           </div>
           <h1 className="text-xl font-bold text-gray-900">
-            {en ? 'Resident identity confirmation' : '业主身份确认'}
+            业主身份确认
+            <span className="block text-xs font-normal text-gray-400 mt-0.5">Resident identity confirmation</span>
           </h1>
           <p className="text-sm text-gray-600 mt-2 text-left">
-            {en
-              ? `Enter your information. A ${OTP_LENGTH}-digit verification code will be sent to your email.`
-              : `请填写你的信息，系统将向邮箱发送 ${OTP_LENGTH} 位验证码完成身份验证。`}
+            请填写你的信息，系统将向邮箱发送 {OTP_LENGTH} 位验证码完成身份验证。
+            <span className="block text-xs text-gray-400 mt-1">
+              Fill in your info. A {OTP_LENGTH}-digit code will be sent to your email.
+            </span>
           </p>
         </div>
 
         {/* Property info */}
         <div className="rounded-lg border border-gray-100 bg-gray-50/80 px-3 py-2 text-sm space-y-1">
           <p>
-            <span className="text-gray-500">{en ? 'Property' : '物业'}：</span>
+            <span className="text-gray-500">物业：</span>
             <span className="font-medium text-gray-900">{resolved.name}</span>
           </p>
           {inviteCodeParam && (
             <p>
-              <span className="text-gray-500">{en ? 'Invite' : '邀请码'}：</span>
+              <span className="text-gray-500">邀请码：</span>
               <span className="font-mono font-medium text-gray-900">{inviteCodeParam}</span>
             </p>
           )}
@@ -673,14 +671,14 @@ export function QrPropertyEntryPage() {
         {submitting && (
           <div className="rounded-xl bg-blue-50 border border-blue-100 px-4 py-3 text-sm text-blue-900 flex items-center gap-2">
             <Loader2 className="w-4 h-4 animate-spin shrink-0" />
-            {en ? 'Verifying entry info…' : '正在验证入楼信息…'}
+            正在验证入楼信息…
           </div>
         )}
 
         {/* Form fields */}
         <div className="space-y-3">
           <label className="block text-sm text-gray-700">
-            {en ? 'Name' : '姓名'}
+            姓名
             <input
               type="text"
               className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-clearstrata-ui-primary/40"
@@ -692,7 +690,7 @@ export function QrPropertyEntryPage() {
             />
           </label>
           <label className="block text-sm text-gray-700">
-            {en ? 'Email' : '邮箱'}
+            邮箱
             <input
               type="email"
               className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-clearstrata-ui-primary/40"
@@ -718,12 +716,12 @@ export function QrPropertyEntryPage() {
                 }}
                 className="mt-1 text-xs text-clearstrata-ui-primary hover:underline"
               >
-                {en ? 'Switch email' : '切换邮箱'}
+                切换邮箱
               </button>
             )}
           </label>
           <label className="block text-sm text-gray-700">
-            {en ? 'Unit / suite' : '房号（必填）'}
+            房号
             <input
               ref={unitInputRef}
               type="text"
@@ -761,7 +759,7 @@ export function QrPropertyEntryPage() {
           className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-[#1D9E75] text-white font-semibold text-sm hover:bg-[#178a66] disabled:opacity-50 transition-colors"
         >
           {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-          {en ? 'Submit' : '提交并验证'}
+          提交并验证
         </button>
 
         <p className="text-xs text-gray-400 text-center">property: {resolved.id.slice(0, 8)}…</p>
