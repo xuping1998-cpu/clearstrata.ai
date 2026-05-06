@@ -189,8 +189,8 @@ Deno.serve(async (req: Request) => {
     }
 
     // 5. Check if this user is already an active member of this property.
-    //    This check takes highest priority — no unit_change_request, no pending, no token.
-    //    If already a member regardless of which unit_no they submitted, return immediately.
+    //    Only return already_member if the submitted unitNo matches their existing unit.
+    //    If they submit a different unit, fall through to Step 6 (occupancy check).
     const { data: myMembership } = await admin
       .from("property_members")
       .select("id, unit_no")
@@ -202,36 +202,64 @@ Deno.serve(async (req: Request) => {
     if (myMembership) {
       const existingUnit =
         (myMembership as { unit_no?: string | null }).unit_no?.trim() ?? "";
+      if (existingUnit === unitNo.trim()) {
+        // Same unit — already a member, nothing to do
+        console.log(
+          `[entry-auto-join] already_member (unit match) property=${propertyId} user=${userId} unit=${existingUnit}`,
+        );
+        return json({
+          ok: true,
+          kind: "already_member",
+          message: "你已是本物业业主。如需更改房号，请联系理事会/管理员处理。",
+          property_id: propertyId,
+          propertyId,
+          propertyName: (property as { name?: string }).name ?? "",
+          unit_no: existingUnit,
+          unitNo: existingUnit,
+        });
+      }
+      // Different unit submitted — fall through to Step 6 (check if that unit is occupied)
       console.log(
-        `[entry-auto-join] already_member property=${propertyId} user=${userId} unit=${existingUnit}`,
+        `[entry-auto-join] user is member of unit=${existingUnit} but submitted unit=${unitNo} — checking occupancy`,
       );
-      // Return directly — no entry_token needed (caller already has a session)
-      return json({
-        ok: true,
-        kind: "already_member",
-        message:
-          "你已是本物业业主。如需更改房号，请联系理事会/管理员处理。",
-        property_id: propertyId,
-        propertyId,
-        propertyName: (property as { name?: string }).name ?? "",
-        unit_no: existingUnit,
-        unitNo: existingUnit,
-      });
     }
 
-    // 6. User is not yet a member — check unit occupancy
-    const { data: occupant } = await admin
+    // 6. User is not yet a member — check unit occupancy with occupant email comparison
+    //    Priority: if occupant email === submitter email → already_member (must come before pending)
+    const { data: occupantRow } = await admin
       .from("property_members")
-      .select("id")
+      .select("id, user_id")
       .eq("property_id", propertyId)
       .eq("unit_no", unitNo)
       .eq("status", "active")
       .maybeSingle();
 
-    if (occupant) {
-      // Unit occupied — write pending join_request, do NOT touch property_members
+    if (occupantRow) {
+      // Fetch occupant's email to determine if it's the same person
+      const occupantUserId = (occupantRow as { id: string; user_id: string }).user_id;
+      const { data: occupantAuthUser } = await admin.auth.admin.getUserById(occupantUserId);
+      const occupantEmail = (occupantAuthUser?.user?.email ?? "").toLowerCase();
+
+      if (occupantEmail === email) {
+        // Same person re-submitting for their own unit — treat as already_member
+        console.log(
+          `[entry-auto-join] already_member (unit email match) property=${propertyId} unit=${unitNo} user=${userId}`,
+        );
+        return json({
+          ok: true,
+          kind: "already_member",
+          message: "你已是本物业业主。如需更改房号，请联系理事会/管理员处理。",
+          property_id: propertyId,
+          propertyId,
+          propertyName: (property as { name?: string }).name ?? "",
+          unit_no: unitNo,
+          unitNo,
+        });
+      }
+
+      // Different email occupying the unit — write pending join_request
       console.log(
-        `[entry-auto-join] occupied → pending property=${propertyId} unit=${unitNo} user=${userId}`,
+        `[entry-auto-join] occupied → pending property=${propertyId} unit=${unitNo} user=${userId} occupant=${occupantEmail}`,
       );
 
       const { data: pendingRow, error: insertErr } = await admin
