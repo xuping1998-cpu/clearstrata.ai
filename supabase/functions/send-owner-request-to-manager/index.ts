@@ -232,7 +232,7 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "ClearStrata <onboarding@resend.dev>",
+        from: "ClearStrata <no-reply@clearstrata.ai>",
         to: [MANAGER_EMAIL],
         subject: "新的业主诉求 / New Owner Request - ClearStrata",
         html,
@@ -240,6 +240,9 @@ serve(async (req) => {
     });
 
     const resendText = await resendResponse.text();
+
+    console.log("[send-owner-request-to-manager] resend status:", resendResponse.status);
+    console.log("[send-owner-request-to-manager] resend response:", resendText);
 
     if (!resendResponse.ok) {
       console.error("[send-owner-request-to-manager] resend failed:", resendText);

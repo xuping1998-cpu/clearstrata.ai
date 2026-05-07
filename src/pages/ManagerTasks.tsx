@@ -182,14 +182,22 @@ function OwnerRequestCard({
       const { data, error } = await supabase.functions.invoke('send-owner-request-to-manager', {
         body: { requestId: req.id },
       });
-      if (error || !(data as { ok?: boolean })?.ok) {
-        const msg = (error as Error | null)?.message ?? JSON.stringify(data);
-        console.error('[ManagerTasks] send-to-manager failed', msg);
-        showToast(`发送失败：${msg}`, false);
-      } else {
-        showToast('已发送给物业经理');
-        onRefresh();
+
+      console.log('[send-owner-request-to-manager] data:', data);
+      console.error('[send-owner-request-to-manager] error:', error);
+
+      const payload = data as { ok?: boolean; error?: string; detail?: string } | null;
+
+      if (error || payload?.ok === false) {
+        console.error('[send-owner-request-to-manager] data (JSON):', JSON.stringify(data));
+        const msg =
+          payload?.error || payload?.detail || (error as Error | null)?.message || '发送失败';
+        showToast(msg, false);
+        return;
       }
+
+      showToast('已发送给物业经理');
+      onRefresh();
     } catch (e) {
       console.error('[ManagerTasks] send-to-manager error', e);
       showToast(`发送失败：${String(e)}`, false);
@@ -511,6 +519,7 @@ export function ManagerTasks() {
     title: '', content: '', unit_no: '', contact: '', attachment_urls: '',
   });
   const [submittingOR, setSubmittingOR] = useState(false);
+  const [ownerFormExpanded, setOwnerFormExpanded] = useState(false);
 
   const submitOwnerRequest = async () => {
     if (!session?.user?.id || !currentPropertyId || !orForm.title.trim() || !orForm.content.trim()) return;
@@ -535,8 +544,9 @@ export function ManagerTasks() {
     if (error) {
       showToast(`提交失败：${error.message}`, false);
     } else {
-      showToast('诉求已公开提交');
+      showToast('诉求已提交');
       setOrForm({ title: '', content: '', unit_no: '', contact: '', attachment_urls: '' });
+      setOwnerFormExpanded(false);
       void loadOwnerRequests();
     }
   };
@@ -607,7 +617,7 @@ export function ManagerTasks() {
           <p className="mt-1 text-sm text-gray-600">
             {en
               ? 'Unified entry for owner requests, repairs, procurement and invoice uploads — progress and reviews are publicly visible to all members.'
-              : '物业事项统一处理入口，公开记录业主诉求、报修维修、物业经理采购与发票上传，处理进程和评价接受业主公共监督。'}
+              : '物业事项统一处理入口，记录业主诉求、报修维修、物业经理采购与发票上传，处理进程和评价接受业主公共监督。'}
           </p>
         </div>
         {!isOwnerRequestTab && (
@@ -650,69 +660,87 @@ export function ManagerTasks() {
       {/* ── Owner Request Tab ─────────────────────────────────────────────────── */}
       {isOwnerRequestTab && (
         <div className="space-y-6">
-          {/* Submit form */}
-          <div className="rounded-2xl border border-[#1D9E75]/30 bg-white shadow-sm p-6">
-            <h2 className="text-base font-semibold text-gray-900 mb-4">提交业主诉求</h2>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">诉求标题 <span className="text-red-500">*</span></label>
-                <input
-                  value={orForm.title}
-                  onChange={(e) => setOrForm({ ...orForm, title: e.target.value })}
-                  placeholder="简要描述诉求"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">诉求内容 <span className="text-red-500">*</span></label>
-                <textarea
-                  value={orForm.content}
-                  onChange={(e) => setOrForm({ ...orForm, content: e.target.value })}
-                  rows={4}
-                  placeholder="详细说明诉求内容（提交后公开可见）"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">房号</label>
-                  <input
-                    value={orForm.unit_no}
-                    onChange={(e) => setOrForm({ ...orForm, unit_no: e.target.value })}
-                    placeholder="如：105"
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">联系方式</label>
-                  <input
-                    value={orForm.contact}
-                    onChange={(e) => setOrForm({ ...orForm, contact: e.target.value })}
-                    placeholder="电话或邮箱"
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">附件链接</label>
-                <textarea
-                  value={orForm.attachment_urls}
-                  onChange={(e) => setOrForm({ ...orForm, attachment_urls: e.target.value })}
-                  rows={2}
-                  placeholder="每行一个链接（图片/PDF 等）"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono text-xs"
-                />
+          {/* Submit form (collapsible) */}
+          <div className="rounded-2xl border border-[#1D9E75]/30 bg-white shadow-sm overflow-hidden">
+            <div className="flex flex-wrap items-start justify-between gap-3 px-6 py-4 border-b border-gray-100 bg-white">
+              <div className="min-w-0 flex-1">
+                <h2 className="text-base font-semibold text-gray-900">提交业主诉求</h2>
+                {!ownerFormExpanded ? (
+                  <p className="mt-2 text-sm text-gray-600">
+                    业主可提交诉求并递交物业经理，处理进程和评价公开接受监督。
+                  </p>
+                ) : null}
               </div>
               <button
                 type="button"
-                disabled={submittingOR || !orForm.title.trim() || !orForm.content.trim()}
-                onClick={() => void submitOwnerRequest()}
-                className="inline-flex items-center gap-2 rounded-lg bg-[#1D9E75] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 hover:bg-[#178a66]"
+                onClick={() => setOwnerFormExpanded((v) => !v)}
+                className="shrink-0 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100"
               >
-                {submittingOR ? <Loader2 size={14} className="animate-spin" /> : null}
-                提交诉求
+                {ownerFormExpanded ? '收起' : '展开'}
               </button>
             </div>
+            {ownerFormExpanded ? (
+              <div className="space-y-3 p-6 pt-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">诉求标题 <span className="text-red-500">*</span></label>
+                  <input
+                    value={orForm.title}
+                    onChange={(e) => setOrForm({ ...orForm, title: e.target.value })}
+                    placeholder="简要描述诉求"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">诉求内容 <span className="text-red-500">*</span></label>
+                  <textarea
+                    value={orForm.content}
+                    onChange={(e) => setOrForm({ ...orForm, content: e.target.value })}
+                    rows={4}
+                    placeholder="详细说明诉求内容（提交后对业主可见）"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">房号</label>
+                    <input
+                      value={orForm.unit_no}
+                      onChange={(e) => setOrForm({ ...orForm, unit_no: e.target.value })}
+                      placeholder="如：105"
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">联系方式</label>
+                    <input
+                      value={orForm.contact}
+                      onChange={(e) => setOrForm({ ...orForm, contact: e.target.value })}
+                      placeholder="电话或邮箱"
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">附件链接</label>
+                  <textarea
+                    value={orForm.attachment_urls}
+                    onChange={(e) => setOrForm({ ...orForm, attachment_urls: e.target.value })}
+                    rows={2}
+                    placeholder="每行一个链接（图片/PDF 等）"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono text-xs"
+                  />
+                </div>
+                <button
+                  type="button"
+                  disabled={submittingOR || !orForm.title.trim() || !orForm.content.trim()}
+                  onClick={() => void submitOwnerRequest()}
+                  className="inline-flex items-center gap-2 rounded-lg bg-[#1D9E75] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 hover:bg-[#178a66]"
+                >
+                  {submittingOR ? <Loader2 size={14} className="animate-spin" /> : null}
+                  提交诉求
+                </button>
+              </div>
+            ) : null}
           </div>
 
           {/* List */}
@@ -723,7 +751,7 @@ export function ManagerTasks() {
           ) : ownerRequests.length === 0 ? (
             <div className="rounded-2xl border border-gray-200 bg-white p-12 text-center text-gray-500">
               <ClipboardList className="mx-auto mb-3 h-10 w-10 text-gray-300" />
-              <p className="font-medium">暂无公开业主诉求。</p>
+              <p className="font-medium">暂无业主诉求。</p>
               <p className="mt-1 text-sm text-gray-400">业主提交后，处理进程、物业经理结果和公共评价将在这里公开展示。</p>
             </div>
           ) : (
