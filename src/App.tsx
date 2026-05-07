@@ -5,6 +5,7 @@ import { LanguageProvider } from './contexts/LanguageContext';
 import { PropertyProvider, useProperty } from './contexts/PropertyContext';
 import { PropertyEntry } from './pages/PropertyEntry';
 import { Auth } from './components/Auth';
+import { AdminLoginPage } from './pages/auth/AdminLoginPage';
 import { ResetPassword } from './pages/ResetPassword';
 import { Layout } from './components/Layout';
 import { PWAInstallPrompt } from './components/PWAInstallPrompt';
@@ -556,7 +557,7 @@ function AppContent() {
       />
       <Route path="/p/:code" element={<PropertyEntry />} />
       <Route path="/reset-password" element={<ResetPassword />} />
-      <Route path="/login" element={<Auth />} />
+      <Route path="/login" element={<AdminLoginPage />} />
       <Route path="/pricing" element={<PricingRoute />} />
       <Route path="/contact" element={<ContactRoute />} />
       <Route path="/join/pending" element={<JoinPendingPage />} />
