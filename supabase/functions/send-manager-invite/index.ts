@@ -4,7 +4,8 @@
  *
  * verify_jwt = false — pass user JWT from app; DB via service_role.
  *
- * Secrets: RESEND_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, APP_BASE_URL (optional).
+ * APP_BASE_URL: optional secret; normalized to origin only. If unset, invalid,
+ * or host is clearstrata.ai — uses https://clearstrataaiserena.vercel.app for links + logo origin.
  */
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -17,18 +18,52 @@ const corsHeaders = {
     "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-function normalizeBase(raw?: string | null): string {
-  const fallback = "https://clearstrata.ai";
-  if (!raw) return fallback;
-  const cleaned = raw.trim().replace(/[\u200B-\u200D\uFEFF]/g, "");
-  if (!cleaned) return fallback;
-  const withProtocol = /^https?:\/\//i.test(cleaned) ? cleaned : `https://${cleaned}`;
-  try {
-    return new URL(withProtocol).origin;
-  } catch {
-    console.warn("[send-manager-invite] invalid APP_BASE_URL:", raw);
-    return fallback;
+/** JSON helper (includes CORS headers). */
+function json(body: Record<string, unknown>, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+function logFullCatchError(error: unknown): void {
+  const err = error as { message?: string; stack?: string; cause?: unknown };
+  console.error("❌ send-manager-invite FULL ERROR", {
+    message: err?.message,
+    stack: err?.stack,
+    cause: err?.cause,
+    error,
+  });
+}
+
+/** Test / default deployment (see workspace domain rules). Production can override via APP_BASE_URL. */
+const APP_BASE_DEFAULT_ORIGIN = "https://clearstrataaiserena.vercel.app";
+
+/** Force Vercel test host when unset, invalid, or still pointing at marketing root domain. */
+function normalizeAppBaseUrl(raw?: string | null): string {
+  const cleaned = (raw ?? "").trim().replace(/[\u200B-\u200D\uFEFF]/g, "");
+  if (!cleaned) {
+    console.log("✅ send-manager-invite APP_BASE_URL empty → using default origin", APP_BASE_DEFAULT_ORIGIN);
+    return APP_BASE_DEFAULT_ORIGIN;
   }
+  const withProtocol = /^https?:\/\//i.test(cleaned) ? cleaned : `https://${cleaned}`;
+  let origin: string;
+  try {
+    origin = new URL(withProtocol).origin;
+  } catch {
+    console.warn("[send-manager-invite] invalid APP_BASE_URL, fallback:", APP_BASE_DEFAULT_ORIGIN, cleaned);
+    return APP_BASE_DEFAULT_ORIGIN;
+  }
+  try {
+    const host = new URL(origin).hostname.replace(/^www\./i, "").toLowerCase();
+    if (host === "clearstrata.ai") {
+      console.log("✅ send-manager-invite APP_BASE_URL is clearstrata.ai → forcing test origin", APP_BASE_DEFAULT_ORIGIN);
+      return APP_BASE_DEFAULT_ORIGIN;
+    }
+  } catch {
+    return APP_BASE_DEFAULT_ORIGIN;
+  }
+  return origin;
 }
 
 function escapeHtml(s: string): string {
@@ -41,13 +76,6 @@ function escapeHtml(s: string): string {
 
 function normalizeEmail(e: string): string {
   return e.trim().toLowerCase();
-}
-
-function apiJson(body: Record<string, unknown>, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
 }
 
 const INVITER_ROLES = new Set(["council", "admin", "property_admin"]);
@@ -67,11 +95,13 @@ function buildManagerInviteHtml(params: {
   inviterLabel: string;
   acceptLink: string;
   signInUrl: string;
+  logoUrl: string;
 }): string {
   const safe = {
     recipientName: escapeHtml(params.recipientName),
     propertyName: escapeHtml(params.propertyName),
     inviterLabel: escapeHtml(params.inviterLabel),
+    logoUrl: escapeHtml(params.logoUrl),
   };
 
   return `<!DOCTYPE html>
@@ -83,7 +113,7 @@ function buildManagerInviteHtml(params: {
     <tr><td align="center">
       <table role="presentation" width="100%" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06),0 4px 12px rgba(0,0,0,0.04);">
         <tr><td style="background:#16a34a;padding:16px 20px;text-align:center;">
-          <div style="margin-bottom:12px;"><img src="https://clearstrata.ai/logo-email-final.png" alt="ClearStrata" style="height:48px;object-fit:contain;display:block;margin:0 auto;" /></div>
+          <div style="margin-bottom:12px;"><img src="${safe.logoUrl}" alt="ClearStrata" style="height:48px;object-fit:contain;display:block;margin:0 auto;" /></div>
           <div style="font-size:22px;font-weight:600;color:#ffffff;">物业经理邀请 / Property Manager Invitation</div>
         </td></tr>
         <tr><td style="padding:32px 32px 24px;">
@@ -133,7 +163,7 @@ Deno.serve(async (req: Request) => {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
   if (req.method !== "POST") {
-    return apiJson({ ok: false, message: "Method not allowed" }, 405);
+    return json({ ok: false, message: "Method not allowed" }, 405);
   }
 
   const missing: string[] = [];
@@ -142,146 +172,229 @@ Deno.serve(async (req: Request) => {
   if (!Deno.env.get("SUPABASE_ANON_KEY")?.trim()) missing.push("SUPABASE_ANON_KEY");
   if (!Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim()) missing.push("SUPABASE_SERVICE_ROLE_KEY");
   if (missing.length) {
-    return apiJson({ ok: false, message: `missing env: ${missing[0]}`, missing }, 503);
+    console.error("❌ send-manager-invite missing env", { missing });
+    return json({ ok: false, message: `missing env: ${missing[0]}`, missing }, 503);
   }
 
   const authHeader = req.headers.get("Authorization") ?? "";
   if (!authHeader.startsWith("Bearer ")) {
-    return apiJson({ ok: false, message: "Missing Authorization Bearer" }, 401);
+    return json({ ok: false, message: "Missing Authorization Bearer" }, 401);
   }
 
   let raw: Body;
   try {
     raw = (await req.json()) as Body;
-  } catch {
-    return apiJson({ ok: false, message: "Invalid JSON body" }, 400);
+  } catch (error) {
+    logFullCatchError(error);
+    const msg = error instanceof Error ? error.message : "unknown_error";
+    return json({ ok: false, error: msg, message: msg }, 500);
   }
+
+  console.log("✅ send-manager-invite received payload", {
+    propertyId: raw.propertyId ?? raw.property_id ?? null,
+    managerName: raw.managerName ?? raw.manager_name ?? null,
+    managerEmail: raw.managerEmail ?? raw.manager_email ?? null,
+  });
 
   const propertyId = String(raw.propertyId ?? raw.property_id ?? "").trim();
   const managerName = String(raw.managerName ?? raw.manager_name ?? "").trim() || null;
   const managerEmail = normalizeEmail(String(raw.managerEmail ?? raw.manager_email ?? ""));
 
-  if (!propertyId) return apiJson({ ok: false, message: "propertyId is required" }, 400);
+  if (!propertyId) return json({ ok: false, message: "propertyId is required" }, 400);
   if (!managerEmail || !managerEmail.includes("@")) {
-    return apiJson({ ok: false, message: "managerEmail is invalid" }, 400);
+    return json({ ok: false, message: "managerEmail is invalid" }, 400);
   }
 
-  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-  const supabaseAnon = Deno.env.get("SUPABASE_ANON_KEY")!;
-  const supabaseSr = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-  const userClient = createClient(supabaseUrl, supabaseAnon, {
-    global: { headers: { Authorization: authHeader } },
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-
-  const { data: udata, error: uerr } = await userClient.auth.getUser();
-  if (uerr || !udata?.user?.id) {
-    return apiJson({ ok: false, message: "Unauthorized" }, 401);
-  }
-  const userId = udata.user.id;
-
-  const svc = createClient(supabaseUrl, supabaseSr, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-
-  const { data: membership, error: mer } = await svc
-    .from("property_members")
-    .select("role")
-    .eq("property_id", propertyId)
-    .eq("user_id", userId)
-    .eq("status", "active")
-    .maybeSingle();
-
-  if (mer) {
-    console.error("[send-manager-invite] membership", mer);
-    return apiJson({ ok: false, message: "Failed to verify role" }, 500);
-  }
-  const role = membership?.role as string | undefined;
-  if (!role || !INVITER_ROLES.has(role)) {
-    return apiJson({ ok: false, message: "Forbidden: only council, admin or property_admin can invite" }, 403);
-  }
-
-  const { data: property, error: perr } = await svc
-    .from("properties")
-    .select("id,name")
-    .eq("id", propertyId)
-    .maybeSingle();
-  if (perr || !property) {
-    return apiJson({ ok: false, message: "Property not found" }, 404);
-  }
-
-  const { data: inviterProfile } = await svc
-    .from("profiles")
-    .select("full_name_zh,full_name_en,email")
-    .eq("id", userId)
-    .maybeSingle();
-
-  const inviterLabel =
-    (inviterProfile?.full_name_zh as string)?.trim() ||
-    (inviterProfile?.full_name_en as string)?.trim() ||
-    (inviterProfile?.email as string)?.trim() ||
-    "Property";
-
-  const token = crypto.randomUUID();
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-
-  const { data: pendingRow } = await svc
-    .from("manager_invites")
-    .select("id")
-    .eq("property_id", propertyId)
-    .eq("email", managerEmail)
-    .eq("status", "pending")
-    .maybeSingle();
-
-  if (pendingRow?.id) {
-    const { error: upErr } = await svc.from("manager_invites").update({
-      token,
-      expires_at: expiresAt,
-      full_name: managerName,
-      invited_by: userId,
-      updated_at: new Date().toISOString(),
-    }).eq("id", pendingRow.id);
-    if (upErr) {
-      console.error("[send-manager-invite] update pending", upErr);
-      return apiJson({ ok: false, message: upErr.message }, 500);
-    }
-  } else {
-    const { error: insErr } = await svc.from("manager_invites").insert({
-      property_id: propertyId,
-      email: managerEmail,
-      full_name: managerName,
-      role: "manager",
-      token,
-      status: "pending",
-      invited_by: userId,
-      expires_at: expiresAt,
-    });
-    if (insErr) {
-      console.error("[send-manager-invite] insert", insErr);
-      return apiJson({ ok: false, message: insErr.message }, 500);
-    }
-  }
-
-  const base = normalizeBase(Deno.env.get("APP_BASE_URL"));
-  const acceptLink = `${base}/manager-invite?token=${encodeURIComponent(token)}`;
-  const signInUrl = `${base}/login?redirect=${encodeURIComponent(`/manager-invite?token=${token}`)}`;
-
-  const displayName =
-    managerName ||
-    managerEmail.split("@")[0] ||
-    "Property Manager";
-
-  const html = buildManagerInviteHtml({
-    recipientName: displayName,
-    propertyName: String(property.name ?? "Property"),
-    inviterLabel,
-    acceptLink,
-    signInUrl,
-  });
-
-  const resend = new Resend(Deno.env.get("RESEND_API_KEY")!.trim());
   try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnon = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const supabaseSr = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+    const userClient = createClient(supabaseUrl, supabaseAnon, {
+      global: { headers: { Authorization: authHeader } },
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    console.log("✅ send-manager-invite fetching current user");
+
+    const { data: udata, error: uerr } = await userClient.auth.getUser();
+    if (uerr || !udata?.user?.id) {
+      console.error("❌ send-manager-invite auth.getUser failed", {
+        message: uerr?.message ?? "no-user",
+      });
+      return json({
+        ok: false,
+        message: "Unauthorized",
+        error: uerr?.message ?? "Unauthorized",
+      }, 401);
+    }
+    const userId = udata.user.id;
+    const emailHint = typeof udata.user.email === "string"
+      ? udata.user.email.substring(0, 3) + "…"
+      : null;
+
+    console.log("✅ send-manager-invite current user ok", {
+      userId,
+      emailHint,
+    });
+
+    const svc = createClient(supabaseUrl, supabaseSr, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    console.log("✅ send-manager-invite loading property_members for inviter gate", {
+      propertyId,
+      userId,
+    });
+
+    const { data: membership, error: mer } = await svc
+      .from("property_members")
+      .select("role")
+      .eq("property_id", propertyId)
+      .eq("user_id", userId)
+      .eq("status", "active")
+      .maybeSingle();
+
+    if (mer) {
+      console.error("❌ send-manager-invite property_members gate query", mer);
+      return json({
+        ok: false,
+        message: mer.message ?? "Failed to verify role",
+        error: mer.message ?? "unknown",
+      }, 500);
+    }
+    const role = membership?.role as string | undefined;
+    if (!role || !INVITER_ROLES.has(role)) {
+      console.error("❌ send-manager-invite forbidden inviter role", { role });
+      return json({
+        ok: false,
+        message: "Forbidden: only council, admin or property_admin can invite",
+      }, 403);
+    }
+
+    console.log("✅ send-manager-invite reading property");
+
+    const { data: property, error: perr } = await svc
+      .from("properties")
+      .select("id,name")
+      .eq("id", propertyId)
+      .maybeSingle();
+    if (perr || !property) {
+      console.error("❌ send-manager-invite properties query", { perr, property });
+      return json({
+        ok: false,
+        message: perr?.message ?? "Property not found",
+        error: perr?.message ?? "property_not_found",
+      }, perr ? 500 : 404);
+    }
+
+    console.log("✅ send-manager-invite property ok", property);
+
+    const { data: inviterProfile } = await svc
+      .from("profiles")
+      .select("full_name_zh,full_name_en,email")
+      .eq("id", userId)
+      .maybeSingle();
+
+    const inviterLabel =
+      (inviterProfile?.full_name_zh as string)?.trim() ||
+      (inviterProfile?.full_name_en as string)?.trim() ||
+      (inviterProfile?.email as string)?.trim() ||
+      "Property";
+
+    const token = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    console.log("✅ send-manager-invite upsert manager_invites (checking pending)");
+
+    const { data: pendingRow, error: pendingErr } = await svc
+      .from("manager_invites")
+      .select("id")
+      .eq("property_id", propertyId)
+      .eq("email", managerEmail)
+      .eq("status", "pending")
+      .maybeSingle();
+
+    if (pendingErr) {
+      console.error("❌ send-manager-invite manager_invites pending select", pendingErr);
+      return json({
+        ok: false,
+        message: pendingErr.message ?? "invite lookup failed",
+        error: pendingErr.message ?? "unknown",
+      }, 500);
+    }
+
+    if (pendingRow?.id) {
+      console.log("✅ send-manager-invite updating pending manager_invites", pendingRow.id);
+      const { error: upErr } = await svc.from("manager_invites").update({
+        token,
+        expires_at: expiresAt,
+        full_name: managerName,
+        invited_by: userId,
+        updated_at: new Date().toISOString(),
+      }).eq("id", pendingRow.id);
+      if (upErr) {
+        console.error("❌ send-manager-invite manager_invites update", upErr);
+        return json({
+          ok: false,
+          message: upErr.message,
+          error: upErr.message,
+        }, 500);
+      }
+      console.log("✅ send-manager-invite manager_invites update ok");
+    } else {
+      console.log("✅ send-manager-invite inserting manager_invites");
+      const { error: insErr } = await svc.from("manager_invites").insert({
+        property_id: propertyId,
+        email: managerEmail,
+        full_name: managerName,
+        role: "manager",
+        token,
+        status: "pending",
+        invited_by: userId,
+        expires_at: expiresAt,
+      });
+      if (insErr) {
+        console.error("❌ send-manager-invite manager_invites insert", insErr);
+        return json({
+          ok: false,
+          message: insErr.message,
+          error: insErr.message,
+        }, 500);
+      }
+      console.log("✅ send-manager-invite manager_invites insert ok");
+    }
+
+    const normalizedBaseUrl = normalizeAppBaseUrl(Deno.env.get("APP_BASE_URL"));
+    const logoUrl = `${normalizedBaseUrl}/logo-email.png`;
+    const acceptLink = `${normalizedBaseUrl}/manager-invite?token=${encodeURIComponent(token)}`;
+    const signInUrl =
+      `${normalizedBaseUrl}/login?redirect=${encodeURIComponent(`/manager-invite?token=${token}`)}`;
+
+    console.log("✅ send-manager-invite invite urls", {
+      normalizedBaseUrl,
+      logoUrl,
+      acceptLink,
+      signInUrl,
+    });
+
+    const displayName =
+      managerName ||
+      managerEmail.split("@")[0] ||
+      "Property Manager";
+
+    const html = buildManagerInviteHtml({
+      recipientName: displayName,
+      propertyName: String(property.name ?? "Property"),
+      inviterLabel,
+      acceptLink,
+      signInUrl,
+      logoUrl,
+    });
+
+    console.log("✅ send-manager-invite calling resend.emails.send");
+
+    const resend = new Resend(Deno.env.get("RESEND_API_KEY")!.trim());
     const res = await resend.emails.send({
       from: "ClearStrata <noreply@clearstrata.ai>",
       to: managerEmail,
@@ -289,12 +402,29 @@ Deno.serve(async (req: Request) => {
       html,
     });
     if (res.error) {
-      console.error("[send-manager-invite] Resend error", res.error);
-      return apiJson({ ok: false, message: "Resend failed", detail: res.error }, 502);
+      console.error("❌ send-manager-invite Resend rejected", res.error);
+      const errMsg =
+        typeof (res.error as { message?: string }).message === "string"
+          ? (res.error as { message?: string }).message
+          : "Resend failed";
+      return json({
+        ok: false,
+        message: "Resend failed",
+        error: errMsg,
+        detail: res.error as Record<string, unknown>,
+      }, 502);
     }
-    return apiJson({ ok: true, message: "Email sent", email_id: res.data?.id });
-  } catch (e) {
-    console.error("[send-manager-invite] send threw", e);
-    return apiJson({ ok: false, message: "Failed to send email", detail: String(e) }, 500);
+
+    console.log("✅ send-manager-invite email sent OK", {
+      email_id: res.data?.id,
+      to: managerEmail,
+    });
+    console.log("✅ send-manager-invite final success");
+
+    return json({ ok: true, message: "Email sent", email_id: res.data?.id }, 200);
+  } catch (error) {
+    logFullCatchError(error);
+    const msg = error instanceof Error ? error.message : "unknown_error";
+    return json({ ok: false, error: msg, message: msg }, 500);
   }
 });
