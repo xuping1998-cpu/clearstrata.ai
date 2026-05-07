@@ -4,5 +4,8 @@
 [functions.send-meeting-invite]
 verify_jwt = false
 
+[functions.send-owner-request-to-manager]
+verify_jwt = false
+
 [functions.consume-invite-token]
 verify_jwt = false
