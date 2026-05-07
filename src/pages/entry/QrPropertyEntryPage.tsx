@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Building2, Loader2, MailCheck } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -8,6 +8,9 @@ import { trackPropertyEntryEvent } from '../../lib/propertyEntryEvents';
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** 与 App 路由一致：`/` 为主应用首页；若某部署将匿名落地页固定为 `/entry`，改为 `'/entry'`。 */
+const BACK_TO_HOME_PATH: '/' | '/entry' = '/';
 
 const OTP_LENGTH = 8;
 
@@ -503,9 +506,14 @@ export function QrPropertyEntryPage() {
         <p className="text-sm text-gray-800 text-center max-w-md">
           {resolveErr || '链接无效。'}
         </p>
-        <Link to="/" className="mt-6 text-clearstrata-ui-primary font-medium text-sm">
-          返回首页
-        </Link>
+        <button
+          type="button"
+          onClick={() => navigate(BACK_TO_HOME_PATH)}
+          className="mt-6 w-full max-w-md text-left text-xs text-gray-500 hover:text-gray-700 transition-colors"
+        >
+          <span>← 返回首页</span>
+          <span className="block text-[10px] text-gray-400 mt-0.5">Back to home</span>
+        </button>
       </div>
     );
   }
@@ -516,6 +524,14 @@ export function QrPropertyEntryPage() {
     return (
       <div className="min-h-screen bg-gradient-to-b from-clearstrata-ui-soft/40 to-gray-50 flex items-start justify-center p-4 py-10">
         <div className="w-full max-w-md bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center space-y-4">
+          <button
+            type="button"
+            onClick={() => navigate(BACK_TO_HOME_PATH)}
+            className="block w-full text-left text-xs text-gray-500 hover:text-gray-700 transition-colors"
+          >
+            <span>← 返回首页</span>
+            <span className="block text-[10px] text-gray-400 mt-0.5">Back to home</span>
+          </button>
           <div className="flex justify-center mb-2">
             <img src="/clearstrata-hero-logo.png" alt="ClearStrata" className="w-16 h-auto" />
           </div>
@@ -594,6 +610,14 @@ export function QrPropertyEntryPage() {
     return (
       <div className="min-h-screen bg-gradient-to-b from-clearstrata-ui-soft/40 to-gray-50 flex items-start justify-center p-4 py-10">
         <div className="w-full max-w-md bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center space-y-4">
+          <button
+            type="button"
+            onClick={() => navigate(BACK_TO_HOME_PATH)}
+            className="block w-full text-left text-xs text-gray-500 hover:text-gray-700 transition-colors"
+          >
+            <span>← 返回首页</span>
+            <span className="block text-[10px] text-gray-400 mt-0.5">Back to home</span>
+          </button>
           <div className="flex justify-center mb-2">
             <img src="/clearstrata-hero-logo.png" alt="ClearStrata" className="w-16 h-auto" />
           </div>
@@ -636,6 +660,14 @@ export function QrPropertyEntryPage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-clearstrata-ui-soft/40 to-gray-50 flex items-start justify-center p-4 py-10">
       <div className="w-full max-w-md bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-5">
+        <button
+          type="button"
+          onClick={() => navigate(BACK_TO_HOME_PATH)}
+          className="block w-full text-left text-xs text-gray-500 hover:text-gray-700 transition-colors"
+        >
+          <span>← 返回首页</span>
+          <span className="block text-[10px] text-gray-400 mt-0.5">Back to home</span>
+        </button>
         {/* Header */}
         <div className="text-center">
           <div className="w-full flex justify-center mb-5">
