@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -15,6 +15,17 @@ export function AdminLoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  const emailParam = searchParams.get('email');
+
+  useEffect(() => {
+    if (!emailParam?.trim()) return;
+    try {
+      setEmail(decodeURIComponent(emailParam.trim()));
+    } catch {
+      setEmail(emailParam.trim());
+    }
+  }, [emailParam]);
 
   const canSubmit = Boolean(email.trim()) && Boolean(password) && !submitting;
 
