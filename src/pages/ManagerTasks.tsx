@@ -279,33 +279,32 @@ function OwnerRequestCard({
         </div>
       </div>
 
-      {/* 递交物业经理状态（全员可见，不做 created_by / manager 限制） */}
-      <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/60 space-y-2">
-        <div className="text-xs font-semibold text-gray-600">
-          递交物业经理状态（公共监督）
-        </div>
+      {/* 递交物业经理状态（全员可见；两行摘要） */}
+      <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/60 space-y-1.5">
         {!deliveredToManager ? (
-          <p className="text-sm text-gray-800">尚未递交物业经理</p>
+          <p className="text-sm text-gray-800">递交状态：尚未递交物业经理</p>
         ) : (
-          <div className="text-sm text-gray-800 space-y-1">
-            <p className="font-medium text-[#1D9E75]">✅ 已递交物业经理</p>
-            <p className="text-xs text-gray-600">
-              递交时间：
+          <p className="text-sm text-gray-800">
+            <span className="text-gray-600">递交状态：</span>
+            <span className="font-medium text-[#1D9E75]">✅ 已递交物业经理</span>
+            <span className="mx-2 text-gray-300">｜</span>
+            <span className="text-gray-600">递交时间：</span>
+            <span>
               {req.sent_to_manager_at
                 ? new Date(req.sent_to_manager_at).toLocaleString('zh-CN')
                 : '—'}
-            </p>
-            <p className="text-xs text-gray-600 break-all">
-              物业经理邮箱：{req.manager_email?.trim() ? req.manager_email : '—'}
-            </p>
-          </div>
+            </span>
+          </p>
         )}
+        <p className="text-sm text-gray-600 break-all">
+          物业经理：{req.manager_email?.trim() ? req.manager_email : 'gani.xhepa@dwellproperty.ca'}
+        </p>
         {isSubmittingUser && req.status === 'pending' && (
           <button
             type="button"
             disabled={sending}
             onClick={() => void sendToManager()}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-600 disabled:opacity-50"
+            className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-600 disabled:opacity-50"
           >
             {sending ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
             发送给物业经理

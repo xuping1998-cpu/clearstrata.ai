@@ -3,6 +3,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
 const MANAGER_EMAIL = "gani.xhepa@dwellproperty.ca";
 
+/** 与 `send-meeting-invite` 会议邀请邮件一致的 logo */
+const CLEARSTRATA_EMAIL_LOGO_URL = "https://clearstrata.ai/logo-email-final.png";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -26,6 +29,132 @@ function escapeHtml(value: unknown) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function buildOwnerRequestNoticeHtml(params: {
+  propertyName: string;
+  propertyId: string;
+  unitNo: string;
+  submitterName: string;
+  submitterEmail: string;
+  contact: string;
+  createdAt: string;
+  requestTitle: string;
+  requestContent: string;
+  attachmentBlockHtml: string;
+}): string {
+  const safe = {
+    propertyName: escapeHtml(params.propertyName),
+    propertyId: escapeHtml(params.propertyId),
+    unitNo: escapeHtml(params.unitNo),
+    submitterName: escapeHtml(params.submitterName),
+    submitterEmail: escapeHtml(params.submitterEmail),
+    contact: escapeHtml(params.contact),
+    createdAt: escapeHtml(params.createdAt),
+    requestTitle: escapeHtml(params.requestTitle),
+    requestContent: escapeHtml(params.requestContent),
+  };
+
+  return `<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>业主诉求递交通知</title>
+</head>
+<body style="margin:0;padding:0;background:#f6f9fc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,'PingFang SC','Microsoft YaHei',sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f9fc;padding:40px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06),0 4px 12px rgba(0,0,0,0.04);">
+          <tr>
+            <td style="background:#16a34a;padding:20px 24px;text-align:center;">
+              <div style="margin-bottom:14px;">
+                <img src="${CLEARSTRATA_EMAIL_LOGO_URL}" alt="ClearStrata" width="180" height="48" style="height:48px;width:auto;max-width:220px;object-fit:contain;display:block;margin:0 auto;border:0;outline:none;" />
+              </div>
+              <div style="font-size:20px;font-weight:700;color:#ffffff;line-height:1.35;">
+                业主诉求递交通知<span style="font-weight:600;opacity:0.95;"> / Owner Request Submitted</span>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:28px 32px 8px;color:#374151;font-size:15px;line-height:1.6;">
+              <p style="margin:0 0 12px;color:#111827;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;">物业信息 / Property</p>
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:18px 20px;">
+                <tr>
+                  <td style="padding:0 0 10px;border-bottom:1px solid #e5e7eb;font-size:12px;color:#6b7280;font-weight:600;">物业名称 / Property name</td>
+                  <td style="padding:0 0 10px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#111827;text-align:right;word-break:break-word;">${safe.propertyName}</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;font-size:12px;color:#6b7280;font-weight:600;">物业 ID / Property ID</td>
+                  <td style="padding:10px 0 0 12px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#111827;text-align:right;word-break:break-all;font-family:ui-monospace,monospace;">${safe.propertyId}</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;font-size:12px;color:#6b7280;font-weight:600;">房号 / Unit</td>
+                  <td style="padding:10px 0 0 12px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#111827;text-align:right;">${safe.unitNo}</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;font-size:12px;color:#6b7280;font-weight:600;">提交人姓名 / Submitter</td>
+                  <td style="padding:10px 0 0 12px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#111827;text-align:right;">${safe.submitterName}</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;font-size:12px;color:#6b7280;font-weight:600;">提交人邮箱 / Email</td>
+                  <td style="padding:10px 0 0 12px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#111827;text-align:right;word-break:break-all;">${safe.submitterEmail}</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;font-size:12px;color:#6b7280;font-weight:600;">联系方式 / Contact</td>
+                  <td style="padding:10px 0 0 12px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#111827;text-align:right;word-break:break-word;">${safe.contact}</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 0 0;font-size:12px;color:#6b7280;font-weight:600;">创建时间 / Created</td>
+                  <td style="padding:10px 0 0 12px;font-size:13px;color:#111827;text-align:right;word-break:break-word;">${safe.createdAt}</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:8px 32px 28px;color:#374151;font-size:15px;line-height:1.65;">
+              <p style="margin:0 0 12px;color:#111827;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;">诉求详情 / Request details</p>
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:18px 20px;margin-bottom:16px;">
+                <tr>
+                  <td style="padding:0 0 8px;">
+                    <p style="margin:0;color:#6b7280;font-size:12px;font-weight:600;">诉求标题 / Title</p>
+                    <p style="margin:6px 0 0;color:#111827;font-size:16px;font-weight:700;">${safe.requestTitle}</p>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:14px 0 0;border-top:1px solid #e5e7eb;">
+                    <p style="margin:0;color:#6b7280;font-size:12px;font-weight:600;">诉求正文 / Description</p>
+                    <div style="margin-top:10px;white-space:pre-wrap;line-height:1.65;color:#1f2937;font-size:14px;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:14px 16px;">
+${safe.requestContent}
+                    </div>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:0 0 8px;color:#111827;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;">附件 / Attachments</p>
+              <div style="font-size:14px;color:#374151;line-height:1.6;">
+${params.attachmentBlockHtml}
+              </div>
+              <div style="margin-top:22px;padding:14px 16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;color:#166534;font-size:13px;line-height:1.65;">
+                <strong style="display:block;margin-bottom:6px;color:#15803d;">ClearStrata 说明</strong>
+                本诉求已在 ClearStrata 内公开记录，处理进程和业主评价将接受本物业成员公共监督。
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:18px 32px 24px;border-top:1px solid #f3f4f6;background:#fafafa;">
+              <p style="margin:0;color:#9ca3af;font-size:11px;line-height:1.55;">
+                本邮件由 ClearStrata 系统自动发送，请勿直接回复。<br/>
+                Automated message from ClearStrata — please do not reply to this address.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
 }
 
 function normalizeAttachmentUrls(value: unknown): string[] {
@@ -165,65 +294,27 @@ serve(async (req) => {
 
     const attachments = normalizeAttachmentUrls(ownerRequest.attachment_urls);
 
-    const attachmentHtml = attachments.length
-      ? `<ul>${attachments
-          .map((url) => `<li><a href="${escapeHtml(url)}">${escapeHtml(url)}</a></li>`)
+    const propertyIdStr = String(propertyId);
+    const propertyDisplayName = property?.name ? String(property.name) : propertyIdStr;
+
+    const attachmentHtmlSafe = attachments.length
+      ? `<ul style="margin:0;padding-left:20px;">${attachments
+          .map((url) => `<li style="margin:6px 0;"><a href="${escapeHtml(url)}" style="color:#15803d;word-break:break-all;">${escapeHtml(url)}</a></li>`)
           .join("")}</ul>`
-      : `<p style="color:#64748b;">无附件 / No attachments</p>`;
+      : `<p style="margin:0;color:#6b7280;">无附件 / No attachments</p>`;
 
-    const html = `
-      <div style="font-family: Arial, sans-serif; background:#f8fafc; padding:24px;">
-        <div style="max-width:720px; margin:0 auto; background:#ffffff; border:1px solid #e2e8f0; border-radius:16px; overflow:hidden;">
-          <div style="background:#0f766e; color:#ffffff; padding:24px;">
-            <div style="font-size:22px; font-weight:700;">ClearStrata</div>
-            <div style="font-size:16px; margin-top:6px;">新的业主诉求 / New Owner Request</div>
-          </div>
-
-          <div style="padding:24px; color:#0f172a;">
-            <h2 style="margin:0 0 16px;">${escapeHtml(ownerRequest.title)}</h2>
-
-            <table style="width:100%; border-collapse:collapse; font-size:14px;">
-              <tr>
-                <td style="padding:8px 0; color:#64748b; width:160px;">物业名称</td>
-                <td style="padding:8px 0;">${escapeHtml(property?.name || propertyId)}</td>
-              </tr>
-              <tr>
-                <td style="padding:8px 0; color:#64748b;">房号</td>
-                <td style="padding:8px 0;">${escapeHtml(ownerRequest.unit_no || "-")}</td>
-              </tr>
-              <tr>
-                <td style="padding:8px 0; color:#64748b;">提交人</td>
-                <td style="padding:8px 0;">${escapeHtml(submitterName)}</td>
-              </tr>
-              <tr>
-                <td style="padding:8px 0; color:#64748b;">提交人邮箱</td>
-                <td style="padding:8px 0;">${escapeHtml(submitterEmail || "-")}</td>
-              </tr>
-              <tr>
-                <td style="padding:8px 0; color:#64748b;">联系方式</td>
-                <td style="padding:8px 0;">${escapeHtml(ownerRequest.contact || "-")}</td>
-              </tr>
-              <tr>
-                <td style="padding:8px 0; color:#64748b;">创建时间</td>
-                <td style="padding:8px 0;">${escapeHtml(ownerRequest.created_at)}</td>
-              </tr>
-            </table>
-
-            <div style="margin-top:20px;">
-              <div style="font-weight:700; margin-bottom:8px;">诉求内容</div>
-              <div style="white-space:pre-wrap; line-height:1.6; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:16px;">
-                ${escapeHtml(ownerRequest.content)}
-              </div>
-            </div>
-
-            <div style="margin-top:20px;">
-              <div style="font-weight:700; margin-bottom:8px;">附件</div>
-              ${attachmentHtml}
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
+    const html = buildOwnerRequestNoticeHtml({
+      propertyName: propertyDisplayName,
+      propertyId: propertyIdStr,
+      unitNo: ownerRequest.unit_no ? String(ownerRequest.unit_no) : "—",
+      submitterName,
+      submitterEmail: submitterEmail || "—",
+      contact: ownerRequest.contact ? String(ownerRequest.contact) : "—",
+      createdAt: String(ownerRequest.created_at ?? ""),
+      requestTitle: String(ownerRequest.title ?? ""),
+      requestContent: String(ownerRequest.content ?? ""),
+      attachmentBlockHtml: attachmentHtmlSafe,
+    });
 
     const resendResponse = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -234,7 +325,7 @@ serve(async (req) => {
       body: JSON.stringify({
         from: "ClearStrata <no-reply@clearstrata.ai>",
         to: [MANAGER_EMAIL],
-        subject: "新的业主诉求 / New Owner Request - ClearStrata",
+        subject: "业主诉求递交通知 / Owner Request Submitted — ClearStrata",
         html,
       }),
     });
