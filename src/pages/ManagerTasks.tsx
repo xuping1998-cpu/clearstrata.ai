@@ -6,7 +6,17 @@ import { useAuth } from '../contexts/AuthContext';
 import { useProperty } from '../contexts/PropertyContext';
 import { supabase } from '../lib/supabase';
 
-export type ManagerTaskType = 'repair' | 'vendor' | 'invoice_review' | 'dispute';
+// Current task types (new keys used for creation and tab filtering)
+export type ManagerTaskType =
+  | 'owner_request'
+  | 'repair'
+  | 'procurement'
+  | 'invoice_upload'
+  // Legacy DB values kept for backwards compatibility (existing records)
+  | 'dispute'
+  | 'vendor'
+  | 'invoice_review'
+  | 'maintenance';
 
 export type ManagerTaskRow = {
   id: string;
@@ -20,16 +30,37 @@ export type ManagerTaskRow = {
   created_at: string;
 };
 
-const TASK_TYPES: ManagerTaskType[] = ['repair', 'vendor', 'invoice_review', 'dispute'];
+// Tab keys shown in the UI (new values only)
+const TASK_TABS = [
+  { key: 'owner_request', label: '业主诉求', labelEn: 'Owner request' },
+  { key: 'repair',        label: '报修维修', labelEn: 'Repair'         },
+  { key: 'procurement',   label: '采购申报', labelEn: 'Procurement'    },
+  { key: 'invoice_upload',label: '发票上传', labelEn: 'Invoice upload' },
+] as const;
 
-function taskTypeLabel(kind: ManagerTaskType, en: boolean): string {
-  const m: Record<ManagerTaskType, [string, string]> = {
-    repair: ['Repair', '维修'],
-    vendor: ['Vendor', '供应商'],
-    invoice_review: ['Invoice review', '发票审核'],
-    dispute: ['Dispute', '纠纷调解'],
-  };
-  return en ? m[kind][0] : m[kind][1];
+type TabKey = (typeof TASK_TABS)[number]['key'];
+
+// Legacy DB values → canonical tab key (for display normalisation)
+const LEGACY_TO_TAB: Record<string, TabKey> = {
+  maintenance:    'repair',
+  vendor:         'procurement',
+  invoice_review: 'invoice_upload',
+  dispute:        'owner_request',
+};
+
+// Tab key → all DB values it covers (new + legacy)
+const TAB_DB_VALUES: Record<TabKey, string[]> = {
+  owner_request:  ['owner_request', 'dispute'],
+  repair:         ['repair', 'maintenance'],
+  procurement:    ['procurement', 'vendor'],
+  invoice_upload: ['invoice_upload', 'invoice_review'],
+};
+
+function taskTypeLabel(kind: string, en: boolean): string {
+  const canonical = (LEGACY_TO_TAB[kind] ?? kind) as TabKey;
+  const tab = TASK_TABS.find((t) => t.key === canonical);
+  if (!tab) return kind;
+  return en ? tab.labelEn : tab.label;
 }
 
 export function ManagerTasks() {
@@ -41,7 +72,7 @@ export function ManagerTasks() {
 
   const filterType = useMemo(() => {
     const raw = searchParams.get('task_type');
-    if (raw && TASK_TYPES.includes(raw as ManagerTaskType)) return raw as ManagerTaskType;
+    if (raw && TASK_TABS.some((t) => t.key === raw)) return raw as TabKey;
     return 'all' as const;
   }, [searchParams]);
 
@@ -51,7 +82,7 @@ export function ManagerTasks() {
   const [showModal, setShowModal] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newTask, setNewTask] = useState({
-    task_type: 'dispute' as ManagerTaskType,
+    task_type: 'owner_request' as ManagerTaskType,
     title: '',
     description: '',
   });
@@ -68,7 +99,8 @@ export function ManagerTasks() {
       .eq('property_id', currentPropertyId)
       .order('created_at', { ascending: false });
     if (filterType !== 'all') {
-      q = q.eq('task_type', filterType);
+      const dbValues = TAB_DB_VALUES[filterType] ?? [filterType];
+      q = q.in('task_type', dbValues);
     }
     const { data, err } = await q;
     if (err) {
@@ -85,7 +117,7 @@ export function ManagerTasks() {
     void load();
   }, [load]);
 
-  const setFilter = (next: 'all' | ManagerTaskType) => {
+  const setFilter = (next: 'all' | TabKey) => {
     const nextParams = new URLSearchParams(searchParams);
     if (next === 'all') nextParams.delete('task_type');
     else nextParams.set('task_type', next);
@@ -103,7 +135,7 @@ export function ManagerTasks() {
       status: 'open',
       created_by: profile.id,
     };
-    if (newTask.task_type === 'dispute') {
+    if (newTask.task_type === 'dispute' || newTask.task_type === 'owner_request') {
       payload.dispute_status = 'pending';
     }
     const { error: insErr } = await supabase.from('manager_tasks').insert(payload);
@@ -113,7 +145,7 @@ export function ManagerTasks() {
       return;
     }
     setShowModal(false);
-    setNewTask({ task_type: 'dispute', title: '', description: '' });
+    setNewTask({ task_type: 'owner_request', title: '', description: '' });
     void load();
   };
 
@@ -125,7 +157,9 @@ export function ManagerTasks() {
             {en ? 'Property manager tasks' : '物业经理任务'}
           </h1>
           <p className="mt-1 text-sm text-gray-600">
-            {en ? 'Tasks and logs in one place — including dispute mediation.' : '任务与日志统一入口，纠纷调解为任务类型之一。'}
+            {en
+              ? 'Unified entry for owner requests, repairs, procurement and invoice uploads.'
+              : '物业事项统一处理入口，记录业主诉求、报修维修、物业经理采购与发票上传。'}
           </p>
         </div>
         <button
@@ -148,16 +182,16 @@ export function ManagerTasks() {
         >
           {en ? 'All' : '全部'}
         </button>
-        {TASK_TYPES.map((k) => (
+        {TASK_TABS.map((t) => (
           <button
-            key={k}
+            key={t.key}
             type="button"
-            onClick={() => setFilter(k)}
+            onClick={() => setFilter(t.key)}
             className={`rounded-full px-3 py-1.5 text-sm font-medium ${
-              filterType === k ? 'bg-[#1D9E75] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              filterType === t.key ? 'bg-[#1D9E75] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
-            {taskTypeLabel(k, en)}
+            {en ? t.labelEn : t.label}
           </button>
         ))}
       </div>
@@ -183,7 +217,7 @@ export function ManagerTasks() {
                 <th className="px-3 py-3 font-semibold">{en ? 'Title' : '标题'}</th>
                 <th className="px-3 py-3 font-semibold">{en ? 'Type' : '类型'}</th>
                 <th className="px-3 py-3 font-semibold">{en ? 'Status' : '状态'}</th>
-                <th className="px-3 py-3 font-semibold">{en ? 'Dispute status' : '纠纷状态'}</th>
+                <th className="px-3 py-3 font-semibold">{en ? 'Sub-status' : '子状态'}</th>
                 <th className="px-3 py-3 font-semibold">{en ? 'Created' : '创建时间'}</th>
                 <th className="px-3 py-3 font-semibold">{en ? 'Action' : '操作'}</th>
               </tr>
@@ -195,7 +229,9 @@ export function ManagerTasks() {
                   <td className="px-3 py-2.5">{taskTypeLabel(r.task_type, en)}</td>
                   <td className="px-3 py-2.5">{r.status}</td>
                   <td className="px-3 py-2.5 text-gray-700">
-                    {r.task_type === 'dispute' ? r.dispute_status ?? '—' : '—'}
+                    {(r.task_type === 'dispute' || r.task_type === 'owner_request')
+                      ? r.dispute_status ?? '—'
+                      : '—'}
                   </td>
                   <td className="px-3 py-2.5 whitespace-nowrap text-xs text-gray-500">
                     {new Date(r.created_at).toLocaleString(en ? 'en-CA' : 'zh-CN')}
@@ -225,9 +261,9 @@ export function ManagerTasks() {
               value={newTask.task_type}
               onChange={(e) => setNewTask({ ...newTask, task_type: e.target.value as ManagerTaskType })}
             >
-              {TASK_TYPES.map((k) => (
-                <option key={k} value={k}>
-                  {taskTypeLabel(k, en)}
+              {TASK_TABS.map((t) => (
+                <option key={t.key} value={t.key}>
+                  {en ? t.labelEn : t.label}
                 </option>
               ))}
             </select>
