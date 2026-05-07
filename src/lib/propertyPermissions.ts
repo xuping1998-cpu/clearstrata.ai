@@ -79,6 +79,12 @@ export function canManagePropertyAdmin(role: UserRole | null | undefined): boole
   return r === 'property_admin' || r === 'admin';
 }
 
+/** 邀请物业经理（邮件）：业委会、物业管理员、物业维度 admin — 不包含 owner/manager */
+export function canInvitePropertyManager(role: UserRole | null | undefined): boolean {
+  const r = normalizeRoleKey(role);
+  return r === 'council' || r === 'admin' || r === 'property_admin';
+}
+
 /** 房号白名单：仅物业内 admin / council（与 `unit_whitelist` RLS 一致） */
 export function canManageUnitWhitelist(role: UserRole | null | undefined): boolean {
   const r = normalizeRoleKey(role);

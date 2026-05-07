@@ -124,13 +124,10 @@ export function AdminLoginPage() {
           </button>
         </form>
 
-        <p className="text-center text-xs text-gray-400">
-          业主请{' '}
-          <a href="/" className="text-gray-500 hover:underline">
-            返回首页
-          </a>
-          {' '}使用「进入物业」入口
-        </p>
+        <div className="text-center text-xs text-gray-400 space-y-2">
+          <p>业主请返回首页使用「进入物业」入口</p>
+          <p>物业经理账号请联系理事会或管理员开通</p>
+        </div>
       </div>
     </div>
   );

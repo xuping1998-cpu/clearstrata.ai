@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { Link, Navigate, NavLink } from 'react-router-dom';
+import { Loader2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useProperty } from '../../contexts/PropertyContext';
 import {
   canAccessPropertySettingsPage,
   canApproveJoinRequest,
+  canInvitePropertyManager,
   canManagePropertyAdmin,
   canManagePropertyInvites,
   canManageUnitWhitelist,
@@ -25,6 +27,8 @@ export function PropertySettingsPage() {
   const showSettingsForm = showAdmin || canApproveJoinRequest(currentRole);
   const showInvitesLink = canManagePropertyInvites(currentRole);
   const showUnitWhitelist = canManageUnitWhitelist(currentRole);
+  const showManagerInvite =
+    !!currentPropertyId && canInvitePropertyManager(currentRole) && !isDemoPropertyMock;
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
@@ -38,6 +42,10 @@ export function PropertySettingsPage() {
       <div className="space-y-6">
         {showSettingsForm && !isDemoPropertyMock && currentPropertyId && (
           <SettingsSection propertyId={currentPropertyId} readOnlyName={!showAdmin} />
+        )}
+
+        {showManagerInvite && (
+          <InviteManagerSection propertyId={currentPropertyId!} />
         )}
 
         {!isDemoPropertyMock && (
@@ -85,6 +93,83 @@ export function PropertySettingsPage() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function InviteManagerSection({ propertyId }: { propertyId: string }) {
+  const [managerName, setManagerName] = useState('');
+  const [managerEmail, setManagerEmail] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  const send = useCallback(async () => {
+    setFeedback(null);
+    const email = managerEmail.trim();
+    if (!email.includes('@')) {
+      setFeedback({ ok: false, msg: '请填写有效的经理邮箱地址' });
+      return;
+    }
+    setBusy(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('send-manager-invite', {
+        body: { propertyId, managerName: managerName.trim(), managerEmail: email },
+      });
+      if (error) {
+        console.error('[send-manager-invite]', error, data);
+        setFeedback({ ok: false, msg: '发送失败，请稍后重试' });
+        return;
+      }
+      const payload = data as { ok?: boolean } | null;
+      if (!payload?.ok) {
+        console.error('[send-manager-invite] response', data);
+        setFeedback({ ok: false, msg: '发送失败，请稍后重试' });
+        return;
+      }
+      setFeedback({ ok: true, msg: '邀请邮件已发送' });
+      setManagerName('');
+      setManagerEmail('');
+    } finally {
+      setBusy(false);
+    }
+  }, [propertyId, managerEmail, managerName]);
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-6 max-w-lg space-y-3">
+      <h2 className="text-base font-semibold text-gray-900 mb-1">邀请物业经理</h2>
+      <p className="text-xs text-gray-500">
+        业委会或物业管理员向指定邮箱发送 ClearStrata 邀请链接；收件人需在 7 日内使用<strong>同一邮箱登录</strong>并接受邀请。
+      </p>
+      <label className="block text-sm font-medium text-gray-700 mb-1">经理姓名（可选）</label>
+      <input
+        type="text"
+        value={managerName}
+        onChange={(e) => setManagerName(e.target.value)}
+        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-2"
+        placeholder="例如：张明"
+      />
+      <label className="block text-sm font-medium text-gray-700 mb-1">
+        经理邮箱 <span className="text-red-500">*</span>
+      </label>
+      <input
+        type="email"
+        value={managerEmail}
+        onChange={(e) => setManagerEmail(e.target.value)}
+        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-2"
+        placeholder="manager@example.com"
+      />
+      {feedback ? (
+        <p className={`text-sm ${feedback.ok ? 'text-green-700' : 'text-red-700'}`}>{feedback.msg}</p>
+      ) : null}
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => void send()}
+        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800 text-white text-sm font-medium hover:bg-slate-700 disabled:opacity-50"
+      >
+        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+        发送邀请
+      </button>
     </div>
   );
 }

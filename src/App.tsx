@@ -68,6 +68,7 @@ import { DemoLandingPage } from './pages/DemoLandingPage';
 import { QrPropertyEntryPage } from './pages/entry/QrPropertyEntryPage';
 import { AuthCallback } from './pages/auth/AuthCallback';
 import { EntryAutoLogin } from './pages/entry/EntryAutoLogin';
+import { ManagerInviteAcceptPage } from './pages/ManagerInviteAcceptPage';
 import {
   canAccessPropertyPeoplePage,
   canAccessPropertySettingsPage,
@@ -89,6 +90,7 @@ const PUBLIC_PATH_PREFIXES = [
   '/entry',
   '/invite',
   '/join',
+  '/manager-invite',
 ];
 
 function isPublicPath(pathname: string) {
@@ -495,6 +497,7 @@ function AppContent() {
       <PostLoginPropertyRedirect />
       <Routes>
       <Route path="/entry" element={<QrPropertyEntryPage />} />
+      <Route path="/manager-invite" element={<ManagerInviteAcceptPage />} />
       <Route path="/entry/auto-login" element={<EntryAutoLogin />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/demo" element={<DemoFallbackPage />} />
