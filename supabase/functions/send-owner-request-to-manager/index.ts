@@ -120,7 +120,7 @@ serve(async (req) => {
 
     const { data: membership, error: membershipError } = await serviceClient
       .from("property_members")
-      .select("role,status")
+      .select("status")
       .eq("property_id", propertyId)
       .eq("user_id", userId)
       .eq("status", "active")
@@ -131,9 +131,17 @@ serve(async (req) => {
       return json({ ok: false, error: "Failed to verify membership" }, 500);
     }
 
-    const allowedRoles = ["council", "admin", "property_admin", "manager"];
-    if (!membership || !allowedRoles.includes(String(membership.role))) {
+    if (!membership) {
       return json({ ok: false, error: "Forbidden" }, 403);
+    }
+
+    const createdBy = ownerRequest.created_by ? String(ownerRequest.created_by) : "";
+    if (!createdBy || createdBy !== userId) {
+      return json({ ok: false, error: "Forbidden" }, 403);
+    }
+
+    if (String(ownerRequest.status) !== "pending") {
+      return json({ ok: false, error: "Request already submitted to manager" }, 403);
     }
 
     const { data: property } = await serviceClient

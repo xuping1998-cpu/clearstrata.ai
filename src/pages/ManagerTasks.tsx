@@ -101,8 +101,6 @@ const STATUS_ZH: Record<string, string> = {
   rejected:    '无法处理',
 };
 
-const STAFF_ROLES = ['council', 'admin', 'property_admin', 'manager'] as const;
-
 // ── Simple toast ───────────────────────────────────────────────────────────────
 
 type Toast = { id: number; msg: string; ok: boolean };
@@ -140,7 +138,6 @@ function StarRating({ value, onChange }: { value: number; onChange: (v: number) 
 type OwnerRequestCardProps = {
   req: OwnerRequest;
   reviews: OwnerRequestReview[];
-  isStaff: boolean;
   currentUserId: string;
   currentRole: string | null;
   currentPropertyId: string;
@@ -149,7 +146,7 @@ type OwnerRequestCardProps = {
 };
 
 function OwnerRequestCard({
-  req, reviews, isStaff, currentUserId, currentRole, currentPropertyId, onRefresh, showToast,
+  req, reviews, currentUserId, currentRole, currentPropertyId, onRefresh, showToast,
 }: OwnerRequestCardProps) {
   const [sending, setSending] = useState(false);
   const [editStatus, setEditStatus] = useState(req.status);
@@ -159,11 +156,25 @@ function OwnerRequestCard({
   const [myComment, setMyComment] = useState('');
   const [submittingReview, setSubmittingReview] = useState(false);
 
+  useEffect(() => {
+    setEditStatus(req.status);
+    setEditResult(req.manager_result ?? '');
+  }, [req.id, req.status, req.manager_result]);
+
   const avgRating = reviews.length
     ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1)
     : null;
 
   const attachments = Array.isArray(req.attachment_urls) ? req.attachment_urls : [];
+
+  const isSubmittingUser = Boolean(
+    currentUserId && req.created_by && req.created_by === currentUserId,
+  );
+  const isPropertyManagerRole = currentRole === 'manager';
+
+  /** 公共监督：是否已向物业经理递交（与时间戳或流程状态一致） */
+  const deliveredToManager =
+    req.status !== 'pending' || Boolean(req.sent_to_manager_at);
 
   const sendToManager = async () => {
     setSending(true);
@@ -235,7 +246,7 @@ function OwnerRequestCard({
   return (
     <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
       {/* Header */}
-      <div className="px-5 py-4 border-b border-gray-100 flex items-start justify-between gap-3">
+      <div className="px-5 py-4 border-b border-gray-100">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-semibold text-gray-900">{req.title}</span>
@@ -258,12 +269,35 @@ function OwnerRequestCard({
             <span>{new Date(req.created_at).toLocaleString('zh-CN')}</span>
           </div>
         </div>
-        {isStaff && req.status === 'pending' && (
+      </div>
+
+      {/* 递交物业经理状态（全员可见，不做 created_by / manager 限制） */}
+      <div className="px-5 py-3 border-b border-gray-100 bg-gray-50/60 space-y-2">
+        <div className="text-xs font-semibold text-gray-600">
+          递交物业经理状态（公共监督）
+        </div>
+        {!deliveredToManager ? (
+          <p className="text-sm text-gray-800">尚未递交物业经理</p>
+        ) : (
+          <div className="text-sm text-gray-800 space-y-1">
+            <p className="font-medium text-[#1D9E75]">✅ 已递交物业经理</p>
+            <p className="text-xs text-gray-600">
+              递交时间：
+              {req.sent_to_manager_at
+                ? new Date(req.sent_to_manager_at).toLocaleString('zh-CN')
+                : '—'}
+            </p>
+            <p className="text-xs text-gray-600 break-all">
+              物业经理邮箱：{req.manager_email?.trim() ? req.manager_email : '—'}
+            </p>
+          </div>
+        )}
+        {isSubmittingUser && req.status === 'pending' && (
           <button
             type="button"
             disabled={sending}
             onClick={() => void sendToManager()}
-            className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-600 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-600 disabled:opacity-50"
           >
             {sending ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
             发送给物业经理
@@ -287,13 +321,6 @@ function OwnerRequestCard({
           </div>
         )}
 
-        {(req.sent_to_manager_at || req.manager_email) && (
-          <div className="text-xs text-gray-400">
-            {req.sent_to_manager_at && <span className="mr-3">发送时间：{new Date(req.sent_to_manager_at).toLocaleString('zh-CN')}</span>}
-            <span>物业经理：{req.manager_email}</span>
-          </div>
-        )}
-
         {req.manager_result && (
           <div className="rounded-xl bg-green-50 border border-green-100 px-4 py-3">
             <div className="text-xs font-semibold text-green-700 mb-1">处理结果</div>
@@ -306,8 +333,8 @@ function OwnerRequestCard({
           </div>
         )}
 
-        {/* Staff: edit result */}
-        {isStaff && (
+        {/* Property manager only: edit status & result */}
+        {isPropertyManagerRole && (
           <details className="group">
             <summary className="cursor-pointer text-xs text-gray-400 hover:text-gray-600 select-none">
               ▸ 编辑处理状态与结果
@@ -400,8 +427,6 @@ export function ManagerTasks() {
   const { currentPropertyId, roleInProperty } = useProperty();
   const [searchParams, setSearchParams] = useSearchParams();
   const { toasts, show: showToast } = useToast();
-
-  const isStaff = STAFF_ROLES.includes(roleInProperty as typeof STAFF_ROLES[number]);
 
   // ── Filter tab ───────────────────────────────────────────────────────────────
 
@@ -627,7 +652,7 @@ export function ManagerTasks() {
         <div className="space-y-6">
           {/* Submit form */}
           <div className="rounded-2xl border border-[#1D9E75]/30 bg-white shadow-sm p-6">
-            <h2 className="text-base font-semibold text-gray-900 mb-4">提交公开业主诉求</h2>
+            <h2 className="text-base font-semibold text-gray-900 mb-4">提交业主诉求</h2>
             <div className="space-y-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">诉求标题 <span className="text-red-500">*</span></label>
@@ -685,7 +710,7 @@ export function ManagerTasks() {
                 className="inline-flex items-center gap-2 rounded-lg bg-[#1D9E75] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 hover:bg-[#178a66]"
               >
                 {submittingOR ? <Loader2 size={14} className="animate-spin" /> : null}
-                提交公开诉求
+                提交诉求
               </button>
             </div>
           </div>
@@ -708,7 +733,6 @@ export function ManagerTasks() {
                   key={req.id}
                   req={req}
                   reviews={reviews.filter((r) => r.request_id === req.id)}
-                  isStaff={isStaff}
                   currentUserId={session?.user?.id ?? ''}
                   currentRole={roleInProperty}
                   currentPropertyId={currentPropertyId ?? ''}
