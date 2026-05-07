@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ClipboardList, Loader2, Send, Star } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -60,6 +60,262 @@ type OwnerRequestReview = {
   comment: string | null;
   created_at: string;
 };
+
+type InspectionReportRow = {
+  id: string;
+  property_id: string;
+  created_by: string | null;
+  title: string;
+  inspection_date: string;
+  inspector_name: string | null;
+  areas: string[] | null;
+  categories: string[] | null;
+  summary: string | null;
+  findings: string;
+  risk_level: string;
+  status: string;
+  action_plan: string | null;
+  expected_completion_date: string | null;
+  completed_at: string | null;
+  evidence_urls: unknown;
+  report_text: string | null;
+  published_at: string | null;
+  published_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type InspectionReportReview = {
+  id: string;
+  inspection_report_id: string;
+  property_id: string;
+  reviewer_id: string;
+  reviewer_role: string | null;
+  rating: number | null;
+  comment: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type PublicMatterRow = {
+  id: string;
+  property_id: string;
+  created_by: string | null;
+  title: string;
+  matter_type: string;
+  occurred_at: string | null;
+  location: string | null;
+  source: string | null;
+  scope: string | null;
+  description: string;
+  impact: string | null;
+  risk_level: string;
+  status: string;
+  management_response: string | null;
+  action_plan: string | null;
+  expected_completion_date: string | null;
+  completed_at: string | null;
+  evidence_urls: unknown;
+  report_text: string | null;
+  published_at: string | null;
+  published_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type PublicMatterReview = {
+  id: string;
+  public_matter_id: string;
+  property_id: string;
+  reviewer_id: string;
+  reviewer_role: string | null;
+  rating: number | null;
+  comment: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type ManagerMonthlyReportRow = {
+  id: string;
+  property_id: string;
+  report_month: string;
+  status: string;
+  monthly_summary: string | null;
+  key_risks: string | null;
+  long_term_items: string | null;
+  next_month_focus: string | null;
+  published_at: string | null;
+  updated_at?: string;
+};
+
+type ManagerMonthlyReportReview = {
+  id: string;
+  report_id: string;
+  property_id: string;
+  reviewer_id: string;
+  reviewer_role: string | null;
+  rating: number;
+  comment: string | null;
+  created_at: string;
+  updated_at?: string;
+};
+
+const PUBLIC_MATTER_VISIBLE_NON_MANAGER = [
+  'published',
+  'in_progress',
+  'resolved',
+  'long_term',
+  'closed',
+] as const;
+
+const PUBLIC_MATTER_TYPE_ZH: Record<string, string> = {
+  public_issue: '公共问题跟进',
+  announcement: '社区公告',
+  safety_notice: '安全提醒',
+  complaint_hotspot: '投诉热点',
+  long_term_followup: '长期跟进',
+};
+
+const PUBLIC_MATTER_RISK_ZH: Record<string, string> = {
+  low: '低风险',
+  normal: '普通',
+  high: '高风险',
+};
+
+const PUBLIC_MATTER_STATUS_ZH: Record<string, string> = {
+  draft: '草稿',
+  published: '已发布',
+  in_progress: '处理中',
+  resolved: '已解决',
+  long_term: '长期跟进',
+  closed: '已关闭',
+  archived: '已归档',
+};
+
+/** 卡片上允许经理切换的状态（不含 draft） */
+const PUBLIC_MATTER_CARD_STATUS_OPTIONS = [
+  'published',
+  'in_progress',
+  'resolved',
+  'long_term',
+  'closed',
+  'archived',
+] as const;
+
+const INSPECTION_PUBLIC_STATUSES = ['published', 'in_progress', 'completed'] as const;
+
+const INSPECTION_STATUS_ZH: Record<string, string> = {
+  draft: '草稿',
+  published: '已发布',
+  in_progress: '处理中',
+  completed: '已完成',
+  archived: '已归档',
+};
+
+const INSPECTION_RISK_ZH: Record<string, string> = {
+  normal: '正常',
+  repair_needed: '需维修',
+  high_risk: '高风险',
+};
+
+const MONTHLY_REPORT_STATUS_ZH: Record<string, string> = {
+  draft: '草稿',
+  published: '已发布',
+};
+
+function formatReportMonthDisplay(reportMonth: string): string {
+  const m = /^(\d{4})-(\d{2})/.exec(String(reportMonth));
+  if (!m) return reportMonth;
+  return `${parseInt(m[1], 10)}年${parseInt(m[2], 10)}月`;
+}
+
+function currentMonthYm(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function splitEvidenceUrlsText(text: string): string[] {
+  return text.split('\n').map((l) => l.trim()).filter(Boolean);
+}
+
+function parseEvidenceUrls(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((u): u is string => typeof u === 'string' && u.length > 0);
+}
+
+/** datetime-local-ish from ISO timestamp */
+function occurredAtForInput(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function buildPublicMatterReportText(f: {
+  title: string;
+  matter_type: string;
+  location: string;
+  matterOutlineStatus: string;
+  occurred_at_input: string;
+  description: string;
+  scope: string;
+  impact: string;
+  management_response: string;
+  action_plan: string;
+  expected_completion_date: string;
+  evidence_urls_text: string;
+  risk_level: string;
+  source_info: string;
+}): string {
+  const typeZh = PUBLIC_MATTER_TYPE_ZH[f.matter_type] ?? f.matter_type;
+  const statusZh = PUBLIC_MATTER_STATUS_ZH[f.matterOutlineStatus] ?? f.matterOutlineStatus;
+  const riskZh = PUBLIC_MATTER_RISK_ZH[f.risk_level] ?? f.risk_level;
+  const loc = (f.location || '').trim() || '—';
+  const desc = (f.description || '').trim() || '—';
+  const scope = (f.scope || '').trim() || '—';
+  const impact = (f.impact || '').trim() || '—';
+  const mgr = (f.management_response || '').trim() || '—';
+  const plan = (f.action_plan || '').trim() || '—';
+  const due = (f.expected_completion_date || '').trim() || '—';
+  const src = (f.source_info || '').trim();
+  const timeLine = f.occurred_at_input
+    ? new Date(f.occurred_at_input).toLocaleString('zh-CN')
+    : '—';
+  const bullets = splitEvidenceUrlsText(f.evidence_urls_text);
+  const evid = bullets.length > 0 ? bullets.map((u) => `- ${u}`).join('\n') : '(无)';
+  const titleLine = f.title.trim() ? `标题：${f.title.trim()}\n\n` : '';
+
+  return `${titleLine}《公共事项报告》
+
+事项类型：${typeZh}
+风险等级：${riskZh}${src ? `\n信息来源：${src}` : ''}
+发生位置：${loc}
+发生时间：${timeLine}
+当前状态：${statusZh}
+
+事项说明：
+${desc}
+
+影响说明：
+${impact}
+
+影响范围：
+${scope}
+
+物业回复：
+${mgr}
+
+处理计划：
+${plan}
+
+预计完成时间：
+${due}
+
+现场证据：
+${evid}
+`.trim();
+}
 
 // ── Nav tabs（全部 + 四类） ─────────────────────────────────────────────────────
 
@@ -155,10 +411,12 @@ type OwnerRequestCardProps = {
   currentPropertyId: string;
   onRefresh: () => void;
   showToast: (msg: string, ok?: boolean) => void;
+  /** 「全部」tab 顶部类型标签 */
+  showTypeBadge?: boolean;
 };
 
 function OwnerRequestCard({
-  req, reviews, currentUserId, currentRole, currentPropertyId, onRefresh, showToast,
+  req, reviews, currentUserId, currentRole, currentPropertyId, onRefresh, showToast, showTypeBadge,
 }: OwnerRequestCardProps) {
   const [sending, setSending] = useState(false);
   const [editStatus, setEditStatus] = useState(req.status);
@@ -269,6 +527,11 @@ function OwnerRequestCard({
       <div className="px-5 py-4 border-b border-gray-100">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
+            {showTypeBadge ? (
+              <span className="rounded-full bg-gray-900 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shrink-0">
+                业主诉求
+              </span>
+            ) : null}
             <span className="font-semibold text-gray-900">{req.title}</span>
             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
               req.status === 'resolved' ? 'bg-green-100 text-green-700' :
@@ -452,472 +715,949 @@ function OwnerRequestCard({
   );
 }
 
-/** 【巡检记录】tab：未来功能结构占位（无真实数据） */
-function InspectionRecordsPlaceholder({ en }: { en: boolean }) {
-  const copy = en
-    ? {
-        title: 'Inspection records',
-        intro:
-          'The property manager will regularly publish common-area inspection reports, including issues found, on-site evidence, follow-up progress, and owner oversight.',
-        b1: 'Basics',
-        b1Lines: ['Title', 'Inspection date', 'Area', 'Inspector'],
-        b2: 'Categories',
-        b3: 'Status',
-        b4: 'Evidence',
-        b4Text: 'Photos, videos, and PDF inspection reports will be supported.',
-        b5: 'Follow-up & oversight',
-        b5Text:
-          'Vendor notification, ETA, progress, completion time; owners may comment, rate, and add on-site observations.',
-        exampleNote: 'Sample data — for layout preview only.',
-        exampleTitle: 'May 2026 common-area inspection',
-        exampleBody:
-          'Garage, garden, and public lighting checked; dead trees in the garden and B2 garage lighting anomalies found; follow-up scheduled.',
-        exampleStatus: 'Scheduled for remediation',
-        exampleAreas: 'Garage / Garden / Public lighting',
-      }
-    : {
-        title: '巡检记录',
-        intro:
-          '物业经理定期公开上传公共区域检查记录，展示发现的问题、现场证据、处理进度，并接受业主监督。',
-        b1: '基础信息',
-        b1Lines: ['巡检标题', '巡检日期', '巡检区域', '巡检人'],
-        b2: '巡检分类',
-        b3: '巡检状态',
-        b4: '现场证据',
-        b4Text: '支持现场照片、视频、PDF 巡检报告。',
-        b5: '后续处理与公开监督',
-        b5Text:
-          '可记录是否已通知供应商、预计处理时间、处理进度、完成时间；业主可评论、评分并补充现场情况。',
-        exampleNote: '示例数据，仅用于展示未来功能结构。',
-        exampleTitle: '2026年5月公共区域巡检',
-        exampleBody:
-          '车库、花园与公共照明完成例行检查，发现花园枯树和B2车库照明异常，已安排后续处理。',
-        exampleStatus: '已安排处理',
-        exampleAreas: '车库 / 花园 / 公共照明',
-      };
-
-  const categories = en
-    ? ['Elevators', 'Fire safety', 'Garage', 'Trash room', 'Roof', 'Garden', 'Public lighting', 'Lobby', 'Security', 'Piping', 'Exterior']
-    : ['电梯', '消防', '车库', '垃圾房', '屋顶', '花园', '公共照明', '大堂', '安保', '管道', '外墙'];
-
-  const statuses = en
-    ? ['Normal', 'Needs repair', 'High risk', 'Scheduled', 'Completed']
-    : ['正常', '需维修', '高风险', '已安排处理', '已完成'];
-
-  const Block = ({
-    step,
-    title,
-    children,
-  }: {
-    step: string;
-    title: string;
-    children: ReactNode;
-  }) => (
-    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-      <div className="flex items-baseline gap-2 mb-3">
-        <span className="text-xs font-bold text-[#1D9E75]">{step}</span>
-        <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
-      </div>
-      {children}
-    </div>
+function inspectionReviewsAvg(reviews: InspectionReportReview[]): number | null {
+  const rated = reviews.filter(
+    (r) => typeof r.rating === 'number' && r.rating >= 1 && r.rating <= 5,
   );
-
-  return (
-    <div className="space-y-6">
-      <div className="rounded-2xl border border-[#1D9E75]/25 bg-white p-6 shadow-sm">
-        <h2 className="text-lg font-bold text-gray-900">{copy.title}</h2>
-        <p className="mt-2 text-sm text-gray-600 leading-relaxed">{copy.intro}</p>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Block step="1" title={copy.b1}>
-          <ul className="space-y-1.5 text-sm text-gray-700">
-            {copy.b1Lines.map((line) => (
-              <li key={line} className="flex items-center gap-2">
-                <span className="h-1 w-1 rounded-full bg-[#1D9E75]" aria-hidden />
-                {line}
-              </li>
-            ))}
-          </ul>
-        </Block>
-
-        <Block step="2" title={copy.b2}>
-          <div className="flex flex-wrap gap-2">
-            {categories.map((c) => (
-              <span
-                key={c}
-                className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 border border-slate-200"
-              >
-                {c}
-              </span>
-            ))}
-          </div>
-        </Block>
-
-        <Block step="3" title={copy.b3}>
-          <div className="flex flex-wrap gap-2">
-            {statuses.map((s) => (
-              <span
-                key={s}
-                className="rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-900 border border-amber-200"
-              >
-                {s}
-              </span>
-            ))}
-          </div>
-        </Block>
-
-        <Block step="4" title={copy.b4}>
-          <p className="text-sm text-gray-600 leading-relaxed">{copy.b4Text}</p>
-        </Block>
-      </div>
-
-      <Block step="5" title={copy.b5}>
-        <p className="text-sm text-gray-600 leading-relaxed">{copy.b5Text}</p>
-      </Block>
-
-      <div className="rounded-2xl border-2 border-dashed border-[#1D9E75]/35 bg-[#1D9E75]/[0.06] p-6">
-        <p className="text-xs font-medium text-[#15803d] mb-4">{copy.exampleNote}</p>
-        <div className="rounded-xl bg-white border border-gray-200 p-5 shadow-sm">
-          <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
-            <h4 className="text-base font-semibold text-gray-900">{copy.exampleTitle}</h4>
-            <span className="shrink-0 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-800 border border-blue-100">
-              {copy.exampleStatus}
-            </span>
-          </div>
-          <p className="text-sm text-gray-700 leading-relaxed mb-4">{copy.exampleBody}</p>
-          <p className="text-xs text-gray-500">
-            <span className="font-semibold text-gray-600">{en ? 'Areas: ' : '区域：'}</span>
-            {copy.exampleAreas}
-          </p>
-        </div>
-      </div>
-    </div>
-  );
+  if (rated.length === 0) return null;
+  return Number((rated.reduce((s, r) => s + (r.rating as number), 0) / rated.length).toFixed(1));
 }
 
-/** 【公共事项】tab：未来功能结构占位（无真实数据） */
-function PublicMattersPlaceholder({ en }: { en: boolean }) {
-  const copy = en
-    ? {
-        title: 'Public matters',
-        intro:
-          'Open records of matters that affect everyone: community updates, announcements, safety alerts, and long-term issues — with progress visible to owners.',
-        b1: 'Public issue follow-up',
-        b1Lines: [
-          'Long-running elevator noise',
-          'Trash room odor',
-          'Strangers in the garage',
-          'Night-time noise complaints',
-          'Public lighting faults',
-        ],
-        b2: 'Community notices',
-        b2Lines: [
-          'Water outage notice',
-          'Fire inspection notice',
-          'Garage cleaning notice',
-          'Elevator maintenance notice',
-          'Landscaping schedule',
-        ],
-        b3: 'Safety reminders',
-        b3Lines: ['Theft risk', 'Tailgating by strangers', 'False fire alarms', 'Pet policy reminder'],
-        b4: 'Complaint hotspots',
-        b4Text:
-          'Summarize repeat complaints, number of actions taken, average resolution time, and current status.',
-        b5: 'Owner engagement & oversight',
-        b5Text:
-          'Owners may comment, add on-site observations, follow items, and rate the property response.',
-        statusHeading: 'Status',
-        exampleNote: 'Sample data — for layout preview only.',
-        exampleTitle: 'Strangers entering B2 garage',
-        exampleBody:
-          'Several owners reported strangers in the garage at night; security patrols were increased and owners are reminded to watch for tailgating.',
-        exampleStatus: 'Long-term follow-up',
-        exampleType: 'Safety alert / Public issue follow-up',
-        typeLabel: 'Type: ',
-      }
-    : {
-        title: '公共事项',
-        intro:
-          '公开记录影响全体业主生活的社区事项、公告、安全提醒与长期跟进问题，让处理进程接受业主监督。',
-        b1: '公共问题跟进',
-        b1Lines: ['电梯长期异响', '垃圾房异味', '车库陌生人进入', '夜间噪音投诉', '公共照明故障'],
-        b2: '社区公告',
-        b2Lines: ['停水通知', '消防检查通知', '车库清洗通知', '电梯保养通知', '园林修剪安排'],
-        b3: '安全提醒',
-        b3Lines: ['盗窃风险', '陌生人尾随', '火警误报', '宠物管理提醒'],
-        b4: '投诉热点',
-        b4Text: '统计反复被投诉的问题、处理次数、平均处理时间和当前状态。',
-        b5: '业主互动监督',
-        b5Text: '业主可评论、补充现场情况、关注事项并评价物业响应。',
-        statusHeading: '状态标签',
-        exampleNote: '示例数据，仅用于展示未来功能结构。',
-        exampleTitle: 'B2 车库陌生人进入问题',
-        exampleBody:
-          '近期多位业主反馈 B2 车库夜间有陌生人进入，物业已通知安保加强巡查，并建议业主进出车库时留意尾随情况。',
-        exampleStatus: '长期跟进',
-        exampleType: '安全提醒 / 公共问题跟进',
-        typeLabel: '类型：',
-      };
+function InspectionReportReviewsSection({
+  report,
+  reviews,
+  currentUserId,
+  currentRole,
+  currentPropertyId,
+  showToast,
+  canSubmitReview,
+  onReloadReviews,
+}: {
+  report: InspectionReportRow;
+  reviews: InspectionReportReview[];
+  currentUserId: string;
+  currentRole: string | null;
+  currentPropertyId: string;
+  showToast: (msg: string, ok?: boolean) => void;
+  canSubmitReview: boolean;
+  onReloadReviews: () => void | Promise<void>;
+}) {
+  const [myRating, setMyRating] = useState(0);
+  const [myComment, setMyComment] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  const statuses = en
-    ? ['Pending', 'In progress', 'Resolved', 'Long-term follow-up', 'Closed']
-    : ['待处理', '处理中', '已解决', '长期跟进', '已关闭'];
+  const avgRating = inspectionReviewsAvg(reviews);
 
-  const Block = ({
-    step,
-    title,
-    children,
-  }: {
-    step: string;
-    title: string;
-    children: ReactNode;
-  }) => (
-    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-      <div className="flex items-baseline gap-2 mb-3">
-        <span className="text-xs font-bold text-[#1D9E75]">{step}</span>
-        <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
-      </div>
-      {children}
-    </div>
-  );
-
-  const bulletList = (lines: string[]) => (
-    <ul className="space-y-1.5 text-sm text-gray-700">
-      {lines.map((line) => (
-        <li key={line} className="flex items-center gap-2">
-          <span className="h-1 w-1 rounded-full bg-[#1D9E75]" aria-hidden />
-          {line}
-        </li>
-      ))}
-    </ul>
-  );
+  const submit = async () => {
+    if (!myRating || !currentUserId) return;
+    setSubmitting(true);
+    const { error } = await supabase.from('manager_inspection_report_reviews').upsert(
+      {
+        inspection_report_id: report.id,
+        property_id: currentPropertyId,
+        reviewer_id: currentUserId,
+        reviewer_role: currentRole,
+        rating: myRating,
+        comment: myComment.trim() || null,
+      },
+      { onConflict: 'inspection_report_id,reviewer_id' },
+    );
+    setSubmitting(false);
+    if (error) {
+      showToast(`评价失败：${error.message}`, false);
+      return;
+    }
+    showToast('公开评价已提交');
+    setMyRating(0);
+    setMyComment('');
+    void onReloadReviews();
+  };
 
   return (
-    <div className="space-y-6">
-      <div className="rounded-2xl border border-[#1D9E75]/25 bg-white p-6 shadow-sm">
-        <h2 className="text-lg font-bold text-gray-900">{copy.title}</h2>
-        <p className="mt-2 text-sm text-gray-600 leading-relaxed">{copy.intro}</p>
+    <div className="border-t border-gray-100 px-5 py-3 bg-gray-50/50">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-700 mb-2">
+        <span className="font-semibold text-gray-600 flex items-center gap-1">
+          <Star size={11} className="text-amber-400 shrink-0" />
+          公共评价与监督
+        </span>
+        <span className="text-gray-300 hidden sm:inline">｜</span>
+        {avgRating != null ? (
+          <span className="text-gray-700">
+            <span className="text-amber-500 tracking-tight text-sm">{avgRatingStarsVisual(avgRating)}</span>
+            <span className="ml-1.5 font-medium tabular-nums">平均评分：{avgRating}</span>
+          </span>
+        ) : (
+          <span className="text-gray-400">暂无评分</span>
+        )}
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Block step="1" title={copy.b1}>
-          {bulletList(copy.b1Lines)}
-        </Block>
-        <Block step="2" title={copy.b2}>
-          {bulletList(copy.b2Lines)}
-        </Block>
-        <Block step="3" title={copy.b3}>
-          {bulletList(copy.b3Lines)}
-        </Block>
-        <Block step="4" title={copy.b4}>
-          <p className="text-sm text-gray-600 leading-relaxed">{copy.b4Text}</p>
-        </Block>
-      </div>
-
-      <Block step="5" title={copy.b5}>
-        <p className="text-sm text-gray-600 leading-relaxed">{copy.b5Text}</p>
-      </Block>
-
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">{copy.statusHeading}</h3>
-        <div className="flex flex-wrap gap-2">
-          {statuses.map((s) => (
-            <span
-              key={s}
-              className="rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-900 border border-amber-200"
-            >
-              {s}
-            </span>
-          ))}
+      {canSubmitReview ? (
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <StarRating size="sm" value={myRating} onChange={setMyRating} />
+          <textarea
+            value={myComment}
+            onChange={(e) => setMyComment(e.target.value)}
+            rows={1}
+            placeholder="补充现场情况（可选）"
+            className="flex-1 min-w-[140px] min-h-[34px] max-h-[120px] rounded-lg border border-gray-300 px-2 py-1.5 text-sm leading-snug resize-y overflow-y-auto"
+          />
+          <button
+            type="button"
+            disabled={submitting || !myRating}
+            onClick={() => void submit()}
+            className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 hover:bg-amber-600"
+          >
+            {submitting ? <Loader2 size={13} className="animate-spin" /> : null}
+            提交评价
+          </button>
         </div>
-      </div>
+      ) : null}
 
-      <div className="rounded-2xl border-2 border-dashed border-[#1D9E75]/35 bg-[#1D9E75]/[0.06] p-6">
-        <p className="text-xs font-medium text-[#15803d] mb-4">{copy.exampleNote}</p>
-        <div className="rounded-xl bg-white border border-gray-200 p-5 shadow-sm">
-          <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
-            <h4 className="text-base font-semibold text-gray-900">{copy.exampleTitle}</h4>
-            <span className="shrink-0 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-800 border border-blue-100">
-              {copy.exampleStatus}
-            </span>
-          </div>
-          <p className="text-sm text-gray-700 leading-relaxed mb-4">{copy.exampleBody}</p>
-          <p className="text-xs text-gray-500">
-            <span className="font-semibold text-gray-600">{copy.typeLabel}</span>
-            {copy.exampleType}
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** 【经理月报】tab：未来功能结构占位（无采购/财务/单列说明；侧重风险、长期问题、下月重点） */
-function ManagerMonthlyReportPlaceholder({ en }: { en: boolean }) {
-  const copy = en
-    ? {
-        title: 'Manager monthly report',
-        intro:
-          'The property manager publishes how operations performed this month, key risks, long-running follow-ups, and next-month priorities — open to owner oversight.',
-        b1: 'Monthly operations snapshot',
-        b1Lines: [
-          'Overall operations remained stable',
-          'Multiple common-area upkeep items completed',
-          'Some long-term issues remain under active follow-up',
-        ],
-        b2: 'Key risks & issues',
-        lblCurrent: 'Current status',
-        lblLevel: 'Risk level',
-        lblScheduled: 'Action scheduled',
-        risks: [
-          { name: 'Roof aging', status: 'Under observation', level: 'Medium', scheduled: 'Yes' },
-          { name: 'Rising elevator faults', status: 'Vendor follow-up', level: 'High', scheduled: 'Yes' },
-          { name: 'Garage water pooling', status: 'Seasonal focus', level: 'Medium', scheduled: 'No' },
-          { name: 'Fire door closure faults', status: 'Parts pending', level: 'High', scheduled: 'Yes' },
-          { name: 'Stranger tailgating', status: 'Security patrol stepped up', level: 'Medium', scheduled: 'Yes' },
-        ],
-        b3: 'Long-term follow-ups',
-        b3Lines: [
-          'Exterior wall maintenance',
-          'Aging drainage system',
-          'Under-garage lighting upgrade',
-          'Ongoing garden care program',
-        ],
-        b3Note:
-          'These are not quick wins — they stay on the roadmap and are tracked over time.',
-        b4: 'Next-month priorities',
-        b4Lines: [
-          'Annual fire inspection',
-          'Landscaping maintenance',
-          'Further roof assessment',
-          'Parking area deep clean',
-        ],
-        exampleNote: 'Sample data — for layout preview only.',
-        exampleTitle: 'May 2026 manager report',
-        exampleSummary:
-          'Focused on garage safety, roof aging, and common-area upkeep; some items escalated to vendors for further work.',
-        exampleStatus: 'Ongoing follow-up',
-        summaryLabel: 'Summary: ',
-      }
-    : {
-        title: '经理月报',
-        intro:
-          '物业经理公开说明本月物业运行情况、重点风险、长期跟进事项与下月工作重点，接受业主监督。',
-        b1: '本月物业运行摘要',
-        b1Lines: ['本月整体运行稳定', '已完成多项公共区域维护', '部分长期问题仍持续跟进'],
-        b2: '重点风险与问题',
-        lblCurrent: '当前状态',
-        lblLevel: '风险等级',
-        lblScheduled: '是否已安排处理',
-        risks: [
-          { name: '屋顶老化风险', status: '持续观测', level: '中', scheduled: '是' },
-          { name: '电梯故障增加', status: '维保跟进', level: '高', scheduled: '是' },
-          { name: '车库积水', status: '汛期重点', level: '中', scheduled: '否' },
-          { name: '消防门闭合异常', status: '已报修待件', level: '高', scheduled: '是' },
-          { name: '陌生人尾随问题', status: '安防加强巡查', level: '中', scheduled: '是' },
-        ],
-        b3: '长期跟进事项',
-        b3Lines: ['外墙维护', '排水系统老化', '地下车库照明升级', '花园长期维护'],
-        b3Note: '这些事项不是短期能完成，而是持续跟进项目。',
-        b4: '下月工作重点',
-        b4Lines: ['消防年度检查', '园林维护', '屋顶进一步检测', '停车场清洁'],
-        exampleNote: '示例数据，仅用于展示未来功能结构。',
-        exampleTitle: '2026年5月经理月报',
-        exampleSummary:
-          '本月重点跟进车库安全、屋顶老化与公共区域维护问题，部分事项已安排供应商进一步处理。',
-        exampleStatus: '持续跟进中',
-        summaryLabel: '摘要：',
-      };
-
-  const Block = ({
-    step,
-    title,
-    children,
-  }: {
-    step: string;
-    title: string;
-    children: ReactNode;
-  }) => (
-    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-      <div className="flex items-baseline gap-2 mb-3">
-        <span className="text-xs font-bold text-[#1D9E75]">{step}</span>
-        <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
-      </div>
-      {children}
-    </div>
-  );
-
-  const bulletList = (lines: string[]) => (
-    <ul className="space-y-1.5 text-sm text-gray-700">
-      {lines.map((line) => (
-        <li key={line} className="flex items-center gap-2">
-          <span className="h-1 w-1 rounded-full bg-[#1D9E75]" aria-hidden />
-          {line}
-        </li>
-      ))}
-    </ul>
-  );
-
-  return (
-    <div className="space-y-6">
-      <div className="rounded-2xl border border-[#1D9E75]/25 bg-white p-6 shadow-sm">
-        <h2 className="text-lg font-bold text-gray-900">{copy.title}</h2>
-        <p className="mt-2 text-sm text-gray-600 leading-relaxed">{copy.intro}</p>
-      </div>
-
-      <Block step="1" title={copy.b1}>
-        {bulletList(copy.b1Lines)}
-      </Block>
-
-      <Block step="2" title={copy.b2}>
-        <div className="space-y-3">
-          {copy.risks.map((r) => (
-            <div key={r.name} className="rounded-xl border border-slate-200 bg-slate-50/80 p-3">
-              <p className="text-sm font-semibold text-gray-900 mb-2">{r.name}</p>
-              <dl className="grid gap-1.5 text-xs text-gray-600 sm:grid-cols-2">
-                <div>
-                  <dt className="font-medium text-gray-500">{copy.lblCurrent}</dt>
-                  <dd className="text-gray-800">{r.status}</dd>
-                </div>
-                <div>
-                  <dt className="font-medium text-gray-500">{copy.lblLevel}</dt>
-                  <dd className="text-gray-800">{r.level}</dd>
-                </div>
-                <div className="sm:col-span-2">
-                  <dt className="font-medium text-gray-500">{copy.lblScheduled}</dt>
-                  <dd className="text-gray-800">{r.scheduled}</dd>
-                </div>
-              </dl>
+      {reviews.length > 0 ? (
+        <div className="space-y-2 pt-2 border-t border-gray-100/80">
+          {reviews.map((rv) => (
+            <div key={rv.id} className="rounded-xl bg-white border border-gray-100 px-4 py-2.5">
+              <div className="flex items-center gap-2 text-xs text-gray-500">
+                {typeof rv.rating === 'number' ? (
+                  <span className="text-amber-400">{'★'.repeat(rv.rating)}{'☆'.repeat(5 - rv.rating)}</span>
+                ) : (
+                  <span className="text-gray-400">—</span>
+                )}
+                <span>{rv.reviewer_role ?? '业主'}</span>
+                <span className="text-gray-300">·</span>
+                <span>{rv.reviewer_id.slice(0, 8)}</span>
+                <span className="ml-auto">{new Date(rv.created_at).toLocaleDateString('zh-CN')}</span>
+              </div>
+              {rv.comment ? <p className="mt-1 text-sm text-gray-700">{rv.comment}</p> : null}
             </div>
           ))}
         </div>
-      </Block>
+      ) : null}
+    </div>
+  );
+}
 
-      <Block step="3" title={copy.b3}>
-        {bulletList(copy.b3Lines)}
-        <p className="mt-3 text-sm text-gray-600 leading-relaxed border-t border-gray-100 pt-3">{copy.b3Note}</p>
-      </Block>
+type InspectionReportCardProps = {
+  report: InspectionReportRow;
+  reviews: InspectionReportReview[];
+  currentUserId: string;
+  currentRole: string | null;
+  currentPropertyId: string;
+  showToast: (msg: string, ok?: boolean) => void;
+  onRefreshInspections: () => void | Promise<void>;
+  onReloadInspectionReviews: () => void | Promise<void>;
+  showTypeBadge?: boolean;
+  isManager: boolean;
+  onPublishDraft?: (reportId: string) => void | Promise<void>;
+  onLoadDraftIntoForm?: (r: InspectionReportRow) => void;
+};
 
-      <Block step="4" title={copy.b4}>
-        {bulletList(copy.b4Lines)}
-      </Block>
+function InspectionReportCard({
+  report,
+  reviews,
+  currentUserId,
+  currentRole,
+  currentPropertyId,
+  showToast,
+  onRefreshInspections,
+  onReloadInspectionReviews,
+  showTypeBadge,
+  isManager,
+  onPublishDraft,
+  onLoadDraftIntoForm,
+}: InspectionReportCardProps) {
+  const areas = Array.isArray(report.areas) ? report.areas : [];
+  const categories = Array.isArray(report.categories) ? report.categories : [];
+  const urls = parseEvidenceUrls(report.evidence_urls);
+  const canSubmitReview =
+    INSPECTION_PUBLIC_STATUSES.includes(report.status as (typeof INSPECTION_PUBLIC_STATUSES)[number]);
 
-      <div className="rounded-2xl border-2 border-dashed border-[#1D9E75]/35 bg-[#1D9E75]/[0.06] p-6">
-        <p className="text-xs font-medium text-[#15803d] mb-4">{copy.exampleNote}</p>
-        <div className="rounded-xl bg-white border border-gray-200 p-5 shadow-sm">
-          <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
-            <h4 className="text-base font-semibold text-gray-900">{copy.exampleTitle}</h4>
-            <span className="shrink-0 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-800 border border-blue-100">
-              {copy.exampleStatus}
+  const statusStyle =
+    report.status === 'completed' ? 'bg-green-100 text-green-700' :
+      report.status === 'draft' ? 'bg-gray-100 text-gray-600' :
+      report.status === 'archived' ? 'bg-slate-100 text-slate-600' :
+      report.status === 'in_progress' ? 'bg-amber-100 text-amber-800' :
+      'bg-blue-100 text-blue-800';
+
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+      <div className="px-5 py-4 border-b border-gray-100">
+        <div className="flex flex-wrap items-center gap-2">
+          {showTypeBadge ? (
+            <span className="rounded-full bg-[#1D9E75] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shrink-0">
+              巡检记录
             </span>
-          </div>
-          <p className="text-sm text-gray-700 leading-relaxed">
-            <span className="font-semibold text-gray-700">{copy.summaryLabel}</span>
-            {copy.exampleSummary}
-          </p>
+          ) : null}
+          <span className="font-semibold text-gray-900">{report.title}</span>
+          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusStyle}`}>
+            {INSPECTION_STATUS_ZH[report.status] ?? report.status}
+          </span>
+          <span className="text-xs text-gray-400">
+            巡检日：{report.inspection_date}
+          </span>
+          <span className="text-xs text-gray-400">
+            风险：
+            {INSPECTION_RISK_ZH[report.risk_level] ?? report.risk_level}
+          </span>
         </div>
+        {report.inspector_name ? (
+          <p className="mt-1 text-xs text-gray-500">巡检人：{report.inspector_name}</p>
+        ) : null}
       </div>
+
+      <div className="px-5 py-4 space-y-3 text-sm text-gray-700">
+        {areas.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {areas.map((a) => (
+              <span key={a} className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-700">{a}</span>
+            ))}
+          </div>
+        )}
+        {categories.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {categories.map((c) => (
+              <span key={c} className="rounded border border-slate-200 px-2 py-0.5 text-xs text-slate-600">{c}</span>
+            ))}
+          </div>
+        )}
+        {report.summary ? (
+          <p className="whitespace-pre-wrap leading-relaxed">{report.summary}</p>
+        ) : null}
+        <div>
+          <div className="text-xs font-semibold text-gray-500 mb-0.5">检查情况</div>
+          <p className="whitespace-pre-wrap leading-relaxed">{report.findings}</p>
+        </div>
+        {report.report_text ? (
+          <div className="rounded-xl bg-emerald-50/80 border border-emerald-100 px-4 py-3">
+            <div className="text-xs font-semibold text-emerald-700 mb-1">巡检报告</div>
+            <p className="text-sm text-emerald-900 whitespace-pre-wrap">{report.report_text}</p>
+          </div>
+        ) : null}
+        {report.action_plan ? (
+          <div>
+            <span className="text-xs font-semibold text-gray-500">行动计划：</span>
+            <span className="whitespace-pre-wrap">{report.action_plan}</span>
+          </div>
+        ) : null}
+        {urls.length > 0 && (
+          <div className="text-xs">
+            <span className="text-gray-500 mr-1">现场证据：</span>
+            {urls.map((url, i) => (
+              <a
+                key={i}
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mr-2 text-[#1D9E75] hover:underline break-all"
+              >
+                {url.length > 48 ? `${url.slice(0, 48)}…` : url}
+              </a>
+            ))}
+          </div>
+        )}
+        {report.published_at && (
+          <p className="text-xs text-gray-400">
+            发布时间：{new Date(report.published_at).toLocaleString('zh-CN')}
+          </p>
+        )}
+
+        {isManager && report.status === 'draft' && (onLoadDraftIntoForm || onPublishDraft) ? (
+          <div className="flex flex-wrap gap-2 pt-2">
+            {onLoadDraftIntoForm ? (
+              <button
+                type="button"
+                onClick={() => onLoadDraftIntoForm(report)}
+                className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+              >
+                编辑草稿（表单）
+              </button>
+            ) : null}
+            {onPublishDraft ? (
+              <button
+                type="button"
+                onClick={() => void onPublishDraft(report.id)}
+                className="rounded-lg bg-[#1D9E75] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#178a66]"
+              >
+                发布报告
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+
+      <InspectionReportReviewsSection
+        report={report}
+        reviews={reviews}
+        currentUserId={currentUserId}
+        currentRole={currentRole}
+        currentPropertyId={currentPropertyId}
+        showToast={showToast}
+        canSubmitReview={canSubmitReview}
+        onReloadReviews={async () => {
+          await onReloadInspectionReviews();
+          void onRefreshInspections();
+        }}
+      />
+    </div>
+  );
+}
+
+function publicMatterReviewsAvg(reviews: PublicMatterReview[]): number | null {
+  const rated = reviews.filter(
+    (r) => typeof r.rating === 'number' && r.rating >= 1 && r.rating <= 5,
+  );
+  if (rated.length === 0) return null;
+  return Number((rated.reduce((s, r) => s + (r.rating as number), 0) / rated.length).toFixed(1));
+}
+
+function PublicMatterReviewsSection({
+  matter,
+  reviews,
+  currentUserId,
+  currentRole,
+  currentPropertyId,
+  showToast,
+  canSubmitReview,
+  onReloadReviews,
+}: {
+  matter: PublicMatterRow;
+  reviews: PublicMatterReview[];
+  currentUserId: string;
+  currentRole: string | null;
+  currentPropertyId: string;
+  showToast: (msg: string, ok?: boolean) => void;
+  canSubmitReview: boolean;
+  onReloadReviews: () => void | Promise<void>;
+}) {
+  const [myRating, setMyRating] = useState(0);
+  const [myComment, setMyComment] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const avgRating = publicMatterReviewsAvg(reviews);
+
+  const submit = async () => {
+    if (!myRating || !currentUserId) return;
+    setSubmitting(true);
+    const { error } = await supabase.from('manager_public_matter_reviews').upsert(
+      {
+        public_matter_id: matter.id,
+        property_id: currentPropertyId,
+        reviewer_id: currentUserId,
+        reviewer_role: currentRole,
+        rating: myRating,
+        comment: myComment.trim() || null,
+      },
+      { onConflict: 'public_matter_id,reviewer_id' },
+    );
+    setSubmitting(false);
+    if (error) {
+      showToast(`评价失败：${error.message}`, false);
+      return;
+    }
+    showToast('公开评价已提交');
+    setMyRating(0);
+    setMyComment('');
+    void onReloadReviews();
+  };
+
+  return (
+    <div className="border-t border-gray-100 px-5 py-3 bg-gray-50/50">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-700 mb-2">
+        <span className="font-semibold text-gray-600 flex items-center gap-1">
+          <Star size={11} className="text-amber-400 shrink-0" />
+          公共评价与监督
+        </span>
+        <span className="text-gray-300 hidden sm:inline">｜</span>
+        {avgRating != null ? (
+          <span className="text-gray-700">
+            <span className="text-amber-500 tracking-tight text-sm">{avgRatingStarsVisual(avgRating)}</span>
+            <span className="ml-1.5 font-medium tabular-nums">平均评分：{avgRating}</span>
+          </span>
+        ) : (
+          <span className="text-gray-400">暂无评分</span>
+        )}
+      </div>
+
+      {canSubmitReview ? (
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <StarRating size="sm" value={myRating} onChange={setMyRating} />
+          <textarea
+            value={myComment}
+            onChange={(e) => setMyComment(e.target.value)}
+            rows={1}
+            placeholder="补充情况（可选）"
+            className="flex-1 min-w-[140px] min-h-[34px] max-h-[120px] rounded-lg border border-gray-300 px-2 py-1.5 text-sm leading-snug resize-y overflow-y-auto"
+          />
+          <button
+            type="button"
+            disabled={submitting || !myRating}
+            onClick={() => void submit()}
+            className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 hover:bg-amber-600"
+          >
+            {submitting ? <Loader2 size={13} className="animate-spin" /> : null}
+            提交评价
+          </button>
+        </div>
+      ) : null}
+
+      {reviews.length > 0 ? (
+        <div className="space-y-2 pt-2 border-t border-gray-100/80">
+          {reviews.map((rv) => (
+            <div key={rv.id} className="rounded-xl bg-white border border-gray-100 px-4 py-2.5">
+              <div className="flex items-center gap-2 text-xs text-gray-500">
+                {typeof rv.rating === 'number' ? (
+                  <span className="text-amber-400">{'★'.repeat(rv.rating)}{'☆'.repeat(5 - rv.rating)}</span>
+                ) : (
+                  <span className="text-gray-400">—</span>
+                )}
+                <span>{rv.reviewer_role ?? '业主'}</span>
+                <span className="text-gray-300">·</span>
+                <span>{rv.reviewer_id.slice(0, 8)}</span>
+                <span className="ml-auto">{new Date(rv.created_at).toLocaleDateString('zh-CN')}</span>
+              </div>
+              {rv.comment ? <p className="mt-1 text-sm text-gray-700">{rv.comment}</p> : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+type PublicMatterCardProps = {
+  matter: PublicMatterRow;
+  isManager: boolean;
+  showToast: (msg: string, ok?: boolean) => void;
+  onRefresh: () => void;
+  onLoadDraft: (m: PublicMatterRow) => void;
+  reviews: PublicMatterReview[];
+  currentUserId: string;
+  currentRole: string | null;
+  currentPropertyId: string;
+  onReloadReviews: () => void | Promise<void>;
+  showTypeBadge?: boolean;
+};
+
+function PublicMatterCard({
+  matter,
+  isManager,
+  showToast,
+  onRefresh,
+  onLoadDraft,
+  reviews,
+  currentUserId,
+  currentRole,
+  currentPropertyId,
+  onReloadReviews,
+  showTypeBadge,
+}: PublicMatterCardProps) {
+  const [cardStatus, setCardStatus] = useState(matter.status);
+  const [savingStatus, setSavingStatus] = useState(false);
+
+  useEffect(() => {
+    setCardStatus(matter.status);
+  }, [matter.id, matter.status]);
+
+  const evid = parseEvidenceUrls(matter.evidence_urls);
+  const canSubmitReview =
+    PUBLIC_MATTER_VISIBLE_NON_MANAGER.includes(
+      matter.status as (typeof PUBLIC_MATTER_VISIBLE_NON_MANAGER)[number],
+    );
+
+  const saveCardStatus = async () => {
+    setSavingStatus(true);
+    const patch: Record<string, unknown> = { status: cardStatus };
+    if (cardStatus === 'resolved' || cardStatus === 'closed') {
+      patch.completed_at = new Date().toISOString();
+    }
+    const { error } = await supabase
+      .from('manager_public_matters')
+      .update(patch)
+      .eq('id', matter.id);
+    setSavingStatus(false);
+    if (error) {
+      showToast(`更新失败：${error.message}`, false);
+      return;
+    }
+    showToast('状态已更新');
+    void onRefresh();
+  };
+
+  const statusBadge =
+    matter.status === 'draft' ? 'bg-gray-100 text-gray-600' :
+      matter.status === 'archived' ? 'bg-slate-100 text-slate-700' :
+      matter.status === 'resolved' ? 'bg-green-100 text-green-800' :
+      matter.status === 'closed' ? 'bg-green-50 text-green-700' :
+      matter.status === 'long_term' ? 'bg-amber-50 text-amber-900' :
+      matter.status === 'in_progress' ? 'bg-amber-50 text-amber-800' :
+      'bg-blue-50 text-blue-800';
+
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+      <div className="px-5 py-4 border-b border-gray-100 flex flex-wrap items-center gap-2">
+        {showTypeBadge ? (
+          <span className="rounded-full bg-teal-700 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shrink-0">
+            公共事项
+          </span>
+        ) : null}
+        <span className="font-semibold text-gray-900">{matter.title}</span>
+        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusBadge}`}>
+          {PUBLIC_MATTER_STATUS_ZH[matter.status] ?? matter.status}
+        </span>
+        <span className="text-xs text-gray-500">{PUBLIC_MATTER_TYPE_ZH[matter.matter_type] ?? matter.matter_type}</span>
+        <span className="text-xs text-gray-400">
+          {PUBLIC_MATTER_RISK_ZH[matter.risk_level] ?? matter.risk_level}
+        </span>
+      </div>
+      <div className="px-5 py-4 space-y-2 text-sm text-gray-700">
+        {matter.occurred_at && (
+          <p className="text-xs text-gray-500">
+            发生时间：{new Date(matter.occurred_at).toLocaleString('zh-CN')}
+          </p>
+        )}
+        {matter.location && <p><span className="text-gray-500">位置：</span>{matter.location}</p>}
+        {matter.source && <p><span className="text-gray-500">来源：</span>{matter.source}</p>}
+        {matter.scope && <p><span className="text-gray-500">影响范围：</span>{matter.scope}</p>}
+        <div>
+          <div className="text-xs font-semibold text-gray-500">事项描述</div>
+          <p className="mt-0.5 whitespace-pre-wrap">{matter.description}</p>
+        </div>
+        {matter.impact && (
+          <div>
+            <div className="text-xs font-semibold text-gray-500">影响说明</div>
+            <p className="mt-0.5 whitespace-pre-wrap">{matter.impact}</p>
+          </div>
+        )}
+        {matter.management_response && (
+          <div className="rounded-lg bg-emerald-50/70 border border-emerald-100 px-3 py-2">
+            <div className="text-xs font-semibold text-emerald-800">物业回复</div>
+            <p className="mt-0.5 whitespace-pre-wrap text-emerald-900">{matter.management_response}</p>
+          </div>
+        )}
+        {matter.action_plan && (
+          <p><span className="text-gray-500">处理计划：</span>{matter.action_plan}</p>
+        )}
+        {matter.expected_completion_date && (
+          <p className="text-xs text-gray-500">
+            预计完成：{matter.expected_completion_date}
+          </p>
+        )}
+        {matter.completed_at && (
+          <p className="text-xs text-gray-500">
+            完成时间：{new Date(matter.completed_at).toLocaleString('zh-CN')}
+          </p>
+        )}
+        {evid.length > 0 && (
+          <div className="text-xs">
+            <span className="text-gray-500">现场证据：</span>
+            {evid.map((url, i) => (
+              <a
+                key={i}
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ml-2 text-[#1D9E75] hover:underline break-all"
+              >
+                {url.length > 40 ? `${url.slice(0, 40)}…` : url}
+              </a>
+            ))}
+          </div>
+        )}
+        {matter.report_text && (
+          <div className="rounded-xl border border-gray-100 bg-gray-50/80 px-4 py-3">
+            <div className="text-xs font-semibold text-gray-600 mb-1">公共事项报告</div>
+            <pre className="text-sm whitespace-pre-wrap font-sans text-gray-800">{matter.report_text}</pre>
+          </div>
+        )}
+        {matter.published_at && (
+          <p className="text-xs text-gray-400">
+            发布时间：{new Date(matter.published_at).toLocaleString('zh-CN')}
+          </p>
+        )}
+
+        {isManager && matter.status === 'draft' && (
+          <button
+            type="button"
+            onClick={() => onLoadDraft(matter)}
+            className="mt-2 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+          >
+            编辑草稿（表单）
+          </button>
+        )}
+
+        {isManager && matter.status !== 'draft' && (
+          <div className="pt-3 border-t border-gray-100 flex flex-wrap items-center gap-2">
+            <span className="text-xs text-gray-600">更新状态</span>
+            <select
+              value={cardStatus}
+              onChange={(e) => setCardStatus(e.target.value)}
+              className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+            >
+              {PUBLIC_MATTER_CARD_STATUS_OPTIONS.map((st) => (
+                <option key={st} value={st}>{PUBLIC_MATTER_STATUS_ZH[st] ?? st}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={savingStatus || cardStatus === matter.status}
+              onClick={() => void saveCardStatus()}
+              className="rounded-lg bg-[#1D9E75] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 hover:bg-[#178a66]"
+            >
+              {savingStatus ? <Loader2 size={13} className="inline animate-spin" /> : null}
+              保存状态
+            </button>
+          </div>
+        )}
+      </div>
+
+      <PublicMatterReviewsSection
+        matter={matter}
+        reviews={reviews}
+        currentUserId={currentUserId}
+        currentRole={currentRole}
+        currentPropertyId={currentPropertyId}
+        showToast={showToast}
+        canSubmitReview={canSubmitReview}
+        onReloadReviews={async () => {
+          await onReloadReviews();
+          void onRefresh();
+        }}
+      />
+    </div>
+  );
+}
+function monthlyReportReviewsAvg(reviews: ManagerMonthlyReportReview[]): number | null {
+  const rated = reviews.filter((r) => r.rating >= 1 && r.rating <= 5);
+  if (rated.length === 0) return null;
+  return Number((rated.reduce((s, r) => s + r.rating, 0) / rated.length).toFixed(1));
+}
+
+function ManagerMonthlyReportReviewsSection({
+  report,
+  reviews,
+  currentUserId,
+  currentRole,
+  currentPropertyId,
+  showToast,
+  canSubmitReview,
+  onReloadReviews,
+}: {
+  report: ManagerMonthlyReportRow;
+  reviews: ManagerMonthlyReportReview[];
+  currentUserId: string;
+  currentRole: string | null;
+  currentPropertyId: string;
+  showToast: (msg: string, ok?: boolean) => void;
+  canSubmitReview: boolean;
+  onReloadReviews: () => void | Promise<void>;
+}) {
+  const [myRating, setMyRating] = useState(0);
+  const [myComment, setMyComment] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const avgRating = monthlyReportReviewsAvg(reviews);
+
+  const submit = async () => {
+    if (!myRating || !currentUserId) return;
+    setSubmitting(true);
+    const { error } = await supabase.from('manager_monthly_report_reviews').upsert(
+      {
+        report_id: report.id,
+        property_id: currentPropertyId,
+        reviewer_id: currentUserId,
+        reviewer_role: currentRole,
+        rating: myRating,
+        comment: myComment.trim() || null,
+      },
+      { onConflict: 'report_id,reviewer_id' },
+    );
+    setSubmitting(false);
+    if (error) {
+      showToast(`评价失败：${error.message}`, false);
+      return;
+    }
+    showToast('公开评价已提交');
+    setMyRating(0);
+    setMyComment('');
+    void onReloadReviews();
+  };
+
+  return (
+    <div className="border-t border-gray-100 px-5 py-3 bg-gray-50/50">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-700 mb-2">
+        <span className="font-semibold text-gray-600 flex items-center gap-1">
+          <Star size={11} className="text-amber-400 shrink-0" />
+          公共评价与监督
+        </span>
+        <span className="text-gray-300 hidden sm:inline">｜</span>
+        {avgRating != null ? (
+          <span className="text-gray-700">
+            <span className="text-amber-500 tracking-tight text-sm">{avgRatingStarsVisual(avgRating)}</span>
+            <span className="ml-1.5 font-medium tabular-nums">平均评分：{avgRating}</span>
+          </span>
+        ) : (
+          <span className="text-gray-400">暂无评分</span>
+        )}
+      </div>
+
+      {canSubmitReview ? (
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <StarRating size="sm" value={myRating} onChange={setMyRating} />
+          <textarea
+            value={myComment}
+            onChange={(e) => setMyComment(e.target.value)}
+            rows={1}
+            placeholder="评价输入（可选）"
+            className="flex-1 min-w-[140px] min-h-[34px] max-h-[120px] rounded-lg border border-gray-300 px-2 py-1.5 text-sm leading-snug resize-y overflow-y-auto"
+          />
+          <button
+            type="button"
+            disabled={submitting || !myRating}
+            onClick={() => void submit()}
+            className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 hover:bg-amber-600"
+          >
+            {submitting ? <Loader2 size={13} className="animate-spin" /> : null}
+            提交评价
+          </button>
+        </div>
+      ) : null}
+
+      {reviews.length > 0 ? (
+        <div className="space-y-2 pt-2 border-t border-gray-100/80">
+          {reviews.map((rv) => (
+            <div key={rv.id} className="rounded-xl bg-white border border-gray-100 px-4 py-2.5">
+              <div className="flex items-center gap-2 text-xs text-gray-500">
+                <span className="text-amber-400">
+                  {'★'.repeat(rv.rating)}
+                  {'☆'.repeat(5 - rv.rating)}
+                </span>
+                <span>{rv.reviewer_role ?? '业主'}</span>
+                <span className="text-gray-300">·</span>
+                <span>{rv.reviewer_id.slice(0, 8)}</span>
+                <span className="ml-auto">{new Date(rv.created_at).toLocaleDateString('zh-CN')}</span>
+              </div>
+              {rv.comment ? <p className="mt-1 text-sm text-gray-700">{rv.comment}</p> : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ManagerMonthlyReportCard({
+  report,
+  reviews,
+  isManager,
+  currentUserId,
+  currentRole,
+  currentPropertyId,
+  showToast,
+  onReloadBundle,
+  showTypeBadge,
+}: {
+  report: ManagerMonthlyReportRow;
+  reviews: ManagerMonthlyReportReview[];
+  isManager: boolean;
+  currentUserId: string;
+  currentRole: string | null;
+  currentPropertyId: string;
+  showToast: (msg: string, ok?: boolean) => void;
+  onReloadBundle: () => void | Promise<void>;
+  showTypeBadge?: boolean;
+}) {
+  const [editMs, setEditMs] = useState(report.monthly_summary ?? '');
+  const [editKr, setEditKr] = useState(report.key_risks ?? '');
+  const [editLt, setEditLt] = useState(report.long_term_items ?? '');
+  const [editNf, setEditNf] = useState(report.next_month_focus ?? '');
+  const [saving, setSaving] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+
+  useEffect(() => {
+    setEditMs(report.monthly_summary ?? '');
+    setEditKr(report.key_risks ?? '');
+    setEditLt(report.long_term_items ?? '');
+    setEditNf(report.next_month_focus ?? '');
+  }, [
+    report.id,
+    report.monthly_summary,
+    report.key_risks,
+    report.long_term_items,
+    report.next_month_focus,
+  ]);
+
+  const canSubmitReview = report.status === 'published';
+  const statusStyle =
+    report.status === 'published' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600';
+
+  const saveDraftFields = async (): Promise<boolean> => {
+    const { error } = await supabase
+      .from('manager_monthly_reports')
+      .update({
+        monthly_summary: editMs.trim() || null,
+        key_risks: editKr.trim() || null,
+        long_term_items: editLt.trim() || null,
+        next_month_focus: editNf.trim() || null,
+      })
+      .eq('id', report.id);
+    if (error) {
+      showToast(`保存失败：${error.message}`, false);
+      return false;
+    }
+    return true;
+  };
+
+  const saveDraft = async () => {
+    setSaving(true);
+    const ok = await saveDraftFields();
+    setSaving(false);
+    if (!ok) return;
+    showToast('草稿已保存');
+    void onReloadBundle();
+  };
+
+  const publishReport = async () => {
+    if (!currentUserId) return;
+    setPublishing(true);
+    const okSave = await saveDraftFields();
+    if (!okSave) {
+      setPublishing(false);
+      return;
+    }
+    const { error } = await supabase
+      .from('manager_monthly_reports')
+      .update({
+        status: 'published',
+        published_at: new Date().toISOString(),
+        published_by: currentUserId,
+      })
+      .eq('id', report.id);
+    setPublishing(false);
+    if (error) {
+      showToast(`发布失败：${error.message}`, false);
+      return;
+    }
+    showToast('经理月报已发布');
+    void onReloadBundle();
+  };
+
+  const showEdit = isManager && report.status === 'draft';
+
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+      <div className="px-5 py-4 border-b border-gray-100 space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {showTypeBadge ? (
+            <span className="rounded-full bg-[#1D9E75] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shrink-0">
+              经理月报
+            </span>
+          ) : null}
+          <h3 className="text-base font-semibold text-gray-900">
+            {formatReportMonthDisplay(report.report_month)}
+          </h3>
+          <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusStyle}`}>
+            {MONTHLY_REPORT_STATUS_ZH[report.status] ?? report.status}
+          </span>
+        </div>
+
+        {!showEdit ? (
+          <div className="space-y-2 text-sm text-gray-800">
+            <div>
+              <span className="font-medium text-gray-600">本月物业运行摘要</span>
+              <p className="mt-1 whitespace-pre-wrap leading-relaxed">{report.monthly_summary || '—'}</p>
+            </div>
+            <div>
+              <span className="font-medium text-gray-600">重点风险与问题</span>
+              <p className="mt-1 whitespace-pre-wrap leading-relaxed">{report.key_risks || '—'}</p>
+            </div>
+            <div>
+              <span className="font-medium text-gray-600">长期跟进事项</span>
+              <p className="mt-1 whitespace-pre-wrap leading-relaxed">{report.long_term_items || '—'}</p>
+            </div>
+            <div>
+              <span className="font-medium text-gray-600">下月工作重点</span>
+              <p className="mt-1 whitespace-pre-wrap leading-relaxed">{report.next_month_focus || '—'}</p>
+            </div>
+            {report.published_at ? (
+              <p className="text-xs text-gray-400 pt-1">
+                发布时间：{new Date(report.published_at).toLocaleString('zh-CN')}
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">本月物业运行摘要 monthly_summary</label>
+              <textarea
+                value={editMs}
+                onChange={(e) => setEditMs(e.target.value)}
+                rows={3}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">重点风险与问题 key_risks</label>
+              <textarea
+                value={editKr}
+                onChange={(e) => setEditKr(e.target.value)}
+                rows={3}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">长期跟进事项 long_term_items</label>
+              <textarea
+                value={editLt}
+                onChange={(e) => setEditLt(e.target.value)}
+                rows={3}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">下月工作重点 next_month_focus</label>
+              <textarea
+                value={editNf}
+                onChange={(e) => setEditNf(e.target.value)}
+                rows={2}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              />
+            </div>
+            <div className="flex flex-wrap gap-2 pt-1">
+              <button
+                type="button"
+                disabled={saving || publishing}
+                onClick={() => void saveDraft()}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#1D9E75] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 hover:bg-[#178a66]"
+              >
+                {saving ? <Loader2 size={14} className="animate-spin" /> : null}
+                保存草稿
+              </button>
+              <button
+                type="button"
+                disabled={saving || publishing}
+                onClick={() => void publishReport()}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 hover:bg-slate-700"
+              >
+                {publishing ? <Loader2 size={14} className="animate-spin" /> : null}
+                发布月报
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {report.status === 'published' ? (
+        <ManagerMonthlyReportReviewsSection
+          report={report}
+          reviews={reviews}
+          currentUserId={currentUserId}
+          currentRole={currentRole}
+          currentPropertyId={currentPropertyId}
+          showToast={showToast}
+          canSubmitReview={canSubmitReview}
+          onReloadReviews={onReloadBundle}
+        />
+      ) : null}
     </div>
   );
 }
@@ -978,6 +1718,51 @@ export function ManagerTasks() {
   const [reviews, setReviews] = useState<OwnerRequestReview[]>([]);
   const [loadingOR, setLoadingOR] = useState(false);
 
+  const [inspectionReports, setInspectionReports] = useState<InspectionReportRow[]>([]);
+  const [inspectionReportReviews, setInspectionReportReviews] = useState<InspectionReportReview[]>([]);
+  const [loadingInspections, setLoadingInspections] = useState(false);
+
+  const [publicMatters, setPublicMatters] = useState<PublicMatterRow[]>([]);
+  const [publicMatterReviews, setPublicMatterReviews] = useState<PublicMatterReview[]>([]);
+  const [loadingPM, setLoadingPM] = useState(false);
+  const [monthlyReports, setMonthlyReports] = useState<ManagerMonthlyReportRow[]>([]);
+  const [monthlyReportReviews, setMonthlyReportReviews] = useState<ManagerMonthlyReportReview[]>([]);
+  const [loadingMR, setLoadingMR] = useState(false);
+  const [monthPickerYm, setMonthPickerYm] = useState(() => currentMonthYm());
+  const [generatingMR, setGeneratingMR] = useState(false);
+  const [pmForm, setPmForm] = useState({
+    editingId: null as string | null,
+    title: '',
+    matter_type: 'public_issue',
+    occurred_at: '',
+    location: '',
+    source: '',
+    scope: '',
+    description: '',
+    impact: '',
+    risk_level: 'normal',
+    matterOutlineStatus: 'draft',
+    management_response: '',
+    action_plan: '',
+    expected_completion_date: '',
+    evidence_urls_text: '',
+    report_text: '',
+  });
+
+  const [irForm, setIrForm] = useState({
+    editingId: null as string | null,
+    title: '',
+    inspection_date: new Date().toISOString().slice(0, 10),
+    inspector_name: '',
+    summary: '',
+    findings: '',
+    report_text: '',
+    risk_level: 'normal',
+    action_plan: '',
+    areasText: '',
+    categoriesText: '',
+  });
+
   const loadOwnerRequests = useCallback(async () => {
     if (!currentPropertyId) return;
     setLoadingOR(true);
@@ -997,7 +1782,393 @@ export function ManagerTasks() {
     setLoadingOR(false);
   }, [currentPropertyId]);
 
-  // ── Submit new owner request ──────────────────────────────────────────────────
+  const loadInspectionBundle = useCallback(async () => {
+    if (!currentPropertyId) return;
+    setLoadingInspections(true);
+    const [{ data: reps }, { data: revs }] = await Promise.all([
+      supabase
+        .from('manager_inspection_reports')
+        .select('*')
+        .eq('property_id', currentPropertyId)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('manager_inspection_report_reviews')
+        .select('*')
+        .eq('property_id', currentPropertyId),
+    ]);
+    setInspectionReports((reps as InspectionReportRow[]) ?? []);
+    setInspectionReportReviews((revs as InspectionReportReview[]) ?? []);
+    setLoadingInspections(false);
+  }, [currentPropertyId]);
+
+  const loadPublicMatters = useCallback(async () => {
+    if (!currentPropertyId) return;
+    setLoadingPM(true);
+    const [{ data: matters }, { data: revs }] = await Promise.all([
+      supabase
+        .from('manager_public_matters')
+        .select('*')
+        .eq('property_id', currentPropertyId)
+        .order('occurred_at', { ascending: false })
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('manager_public_matter_reviews')
+        .select('*')
+        .eq('property_id', currentPropertyId),
+    ]);
+    if (!matters) {
+      setPublicMatters([]);
+    } else {
+      setPublicMatters((matters as PublicMatterRow[]) ?? []);
+    }
+    setPublicMatterReviews((revs as PublicMatterReview[]) ?? []);
+    setLoadingPM(false);
+  }, [currentPropertyId]);
+
+  const loadMonthlyBundle = useCallback(async () => {
+    if (!currentPropertyId) return;
+    setLoadingMR(true);
+    const [{ data: reps, error: mrErr }, { data: revs, error: mrevErr }] = await Promise.all([
+      supabase
+        .from('manager_monthly_reports')
+        .select(
+          'id, property_id, report_month, status, monthly_summary, key_risks, long_term_items, next_month_focus, published_at, updated_at',
+        )
+        .eq('property_id', currentPropertyId)
+        .order('report_month', { ascending: false }),
+      supabase
+        .from('manager_monthly_report_reviews')
+        .select('*')
+        .eq('property_id', currentPropertyId),
+    ]);
+    if (mrErr) console.error('[ManagerTasks] manager_monthly_reports', mrErr);
+    if (mrevErr) console.error('[ManagerTasks] manager_monthly_report_reviews', mrevErr);
+    setMonthlyReports((reps as ManagerMonthlyReportRow[]) ?? []);
+    setMonthlyReportReviews((revs as ManagerMonthlyReportReview[]) ?? []);
+    setLoadingMR(false);
+  }, [currentPropertyId]);
+
+  const generateMonthlyDraft = useCallback(async () => {
+    if (!currentPropertyId || !session?.user?.id) return;
+    if (roleInProperty !== 'manager') return;
+    setGeneratingMR(true);
+    const reportMonth = `${monthPickerYm}-01`;
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-manager-monthly-report', {
+        body: { propertyId: currentPropertyId, reportMonth },
+      });
+      const body = data as { ok?: boolean; error?: string } | null;
+      if (error) {
+        console.error('generate-manager-monthly-report', { data, error });
+        showToast(body?.error ?? error.message ?? '生成失败', false);
+        return;
+      }
+      if (body?.ok === false && body?.error) {
+        console.error('generate-manager-monthly-report', body);
+        showToast(body.error, false);
+        return;
+      }
+      showToast('月报草稿已生成');
+      await loadMonthlyBundle();
+    } catch (e) {
+      console.error('generate-manager-monthly-report', e);
+      showToast(`生成失败：${e instanceof Error ? e.message : String(e)}`, false);
+    } finally {
+      setGeneratingMR(false);
+    }
+  }, [
+    currentPropertyId,
+    session?.user?.id,
+    roleInProperty,
+    monthPickerYm,
+    loadMonthlyBundle,
+    showToast,
+  ]);
+
+  const resetPmForm = useCallback(() => {
+    setPmForm({
+      editingId: null,
+      title: '',
+      matter_type: 'public_issue',
+      occurred_at: '',
+      location: '',
+      source: '',
+      scope: '',
+      description: '',
+      impact: '',
+      risk_level: 'normal',
+      matterOutlineStatus: 'draft',
+      management_response: '',
+      action_plan: '',
+      expected_completion_date: '',
+      evidence_urls_text: '',
+      report_text: '',
+    });
+  }, []);
+
+  const loadPmDraftIntoForm = useCallback((m: PublicMatterRow) => {
+    setPmForm({
+      editingId: m.id,
+      title: m.title,
+      matter_type: m.matter_type,
+      occurred_at: occurredAtForInput(m.occurred_at),
+      location: m.location ?? '',
+      source: m.source ?? '',
+      scope: m.scope ?? '',
+      description: m.description,
+      impact: m.impact ?? '',
+      risk_level: m.risk_level,
+      matterOutlineStatus: m.status,
+      management_response: m.management_response ?? '',
+      action_plan: m.action_plan ?? '',
+      expected_completion_date: m.expected_completion_date ?? '',
+      evidence_urls_text: parseEvidenceUrls(m.evidence_urls).join('\n'),
+      report_text: m.report_text ?? '',
+    });
+  }, []);
+
+  const resetIrForm = useCallback(() => {
+    setIrForm({
+      editingId: null,
+      title: '',
+      inspection_date: new Date().toISOString().slice(0, 10),
+      inspector_name: '',
+      summary: '',
+      findings: '',
+      report_text: '',
+      risk_level: 'normal',
+      action_plan: '',
+      areasText: '',
+      categoriesText: '',
+    });
+  }, []);
+
+  const loadDraftIntoForm = useCallback((r: InspectionReportRow) => {
+    setIrForm({
+      editingId: r.id,
+      title: r.title,
+      inspection_date: r.inspection_date,
+      inspector_name: r.inspector_name ?? '',
+      summary: r.summary ?? '',
+      findings: r.findings,
+      report_text: r.report_text ?? '',
+      risk_level: r.risk_level,
+      action_plan: r.action_plan ?? '',
+      areasText: (Array.isArray(r.areas) ? r.areas : []).join('，'),
+      categoriesText: (Array.isArray(r.categories) ? r.categories : []).join('，'),
+    });
+  }, []);
+
+  const buildIrPayload = useCallback(() => {
+    const areas = irForm.areasText
+      .split(/[,，\n]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const categories = irForm.categoriesText
+      .split(/[,，\n]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    return {
+      title: irForm.title.trim(),
+      inspection_date: irForm.inspection_date,
+      inspector_name: irForm.inspector_name.trim() || null,
+      summary: irForm.summary.trim() || null,
+      findings: irForm.findings.trim(),
+      report_text: irForm.report_text.trim() || null,
+      risk_level: irForm.risk_level,
+      action_plan: irForm.action_plan.trim() || null,
+      areas,
+      categories,
+    };
+  }, [irForm]);
+
+  const saveInspectionDraft = async () => {
+    if (!session?.user?.id || !currentPropertyId) return;
+    if (!irForm.title.trim() || !irForm.findings.trim()) {
+      showToast('请填写标题与检查情况', false);
+      return;
+    }
+    const payload = buildIrPayload();
+    if (irForm.editingId) {
+      const { error } = await supabase
+        .from('manager_inspection_reports')
+        .update(payload)
+        .eq('id', irForm.editingId);
+      if (error) {
+        showToast(`保存失败：${error.message}`, false);
+        return;
+      }
+      showToast('草稿已保存');
+    } else {
+      const { data, error } = await supabase
+        .from('manager_inspection_reports')
+        .insert({
+          property_id: currentPropertyId,
+          created_by: session.user.id,
+          status: 'draft',
+          evidence_urls: [],
+          ...payload,
+        })
+        .select('id')
+        .single();
+      if (error) {
+        showToast(`创建失败：${error.message}`, false);
+        return;
+      }
+      showToast('草稿已保存');
+      if (data?.id) setIrForm((prev) => ({ ...prev, editingId: data.id as string }));
+    }
+    void loadInspectionBundle();
+  };
+
+  const publishInspectionFromForm = async () => {
+    if (!session?.user?.id || !currentPropertyId || !irForm.editingId) return;
+    if (!irForm.title.trim() || !irForm.findings.trim()) {
+      showToast('请填写标题与检查情况', false);
+      return;
+    }
+    const payload = buildIrPayload();
+    const { error } = await supabase
+      .from('manager_inspection_reports')
+      .update({
+        ...payload,
+        status: 'published',
+        published_at: new Date().toISOString(),
+        published_by: session.user.id,
+      })
+      .eq('id', irForm.editingId);
+    if (error) {
+      showToast(`发布失败：${error.message}`, false);
+      return;
+    }
+    showToast('报告已发布');
+    resetIrForm();
+    void loadInspectionBundle();
+  };
+
+  const publishInspectionDraftById = async (reportId: string) => {
+    if (!session?.user?.id) return;
+    const { error } = await supabase
+      .from('manager_inspection_reports')
+      .update({
+        status: 'published',
+        published_at: new Date().toISOString(),
+        published_by: session.user.id,
+      })
+      .eq('id', reportId);
+    if (error) {
+      showToast(`发布失败：${error.message}`, false);
+      return;
+    }
+    showToast('报告已发布');
+    void loadInspectionBundle();
+  };
+
+  const savePublicMatterDraft = async () => {
+    if (!session?.user?.id || !currentPropertyId) return;
+    if (!pmForm.title.trim() || !pmForm.description.trim()) {
+      showToast('请填写标题与事项描述', false);
+      return;
+    }
+    const body = {
+      title: pmForm.title.trim(),
+      matter_type: pmForm.matter_type,
+      occurred_at: pmForm.occurred_at ? new Date(pmForm.occurred_at).toISOString() : null,
+      location: pmForm.location.trim() || null,
+      source: pmForm.source.trim() || null,
+      scope: pmForm.scope.trim() || null,
+      description: pmForm.description.trim(),
+      impact: pmForm.impact.trim() || null,
+      risk_level: pmForm.risk_level,
+      management_response: pmForm.management_response.trim() || null,
+      action_plan: pmForm.action_plan.trim() || null,
+      expected_completion_date: pmForm.expected_completion_date.trim() || null,
+      evidence_urls: splitEvidenceUrlsText(pmForm.evidence_urls_text),
+      report_text: pmForm.report_text.trim() || null,
+    };
+    if (pmForm.editingId) {
+      const { error } = await supabase
+        .from('manager_public_matters')
+        .update({
+          ...body,
+          status: 'draft',
+        })
+        .eq('id', pmForm.editingId);
+      if (error) {
+        showToast(`保存失败：${error.message}`, false);
+        return;
+      }
+      showToast('公共事项草稿已保存');
+    } else {
+      const { data, error } = await supabase
+        .from('manager_public_matters')
+        .insert({
+          property_id: currentPropertyId,
+          created_by: session.user.id,
+          status: 'draft',
+          ...body,
+        })
+        .select('id')
+        .single();
+      if (error) {
+        showToast(`保存失败：${error.message}`, false);
+        return;
+      }
+      showToast('公共事项草稿已保存');
+      if (data?.id) setPmForm((p) => ({ ...p, editingId: data.id as string }));
+    }
+    void loadPublicMatters();
+  };
+
+  const publishPublicMatterReport = async () => {
+    if (!session?.user?.id || !currentPropertyId) return;
+    if (!pmForm.title.trim() || !pmForm.description.trim()) {
+      showToast('请填写标题与事项描述', false);
+      return;
+    }
+    const body = {
+      title: pmForm.title.trim(),
+      matter_type: pmForm.matter_type,
+      occurred_at: pmForm.occurred_at ? new Date(pmForm.occurred_at).toISOString() : null,
+      location: pmForm.location.trim() || null,
+      source: pmForm.source.trim() || null,
+      scope: pmForm.scope.trim() || null,
+      description: pmForm.description.trim(),
+      impact: pmForm.impact.trim() || null,
+      risk_level: pmForm.risk_level,
+      management_response: pmForm.management_response.trim() || null,
+      action_plan: pmForm.action_plan.trim() || null,
+      expected_completion_date: pmForm.expected_completion_date.trim() || null,
+      evidence_urls: splitEvidenceUrlsText(pmForm.evidence_urls_text),
+      report_text: pmForm.report_text.trim() || null,
+      status: 'published' as const,
+      published_at: new Date().toISOString(),
+      published_by: session.user.id,
+    };
+    if (pmForm.editingId) {
+      const { error } = await supabase
+        .from('manager_public_matters')
+        .update(body)
+        .eq('id', pmForm.editingId);
+      if (error) {
+        showToast(`发布失败：${error.message}`, false);
+        return;
+      }
+    } else {
+      const { error } = await supabase.from('manager_public_matters').insert({
+        property_id: currentPropertyId,
+        created_by: session.user.id,
+        ...body,
+      });
+      if (error) {
+        showToast(`发布失败：${error.message}`, false);
+        return;
+      }
+    }
+    showToast('公共事项已发布');
+    resetPmForm();
+    void loadPublicMatters();
+  };
 
   const [orForm, setOrForm] = useState({
     title: '', content: '', unit_no: '', contact: '', attachment_urls: '',
@@ -1047,8 +2218,71 @@ export function ManagerTasks() {
     }
   }, [loadOwnerRequests, filterType]);
 
+  useEffect(() => {
+    if (filterType === 'all' || filterType === 'inspection') {
+      void loadInspectionBundle();
+    }
+  }, [loadInspectionBundle, filterType]);
+
+  useEffect(() => {
+    if (filterType === 'all' || filterType === 'public_matter') {
+      void loadPublicMatters();
+    }
+  }, [loadPublicMatters, filterType]);
+
+  useEffect(() => {
+    if (filterType === 'all' || filterType === 'manager_report') {
+      void loadMonthlyBundle();
+    }
+  }, [loadMonthlyBundle, filterType]);
+
   const isOwnerRequestTab = filterType === 'owner_request';
   const isAllTab = filterType === 'all';
+  const isInspectionTab = filterType === 'inspection';
+  const isPublicMatterTab = filterType === 'public_matter';
+  const isManagerReportTab = filterType === 'manager_report';
+  const isPropertyManagerRole = roleInProperty === 'manager';
+
+  const visiblePublicMatters = useMemo(() => {
+    if (isPropertyManagerRole) return publicMatters;
+    return publicMatters.filter((r) =>
+      PUBLIC_MATTER_VISIBLE_NON_MANAGER.includes(
+        r.status as (typeof PUBLIC_MATTER_VISIBLE_NON_MANAGER)[number],
+      ),
+    );
+  }, [publicMatters, isPropertyManagerRole]);
+
+  const inspectionsVisibleInAllTab = useMemo(() => {
+    return inspectionReports
+      .filter((r) =>
+        INSPECTION_PUBLIC_STATUSES.includes(r.status as (typeof INSPECTION_PUBLIC_STATUSES)[number]),
+      )
+      .slice()
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }, [inspectionReports]);
+
+  const publicMattersVisibleInAllTab = useMemo(() => {
+    return publicMatters
+      .filter((r) =>
+        PUBLIC_MATTER_VISIBLE_NON_MANAGER.includes(
+          r.status as (typeof PUBLIC_MATTER_VISIBLE_NON_MANAGER)[number],
+        ),
+      )
+      .slice()
+      .sort((a, b) => {
+        const ta = a.occurred_at ? new Date(a.occurred_at).getTime() : 0;
+        const tb = b.occurred_at ? new Date(b.occurred_at).getTime() : 0;
+        if (tb !== ta) return tb - ta;
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      });
+  }, [publicMatters]);
+
+  const monthlyPublishedInAllTab = useMemo(() => {
+    return monthlyReports
+      .filter((r) => r.status === 'published')
+      .slice()
+      .sort((a, b) => String(b.report_month).localeCompare(String(a.report_month)));
+  }, [monthlyReports]);
 
   const taskTableSection = (
     <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
@@ -1206,51 +2440,588 @@ export function ManagerTasks() {
         </div>
       )}
 
-      {/* ── 全部：业主诉求卡片 + manager_tasks ───────────────────────────────── */}
+      {/* ── 全部：业主诉求 + 公开巡检（不含 draft）──────────────────────────── */}
       {isAllTab && (
         <>
           {taskError ? (
             <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">{taskError}</div>
           ) : null}
 
-          {loadingTasks || loadingOR ? (
+          {loadingTasks || loadingOR || loadingInspections || loadingPM || loadingMR ? (
             <div className="flex justify-center py-20">
               <Loader2 className="h-10 w-10 animate-spin text-[#1D9E75]" />
             </div>
-          ) : ownerRequests.length === 0 && rows.length === 0 ? (
+          ) : ownerRequests.length === 0 && rows.length === 0 && inspectionsVisibleInAllTab.length === 0 && publicMattersVisibleInAllTab.length === 0 && monthlyPublishedInAllTab.length === 0 ? (
             <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-500">
               <ClipboardList className="mx-auto mb-3 h-10 w-10 text-gray-300" />
               {en ? 'No tasks.' : '暂无任务'}
             </div>
           ) : (
-            <div className="space-y-8">
+            <div className="space-y-10">
               {ownerRequests.length > 0 ? (
-                <div className="space-y-4">
-                  {ownerRequests.map((req) => (
-                    <OwnerRequestCard
-                      key={req.id}
-                      req={req}
-                      reviews={reviews.filter((r) => r.request_id === req.id)}
-                      currentUserId={session?.user?.id ?? ''}
-                      currentRole={roleInProperty}
-                      currentPropertyId={currentPropertyId ?? ''}
-                      onRefresh={loadOwnerRequests}
-                      showToast={showToast}
-                    />
-                  ))}
-                </div>
+                <section className="space-y-4">
+                  <h2 className="text-sm font-bold text-gray-800 border-b border-gray-200 pb-2">业主诉求</h2>
+                  <div className="space-y-4">
+                    {ownerRequests.map((req) => (
+                      <OwnerRequestCard
+                        key={req.id}
+                        req={req}
+                        reviews={reviews.filter((r) => r.request_id === req.id)}
+                        currentUserId={session?.user?.id ?? ''}
+                        currentRole={roleInProperty}
+                        currentPropertyId={currentPropertyId ?? ''}
+                        onRefresh={loadOwnerRequests}
+                        showToast={showToast}
+                        showTypeBadge
+                      />
+                    ))}
+                  </div>
+                </section>
               ) : null}
+
+              {inspectionsVisibleInAllTab.length > 0 ? (
+                <section className="space-y-4">
+                  <h2 className="text-sm font-bold text-gray-800 border-b border-gray-200 pb-2">巡检记录</h2>
+                  <div className="space-y-4">
+                    {inspectionsVisibleInAllTab.map((report) => (
+                      <InspectionReportCard
+                        key={report.id}
+                        report={report}
+                        reviews={inspectionReportReviews.filter((r) => r.inspection_report_id === report.id)}
+                        currentUserId={session?.user?.id ?? ''}
+                        currentRole={roleInProperty}
+                        currentPropertyId={currentPropertyId ?? ''}
+                        showToast={showToast}
+                        onRefreshInspections={loadInspectionBundle}
+                        onReloadInspectionReviews={loadInspectionBundle}
+                        showTypeBadge
+                        isManager={isPropertyManagerRole}
+                      />
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+
+              {publicMattersVisibleInAllTab.length > 0 ? (
+                <section className="space-y-4">
+                  <h2 className="text-sm font-bold text-gray-800 border-b border-gray-200 pb-2">公共事项</h2>
+                  <div className="space-y-4">
+                    {publicMattersVisibleInAllTab.map((m) => (
+                      <PublicMatterCard
+                        key={m.id}
+                        matter={m}
+                        isManager={isPropertyManagerRole}
+                        showToast={showToast}
+                        onRefresh={loadPublicMatters}
+                        onLoadDraft={loadPmDraftIntoForm}
+                        reviews={publicMatterReviews.filter((r) => r.public_matter_id === m.id)}
+                        currentUserId={session?.user?.id ?? ''}
+                        currentRole={roleInProperty}
+                        currentPropertyId={currentPropertyId ?? ''}
+                        onReloadReviews={loadPublicMatters}
+                        showTypeBadge
+                      />
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+
+              {monthlyPublishedInAllTab.length > 0 ? (
+                <section className="space-y-4">
+                  <h2 className="text-sm font-bold text-gray-800 border-b border-gray-200 pb-2">已发布经理月报</h2>
+                  <div className="space-y-4">
+                    {monthlyPublishedInAllTab.map((r) => (
+                      <ManagerMonthlyReportCard
+                        key={r.id}
+                        report={r}
+                        reviews={monthlyReportReviews.filter((rv) => rv.report_id === r.id)}
+                        isManager={isPropertyManagerRole}
+                        currentUserId={session?.user?.id ?? ''}
+                        currentRole={roleInProperty}
+                        currentPropertyId={currentPropertyId ?? ''}
+                        showToast={showToast}
+                        onReloadBundle={loadMonthlyBundle}
+                        showTypeBadge
+                      />
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+
               {rows.length > 0 ? taskTableSection : null}
             </div>
           )}
         </>
       )}
 
-      {filterType === 'inspection' ? <InspectionRecordsPlaceholder en={en} /> : null}
+      {isInspectionTab && (
+        <>
+          {isPropertyManagerRole && (
+            <div className="rounded-2xl border border-[#1D9E75]/30 bg-white shadow-sm p-6 mb-6">
+              <h2 className="text-base font-semibold text-gray-900 mb-1">巡检记录 · 新建 / 编辑草稿</h2>
+              <p className="text-xs text-gray-500 mb-4">保存草稿后可从下方卡片「编辑草稿」加载；填写报告正文后可发布。</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">标题 <span className="text-red-500">*</span></label>
+                  <input
+                    value={irForm.title}
+                    onChange={(e) => setIrForm({ ...irForm, title: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    placeholder="巡检标题"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">巡检日期 <span className="text-red-500">*</span></label>
+                  <input
+                    type="date"
+                    value={irForm.inspection_date}
+                    onChange={(e) => setIrForm({ ...irForm, inspection_date: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">巡检人</label>
+                  <input
+                    value={irForm.inspector_name}
+                    onChange={(e) => setIrForm({ ...irForm, inspector_name: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">风险等级</label>
+                  <select
+                    value={irForm.risk_level}
+                    onChange={(e) => setIrForm({ ...irForm, risk_level: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  >
+                    <option value="normal">正常</option>
+                    <option value="repair_needed">需维修</option>
+                    <option value="high_risk">高风险</option>
+                  </select>
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">区域（逗号或换行分隔）</label>
+                  <input
+                    value={irForm.areasText}
+                    onChange={(e) => setIrForm({ ...irForm, areasText: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">分类（逗号或换行分隔）</label>
+                  <input
+                    value={irForm.categoriesText}
+                    onChange={(e) => setIrForm({ ...irForm, categoriesText: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">摘要</label>
+                  <textarea
+                    value={irForm.summary}
+                    onChange={(e) => setIrForm({ ...irForm, summary: e.target.value })}
+                    rows={2}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">检查情况 <span className="text-red-500">*</span></label>
+                  <textarea
+                    value={irForm.findings}
+                    onChange={(e) => setIrForm({ ...irForm, findings: e.target.value })}
+                    rows={4}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    placeholder="发现的问题与现场说明"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">巡检报告正文（生成/粘贴）</label>
+                  <textarea
+                    value={irForm.report_text}
+                    onChange={(e) => setIrForm({ ...irForm, report_text: e.target.value })}
+                    rows={4}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">行动计划</label>
+                  <textarea
+                    value={irForm.action_plan}
+                    onChange={(e) => setIrForm({ ...irForm, action_plan: e.target.value })}
+                    rows={2}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void saveInspectionDraft()}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#1D9E75] px-4 py-2 text-sm font-semibold text-white hover:bg-[#178a66]"
+                >
+                  保存草稿
+                </button>
+                {irForm.editingId ? (
+                  <button
+                    type="button"
+                    onClick={() => void publishInspectionFromForm()}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
+                  >
+                    保存并发布
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => resetIrForm()}
+                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  清空表单
+                </button>
+                {irForm.editingId ? (
+                  <span className="text-xs text-gray-500 self-center">正在编辑草稿 ID：{irForm.editingId.slice(0, 8)}…</span>
+                ) : null}
+              </div>
+            </div>
+          )}
 
-      {filterType === 'public_matter' ? <PublicMattersPlaceholder en={en} /> : null}
+          {loadingInspections ? (
+            <div className="flex justify-center py-20">
+              <Loader2 className="h-10 w-10 animate-spin text-[#1D9E75]" />
+            </div>
+          ) : inspectionReports.length === 0 ? (
+            <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-500 text-sm">
+              暂无巡检记录
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {inspectionReports.map((report) => (
+                <InspectionReportCard
+                  key={report.id}
+                  report={report}
+                  reviews={inspectionReportReviews.filter((r) => r.inspection_report_id === report.id)}
+                  currentUserId={session?.user?.id ?? ''}
+                  currentRole={roleInProperty}
+                  currentPropertyId={currentPropertyId ?? ''}
+                  showToast={showToast}
+                  onRefreshInspections={loadInspectionBundle}
+                  onReloadInspectionReviews={loadInspectionBundle}
+                  isManager={isPropertyManagerRole}
+                  onPublishDraft={
+                    isPropertyManagerRole ? (id) => void publishInspectionDraftById(id) : undefined
+                  }
+                  onLoadDraftIntoForm={
+                    isPropertyManagerRole ? (r) => loadDraftIntoForm(r) : undefined
+                  }
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
 
-      {filterType === 'manager_report' ? <ManagerMonthlyReportPlaceholder en={en} /> : null}
+      {isPublicMatterTab && (
+        <div className="space-y-6">
+          <div className="rounded-2xl border border-[#1D9E75]/25 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-bold text-gray-900">公共事项</h2>
+            <p className="mt-2 text-sm text-gray-600 leading-relaxed">
+              公开记录影响全体业主生活的社区事项、公告、安全提醒与长期跟进问题，让处理进程接受业主监督。
+            </p>
+          </div>
+
+          {isPropertyManagerRole && (
+            <div className="rounded-2xl border border-[#1D9E75]/30 bg-white shadow-sm p-6">
+              <h3 className="text-base font-semibold text-gray-900 mb-4">新增公共事项</h3>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">标题 <span className="text-red-500">*</span></label>
+                  <input
+                    value={pmForm.title}
+                    onChange={(e) => setPmForm({ ...pmForm, title: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">事项类型 <span className="text-red-500">*</span></label>
+                  <select
+                    value={pmForm.matter_type}
+                    onChange={(e) => setPmForm({ ...pmForm, matter_type: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  >
+                    {Object.entries(PUBLIC_MATTER_TYPE_ZH).map(([val, zh]) => (
+                      <option key={val} value={val}>{zh}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">发生时间</label>
+                  <input
+                    type="datetime-local"
+                    value={pmForm.occurred_at}
+                    onChange={(e) => setPmForm({ ...pmForm, occurred_at: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">位置</label>
+                  <input
+                    value={pmForm.location}
+                    onChange={(e) => setPmForm({ ...pmForm, location: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">来源</label>
+                  <input
+                    value={pmForm.source}
+                    onChange={(e) => setPmForm({ ...pmForm, source: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">影响范围</label>
+                  <input
+                    value={pmForm.scope}
+                    onChange={(e) => setPmForm({ ...pmForm, scope: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">事项描述 <span className="text-red-500">*</span></label>
+                  <textarea
+                    value={pmForm.description}
+                    onChange={(e) => setPmForm({ ...pmForm, description: e.target.value })}
+                    rows={3}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">影响说明</label>
+                  <textarea
+                    value={pmForm.impact}
+                    onChange={(e) => setPmForm({ ...pmForm, impact: e.target.value })}
+                    rows={2}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">风险等级</label>
+                  <select
+                    value={pmForm.risk_level}
+                    onChange={(e) => setPmForm({ ...pmForm, risk_level: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  >
+                    <option value="low">低风险</option>
+                    <option value="normal">普通</option>
+                    <option value="high">高风险</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">当前状态（用于报告文案）</label>
+                  <select
+                    value={pmForm.matterOutlineStatus}
+                    onChange={(e) => setPmForm({ ...pmForm, matterOutlineStatus: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  >
+                    {Object.entries(PUBLIC_MATTER_STATUS_ZH).map(([val, zh]) => (
+                      <option key={val} value={val}>{zh}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">物业回复</label>
+                  <textarea
+                    value={pmForm.management_response}
+                    onChange={(e) => setPmForm({ ...pmForm, management_response: e.target.value })}
+                    rows={2}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">后续处理计划</label>
+                  <textarea
+                    value={pmForm.action_plan}
+                    onChange={(e) => setPmForm({ ...pmForm, action_plan: e.target.value })}
+                    rows={2}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">预计完成日期</label>
+                  <input
+                    type="date"
+                    value={pmForm.expected_completion_date}
+                    onChange={(e) => setPmForm({ ...pmForm, expected_completion_date: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">现场证据链接（每行一个）</label>
+                  <textarea
+                    value={pmForm.evidence_urls_text}
+                    onChange={(e) => setPmForm({ ...pmForm, evidence_urls_text: e.target.value })}
+                    rows={3}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono text-xs"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPmForm((p) => ({
+                        ...p,
+                        report_text: buildPublicMatterReportText({
+                          title: p.title,
+                          matter_type: p.matter_type,
+                          location: p.location,
+                          matterOutlineStatus: p.matterOutlineStatus,
+                          occurred_at_input: p.occurred_at,
+                          description: p.description,
+                          scope: p.scope,
+                          impact: p.impact,
+                          management_response: p.management_response,
+                          action_plan: p.action_plan,
+                          expected_completion_date: p.expected_completion_date,
+                          evidence_urls_text: p.evidence_urls_text,
+                          risk_level: p.risk_level,
+                          source_info: p.source,
+                        }),
+                      }));
+                    }}
+                    className="rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
+                  >
+                    生成公共事项报告
+                  </button>
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">报告正文 report_text</label>
+                  <textarea
+                    value={pmForm.report_text}
+                    onChange={(e) => setPmForm({ ...pmForm, report_text: e.target.value })}
+                    rows={8}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    placeholder="点击「生成公共事项报告」自动填充，可手动修改"
+                  />
+                </div>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => void savePublicMatterDraft()}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#1D9E75] px-4 py-2 text-sm font-semibold text-white hover:bg-[#178a66]"
+                >
+                  保存草稿
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void publishPublicMatterReport()}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
+                >
+                  发布公共事项报告
+                </button>
+                <button
+                  type="button"
+                  onClick={() => resetPmForm()}
+                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  清空表单
+                </button>
+                {pmForm.editingId ? (
+                  <span className="text-xs text-gray-500 self-center">编辑中：{pmForm.editingId.slice(0, 8)}…</span>
+                ) : null}
+              </div>
+            </div>
+          )}
+
+          {loadingPM ? (
+            <div className="flex justify-center py-16">
+              <Loader2 className="h-10 w-10 animate-spin text-[#1D9E75]" />
+            </div>
+          ) : visiblePublicMatters.length === 0 ? (
+            <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-500 text-sm">
+              暂无公共事项
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {visiblePublicMatters.map((m) => (
+                <PublicMatterCard
+                  key={m.id}
+                  matter={m}
+                  isManager={isPropertyManagerRole}
+                  showToast={showToast}
+                  onRefresh={loadPublicMatters}
+                  onLoadDraft={loadPmDraftIntoForm}
+                  reviews={publicMatterReviews.filter((r) => r.public_matter_id === m.id)}
+                  currentUserId={session?.user?.id ?? ''}
+                  currentRole={roleInProperty}
+                  currentPropertyId={currentPropertyId ?? ''}
+                  onReloadReviews={loadPublicMatters}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {isManagerReportTab ? (
+        <div className="space-y-6">
+          <div className="rounded-2xl border border-[#1D9E75]/25 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-bold text-gray-900">{en ? 'Manager monthly report' : '经理月报'}</h2>
+            <p className="mt-2 text-sm text-gray-600 leading-relaxed">
+              {en
+                ? 'The property manager explains this month’s operations, key risks, long-term follow-ups, and next month’s priorities — open to owner oversight.'
+                : '物业经理公开说明本月物业运行情况、重点风险、长期跟进事项与下月工作重点，接受业主监督。'}
+            </p>
+            {isPropertyManagerRole && currentPropertyId ? (
+              <div className="mt-4 flex flex-wrap items-end gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">报告月份</label>
+                  <input
+                    type="month"
+                    value={monthPickerYm}
+                    onChange={(e) => setMonthPickerYm(e.target.value)}
+                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <button
+                  type="button"
+                  disabled={generatingMR || !session?.user}
+                  onClick={() => void generateMonthlyDraft()}
+                  className="inline-flex items-center gap-2 rounded-lg bg-[#1D9E75] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 hover:bg-[#178a66]"
+                >
+                  {generatingMR ? <Loader2 size={14} className="animate-spin" /> : null}
+                  生成本月月报草稿
+                </button>
+              </div>
+            ) : null}
+          </div>
+
+          {loadingMR ? (
+            <div className="flex justify-center py-16">
+              <Loader2 className="h-10 w-10 animate-spin text-[#1D9E75]" />
+            </div>
+          ) : monthlyReports.length === 0 ? (
+            <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-500 text-sm">
+              {isPropertyManagerRole ? '暂无月报草稿或已发布记录' : '暂无已发布经理月报'}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {monthlyReports.map((r) => (
+                <ManagerMonthlyReportCard
+                  key={r.id}
+                  report={r}
+                  reviews={monthlyReportReviews.filter((rv) => rv.report_id === r.id)}
+                  isManager={isPropertyManagerRole}
+                  currentUserId={session?.user?.id ?? ''}
+                  currentRole={roleInProperty}
+                  currentPropertyId={currentPropertyId ?? ''}
+                  showToast={showToast}
+                  onReloadBundle={loadMonthlyBundle}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
