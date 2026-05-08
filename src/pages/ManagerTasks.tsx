@@ -369,7 +369,34 @@ function useToast() {
   return { toasts, show };
 }
 
-// ── 监督流程示例折叠卡（示意 UI，可与真实经理内容并存） ─────────────────────────
+/** 物业经理台 · 巡检 / 公共事项 / 月报：非折叠示例卡（不写入数据库） */
+function ManagerDeskSampleCard({
+  titleLine,
+  children,
+}: {
+  titleLine: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-dashed border-sky-200 bg-gradient-to-b from-sky-50/95 to-white p-5 mb-6 text-left shadow-sm">
+      <div className="flex flex-wrap items-center gap-2 mb-2">
+        <span className="rounded-full bg-sky-600 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shrink-0">
+          示例案例
+        </span>
+        <span className="text-sm font-semibold text-sky-950">{titleLine}</span>
+      </div>
+      <p className="text-xs text-slate-600 mb-4 leading-relaxed">
+        说明：仅用于展示未来真实记录样式，不写入数据库。
+        <span className="block text-[11px] text-slate-500 mt-1">
+          For display only — illustrates how published records will look; nothing is saved.
+        </span>
+      </p>
+      {children}
+    </div>
+  );
+}
+
+// ── 监督流程示例折叠卡（示意 UI，可与真实经理内容并存） — 业主诉求卡内仍可用 ─────
 
 function ManagerSupervisionDemoFold({
   defaultOpen,
@@ -2329,6 +2356,8 @@ export function ManagerTasks() {
   const isPublicMatterTab = filterType === 'public_matter';
   const isManagerReportTab = filterType === 'manager_report';
   const isPropertyManagerRole = roleInProperty === 'manager';
+  /** 巡检 / 公共事项 / 月报·空白单：非经理只读预览，不展示提交类按钮 */
+  const ownerFormReadOnly = !isPropertyManagerRole;
 
   const visiblePublicMatters = useMemo(() => {
     if (isPropertyManagerRole) return publicMatters;
@@ -2735,103 +2764,117 @@ export function ManagerTasks() {
 
       {isInspectionTab && (
         <>
-          {isPropertyManagerRole && (
-            <div className="rounded-2xl border border-[#1D9E75]/30 bg-white shadow-sm p-6 mb-6">
-              <h2 className="text-base font-semibold text-gray-900 mb-1">巡检记录 · 新建 / 编辑草稿</h2>
-              <p className="text-xs text-gray-500 mb-4">保存草稿后可从下方卡片「编辑草稿」加载；填写报告正文后可发布。</p>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="sm:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">标题 <span className="text-red-500">*</span></label>
-                  <input
-                    value={irForm.title}
-                    onChange={(e) => setIrForm({ ...irForm, title: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                    placeholder="巡检标题"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">巡检日期 <span className="text-red-500">*</span></label>
-                  <input
-                    type="date"
-                    value={irForm.inspection_date}
-                    onChange={(e) => setIrForm({ ...irForm, inspection_date: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">巡检人</label>
-                  <input
-                    value={irForm.inspector_name}
-                    onChange={(e) => setIrForm({ ...irForm, inspector_name: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">风险等级</label>
-                  <select
-                    value={irForm.risk_level}
-                    onChange={(e) => setIrForm({ ...irForm, risk_level: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  >
-                    <option value="normal">正常</option>
-                    <option value="repair_needed">需维修</option>
-                    <option value="high_risk">高风险</option>
-                  </select>
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">区域（逗号或换行分隔）</label>
-                  <input
-                    value={irForm.areasText}
-                    onChange={(e) => setIrForm({ ...irForm, areasText: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">分类（逗号或换行分隔）</label>
-                  <input
-                    value={irForm.categoriesText}
-                    onChange={(e) => setIrForm({ ...irForm, categoriesText: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">摘要</label>
-                  <textarea
-                    value={irForm.summary}
-                    onChange={(e) => setIrForm({ ...irForm, summary: e.target.value })}
-                    rows={2}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">检查情况 <span className="text-red-500">*</span></label>
-                  <textarea
-                    value={irForm.findings}
-                    onChange={(e) => setIrForm({ ...irForm, findings: e.target.value })}
-                    rows={4}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                    placeholder="发现的问题与现场说明"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">巡检报告正文（生成/粘贴）</label>
-                  <textarea
-                    value={irForm.report_text}
-                    onChange={(e) => setIrForm({ ...irForm, report_text: e.target.value })}
-                    rows={4}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">行动计划</label>
-                  <textarea
-                    value={irForm.action_plan}
-                    onChange={(e) => setIrForm({ ...irForm, action_plan: e.target.value })}
-                    rows={2}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  />
-                </div>
+          <div className="rounded-2xl border border-[#1D9E75]/30 bg-white shadow-sm p-6 mb-6">
+            <h2 className="text-base font-semibold text-gray-900 mb-1">巡检记录 · 空白单</h2>
+            <p className="text-xs text-gray-500 mb-4">
+              {ownerFormReadOnly
+                ? '以下为空白单结构预览（字段已锁定）。物业经理保存或发布后，真实记录出现在下方列表。'
+                : '保存草稿后可从下方卡片「编辑草稿」加载；填写报告正文后可发布。'}
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">标题 <span className="text-red-500">*</span></label>
+                <input
+                  value={irForm.title}
+                  disabled={ownerFormReadOnly}
+                  onChange={(e) => setIrForm({ ...irForm, title: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                  placeholder="巡检标题"
+                />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">巡检日期 <span className="text-red-500">*</span></label>
+                <input
+                  type="date"
+                  value={irForm.inspection_date}
+                  disabled={ownerFormReadOnly}
+                  onChange={(e) => setIrForm({ ...irForm, inspection_date: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">巡检人</label>
+                <input
+                  value={irForm.inspector_name}
+                  disabled={ownerFormReadOnly}
+                  onChange={(e) => setIrForm({ ...irForm, inspector_name: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">风险等级</label>
+                <select
+                  value={irForm.risk_level}
+                  disabled={ownerFormReadOnly}
+                  onChange={(e) => setIrForm({ ...irForm, risk_level: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                >
+                  <option value="normal">正常</option>
+                  <option value="repair_needed">需维修</option>
+                  <option value="high_risk">高风险</option>
+                </select>
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">区域（逗号或换行分隔）</label>
+                <input
+                  value={irForm.areasText}
+                  disabled={ownerFormReadOnly}
+                  onChange={(e) => setIrForm({ ...irForm, areasText: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">分类（逗号或换行分隔）</label>
+                <input
+                  value={irForm.categoriesText}
+                  disabled={ownerFormReadOnly}
+                  onChange={(e) => setIrForm({ ...irForm, categoriesText: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">摘要</label>
+                <textarea
+                  value={irForm.summary}
+                  disabled={ownerFormReadOnly}
+                  onChange={(e) => setIrForm({ ...irForm, summary: e.target.value })}
+                  rows={2}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">检查情况 <span className="text-red-500">*</span></label>
+                <textarea
+                  value={irForm.findings}
+                  disabled={ownerFormReadOnly}
+                  onChange={(e) => setIrForm({ ...irForm, findings: e.target.value })}
+                  rows={4}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                  placeholder="发现的问题与现场说明"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">巡检报告正文（生成/粘贴）</label>
+                <textarea
+                  value={irForm.report_text}
+                  disabled={ownerFormReadOnly}
+                  onChange={(e) => setIrForm({ ...irForm, report_text: e.target.value })}
+                  rows={4}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">行动计划</label>
+                <textarea
+                  value={irForm.action_plan}
+                  disabled={ownerFormReadOnly}
+                  onChange={(e) => setIrForm({ ...irForm, action_plan: e.target.value })}
+                  rows={2}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                />
+              </div>
+            </div>
+            {!ownerFormReadOnly ? (
               <div className="mt-4 flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -2860,32 +2903,29 @@ export function ManagerTasks() {
                   <span className="text-xs text-gray-500 self-center">正在编辑草稿 ID：{irForm.editingId.slice(0, 8)}…</span>
                 ) : null}
               </div>
+            ) : null}
+          </div>
+
+          <ManagerDeskSampleCard titleLine="巡检记录 · 未来真实公示样式">
+            <div className="rounded-xl border border-emerald-100 bg-white/90 px-4 py-3 space-y-2">
+              <p className="text-[11px] font-semibold text-emerald-800 uppercase tracking-wide">已发布 / Published</p>
+              <p className="text-sm font-medium text-gray-900">示例：地下车库通风巡检</p>
+              <p className="text-xs text-gray-600 leading-relaxed">
+                检查情况（示例）：风机运行正常，台账已更新；下期跟进排烟末端防火阀例行测试。
+              </p>
+              <p className="text-xs text-amber-600 pt-1 border-t border-emerald-100/80">
+                ★★★★☆ 公共评价与监督（示意）· Owners may rate and comment below each real record.
+              </p>
             </div>
-          )}
+          </ManagerDeskSampleCard>
 
           {loadingInspections ? (
             <div className="flex justify-center py-20">
               <Loader2 className="h-10 w-10 animate-spin text-[#1D9E75]" />
             </div>
           ) : inspectionReportsForViewer.length === 0 ? (
-            <div className="space-y-4">
-              {!isPropertyManagerRole ? (
-                <ManagerSupervisionDemoFold
-                  defaultOpen
-                  titleZh="巡检记录 · 结构与监督方式（示例）"
-                  titleEn="Inspection layout (sample)"
-                  summaryZh="发布后：业主可查看巡检摘要、检查情况、巡检报告与行动计划，并在底部提交星级监督和文字补充。"
-                  summaryEn="After publish owners read findings and optional report text, then can rate and comment openly."
-                >
-                  <ul className="text-xs space-y-1.5 text-slate-600 list-disc pl-4 leading-relaxed">
-                    <li>经理侧：新建草稿 → 填写现场检查 → 发布后对全体公示。</li>
-                    <li>业主侧：只读内容与评价，不能代替经理录入巡检专有字段。</li>
-                  </ul>
-                </ManagerSupervisionDemoFold>
-              ) : null}
-              <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-500 text-sm">
-                暂无巡检记录
-              </div>
+            <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-500 text-sm">
+              暂无巡检记录
             </div>
           ) : (
             <div className="space-y-4">
@@ -2916,148 +2956,163 @@ export function ManagerTasks() {
 
       {isPublicMatterTab && (
         <div className="space-y-6">
-          <div className="rounded-2xl border border-[#1D9E75]/25 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-bold text-gray-900">公共事项</h2>
+          <div className="rounded-2xl border border-[#1D9E75]/30 bg-white shadow-sm p-6">
+            <h2 className="text-lg font-bold text-gray-900">公共事项 · 空白单</h2>
             <p className="mt-2 text-sm text-gray-600 leading-relaxed">
               公开记录影响全体业主生活的社区事项、公告、安全提醒与长期跟进问题，让处理进程接受业主监督。
             </p>
-          </div>
-
-          {isPropertyManagerRole && (
-            <div className="rounded-2xl border border-[#1D9E75]/30 bg-white shadow-sm p-6">
-              <h3 className="text-base font-semibold text-gray-900 mb-4">新增公共事项</h3>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="sm:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">标题 <span className="text-red-500">*</span></label>
-                  <input
-                    value={pmForm.title}
-                    onChange={(e) => setPmForm({ ...pmForm, title: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">事项类型 <span className="text-red-500">*</span></label>
-                  <select
-                    value={pmForm.matter_type}
-                    onChange={(e) => setPmForm({ ...pmForm, matter_type: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  >
-                    {Object.entries(PUBLIC_MATTER_TYPE_ZH).map(([val, zh]) => (
-                      <option key={val} value={val}>{zh}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">发生时间</label>
-                  <input
-                    type="datetime-local"
-                    value={pmForm.occurred_at}
-                    onChange={(e) => setPmForm({ ...pmForm, occurred_at: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">位置</label>
-                  <input
-                    value={pmForm.location}
-                    onChange={(e) => setPmForm({ ...pmForm, location: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">来源</label>
-                  <input
-                    value={pmForm.source}
-                    onChange={(e) => setPmForm({ ...pmForm, source: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">影响范围</label>
-                  <input
-                    value={pmForm.scope}
-                    onChange={(e) => setPmForm({ ...pmForm, scope: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">事项描述 <span className="text-red-500">*</span></label>
-                  <textarea
-                    value={pmForm.description}
-                    onChange={(e) => setPmForm({ ...pmForm, description: e.target.value })}
-                    rows={3}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">影响说明</label>
-                  <textarea
-                    value={pmForm.impact}
-                    onChange={(e) => setPmForm({ ...pmForm, impact: e.target.value })}
-                    rows={2}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">风险等级</label>
-                  <select
-                    value={pmForm.risk_level}
-                    onChange={(e) => setPmForm({ ...pmForm, risk_level: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  >
-                    <option value="low">低风险</option>
-                    <option value="normal">普通</option>
-                    <option value="high">高风险</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">当前状态（用于报告文案）</label>
-                  <select
-                    value={pmForm.matterOutlineStatus}
-                    onChange={(e) => setPmForm({ ...pmForm, matterOutlineStatus: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  >
-                    {Object.entries(PUBLIC_MATTER_STATUS_ZH).map(([val, zh]) => (
-                      <option key={val} value={val}>{zh}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">物业回复</label>
-                  <textarea
-                    value={pmForm.management_response}
-                    onChange={(e) => setPmForm({ ...pmForm, management_response: e.target.value })}
-                    rows={2}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">后续处理计划</label>
-                  <textarea
-                    value={pmForm.action_plan}
-                    onChange={(e) => setPmForm({ ...pmForm, action_plan: e.target.value })}
-                    rows={2}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">预计完成日期</label>
-                  <input
-                    type="date"
-                    value={pmForm.expected_completion_date}
-                    onChange={(e) => setPmForm({ ...pmForm, expected_completion_date: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">现场证据链接（每行一个）</label>
-                  <textarea
-                    value={pmForm.evidence_urls_text}
-                    onChange={(e) => setPmForm({ ...pmForm, evidence_urls_text: e.target.value })}
-                    rows={3}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono text-xs"
-                  />
-                </div>
+            <p className="mt-2 text-xs text-gray-500">
+              {ownerFormReadOnly
+                ? '以下为完整空白单结构（字段已锁定，不可提交或保存）。真实记录显示在下方列表。'
+                : '可生成报告正文、保存草稿或发布；已保存的记录也可在下方卡片「编辑草稿」继续处理。'}
+            </p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">标题 <span className="text-red-500">*</span></label>
+                <input
+                  value={pmForm.title}
+                  disabled={ownerFormReadOnly}
+                  onChange={(e) => setPmForm({ ...pmForm, title: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">事项类型 <span className="text-red-500">*</span></label>
+                <select
+                  value={pmForm.matter_type}
+                  disabled={ownerFormReadOnly}
+                  onChange={(e) => setPmForm({ ...pmForm, matter_type: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                >
+                  {Object.entries(PUBLIC_MATTER_TYPE_ZH).map(([val, zh]) => (
+                    <option key={val} value={val}>{zh}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">发生时间</label>
+                <input
+                  type="datetime-local"
+                  value={pmForm.occurred_at}
+                  disabled={ownerFormReadOnly}
+                  onChange={(e) => setPmForm({ ...pmForm, occurred_at: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">位置</label>
+                <input
+                  value={pmForm.location}
+                  disabled={ownerFormReadOnly}
+                  onChange={(e) => setPmForm({ ...pmForm, location: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">来源</label>
+                <input
+                  value={pmForm.source}
+                  disabled={ownerFormReadOnly}
+                  onChange={(e) => setPmForm({ ...pmForm, source: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">影响范围</label>
+                <input
+                  value={pmForm.scope}
+                  disabled={ownerFormReadOnly}
+                  onChange={(e) => setPmForm({ ...pmForm, scope: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">事项描述 <span className="text-red-500">*</span></label>
+                <textarea
+                  value={pmForm.description}
+                  disabled={ownerFormReadOnly}
+                  onChange={(e) => setPmForm({ ...pmForm, description: e.target.value })}
+                  rows={3}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">影响说明</label>
+                <textarea
+                  value={pmForm.impact}
+                  disabled={ownerFormReadOnly}
+                  onChange={(e) => setPmForm({ ...pmForm, impact: e.target.value })}
+                  rows={2}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">风险等级</label>
+                <select
+                  value={pmForm.risk_level}
+                  disabled={ownerFormReadOnly}
+                  onChange={(e) => setPmForm({ ...pmForm, risk_level: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                >
+                  <option value="low">低风险</option>
+                  <option value="normal">普通</option>
+                  <option value="high">高风险</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">当前状态（用于报告文案）</label>
+                <select
+                  value={pmForm.matterOutlineStatus}
+                  disabled={ownerFormReadOnly}
+                  onChange={(e) => setPmForm({ ...pmForm, matterOutlineStatus: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                >
+                  {Object.entries(PUBLIC_MATTER_STATUS_ZH).map(([val, zh]) => (
+                    <option key={val} value={val}>{zh}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">物业回复</label>
+                <textarea
+                  value={pmForm.management_response}
+                  disabled={ownerFormReadOnly}
+                  onChange={(e) => setPmForm({ ...pmForm, management_response: e.target.value })}
+                  rows={2}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">后续处理计划</label>
+                <textarea
+                  value={pmForm.action_plan}
+                  disabled={ownerFormReadOnly}
+                  onChange={(e) => setPmForm({ ...pmForm, action_plan: e.target.value })}
+                  rows={2}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">预计完成日期</label>
+                <input
+                  type="date"
+                  value={pmForm.expected_completion_date}
+                  disabled={ownerFormReadOnly}
+                  onChange={(e) => setPmForm({ ...pmForm, expected_completion_date: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">现场证据链接（每行一个）</label>
+                <textarea
+                  value={pmForm.evidence_urls_text}
+                  disabled={ownerFormReadOnly}
+                  onChange={(e) => setPmForm({ ...pmForm, evidence_urls_text: e.target.value })}
+                  rows={3}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono text-xs disabled:bg-gray-50 disabled:text-gray-600"
+                />
+              </div>
+              {!ownerFormReadOnly ? (
                 <div className="sm:col-span-2">
                   <button
                     type="button"
@@ -3087,17 +3142,20 @@ export function ManagerTasks() {
                     生成公共事项报告
                   </button>
                 </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">报告正文 report_text</label>
-                  <textarea
-                    value={pmForm.report_text}
-                    onChange={(e) => setPmForm({ ...pmForm, report_text: e.target.value })}
-                    rows={8}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                    placeholder="点击「生成公共事项报告」自动填充，可手动修改"
-                  />
-                </div>
+              ) : null}
+              <div className="sm:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">报告正文 report_text</label>
+                <textarea
+                  value={pmForm.report_text}
+                  disabled={ownerFormReadOnly}
+                  onChange={(e) => setPmForm({ ...pmForm, report_text: e.target.value })}
+                  rows={8}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                  placeholder="经理可点击「生成公共事项报告」自动填充"
+                />
               </div>
+            </div>
+            {!ownerFormReadOnly ? (
               <div className="mt-4 flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -3124,32 +3182,30 @@ export function ManagerTasks() {
                   <span className="text-xs text-gray-500 self-center">编辑中：{pmForm.editingId.slice(0, 8)}…</span>
                 ) : null}
               </div>
+            ) : null}
+          </div>
+
+          <ManagerDeskSampleCard titleLine="公共事项 · 未来真实公示样式">
+            <div className="rounded-xl border border-teal-100 bg-white/95 px-4 py-3 space-y-2 text-sm text-gray-800">
+              <p className="text-[11px] font-semibold text-teal-800">公共问题跟进 · 示例标题</p>
+              <p className="text-xs text-gray-600 leading-relaxed">
+                事项描述（示例）：大堂照明改造征求意见，物业将组织业主表决并公示时间表。
+              </p>
+              <div className="rounded-lg bg-teal-50/80 border border-teal-100 px-3 py-2 text-xs text-teal-900">
+                <span className="font-semibold">物业回复（示例）：</span>
+                已列入下月业委会议程，并将更新在此公共事项报告中。
+              </div>
+              <p className="text-xs text-amber-600 pt-1">★★★★☆ 全体业主可在正式发布记录底部评价与补充线索。</p>
             </div>
-          )}
+          </ManagerDeskSampleCard>
 
           {loadingPM ? (
             <div className="flex justify-center py-16">
               <Loader2 className="h-10 w-10 animate-spin text-[#1D9E75]" />
             </div>
           ) : visiblePublicMatters.length === 0 ? (
-            <div className="space-y-4">
-              {!isPropertyManagerRole ? (
-                <ManagerSupervisionDemoFold
-                  defaultOpen
-                  titleZh="公共事项 · 结构与监督方式（示例）"
-                  titleEn="Public matters (sample)"
-                  summaryZh="已发布条目展示事项描述、物业回复、行动计划与报告正文；进度由经理维护，全体业主可看并在底部评价。"
-                  summaryEn="Published matters expose narrated updates; managers update status owners can supervise."
-                >
-                  <ul className="text-xs space-y-1.5 text-slate-600 list-disc pl-4 leading-relaxed">
-                    <li>经理：表单新增/草稿/发布公告；必要时更新工单状态。</li>
-                    <li>业主：阅读公开内容并监督，不填写经理专属工单字段。</li>
-                  </ul>
-                </ManagerSupervisionDemoFold>
-              ) : null}
-              <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-500 text-sm">
-                暂无公共事项
-              </div>
+            <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-500 text-sm">
+              暂无公共事项
             </div>
           ) : (
             <div className="space-y-4">
@@ -3175,59 +3231,129 @@ export function ManagerTasks() {
 
       {isManagerReportTab ? (
         <div className="space-y-6">
-          <div className="rounded-2xl border border-[#1D9E75]/25 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-bold text-gray-900">{en ? 'Manager monthly report' : '经理月报'}</h2>
+          <div className="rounded-2xl border border-[#1D9E75]/30 bg-white shadow-sm p-6">
+            <h2 className="text-lg font-bold text-gray-900">{en ? 'Manager monthly report' : '经理月报 · 空白单'}</h2>
             <p className="mt-2 text-sm text-gray-600 leading-relaxed">
               {en
                 ? 'The property manager explains this month’s operations, key risks, long-term follow-ups, and next month’s priorities — open to owner oversight.'
                 : '物业经理公开说明本月物业运行情况、重点风险、长期跟进事项与下月工作重点，接受业主监督。'}
             </p>
-            {isPropertyManagerRole && currentPropertyId ? (
+            <p className="mt-2 text-xs text-gray-500">
+              {ownerFormReadOnly
+                ? '以下为本月报空白结构（字段锁定，不可生成或保存）。真实草稿与发布内容见下方列表。'
+                : '选择报告月份后生成系统草稿，并在下方卡片中编辑、保存与发布公告。'}
+            </p>
+
+            {currentPropertyId ? (
               <div className="mt-4 flex flex-wrap items-end gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">报告月份</label>
                   <input
                     type="month"
                     value={monthPickerYm}
+                    disabled={ownerFormReadOnly}
                     onChange={(e) => setMonthPickerYm(e.target.value)}
-                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    className="rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
                   />
                 </div>
-                <button
-                  type="button"
-                  disabled={generatingMR || !session?.user}
-                  onClick={() => void generateMonthlyDraft()}
-                  className="inline-flex items-center gap-2 rounded-lg bg-[#1D9E75] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 hover:bg-[#178a66]"
-                >
-                  {generatingMR ? <Loader2 size={14} className="animate-spin" /> : null}
-                  生成本月月报草稿
-                </button>
+                {!ownerFormReadOnly ? (
+                  <button
+                    type="button"
+                    disabled={generatingMR || !session?.user}
+                    onClick={() => void generateMonthlyDraft()}
+                    className="inline-flex items-center gap-2 rounded-lg bg-[#1D9E75] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 hover:bg-[#178a66]"
+                  >
+                    {generatingMR ? <Loader2 size={14} className="animate-spin" /> : null}
+                    生成本月月报草稿
+                  </button>
+                ) : null}
               </div>
             ) : null}
+
+            <div className="mt-6 space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">本月物业运行摘要 monthly_summary</label>
+                <textarea
+                  rows={3}
+                  readOnly={ownerFormReadOnly}
+                  placeholder={
+                    ownerFormReadOnly
+                      ? '（空白结构：正式发布后正文显示在下方列表）'
+                      : '生成草稿后在下方列表卡片中编辑；此处可暂记笔记（不写库）'
+                  }
+                  className={`w-full rounded-lg border px-3 py-2 text-sm ${
+                    ownerFormReadOnly
+                      ? 'border-dashed border-gray-200 bg-gray-50 text-gray-500'
+                      : 'border-gray-300 bg-white text-gray-900'
+                  }`}
+                  defaultValue=""
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">重点风险与问题 key_risks</label>
+                <textarea
+                  rows={3}
+                  readOnly={ownerFormReadOnly}
+                  placeholder="（空白结构示意）"
+                  className={`w-full rounded-lg border px-3 py-2 text-sm ${
+                    ownerFormReadOnly
+                      ? 'border-dashed border-gray-200 bg-gray-50 text-gray-500'
+                      : 'border-gray-300 bg-white text-gray-900'
+                  }`}
+                  defaultValue=""
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">长期跟进事项 long_term_items</label>
+                <textarea
+                  rows={3}
+                  readOnly={ownerFormReadOnly}
+                  placeholder="（空白结构示意）"
+                  className={`w-full rounded-lg border px-3 py-2 text-sm ${
+                    ownerFormReadOnly
+                      ? 'border-dashed border-gray-200 bg-gray-50 text-gray-500'
+                      : 'border-gray-300 bg-white text-gray-900'
+                  }`}
+                  defaultValue=""
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">下月工作重点 next_month_focus</label>
+                <textarea
+                  rows={2}
+                  readOnly={ownerFormReadOnly}
+                  placeholder="（空白结构示意）"
+                  className={`w-full rounded-lg border px-3 py-2 text-sm ${
+                    ownerFormReadOnly
+                      ? 'border-dashed border-gray-200 bg-gray-50 text-gray-500'
+                      : 'border-gray-300 bg-white text-gray-900'
+                  }`}
+                  defaultValue=""
+                />
+              </div>
+            </div>
           </div>
+
+          <ManagerDeskSampleCard titleLine="经理月报 · 未来真实公示样式">
+            <div className="rounded-xl border border-[#1D9E75]/20 bg-white px-4 py-3 space-y-3 text-sm text-gray-800">
+              <p className="text-xs font-semibold text-gray-500">2026 年 3 月 · 已发布</p>
+              <div>
+                <p className="text-[11px] font-medium text-gray-500 mb-0.5">本月物业运行摘要</p>
+                <p className="text-xs leading-relaxed text-gray-700">
+                  示例：本月完成消防年检复检，绿化养护按合同执行；快递间照明已更换 LED。
+                </p>
+              </div>
+              <p className="text-xs text-amber-600 border-t border-gray-100 pt-2">★★★★☆ 业主可在真实月报下方提交公开评价与监督意见。</p>
+            </div>
+          </ManagerDeskSampleCard>
 
           {loadingMR ? (
             <div className="flex justify-center py-16">
               <Loader2 className="h-10 w-10 animate-spin text-[#1D9E75]" />
             </div>
           ) : monthlyReportsForViewer.length === 0 ? (
-            <div className="space-y-4">
-              {!isPropertyManagerRole ? (
-                <ManagerSupervisionDemoFold
-                  defaultOpen
-                  titleZh="经理月报 · 结构与监督方式（示例）"
-                  titleEn="Monthly report (sample)"
-                  summaryZh="经理在发布后对全体业主公示：本月摘要、风险、长期跟进与下月重点；业主可读后提交星级监督。"
-                  summaryEn="Once published summaries are readable; managers draft privately until release."
-                >
-                  <ul className="text-xs space-y-1.5 text-slate-600 list-disc pl-4 leading-relaxed">
-                    <li>草稿与编辑仅物业经理可操作；发布后业主可见并可评价。</li>
-                  </ul>
-                </ManagerSupervisionDemoFold>
-              ) : null}
-              <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-500 text-sm">
-                {isPropertyManagerRole ? '暂无月报草稿或已发布记录' : '暂无已发布经理月报'}
-              </div>
+            <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-500 text-sm">
+              {isPropertyManagerRole ? '暂无月报草稿或已发布记录，可使用上方生成草稿。' : '暂无已发布经理月报'}
             </div>
           ) : (
             <div className="space-y-4">
