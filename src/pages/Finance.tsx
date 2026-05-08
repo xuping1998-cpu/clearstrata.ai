@@ -120,7 +120,7 @@ export function Finance() {
           {financeFullAccess
             ? l
               ? 'Official invoices, approval workflow, and reports. Create tasks and quotes in other modules; link them here via task / quote fields.'
-              : '正式发票、审批与统计。任务与报价在「物业经理任务」「采购维修」中创建，通过来源任务与 quote 字段在此闭环。'
+              : '正式发票、审批与统计。任务与报价在「物业经理任务」「采购询价」中创建，通过来源任务与 quote 字段在此闭环。'
             : l
               ? 'Published monthly financial summaries for owners'
               : '业主可查看已发布的月度财务摘要'}

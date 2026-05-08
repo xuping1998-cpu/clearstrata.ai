@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Plus, Clock, Eye, ArrowLeft, ShoppingCart, Briefcase, CheckCircle, AlertCircle, Wrench, Camera, FileText, Star, XCircle, Send, Loader2, Trash2 } from 'lucide-react';
+import { Plus, Clock, Eye, ArrowLeft, ShoppingCart, CheckCircle, AlertCircle, Wrench, Camera, FileText, Star, XCircle, Send, Loader2, Trash2 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useProperty } from '../contexts/PropertyContext';
@@ -118,10 +118,14 @@ export function Procurement() {
   const [selectedJob, setSelectedJob] = useState<ProcurementJob | null>(null);
 
   const l = language === 'en';
+  /** 业委会 / 物业管理员 / 系统管理员：审批、验收、删除等 */
   const isCouncil =
     roleInProperty === 'council' ||
     roleInProperty === 'property_admin' ||
     roleInProperty === 'admin';
+  /** 采购询价相关上传：含物业经理；普通业主不可 */
+  const canUploadProcurementInquiry =
+    isCouncil || roleInProperty === 'manager';
 
   const loadJobs = async () => {
     if (!profile || !currentPropertyId) return;
@@ -296,19 +300,15 @@ export function Procurement() {
         </button>
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">{l ? 'Procurement & Maintenance' : '采购维修'}</h1>
+            <h1 className="text-3xl font-bold text-gray-900">{l ? 'Procurement Inquiry' : '采购询价'}</h1>
             <p className="text-gray-600 mt-2">
               {l
-                ? 'Quotes & vendor selection live here. Upload the final invoice and run approval in Financial Reports → Invoice Management.'
-                : '报价录入、比价、业委会批准在本页完成；正式发票请至「财务报表 → 发票管理」上传与审批。'}
+                ? 'Collect market quotes in real time — open inquiry, open comparison, and keep every spend transparent.'
+                : '即时采集市场报价，公开询价公开比价，让每一笔支出干净透明。'}
             </p>
           </div>
-          {isCouncil && (
+          {canUploadProcurementInquiry && (
             <div className="flex gap-3 flex-wrap">
-              <button onClick={() => openModal('managers')} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
-                <Briefcase size={20} />
-                {l ? 'Property Managers' : '物业经理'}
-              </button>
               <button onClick={() => openModal('newJob')} className="flex items-center gap-2 bg-clearstrata-ui-primary text-white px-4 py-2 rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors">
                 <Plus size={20} />
                 {l ? 'New Request' : '新建申请'}
@@ -331,6 +331,7 @@ export function Procurement() {
               job={job}
               language={language}
               isCouncil={isCouncil}
+              canUploadProcurementInquiry={canUploadProcurementInquiry}
               propertyId={currentPropertyId}
               onOpenModal={openModal} onMarkCompleted={markCompleted} onResendToPM={resendToPM} onDelete={deleteJob} />
           ))}
@@ -376,6 +377,7 @@ function JobCard({
   job,
   language,
   isCouncil,
+  canUploadProcurementInquiry,
   propertyId,
   onOpenModal,
   onMarkCompleted,
@@ -385,6 +387,7 @@ function JobCard({
   job: ProcurementJob;
   language: string;
   isCouncil: boolean;
+  canUploadProcurementInquiry: boolean;
   propertyId: string;
   onOpenModal: (name: string, job?: ProcurementJob) => void;
   onMarkCompleted: (id: string) => void;
@@ -468,6 +471,7 @@ function JobCard({
             aiEstimateHigh={job.ai_estimate_high}
             aiEstimateReasoning={job.ai_estimate_reasoning}
             aiMaterialCalc={job.ai_material_calc}
+            canUploadSupportingDocs={canUploadProcurementInquiry}
           />
 
           <VendorSearchPanel
@@ -515,7 +519,7 @@ function JobCard({
       )}
 
       <div className="px-6 pb-5 flex flex-wrap gap-2">
-        {isCouncil && job.status === 'collecting_quotes' && (
+        {canUploadProcurementInquiry && job.status === 'collecting_quotes' && (
           <button onClick={() => onOpenModal('addQuote', job)}
             className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-clearstrata-ui-primary bg-clearstrata-ui-soft rounded-lg hover:bg-clearstrata-brand-100 transition-colors">
             <Plus size={16} />

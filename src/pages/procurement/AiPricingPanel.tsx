@@ -23,6 +23,8 @@ interface AiPricingPanelProps {
   aiEstimateReasoning?: string;
   aiMaterialCalc?: string;
   onEstimateLoaded?: (low: number, high: number, reasoning: string) => void;
+  /** 楼面图等辅助上传：业委会/管理员/物业经理；业主仅查看估价 */
+  canUploadSupportingDocs?: boolean;
 }
 
 export type TrafficLightResult = {
@@ -107,6 +109,7 @@ export function AiPricingPanel({
   aiEstimateReasoning,
   aiMaterialCalc,
   onEstimateLoaded,
+  canUploadSupportingDocs = true,
 }: AiPricingPanelProps) {
   const l = language === 'en';
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -121,6 +124,10 @@ export function AiPricingPanel({
   const [floorPlanText, setFloorPlanText] = useState('');
   const [showCalcDetail, setShowCalcDetail] = useState(false);
   const [showFloorPlanInput, setShowFloorPlanInput] = useState(false);
+
+  useEffect(() => {
+    if (!canUploadSupportingDocs) setShowFloorPlanInput(false);
+  }, [canUploadSupportingDocs]);
 
   const fetchEstimate = async (withFloorPlan = false) => {
     setLoading(true);
@@ -259,14 +266,16 @@ export function AiPricingPanel({
           <span className="text-sm font-semibold text-blue-900">{l ? 'AI Price Estimate' : 'AI估价参考'}</span>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowFloorPlanInput(!showFloorPlanInput)}
-            className="text-xs text-clearstrata-brand-600 hover:text-clearstrata-brand-700 flex items-center gap-1 transition-colors px-2 py-1 rounded-md hover:bg-clearstrata-ui-soft"
-            title={l ? 'Upload floor plan for precise estimate' : '上传楼面图精确估价'}
-          >
-            <FileUp size={12} />
-            {l ? 'Floor Plan' : '楼面图'}
-          </button>
+          {canUploadSupportingDocs && (
+            <button
+              onClick={() => setShowFloorPlanInput(!showFloorPlanInput)}
+              className="text-xs text-clearstrata-brand-600 hover:text-clearstrata-brand-700 flex items-center gap-1 transition-colors px-2 py-1 rounded-md hover:bg-clearstrata-ui-soft"
+              title={l ? 'Upload floor plan for precise estimate' : '上传楼面图精确估价'}
+            >
+              <FileUp size={12} />
+              {l ? 'Floor Plan' : '楼面图'}
+            </button>
+          )}
           <button
             onClick={() => fetchEstimate(false)}
             className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 transition-colors"

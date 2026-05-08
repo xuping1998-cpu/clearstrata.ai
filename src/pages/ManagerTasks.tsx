@@ -168,6 +168,14 @@ const PUBLIC_MATTER_VISIBLE_NON_MANAGER = [
   'closed',
 ] as const;
 
+/** 公共事项空白单：四类业务状态（不含 draft） */
+const PUBLIC_MATTER_BLANK_STATUS_OPTIONS = [
+  { value: 'in_progress', zh: '处理中' },
+  { value: 'long_term', zh: '长期跟进' },
+  { value: 'resolved', zh: '已完成' },
+  { value: 'published', zh: '仅通知' },
+] as const;
+
 const PUBLIC_MATTER_TYPE_ZH: Record<string, string> = {
   public_issue: '公共问题跟进',
   announcement: '社区公告',
@@ -234,87 +242,9 @@ function currentMonthYm(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-function splitEvidenceUrlsText(text: string): string[] {
-  return text.split('\n').map((l) => l.trim()).filter(Boolean);
-}
-
 function parseEvidenceUrls(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
   return raw.filter((u): u is string => typeof u === 'string' && u.length > 0);
-}
-
-/** datetime-local-ish from ISO timestamp */
-function occurredAtForInput(iso: string | null): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function buildPublicMatterReportText(f: {
-  title: string;
-  matter_type: string;
-  location: string;
-  matterOutlineStatus: string;
-  occurred_at_input: string;
-  description: string;
-  scope: string;
-  impact: string;
-  management_response: string;
-  action_plan: string;
-  expected_completion_date: string;
-  evidence_urls_text: string;
-  risk_level: string;
-  source_info: string;
-}): string {
-  const typeZh = PUBLIC_MATTER_TYPE_ZH[f.matter_type] ?? f.matter_type;
-  const statusZh = PUBLIC_MATTER_STATUS_ZH[f.matterOutlineStatus] ?? f.matterOutlineStatus;
-  const riskZh = PUBLIC_MATTER_RISK_ZH[f.risk_level] ?? f.risk_level;
-  const loc = (f.location || '').trim() || '—';
-  const desc = (f.description || '').trim() || '—';
-  const scope = (f.scope || '').trim() || '—';
-  const impact = (f.impact || '').trim() || '—';
-  const mgr = (f.management_response || '').trim() || '—';
-  const plan = (f.action_plan || '').trim() || '—';
-  const due = (f.expected_completion_date || '').trim() || '—';
-  const src = (f.source_info || '').trim();
-  const timeLine = f.occurred_at_input
-    ? new Date(f.occurred_at_input).toLocaleString('zh-CN')
-    : '—';
-  const bullets = splitEvidenceUrlsText(f.evidence_urls_text);
-  const evid = bullets.length > 0 ? bullets.map((u) => `- ${u}`).join('\n') : '(无)';
-  const titleLine = f.title.trim() ? `标题：${f.title.trim()}\n\n` : '';
-
-  return `${titleLine}《公共事项报告》
-
-事项类型：${typeZh}
-风险等级：${riskZh}${src ? `\n信息来源：${src}` : ''}
-发生位置：${loc}
-发生时间：${timeLine}
-当前状态：${statusZh}
-
-事项说明：
-${desc}
-
-影响说明：
-${impact}
-
-影响范围：
-${scope}
-
-物业回复：
-${mgr}
-
-处理计划：
-${plan}
-
-预计完成时间：
-${due}
-
-现场证据：
-${evid}
-`.trim();
 }
 
 // ── Nav tabs（全部 + 四类） ─────────────────────────────────────────────────────
@@ -995,7 +925,7 @@ function InspectionReportCard({
           <p className="whitespace-pre-wrap leading-relaxed">{report.summary}</p>
         ) : null}
         <div>
-          <div className="text-xs font-semibold text-gray-500 mb-0.5">检查情况</div>
+          <div className="text-xs font-semibold text-gray-500 mb-0.5">发现问题</div>
           <p className="whitespace-pre-wrap leading-relaxed">{report.findings}</p>
         </div>
         {report.report_text ? (
@@ -1006,7 +936,7 @@ function InspectionReportCard({
         ) : null}
         {report.action_plan ? (
           <div>
-            <span className="text-xs font-semibold text-gray-500">行动计划：</span>
+            <span className="text-xs font-semibold text-gray-500">处理方法：</span>
             <span className="whitespace-pre-wrap">{report.action_plan}</span>
           </div>
         ) : null}
@@ -1801,37 +1731,22 @@ export function ManagerTasks() {
   const [loadingMR, setLoadingMR] = useState(false);
   const [monthPickerYm, setMonthPickerYm] = useState(() => currentMonthYm());
   const [generatingMR, setGeneratingMR] = useState(false);
+  type PmBlankStatus = (typeof PUBLIC_MATTER_BLANK_STATUS_OPTIONS)[number]['value'];
   const [pmForm, setPmForm] = useState({
     editingId: null as string | null,
-    title: '',
-    matter_type: 'public_issue',
-    occurred_at: '',
-    location: '',
-    source: '',
-    scope: '',
     description: '',
-    impact: '',
-    risk_level: 'normal',
-    matterOutlineStatus: 'draft',
-    management_response: '',
-    action_plan: '',
+    location: '',
+    managementMeasures: '',
+    status: 'in_progress' as PmBlankStatus,
     expected_completion_date: '',
-    evidence_urls_text: '',
-    report_text: '',
   });
 
   const [irForm, setIrForm] = useState({
     editingId: null as string | null,
-    title: '',
     inspection_date: new Date().toISOString().slice(0, 10),
-    inspector_name: '',
-    summary: '',
-    findings: '',
-    report_text: '',
-    risk_level: 'normal',
-    action_plan: '',
     areasText: '',
-    categoriesText: '',
+    findings: '',
+    action_plan: '',
   });
 
   const loadOwnerRequests = useCallback(async () => {
@@ -1956,107 +1871,147 @@ export function ManagerTasks() {
     showToast,
   ]);
 
+  const normalizePmDraftStatus = useCallback((s: string): PmBlankStatus => {
+    const ok = PUBLIC_MATTER_BLANK_STATUS_OPTIONS.some((o) => o.value === s);
+    return ok ? (s as PmBlankStatus) : 'in_progress';
+  }, []);
+
+  const buildPublicMatterRowPayload = useCallback((form: typeof pmForm) => {
+    const description = form.description.trim();
+    const measures = form.managementMeasures.trim();
+    const loc = form.location.trim();
+    const title = [...description].slice(0, 30).join('');
+    const matter_type = form.status === 'published' ? 'announcement' : 'public_issue';
+    const statusLine =
+      PUBLIC_MATTER_BLANK_STATUS_OPTIONS.find((o) => o.value === form.status)?.zh ??
+      (PUBLIC_MATTER_STATUS_ZH[form.status] ?? form.status);
+    const dueDisplay = form.expected_completion_date.trim() || '—';
+    const report_text = [
+      `公共事项：${description}`,
+      `位置：${loc || '—'}`,
+      `处理措施：${measures}`,
+      `当前状态：${statusLine}`,
+      `预计完成时间：${dueDisplay}`,
+    ].join('\n');
+
+    return {
+      title,
+      matter_type,
+      occurred_at: null as string | null,
+      location: loc || null,
+      source: 'manager',
+      scope: loc || '',
+      description,
+      impact: null as string | null,
+      risk_level: 'normal',
+      status: form.status,
+      management_response: measures,
+      action_plan: measures,
+      expected_completion_date: form.expected_completion_date.trim() || null,
+      evidence_urls: [] as unknown[],
+      report_text,
+    };
+  }, []);
+
   const resetPmForm = useCallback(() => {
     setPmForm({
       editingId: null,
-      title: '',
-      matter_type: 'public_issue',
-      occurred_at: '',
-      location: '',
-      source: '',
-      scope: '',
       description: '',
-      impact: '',
-      risk_level: 'normal',
-      matterOutlineStatus: 'draft',
-      management_response: '',
-      action_plan: '',
+      location: '',
+      managementMeasures: '',
+      status: 'in_progress',
       expected_completion_date: '',
-      evidence_urls_text: '',
-      report_text: '',
     });
   }, []);
 
-  const loadPmDraftIntoForm = useCallback((m: PublicMatterRow) => {
-    setPmForm({
-      editingId: m.id,
-      title: m.title,
-      matter_type: m.matter_type,
-      occurred_at: occurredAtForInput(m.occurred_at),
-      location: m.location ?? '',
-      source: m.source ?? '',
-      scope: m.scope ?? '',
-      description: m.description,
-      impact: m.impact ?? '',
-      risk_level: m.risk_level,
-      matterOutlineStatus: m.status,
-      management_response: m.management_response ?? '',
-      action_plan: m.action_plan ?? '',
-      expected_completion_date: m.expected_completion_date ?? '',
-      evidence_urls_text: parseEvidenceUrls(m.evidence_urls).join('\n'),
-      report_text: m.report_text ?? '',
-    });
-  }, []);
+  const loadPmDraftIntoForm = useCallback(
+    (m: PublicMatterRow) => {
+      const measures = (m.management_response ?? m.action_plan ?? '').trim();
+      setPmForm({
+        editingId: m.id,
+        description: m.description,
+        location: m.location ?? '',
+        managementMeasures: measures,
+        status: normalizePmDraftStatus(m.status),
+        expected_completion_date: m.expected_completion_date ?? '',
+      });
+    },
+    [normalizePmDraftStatus],
+  );
 
   const resetIrForm = useCallback(() => {
     setIrForm({
       editingId: null,
-      title: '',
       inspection_date: new Date().toISOString().slice(0, 10),
-      inspector_name: '',
-      summary: '',
-      findings: '',
-      report_text: '',
-      risk_level: 'normal',
-      action_plan: '',
       areasText: '',
-      categoriesText: '',
+      findings: '',
+      action_plan: '',
     });
   }, []);
 
   const loadDraftIntoForm = useCallback((r: InspectionReportRow) => {
     setIrForm({
       editingId: r.id,
-      title: r.title,
       inspection_date: r.inspection_date,
-      inspector_name: r.inspector_name ?? '',
-      summary: r.summary ?? '',
+      areasText: (Array.isArray(r.areas) ? r.areas : []).join(' / '),
       findings: r.findings,
-      report_text: r.report_text ?? '',
-      risk_level: r.risk_level,
       action_plan: r.action_plan ?? '',
-      areasText: (Array.isArray(r.areas) ? r.areas : []).join('，'),
-      categoriesText: (Array.isArray(r.categories) ? r.categories : []).join('，'),
     });
   }, []);
 
+  const parseInspectionAreasInput = useCallback((text: string): string[] => {
+    return text
+      .split(/[\/、,，\n\r]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }, []);
+
   const buildIrPayload = useCallback(() => {
-    const areas = irForm.areasText
-      .split(/[,，\n]/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const categories = irForm.categoriesText
-      .split(/[,，\n]/)
-      .map((s) => s.trim())
-      .filter(Boolean);
+    const findings = irForm.findings.trim();
+    const actionPlan = irForm.action_plan.trim();
+    const dateStr = irForm.inspection_date.trim();
+    const areasArr = parseInspectionAreasInput(irForm.areasText);
+    const areasDisplay = irForm.areasText.trim();
+    const title = `${dateStr} 巡检记录`;
+    const summary = findings.slice(0, 80);
+    const report_text = [
+      `巡检日期：${dateStr}`,
+      `巡检区域：${areasDisplay}`,
+      `发现问题：${findings}`,
+      `处理方法：${actionPlan}`,
+    ].join('\n');
     return {
-      title: irForm.title.trim(),
-      inspection_date: irForm.inspection_date,
-      inspector_name: irForm.inspector_name.trim() || null,
-      summary: irForm.summary.trim() || null,
-      findings: irForm.findings.trim(),
-      report_text: irForm.report_text.trim() || null,
-      risk_level: irForm.risk_level,
-      action_plan: irForm.action_plan.trim() || null,
-      areas,
-      categories,
+      title,
+      inspection_date: dateStr,
+      inspector_name: null as string | null,
+      areas: areasArr,
+      categories: [] as string[],
+      summary,
+      findings,
+      risk_level: 'repair_needed',
+      action_plan: actionPlan,
+      expected_completion_date: null as string | null,
+      evidence_urls: [] as unknown[],
+      report_text,
     };
-  }, [irForm]);
+  }, [irForm, parseInspectionAreasInput]);
 
   const saveInspectionDraft = async () => {
     if (!session?.user?.id || !currentPropertyId) return;
-    if (!irForm.title.trim() || !irForm.findings.trim()) {
-      showToast('请填写标题与检查情况', false);
+    if (!irForm.inspection_date.trim()) {
+      showToast('请选择巡检日期', false);
+      return;
+    }
+    if (parseInspectionAreasInput(irForm.areasText).length === 0) {
+      showToast('请填写巡检区域', false);
+      return;
+    }
+    if (!irForm.findings.trim()) {
+      showToast('请填写发现问题', false);
+      return;
+    }
+    if (!irForm.action_plan.trim()) {
+      showToast('请填写处理方法', false);
       return;
     }
     const payload = buildIrPayload();
@@ -2077,7 +2032,6 @@ export function ManagerTasks() {
           property_id: currentPropertyId,
           created_by: session.user.id,
           status: 'draft',
-          evidence_urls: [],
           ...payload,
         })
         .select('id')
@@ -2094,8 +2048,20 @@ export function ManagerTasks() {
 
   const publishInspectionFromForm = async () => {
     if (!session?.user?.id || !currentPropertyId || !irForm.editingId) return;
-    if (!irForm.title.trim() || !irForm.findings.trim()) {
-      showToast('请填写标题与检查情况', false);
+    if (!irForm.inspection_date.trim()) {
+      showToast('请选择巡检日期', false);
+      return;
+    }
+    if (parseInspectionAreasInput(irForm.areasText).length === 0) {
+      showToast('请填写巡检区域', false);
+      return;
+    }
+    if (!irForm.findings.trim()) {
+      showToast('请填写发现问题', false);
+      return;
+    }
+    if (!irForm.action_plan.trim()) {
+      showToast('请填写处理方法', false);
       return;
     }
     const payload = buildIrPayload();
@@ -2137,32 +2103,22 @@ export function ManagerTasks() {
 
   const savePublicMatterDraft = async () => {
     if (!session?.user?.id || !currentPropertyId) return;
-    if (!pmForm.title.trim() || !pmForm.description.trim()) {
-      showToast('请填写标题与事项描述', false);
+    if (!pmForm.description.trim()) {
+      showToast('请填写事项内容', false);
       return;
     }
-    const body = {
-      title: pmForm.title.trim(),
-      matter_type: pmForm.matter_type,
-      occurred_at: pmForm.occurred_at ? new Date(pmForm.occurred_at).toISOString() : null,
-      location: pmForm.location.trim() || null,
-      source: pmForm.source.trim() || null,
-      scope: pmForm.scope.trim() || null,
-      description: pmForm.description.trim(),
-      impact: pmForm.impact.trim() || null,
-      risk_level: pmForm.risk_level,
-      management_response: pmForm.management_response.trim() || null,
-      action_plan: pmForm.action_plan.trim() || null,
-      expected_completion_date: pmForm.expected_completion_date.trim() || null,
-      evidence_urls: splitEvidenceUrlsText(pmForm.evidence_urls_text),
-      report_text: pmForm.report_text.trim() || null,
-    };
+    if (!pmForm.managementMeasures.trim()) {
+      showToast('请填写处理措施', false);
+      return;
+    }
+    const row = buildPublicMatterRowPayload(pmForm);
     if (pmForm.editingId) {
       const { error } = await supabase
         .from('manager_public_matters')
         .update({
-          ...body,
-          status: 'draft',
+          ...row,
+          published_at: null,
+          published_by: null,
         })
         .eq('id', pmForm.editingId);
       if (error) {
@@ -2176,8 +2132,9 @@ export function ManagerTasks() {
         .insert({
           property_id: currentPropertyId,
           created_by: session.user.id,
-          status: 'draft',
-          ...body,
+          published_at: null,
+          published_by: null,
+          ...row,
         })
         .select('id')
         .single();
@@ -2193,33 +2150,24 @@ export function ManagerTasks() {
 
   const publishPublicMatterReport = async () => {
     if (!session?.user?.id || !currentPropertyId) return;
-    if (!pmForm.title.trim() || !pmForm.description.trim()) {
-      showToast('请填写标题与事项描述', false);
+    if (!pmForm.description.trim()) {
+      showToast('请填写事项内容', false);
       return;
     }
-    const body = {
-      title: pmForm.title.trim(),
-      matter_type: pmForm.matter_type,
-      occurred_at: pmForm.occurred_at ? new Date(pmForm.occurred_at).toISOString() : null,
-      location: pmForm.location.trim() || null,
-      source: pmForm.source.trim() || null,
-      scope: pmForm.scope.trim() || null,
-      description: pmForm.description.trim(),
-      impact: pmForm.impact.trim() || null,
-      risk_level: pmForm.risk_level,
-      management_response: pmForm.management_response.trim() || null,
-      action_plan: pmForm.action_plan.trim() || null,
-      expected_completion_date: pmForm.expected_completion_date.trim() || null,
-      evidence_urls: splitEvidenceUrlsText(pmForm.evidence_urls_text),
-      report_text: pmForm.report_text.trim() || null,
-      status: 'published' as const,
+    if (!pmForm.managementMeasures.trim()) {
+      showToast('请填写处理措施', false);
+      return;
+    }
+    const row = buildPublicMatterRowPayload(pmForm);
+    const publishedRow = {
+      ...row,
       published_at: new Date().toISOString(),
       published_by: session.user.id,
     };
     if (pmForm.editingId) {
       const { error } = await supabase
         .from('manager_public_matters')
-        .update(body)
+        .update(publishedRow)
         .eq('id', pmForm.editingId);
       if (error) {
         showToast(`发布失败：${error.message}`, false);
@@ -2229,7 +2177,7 @@ export function ManagerTasks() {
       const { error } = await supabase.from('manager_public_matters').insert({
         property_id: currentPropertyId,
         created_by: session.user.id,
-        ...body,
+        ...publishedRow,
       });
       if (error) {
         showToast(`发布失败：${error.message}`, false);
@@ -2726,19 +2674,9 @@ export function ManagerTasks() {
             <p className="text-xs text-gray-500 mb-4">
               {ownerFormReadOnly
                 ? '以下为空白单结构预览（字段已锁定）。物业经理保存或发布后，真实记录出现在下方列表。'
-                : '保存草稿后可从下方卡片「编辑草稿」加载；填写报告正文后可发布。'}
+                : '填写日期、区域、问题与处理方法后保存草稿；可从下方卡片「编辑草稿」继续，再发布巡检报告。'}
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">标题 <span className="text-red-500">*</span></label>
-                <input
-                  value={irForm.title}
-                  disabled={ownerFormReadOnly}
-                  onChange={(e) => setIrForm({ ...irForm, title: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
-                  placeholder="巡检标题"
-                />
-              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">巡检日期 <span className="text-red-500">*</span></label>
                 <input
@@ -2749,85 +2687,37 @@ export function ManagerTasks() {
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">巡检人</label>
-                <input
-                  value={irForm.inspector_name}
-                  disabled={ownerFormReadOnly}
-                  onChange={(e) => setIrForm({ ...irForm, inspector_name: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">风险等级</label>
-                <select
-                  value={irForm.risk_level}
-                  disabled={ownerFormReadOnly}
-                  onChange={(e) => setIrForm({ ...irForm, risk_level: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
-                >
-                  <option value="normal">正常</option>
-                  <option value="repair_needed">需维修</option>
-                  <option value="high_risk">高风险</option>
-                </select>
-              </div>
               <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">区域（逗号或换行分隔）</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">巡检区域 <span className="text-red-500">*</span></label>
                 <input
                   value={irForm.areasText}
                   disabled={ownerFormReadOnly}
                   onChange={(e) => setIrForm({ ...irForm, areasText: e.target.value })}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                  placeholder="例如：车库 / 花园 / 公共照明"
                 />
+                <p className="mt-1 text-xs text-gray-400">可用 / 、逗号或换行分隔多个区域</p>
               </div>
               <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">分类（逗号或换行分隔）</label>
-                <input
-                  value={irForm.categoriesText}
-                  disabled={ownerFormReadOnly}
-                  onChange={(e) => setIrForm({ ...irForm, categoriesText: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">摘要</label>
-                <textarea
-                  value={irForm.summary}
-                  disabled={ownerFormReadOnly}
-                  onChange={(e) => setIrForm({ ...irForm, summary: e.target.value })}
-                  rows={2}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">检查情况 <span className="text-red-500">*</span></label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">发现问题 <span className="text-red-500">*</span></label>
                 <textarea
                   value={irForm.findings}
                   disabled={ownerFormReadOnly}
                   onChange={(e) => setIrForm({ ...irForm, findings: e.target.value })}
                   rows={4}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
-                  placeholder="发现的问题与现场说明"
+                  placeholder="例如：B2车库部分照明异常，花园发现枯树存在安全隐患"
                 />
               </div>
               <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">巡检报告正文（生成/粘贴）</label>
-                <textarea
-                  value={irForm.report_text}
-                  disabled={ownerFormReadOnly}
-                  onChange={(e) => setIrForm({ ...irForm, report_text: e.target.value })}
-                  rows={4}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">行动计划</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">处理方法 <span className="text-red-500">*</span></label>
                 <textarea
                   value={irForm.action_plan}
                   disabled={ownerFormReadOnly}
                   onChange={(e) => setIrForm({ ...irForm, action_plan: e.target.value })}
-                  rows={2}
+                  rows={4}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                  placeholder="例如：通知电工检修照明，联系园林公司移除枯树"
                 />
               </div>
             </div>
@@ -2846,7 +2736,7 @@ export function ManagerTasks() {
                     onClick={() => void publishInspectionFromForm()}
                     className="inline-flex items-center gap-1.5 rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
                   >
-                    保存并发布
+                    发布巡检报告
                   </button>
                 ) : null}
                 <button
@@ -2922,195 +2812,70 @@ export function ManagerTasks() {
             </p>
             <p className="mt-2 text-xs text-gray-500">
               {ownerFormReadOnly
-                ? '以下为完整空白单结构（字段已锁定，不可提交或保存）。真实记录显示在下方列表。'
-                : '可生成报告正文、保存草稿或发布；已保存的记录也可在下方卡片「编辑草稿」继续处理。'}
+                ? '以下为空白单结构预览（字段已锁定）。物业经理保存或发布后，真实记录出现在下方列表。'
+                : '填写事项内容与处理措施后保存；发布后将带发布时间并对外可见（依状态）。可从下方卡片「编辑草稿」继续。'}
             </p>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">标题 <span className="text-red-500">*</span></label>
-                <input
-                  value={pmForm.title}
-                  disabled={ownerFormReadOnly}
-                  onChange={(e) => setPmForm({ ...pmForm, title: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">事项类型 <span className="text-red-500">*</span></label>
-                <select
-                  value={pmForm.matter_type}
-                  disabled={ownerFormReadOnly}
-                  onChange={(e) => setPmForm({ ...pmForm, matter_type: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
-                >
-                  {Object.entries(PUBLIC_MATTER_TYPE_ZH).map(([val, zh]) => (
-                    <option key={val} value={val}>{zh}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">发生时间</label>
-                <input
-                  type="datetime-local"
-                  value={pmForm.occurred_at}
-                  disabled={ownerFormReadOnly}
-                  onChange={(e) => setPmForm({ ...pmForm, occurred_at: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">位置</label>
-                <input
-                  value={pmForm.location}
-                  disabled={ownerFormReadOnly}
-                  onChange={(e) => setPmForm({ ...pmForm, location: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">来源</label>
-                <input
-                  value={pmForm.source}
-                  disabled={ownerFormReadOnly}
-                  onChange={(e) => setPmForm({ ...pmForm, source: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">影响范围</label>
-                <input
-                  value={pmForm.scope}
-                  disabled={ownerFormReadOnly}
-                  onChange={(e) => setPmForm({ ...pmForm, scope: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">事项描述 <span className="text-red-500">*</span></label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">事项内容 <span className="text-red-500">*</span></label>
                 <textarea
                   value={pmForm.description}
                   disabled={ownerFormReadOnly}
                   onChange={(e) => setPmForm({ ...pmForm, description: e.target.value })}
                   rows={3}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                  placeholder="例如：B2车库夜间发现陌生人进入 / 周六上午停水维修 / 电梯保养通知"
                 />
               </div>
               <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">影响说明</label>
-                <textarea
-                  value={pmForm.impact}
+                <label className="block text-sm font-medium text-gray-700 mb-1">位置</label>
+                <input
+                  value={pmForm.location}
                   disabled={ownerFormReadOnly}
-                  onChange={(e) => setPmForm({ ...pmForm, impact: e.target.value })}
-                  rows={2}
+                  onChange={(e) => setPmForm({ ...pmForm, location: e.target.value })}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                  placeholder="例如：B2车库 / 1号电梯 / 花园 / 大堂 / 全楼"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">处理措施 <span className="text-red-500">*</span></label>
+                <textarea
+                  value={pmForm.managementMeasures}
+                  disabled={ownerFormReadOnly}
+                  onChange={(e) => setPmForm({ ...pmForm, managementMeasures: e.target.value })}
+                  rows={3}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
+                  placeholder="例如：已通知安保加强巡查 / 已联系维修公司 / 已安排电梯保养"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">风险等级</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">当前状态 <span className="text-red-500">*</span></label>
                 <select
-                  value={pmForm.risk_level}
+                  value={pmForm.status}
                   disabled={ownerFormReadOnly}
-                  onChange={(e) => setPmForm({ ...pmForm, risk_level: e.target.value })}
+                  onChange={(e) =>
+                    setPmForm({
+                      ...pmForm,
+                      status: e.target.value as typeof pmForm.status,
+                    })
+                  }
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
                 >
-                  <option value="low">低风险</option>
-                  <option value="normal">普通</option>
-                  <option value="high">高风险</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">当前状态（用于报告文案）</label>
-                <select
-                  value={pmForm.matterOutlineStatus}
-                  disabled={ownerFormReadOnly}
-                  onChange={(e) => setPmForm({ ...pmForm, matterOutlineStatus: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
-                >
-                  {Object.entries(PUBLIC_MATTER_STATUS_ZH).map(([val, zh]) => (
-                    <option key={val} value={val}>{zh}</option>
+                  {PUBLIC_MATTER_BLANK_STATUS_OPTIONS.map(({ value, zh }) => (
+                    <option key={value} value={value}>
+                      {zh}
+                    </option>
                   ))}
                 </select>
               </div>
-              <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">物业回复</label>
-                <textarea
-                  value={pmForm.management_response}
-                  disabled={ownerFormReadOnly}
-                  onChange={(e) => setPmForm({ ...pmForm, management_response: e.target.value })}
-                  rows={2}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">后续处理计划</label>
-                <textarea
-                  value={pmForm.action_plan}
-                  disabled={ownerFormReadOnly}
-                  onChange={(e) => setPmForm({ ...pmForm, action_plan: e.target.value })}
-                  rows={2}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
-                />
-              </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">预计完成日期</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">预计完成时间</label>
                 <input
                   type="date"
                   value={pmForm.expected_completion_date}
                   disabled={ownerFormReadOnly}
                   onChange={(e) => setPmForm({ ...pmForm, expected_completion_date: e.target.value })}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">现场证据链接（每行一个）</label>
-                <textarea
-                  value={pmForm.evidence_urls_text}
-                  disabled={ownerFormReadOnly}
-                  onChange={(e) => setPmForm({ ...pmForm, evidence_urls_text: e.target.value })}
-                  rows={3}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono text-xs disabled:bg-gray-50 disabled:text-gray-600"
-                />
-              </div>
-              {!ownerFormReadOnly ? (
-                <div className="sm:col-span-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPmForm((p) => ({
-                        ...p,
-                        report_text: buildPublicMatterReportText({
-                          title: p.title,
-                          matter_type: p.matter_type,
-                          location: p.location,
-                          matterOutlineStatus: p.matterOutlineStatus,
-                          occurred_at_input: p.occurred_at,
-                          description: p.description,
-                          scope: p.scope,
-                          impact: p.impact,
-                          management_response: p.management_response,
-                          action_plan: p.action_plan,
-                          expected_completion_date: p.expected_completion_date,
-                          evidence_urls_text: p.evidence_urls_text,
-                          risk_level: p.risk_level,
-                          source_info: p.source,
-                        }),
-                      }));
-                    }}
-                    className="rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100"
-                  >
-                    生成公共事项报告
-                  </button>
-                </div>
-              ) : null}
-              <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">报告正文 report_text</label>
-                <textarea
-                  value={pmForm.report_text}
-                  disabled={ownerFormReadOnly}
-                  onChange={(e) => setPmForm({ ...pmForm, report_text: e.target.value })}
-                  rows={8}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50 disabled:text-gray-600"
-                  placeholder="经理可点击「生成公共事项报告」自动填充"
                 />
               </div>
             </div>
@@ -3128,7 +2893,7 @@ export function ManagerTasks() {
                   onClick={() => void publishPublicMatterReport()}
                   className="inline-flex items-center gap-1.5 rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
                 >
-                  发布公共事项报告
+                  发布公共事项
                 </button>
                 <button
                   type="button"

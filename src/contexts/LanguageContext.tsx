@@ -55,7 +55,7 @@ const translations: Record<string, Record<Language, string>> = {
   nav_dashboard: { en: 'Dashboard', zh: '首页' },
   nav_pricing: { en: 'Pricing', zh: '定价' },
   nav_contact: { en: 'Contact', zh: '联系' },
-  nav_procurement: { en: 'Procurement & Maintenance', zh: '采购维修' },
+  nav_procurement: { en: 'Procurement Inquiry', zh: '采购询价' },
   nav_voting: { en: 'Meeting & Voting', zh: '会议投票' },
   nav_maintenance: { en: 'Maintenance', zh: '维修申请' },
   nav_finance: { en: 'Financial Reports', zh: '财务报表' },
@@ -156,7 +156,7 @@ const translations: Record<string, Record<Language, string>> = {
   residents_summary_active: { en: 'Active', zh: '在册活跃' },
   residents_summary_overdue: { en: 'Fee overdue', zh: '欠费' },
 
-  procurement_title: { en: 'Procurement & Maintenance', zh: '采购维修' },
+  procurement_title: { en: 'Procurement Inquiry', zh: '采购询价' },
   procurement_new_job: { en: 'New Job', zh: '新建任务' },
   procurement_job_title: { en: 'Job Title', zh: '任务标题' },
   procurement_description: { en: 'Description', zh: '描述' },
