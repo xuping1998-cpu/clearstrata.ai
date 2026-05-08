@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ClipboardList, Loader2, Send, Star } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -369,6 +369,47 @@ function useToast() {
   return { toasts, show };
 }
 
+// ── 监督流程示例折叠卡（示意 UI，可与真实经理内容并存） ─────────────────────────
+
+function ManagerSupervisionDemoFold({
+  defaultOpen,
+  titleZh,
+  titleEn,
+  summaryZh,
+  summaryEn,
+  children,
+}: {
+  defaultOpen: boolean;
+  titleZh: string;
+  titleEn: string;
+  summaryZh: string;
+  summaryEn: string;
+  children: ReactNode;
+}) {
+  return (
+    <details
+      defaultOpen={defaultOpen}
+      className="rounded-2xl border border-dashed border-sky-200 bg-gradient-to-b from-sky-50/95 to-white overflow-hidden text-left shadow-sm"
+    >
+      <summary className="cursor-pointer select-none px-4 py-3.5 text-sm font-semibold text-sky-950 flex flex-wrap items-center gap-x-3 gap-y-1 list-none [&::-webkit-details-marker]:hidden">
+        <span className="rounded-full bg-sky-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shrink-0">
+          示例 Demo
+        </span>
+        <span>{titleZh}</span>
+        <span className="text-xs font-normal text-sky-800/85">{titleEn}</span>
+        <span className="w-full text-xs font-normal text-sky-700/75 sm:w-auto basis-full sm:basis-auto">
+          折叠查看完整流程示意 · Collapsible mock walkthrough
+        </span>
+      </summary>
+      <div className="px-4 pb-4 border-t border-sky-100/90 pt-3 space-y-3 text-sm text-slate-600">
+        <p className="text-xs text-slate-600 leading-relaxed">{summaryZh}</p>
+        <p className="text-[11px] text-slate-500 leading-relaxed">{summaryEn}</p>
+        {children}
+      </div>
+    </details>
+  );
+}
+
 // ── OwnerRequest card ──────────────────────────────────────────────────────────
 
 function StarRating({
@@ -521,8 +562,13 @@ function OwnerRequestCard({
     }
   };
 
+  const hasPublishedManagerOutcome = Boolean(req.manager_result?.trim());
+
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+    <div
+      id={`owner-request-${req.id}`}
+      className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden scroll-mt-24"
+    >
       {/* Header */}
       <div className="px-5 py-4 border-b border-gray-100">
         <div className="flex-1 min-w-0">
@@ -604,6 +650,47 @@ function OwnerRequestCard({
             ))}
           </div>
         )}
+
+        {/* 尚无经理公开的处理结果前：示例默认展开；有真实内容后仍可折叠回看示意 */}
+        <div className="-mx-0">
+          <ManagerSupervisionDemoFold
+            defaultOpen={!hasPublishedManagerOutcome}
+            titleZh="示例案例 · 经理处理结果与公开监督"
+            titleEn="Sample outcome & oversight"
+            summaryZh={
+              isPropertyManagerRole
+                ? !hasPublishedManagerOutcome
+                  ? '您可在本卡下方「展开」中使用「编辑处理状态与结果」写入公开说明；保存后对所有业主公示。下方为监督评价区。'
+                  : '示意说明仍保留于此；上方的绿色卡片为该案的真实公开处理结果。'
+                : !hasPublishedManagerOutcome
+                  ? '物业经理将在此卡内公开写出处理进度与结论（绿色卡片）。正式发布前可先参考左侧示例的结构。您可以展开本说明了解监督方式。'
+                  : '上方的绿色卡片为物业经理对您诉求的真实处理回复。虚线框内仍可展开查看示例结构。您可在底部参与星级与评语监督。'
+            }
+            summaryEn={
+              isPropertyManagerRole
+                ? !hasPublishedManagerOutcome
+                  ? 'Expand the folded section below to set status/outcome visible to owners; reviews appear underneath.'
+                  : 'Mock frame remains; green block above shows the saved real outcome.'
+                : !hasPublishedManagerOutcome
+                  ? 'The manager publishes handling notes in the green block when ready — this demo previews the layout.'
+                  : 'Green shows the manager’s actual reply for this ticket; dashed guide remains for orientation.'
+            }
+          >
+            <div className="rounded-xl border border-green-100 bg-green-50/60 px-3 py-2.5 opacity-95">
+              <div className="text-[11px] font-semibold text-green-700 mb-1">
+                处理结果（示意）· Sample outcome
+              </div>
+              <p className="text-xs text-green-900/95 leading-relaxed whitespace-pre-wrap">
+                示例：已与绿化承包商确认时间表，计划于本月底完成枯树移除，并在地下车库入口张贴告示。
+              </p>
+              <p className="mt-2 text-[10px] text-green-700/85">
+                以下为业主监督区示意（您在真实卡片中可操作）：
+                <span className="text-amber-500 tracking-tight"> ★★★★☆</span>{' '}
+                <span className="text-slate-500">评语：进度透明，盼望按时完成。</span>
+              </p>
+            </div>
+          </ManagerSupervisionDemoFold>
+        </div>
 
         {req.manager_result && (
           <div className="rounded-xl bg-green-50 border border-green-100 px-4 py-3">
@@ -2284,6 +2371,32 @@ export function ManagerTasks() {
       .sort((a, b) => String(b.report_month).localeCompare(String(a.report_month)));
   }, [monthlyReports]);
 
+  /** 业主/非经理不看草稿或未发布的巡检、月报，避免误判为公示内容 */
+  const inspectionReportsForViewer = useMemo(() => {
+    if (isPropertyManagerRole) return inspectionReports;
+    return inspectionReports.filter((r) =>
+      INSPECTION_PUBLIC_STATUSES.includes(r.status as (typeof INSPECTION_PUBLIC_STATUSES)[number]),
+    );
+  }, [inspectionReports, isPropertyManagerRole]);
+
+  const monthlyReportsForViewer = useMemo(() => {
+    if (isPropertyManagerRole) return monthlyReports;
+    return monthlyReports.filter((r) => r.status === 'published');
+  }, [monthlyReports, isPropertyManagerRole]);
+
+  const linkedRequestId = searchParams.get('requestId');
+
+  useEffect(() => {
+    if (!linkedRequestId) return;
+    if (filterType !== 'owner_request' && filterType !== 'all') return;
+    const t = window.setTimeout(() => {
+      document
+        .getElementById(`owner-request-${linkedRequestId}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [linkedRequestId, filterType, ownerRequests.length, loadingOR]);
+
   const taskTableSection = (
     <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
       <table className="min-w-full text-left text-sm">
@@ -2373,70 +2486,136 @@ export function ManagerTasks() {
         ))}
       </div>
 
-      {/* ── 业主诉求：仅提交表单 ───────────────────────────────────────────── */}
+      {/* ── 业主诉求：列表 + 业主提交表单（经理不显示提交表单） ───────────────── */}
       {isOwnerRequestTab && (
-        <div className="rounded-2xl border border-[#1D9E75]/30 bg-white shadow-sm p-6">
-          <h2 className="text-base font-semibold text-gray-900 mb-4">提交业主诉求</h2>
-          <div className="space-y-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">诉求标题 <span className="text-red-500">*</span></label>
-              <input
-                value={orForm.title}
-                onChange={(e) => setOrForm({ ...orForm, title: e.target.value })}
-                placeholder="简要描述诉求"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">诉求内容 <span className="text-red-500">*</span></label>
-              <textarea
-                value={orForm.content}
-                onChange={(e) => setOrForm({ ...orForm, content: e.target.value })}
-                rows={4}
-                placeholder="详细说明诉求内容（提交后对业主可见）"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">房号</label>
-                <input
-                  value={orForm.unit_no}
-                  onChange={(e) => setOrForm({ ...orForm, unit_no: e.target.value })}
-                  placeholder="如：105"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">联系方式</label>
-                <input
-                  value={orForm.contact}
-                  onChange={(e) => setOrForm({ ...orForm, contact: e.target.value })}
-                  placeholder="电话或邮箱"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">附件链接</label>
-              <textarea
-                value={orForm.attachment_urls}
-                onChange={(e) => setOrForm({ ...orForm, attachment_urls: e.target.value })}
-                rows={2}
-                placeholder="每行一个链接（图片/PDF 等）"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono text-xs"
-              />
-            </div>
-            <button
-              type="button"
-              disabled={submittingOR || !orForm.title.trim() || !orForm.content.trim()}
-              onClick={() => void submitOwnerRequest()}
-              className="inline-flex items-center gap-2 rounded-lg bg-[#1D9E75] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 hover:bg-[#178a66]"
+        <div className="space-y-6">
+          {!isPropertyManagerRole && !loadingOR && ownerRequests.length === 0 ? (
+            <ManagerSupervisionDemoFold
+              defaultOpen
+              titleZh="业主诉求 · 监督结构总览（示例）"
+              titleEn="Owner-request desk (sample)"
+              summaryZh="完整流程：递交物业经理 →（示意）经理写入公开处理结果 → 全体业主可看并评价。下方表单用于业主提交真实诉求；经理从同页处理并保存公开结果。"
+              summaryEn="Deliver to manager → publish outcome → owner ratings. Form is for owners only; managers edit outcomes on each card."
             >
-              {submittingOR ? <Loader2 size={14} className="animate-spin" /> : null}
-              提交诉求
-            </button>
-          </div>
+              <ul className="text-xs space-y-1.5 text-slate-600 list-disc pl-4 leading-relaxed">
+                <li>业主角色：提交诉求、递交经理、展开本卡了解结构、参与评价；不操作经理专属编辑区。</li>
+                <li>物业经理：在每条诉求卡内更新状态与公开处理说明，并查看评价。</li>
+              </ul>
+            </ManagerSupervisionDemoFold>
+          ) : null}
+
+          {!isPropertyManagerRole ? (
+            <div className="rounded-2xl border border-[#1D9E75]/30 bg-white shadow-sm p-6">
+              <h2 className="text-base font-semibold text-gray-900 mb-4">提交业主诉求</h2>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">诉求标题 <span className="text-red-500">*</span></label>
+                  <input
+                    value={orForm.title}
+                    onChange={(e) => setOrForm({ ...orForm, title: e.target.value })}
+                    placeholder="简要描述诉求"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">诉求内容 <span className="text-red-500">*</span></label>
+                  <textarea
+                    value={orForm.content}
+                    onChange={(e) => setOrForm({ ...orForm, content: e.target.value })}
+                    rows={4}
+                    placeholder="详细说明诉求内容（提交后对业主可见）"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">房号</label>
+                    <input
+                      value={orForm.unit_no}
+                      onChange={(e) => setOrForm({ ...orForm, unit_no: e.target.value })}
+                      placeholder="如：105"
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">联系方式</label>
+                    <input
+                      value={orForm.contact}
+                      onChange={(e) => setOrForm({ ...orForm, contact: e.target.value })}
+                      placeholder="电话或邮箱"
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">附件链接</label>
+                  <textarea
+                    value={orForm.attachment_urls}
+                    onChange={(e) => setOrForm({ ...orForm, attachment_urls: e.target.value })}
+                    rows={2}
+                    placeholder="每行一个链接（图片/PDF 等）"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono text-xs"
+                  />
+                </div>
+                <button
+                  type="button"
+                  disabled={submittingOR || !orForm.title.trim() || !orForm.content.trim()}
+                  onClick={() => void submitOwnerRequest()}
+                  className="inline-flex items-center gap-2 rounded-lg bg-[#1D9E75] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50 hover:bg-[#178a66]"
+                >
+                  {submittingOR ? <Loader2 size={14} className="animate-spin" /> : null}
+                  提交诉求
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {loadingOR ? (
+            <div className="flex justify-center py-16">
+              <Loader2 className="h-10 w-10 animate-spin text-[#1D9E75]" />
+            </div>
+          ) : ownerRequests.length === 0 ? (
+            <div className="space-y-4">
+              {isPropertyManagerRole ? (
+                <ManagerSupervisionDemoFold
+                  defaultOpen={false}
+                  titleZh="业主诉求 · 监督结构（示例，供经理参考）"
+                  titleEn="Desk structure (manager reference)"
+                  summaryZh="结构与业主所见一致；您可在真实诉求卡中编辑处理状态与公开结果，并监督业主评价。"
+                  summaryEn="Same layout as owners see; you fill the manager-only fields on each ticket."
+                >
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    当前尚无记录。业主提交后，卡片会出现在此列表，并支持深度链接定位。
+                  </p>
+                </ManagerSupervisionDemoFold>
+              ) : null}
+              <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-sm text-gray-500">
+                {isPropertyManagerRole
+                  ? '暂无业主诉求记录。请等待业主递交，或通过邮件通知业主使用本标签页提交。'
+                  : '暂无诉求记录。可在上方提交新诉求，或切换到「全部」查看其他公开事项。'}
+              </div>
+            </div>
+          ) : (
+            <section className="space-y-4">
+              <h2 className="text-sm font-bold text-gray-800 border-b border-gray-200 pb-2">
+                {isPropertyManagerRole ? '待处理诉求（经理工作台）' : '本物业业主诉求'}
+              </h2>
+              <div className="space-y-4">
+                {ownerRequests.map((req) => (
+                  <OwnerRequestCard
+                    key={req.id}
+                    req={req}
+                    reviews={reviews.filter((r) => r.request_id === req.id)}
+                    currentUserId={session?.user?.id ?? ''}
+                    currentRole={roleInProperty}
+                    currentPropertyId={currentPropertyId ?? ''}
+                    onRefresh={loadOwnerRequests}
+                    showToast={showToast}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
         </div>
       )}
 
@@ -2688,13 +2867,29 @@ export function ManagerTasks() {
             <div className="flex justify-center py-20">
               <Loader2 className="h-10 w-10 animate-spin text-[#1D9E75]" />
             </div>
-          ) : inspectionReports.length === 0 ? (
-            <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-500 text-sm">
-              暂无巡检记录
+          ) : inspectionReportsForViewer.length === 0 ? (
+            <div className="space-y-4">
+              {!isPropertyManagerRole ? (
+                <ManagerSupervisionDemoFold
+                  defaultOpen
+                  titleZh="巡检记录 · 结构与监督方式（示例）"
+                  titleEn="Inspection layout (sample)"
+                  summaryZh="发布后：业主可查看巡检摘要、检查情况、巡检报告与行动计划，并在底部提交星级监督和文字补充。"
+                  summaryEn="After publish owners read findings and optional report text, then can rate and comment openly."
+                >
+                  <ul className="text-xs space-y-1.5 text-slate-600 list-disc pl-4 leading-relaxed">
+                    <li>经理侧：新建草稿 → 填写现场检查 → 发布后对全体公示。</li>
+                    <li>业主侧：只读内容与评价，不能代替经理录入巡检专有字段。</li>
+                  </ul>
+                </ManagerSupervisionDemoFold>
+              ) : null}
+              <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-500 text-sm">
+                暂无巡检记录
+              </div>
             </div>
           ) : (
             <div className="space-y-4">
-              {inspectionReports.map((report) => (
+              {inspectionReportsForViewer.map((report) => (
                 <InspectionReportCard
                   key={report.id}
                   report={report}
@@ -2937,8 +3132,24 @@ export function ManagerTasks() {
               <Loader2 className="h-10 w-10 animate-spin text-[#1D9E75]" />
             </div>
           ) : visiblePublicMatters.length === 0 ? (
-            <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-500 text-sm">
-              暂无公共事项
+            <div className="space-y-4">
+              {!isPropertyManagerRole ? (
+                <ManagerSupervisionDemoFold
+                  defaultOpen
+                  titleZh="公共事项 · 结构与监督方式（示例）"
+                  titleEn="Public matters (sample)"
+                  summaryZh="已发布条目展示事项描述、物业回复、行动计划与报告正文；进度由经理维护，全体业主可看并在底部评价。"
+                  summaryEn="Published matters expose narrated updates; managers update status owners can supervise."
+                >
+                  <ul className="text-xs space-y-1.5 text-slate-600 list-disc pl-4 leading-relaxed">
+                    <li>经理：表单新增/草稿/发布公告；必要时更新工单状态。</li>
+                    <li>业主：阅读公开内容并监督，不填写经理专属工单字段。</li>
+                  </ul>
+                </ManagerSupervisionDemoFold>
+              ) : null}
+              <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-500 text-sm">
+                暂无公共事项
+              </div>
             </div>
           ) : (
             <div className="space-y-4">
@@ -2999,13 +3210,28 @@ export function ManagerTasks() {
             <div className="flex justify-center py-16">
               <Loader2 className="h-10 w-10 animate-spin text-[#1D9E75]" />
             </div>
-          ) : monthlyReports.length === 0 ? (
-            <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-500 text-sm">
-              {isPropertyManagerRole ? '暂无月报草稿或已发布记录' : '暂无已发布经理月报'}
+          ) : monthlyReportsForViewer.length === 0 ? (
+            <div className="space-y-4">
+              {!isPropertyManagerRole ? (
+                <ManagerSupervisionDemoFold
+                  defaultOpen
+                  titleZh="经理月报 · 结构与监督方式（示例）"
+                  titleEn="Monthly report (sample)"
+                  summaryZh="经理在发布后对全体业主公示：本月摘要、风险、长期跟进与下月重点；业主可读后提交星级监督。"
+                  summaryEn="Once published summaries are readable; managers draft privately until release."
+                >
+                  <ul className="text-xs space-y-1.5 text-slate-600 list-disc pl-4 leading-relaxed">
+                    <li>草稿与编辑仅物业经理可操作；发布后业主可见并可评价。</li>
+                  </ul>
+                </ManagerSupervisionDemoFold>
+              ) : null}
+              <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-500 text-sm">
+                {isPropertyManagerRole ? '暂无月报草稿或已发布记录' : '暂无已发布经理月报'}
+              </div>
             </div>
           ) : (
             <div className="space-y-4">
-              {monthlyReports.map((r) => (
+              {monthlyReportsForViewer.map((r) => (
                 <ManagerMonthlyReportCard
                   key={r.id}
                   report={r}
