@@ -226,35 +226,50 @@ export function InvoiceUpload() {
           : '支持 PDF 或图片。系统将识别并保存到支出审核模块。'}
       </p>
 
-      <div className="mt-6 flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-gray-50/80 px-4 py-3 text-sm">
-        <span className="font-medium text-gray-700">{en ? 'Accounting period' : '归档账期'}</span>
-        <select
-          value={accountingYear}
-          onChange={(e) => setAccountingYear(Number(e.target.value))}
-          className="rounded-lg border border-gray-300 bg-white px-3 py-2"
-          aria-label={en ? 'Year' : '归档年份'}
-        >
-          {Array.from({ length: 16 }, (_, i) => new Date().getFullYear() - 12 + i).map((y) => (
-            <option key={y} value={y}>
-              {en ? y : `${y}年`}
-            </option>
-          ))}
-        </select>
-        <select
-          value={accountingMonth}
-          onChange={(e) => setAccountingMonth(Number(e.target.value))}
-          className="rounded-lg border border-gray-300 bg-white px-3 py-2"
-          aria-label={en ? 'Month' : '归档月份'}
-        >
-          {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-            <option key={m} value={m}>
-              {en ? m : `${m}月`}
-            </option>
-          ))}
-        </select>
-        <span className="text-xs text-gray-500">
-          {en ? 'Choose which books month this invoice is filed under.' : '选择该发票归入哪个月作账（可与开票日不同）。'}
-        </span>
+      <div className="mt-6 space-y-3 rounded-xl border border-gray-200 bg-gray-50/80 px-4 py-4 text-sm">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-700" htmlFor="invoice-upload-year">
+            {en ? 'Accounting year' : '归档年份'}
+          </label>
+          <select
+            id="invoice-upload-year"
+            value={accountingYear}
+            onChange={(e) => setAccountingYear(Number(e.target.value))}
+            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2"
+            disabled={busy}
+            aria-label={en ? 'Accounting year' : '归档年份'}
+          >
+            {Array.from({ length: 16 }, (_, i) => new Date().getFullYear() - 12 + i).map((y) => (
+              <option key={y} value={y}>
+                {en ? y : `${y}年`}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-700" htmlFor="invoice-upload-month">
+            {en ? 'Accounting month' : '归档月份'}
+          </label>
+          <select
+            id="invoice-upload-month"
+            value={accountingMonth}
+            onChange={(e) => setAccountingMonth(Number(e.target.value))}
+            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2"
+            disabled={busy}
+            aria-label={en ? 'Accounting month' : '归档月份'}
+          >
+            {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+              <option key={m} value={m}>
+                {en ? m : `${m}月`}
+              </option>
+            ))}
+          </select>
+        </div>
+        <p className="text-xs text-gray-500">
+          {en
+            ? 'Sets which yearly and monthly ledger this invoice belongs to. Unrelated to invoice date, payment date, or upload time.'
+            : '决定这张发票进入哪个年度/月度账本；与发票日期、付款日、上传时间无关。'}
+        </p>
       </div>
 
       <div className="mt-8">

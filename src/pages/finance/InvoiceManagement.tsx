@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, type ChangeEvent } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Upload,
@@ -133,13 +133,19 @@ function quoteVarianceShortLabel(v: QuoteVarianceResult, l: boolean): string {
   }
 }
 
-/** 账本折叠行汇总：总金额与张数（不做审批流水状态统计） */
-function aggregateInvoiceLedger(rows: Invoice[]) {
+/** 年/月折叠汇总：总额、张数、主要流程状态（不含「异常」等其它口径） */
+function aggregateInvoiceFoldSummary(rows: Invoice[]) {
   let total = 0;
+  let pending_review = 0;
+  let approved = 0;
+  let paid = 0;
   for (const inv of rows) {
     total += Number(inv.total_amount) || 0;
+    if (inv.status === 'pending_review') pending_review++;
+    else if (inv.status === 'approved') approved++;
+    else if (inv.status === 'paid') paid++;
   }
-  return { total, count: rows.length };
+  return { total, count: rows.length, pending_review, approved, paid };
 }
 
 function statusStyle(status: string): { labelZh: string; labelEn: string; className: string } {
@@ -350,11 +356,20 @@ export function InvoiceManagement({
   const [quoteVarianceByInvoiceId, setQuoteVarianceByInvoiceId] = useState<Record<string, QuoteVarianceResult>>({});
   /** 关联报价是否超预算承诺（pending 审批时可读，用于必填审批理由） */
   const [quoteOverBudgetByInvoiceId, setQuoteOverBudgetByInvoiceId] = useState<Record<string, boolean>>({});
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [uploadAccountingYear, setUploadAccountingYear] = useState(() => currentAccountingDefaults().year);
   const [uploadAccountingMonth, setUploadAccountingMonth] = useState(() => currentAccountingDefaults().month);
+  const uploadFileInputRef = useRef<HTMLInputElement>(null);
   const [expandedYears, setExpandedYears] = useState<Set<number>>(() => new Set());
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(() => new Set());
   const expandAccountingUiDone = useRef(false);
+
+  const openUploadModal = useCallback(() => {
+    const d = currentAccountingDefaults();
+    setUploadAccountingYear(d.year);
+    setUploadAccountingMonth(d.month);
+    setUploadModalOpen(true);
+  }, []);
 
   const canAudit = canManageInvoiceWorkflow(roleInProperty);
 
@@ -627,10 +642,12 @@ export function InvoiceManagement({
     });
   };
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    const inputEl = e.target;
     if (!file || !profile || !currentPropertyId) return;
 
+    setUploadModalOpen(false);
     setUploading(true);
     setUploadProgress(l ? 'Reading file...' : '正在读取文件...');
 
@@ -865,7 +882,7 @@ export function InvoiceManagement({
       setUploadProgress('');
     } finally {
       setUploading(false);
-      e.target.value = '';
+      inputEl.value = '';
     }
   };
 
@@ -1274,6 +1291,102 @@ export function InvoiceManagement({
         </div>
       ) : null}
 
+      {uploadModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="presentation"
+          onClick={() => !uploading && setUploadModalOpen(false)}
+        >
+          <div
+            className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl border border-gray-200 bg-white p-5 shadow-lg"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="invoice-upload-modal-title"
+            onClick={(ev) => ev.stopPropagation()}
+          >
+            <h2 id="invoice-upload-modal-title" className="text-lg font-semibold text-gray-900">
+              {l ? 'Upload invoice' : '上传发票'}
+            </h2>
+            <p className="mt-2 text-sm text-gray-600">{l ? 'Choose file after selecting the ledger period.' : '请先选择归档年月，再选择要上传的文件。'}</p>
+
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-700" htmlFor="upload-accounting-year">
+                  {l ? 'Accounting year' : '归档年份'}
+                </label>
+                <select
+                  id="upload-accounting-year"
+                  value={uploadAccountingYear}
+                  onChange={(ev) => setUploadAccountingYear(Number(ev.target.value))}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-clearstrata-ui-primary"
+                  disabled={uploading}
+                >
+                  {accountingYearSelectOptions.map((y) => (
+                    <option key={y} value={y}>
+                      {l ? y : `${y}年`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-700" htmlFor="upload-accounting-month">
+                  {l ? 'Accounting month' : '归档月份'}
+                </label>
+                <select
+                  id="upload-accounting-month"
+                  value={uploadAccountingMonth}
+                  onChange={(ev) => setUploadAccountingMonth(Number(ev.target.value))}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-clearstrata-ui-primary"
+                  disabled={uploading}
+                >
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                    <option key={m} value={m}>
+                      {l ? m : `${m}月`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <p className="text-xs text-gray-500">
+                {l
+                  ? 'Sets which yearly and monthly ledger this invoice belongs to. Unrelated to invoice date, payment date, or upload time.'
+                  : '决定这张发票进入哪个年度/月度账本；与发票日期、付款日、上传时间无关。'}
+              </p>
+            </div>
+
+            <input
+              ref={uploadFileInputRef}
+              type="file"
+              className="hidden"
+              accept=".pdf,.jpg,.jpeg,.png"
+              onChange={handleUpload}
+              disabled={uploading}
+            />
+
+            <div className="mt-5 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={uploading}
+                className="flex-1 rounded-lg border border-gray-300 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                onClick={() => setUploadModalOpen(false)}
+              >
+                {l ? 'Cancel' : '取消'}
+              </button>
+              <button
+                type="button"
+                disabled={uploading}
+                className="flex-1 rounded-lg bg-clearstrata-ui-primary py-2.5 text-sm font-medium text-white hover:bg-clearstrata-ui-primaryHover disabled:opacity-50"
+                onClick={() => uploadFileInputRef.current?.click()}
+              >
+                <span className="inline-flex items-center justify-center gap-2">
+                  <Upload size={16} />
+                  {l ? 'Choose file' : '选择文件'}
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="min-w-0 rounded-xl border border-gray-100 bg-white shadow-sm">
         <div className="border-b border-gray-200 p-2.5 sm:p-3 md:p-4">
           <div className="flex flex-wrap items-center justify-end gap-2">
@@ -1293,53 +1406,17 @@ export function InvoiceManagement({
               <FileSpreadsheet size={14} />
               Excel
             </button>
-            <label
-              className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-clearstrata-ui-primary px-2.5 py-1.5 text-xs font-medium text-white transition-colors sm:gap-2 sm:px-3 sm:py-2 sm:text-sm ${
+            <button
+              type="button"
+              disabled={uploading}
+              onClick={openUploadModal}
+              className={`inline-flex items-center gap-1.5 rounded-lg bg-clearstrata-ui-primary px-2.5 py-1.5 text-xs font-medium text-white transition-colors sm:gap-2 sm:px-3 sm:py-2 sm:text-sm ${
                 uploading ? 'pointer-events-none opacity-50' : 'hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive'
               }`}
             >
               <Upload size={16} className="sm:h-[18px] sm:w-[18px]" />
               {uploading ? (l ? 'Working…' : '处理中…') : l ? 'Upload' : '上传发票'}
-              <input
-                type="file"
-                className="hidden"
-                accept=".pdf,.jpg,.jpeg,.png"
-                onChange={handleUpload}
-                disabled={uploading}
-              />
-            </label>
-          </div>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-gray-100 pt-2.5 mt-2.5">
-            <span className="text-xs font-medium text-gray-600">
-              {l ? 'Accounting period (new uploads)' : '归档账期（新上传）'}
-            </span>
-            <select
-              value={uploadAccountingYear}
-              onChange={(e) => setUploadAccountingYear(Number(e.target.value))}
-              className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-clearstrata-ui-primary"
-              aria-label={l ? 'Accounting year' : '归档年份'}
-            >
-              {accountingYearSelectOptions.map((y) => (
-                <option key={y} value={y}>
-                  {l ? y : `${y}年`}
-                </option>
-              ))}
-            </select>
-            <select
-              value={uploadAccountingMonth}
-              onChange={(e) => setUploadAccountingMonth(Number(e.target.value))}
-              className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-clearstrata-ui-primary"
-              aria-label={l ? 'Accounting month' : '归档月份'}
-            >
-              {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                <option key={m} value={m}>
-                  {l ? m : `${m}月`}
-                </option>
-              ))}
-            </select>
-            <span className="text-[11px] text-gray-500">
-              {l ? 'Grouping only; not invoice / payment date.' : '决定列表归属年月，与开票日、付款日、上传时间无关。'}
-            </span>
+            </button>
           </div>
         </div>
 
@@ -1359,7 +1436,7 @@ export function InvoiceManagement({
               const monthMap = groupedByAccounting.byYear.get(accYear);
               const months = monthMap ? [...monthMap.keys()].sort((a, b) => b - a) : [];
               const yearInvoices = filtered.filter((i) => effectiveAccountingYear(i) === accYear);
-              const yAgg = aggregateInvoiceLedger(yearInvoices);
+              const yAgg = aggregateInvoiceFoldSummary(yearInvoices);
               const yearOpen = expandedYears.has(accYear);
               return (
                 <div key={accYear} className="border-b border-gray-100 last:border-b-0">
@@ -1377,15 +1454,15 @@ export function InvoiceManagement({
                       <span className="font-semibold text-gray-900">{l ? String(accYear) : `${accYear}年`}</span>
                       <span className="mt-0.5 block text-xs leading-relaxed text-gray-600">
                         {l
-                          ? `${fmtAccountingMoney(yAgg.total)} · ${yAgg.count} invoices`
-                          : `总额 ${fmtAccountingMoney(yAgg.total)}｜${yAgg.count} 张发票`}
+                          ? `${fmtAccountingMoney(yAgg.total)} · ${yAgg.count} invoices · pending ${yAgg.pending_review} · approved ${yAgg.approved} · paid ${yAgg.paid}`
+                          : `总额 ${fmtAccountingMoney(yAgg.total)}｜发票 ${yAgg.count} 张｜待审核 ${yAgg.pending_review}｜已批准 ${yAgg.approved}｜已付款 ${yAgg.paid}`}
                       </span>
                     </span>
                   </button>
                   {yearOpen &&
                     months.map((accMonth) => {
                       const monthList = monthMap?.get(accMonth) ?? [];
-                      const mAgg = aggregateInvoiceLedger(monthList);
+                      const mAgg = aggregateInvoiceFoldSummary(monthList);
                       const mk = `${accYear}-${accMonth}`;
                       const monthOpen = expandedMonths.has(mk);
                       return (
@@ -1408,8 +1485,8 @@ export function InvoiceManagement({
                               </span>
                               <span className="mt-0.5 block text-xs leading-relaxed text-gray-600">
                                 {l
-                                  ? `${fmtAccountingMoney(mAgg.total)} · ${mAgg.count} invoices`
-                                  : `总额 ${fmtAccountingMoney(mAgg.total)}｜${mAgg.count} 张发票`}
+                                  ? `${fmtAccountingMoney(mAgg.total)} · ${mAgg.count} invoices · pending ${mAgg.pending_review} · approved ${mAgg.approved} · paid ${mAgg.paid}`
+                                  : `总额 ${fmtAccountingMoney(mAgg.total)}｜发票 ${mAgg.count} 张｜待审核 ${mAgg.pending_review}｜已批准 ${mAgg.approved}｜已付款 ${mAgg.paid}`}
                               </span>
                             </span>
                           </button>
