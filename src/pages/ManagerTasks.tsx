@@ -396,7 +396,7 @@ function ManagerDeskSampleCard({
   );
 }
 
-// ── 监督流程示例折叠卡（示意 UI，可与真实经理内容并存） — 业主诉求卡内仍可用 ─────
+// ── 监督流程示例折叠卡（示意 UI；仅在对应模块尚无真实记录时展示） ───────────────
 
 function ManagerSupervisionDemoFold({
   defaultOpen,
@@ -589,8 +589,6 @@ function OwnerRequestCard({
     }
   };
 
-  const hasPublishedManagerOutcome = Boolean(req.manager_result?.trim());
-
   return (
     <div
       id={`owner-request-${req.id}`}
@@ -677,47 +675,6 @@ function OwnerRequestCard({
             ))}
           </div>
         )}
-
-        {/* 尚无经理公开的处理结果前：示例默认展开；有真实内容后仍可折叠回看示意 */}
-        <div className="-mx-0">
-          <ManagerSupervisionDemoFold
-            defaultOpen={!hasPublishedManagerOutcome}
-            titleZh="示例案例 · 经理处理结果与公开监督"
-            titleEn="Sample outcome & oversight"
-            summaryZh={
-              isPropertyManagerRole
-                ? !hasPublishedManagerOutcome
-                  ? '您可在本卡下方「展开」中使用「编辑处理状态与结果」写入公开说明；保存后对所有业主公示。下方为监督评价区。'
-                  : '示意说明仍保留于此；上方的绿色卡片为该案的真实公开处理结果。'
-                : !hasPublishedManagerOutcome
-                  ? '物业经理将在此卡内公开写出处理进度与结论（绿色卡片）。正式发布前可先参考左侧示例的结构。您可以展开本说明了解监督方式。'
-                  : '上方的绿色卡片为物业经理对您诉求的真实处理回复。虚线框内仍可展开查看示例结构。您可在底部参与星级与评语监督。'
-            }
-            summaryEn={
-              isPropertyManagerRole
-                ? !hasPublishedManagerOutcome
-                  ? 'Expand the folded section below to set status/outcome visible to owners; reviews appear underneath.'
-                  : 'Mock frame remains; green block above shows the saved real outcome.'
-                : !hasPublishedManagerOutcome
-                  ? 'The manager publishes handling notes in the green block when ready — this demo previews the layout.'
-                  : 'Green shows the manager’s actual reply for this ticket; dashed guide remains for orientation.'
-            }
-          >
-            <div className="rounded-xl border border-green-100 bg-green-50/60 px-3 py-2.5 opacity-95">
-              <div className="text-[11px] font-semibold text-green-700 mb-1">
-                处理结果（示意）· Sample outcome
-              </div>
-              <p className="text-xs text-green-900/95 leading-relaxed whitespace-pre-wrap">
-                示例：已与绿化承包商确认时间表，计划于本月底完成枯树移除，并在地下车库入口张贴告示。
-              </p>
-              <p className="mt-2 text-[10px] text-green-700/85">
-                以下为业主监督区示意（您在真实卡片中可操作）：
-                <span className="text-amber-500 tracking-tight"> ★★★★☆</span>{' '}
-                <span className="text-slate-500">评语：进度透明，盼望按时完成。</span>
-              </p>
-            </div>
-          </ManagerSupervisionDemoFold>
-        </div>
 
         {req.manager_result && (
           <div className="rounded-xl bg-green-50 border border-green-100 px-4 py-3">
@@ -2906,18 +2863,20 @@ export function ManagerTasks() {
             ) : null}
           </div>
 
-          <ManagerDeskSampleCard titleLine="巡检记录 · 未来真实公示样式">
-            <div className="rounded-xl border border-emerald-100 bg-white/90 px-4 py-3 space-y-2">
-              <p className="text-[11px] font-semibold text-emerald-800 uppercase tracking-wide">已发布 / Published</p>
-              <p className="text-sm font-medium text-gray-900">示例：地下车库通风巡检</p>
-              <p className="text-xs text-gray-600 leading-relaxed">
-                检查情况（示例）：风机运行正常，台账已更新；下期跟进排烟末端防火阀例行测试。
-              </p>
-              <p className="text-xs text-amber-600 pt-1 border-t border-emerald-100/80">
-                ★★★★☆ 公共评价与监督（示意）· Owners may rate and comment below each real record.
-              </p>
-            </div>
-          </ManagerDeskSampleCard>
+          {!loadingInspections && inspectionReports.length === 0 ? (
+            <ManagerDeskSampleCard titleLine="巡检记录 · 未来真实公示样式">
+              <div className="rounded-xl border border-emerald-100 bg-white/90 px-4 py-3 space-y-2">
+                <p className="text-[11px] font-semibold text-emerald-800 uppercase tracking-wide">已发布 / Published</p>
+                <p className="text-sm font-medium text-gray-900">示例：地下车库通风巡检</p>
+                <p className="text-xs text-gray-600 leading-relaxed">
+                  检查情况（示例）：风机运行正常，台账已更新；下期跟进排烟末端防火阀例行测试。
+                </p>
+                <p className="text-xs text-amber-600 pt-1 border-t border-emerald-100/80">
+                  ★★★★☆ 公共评价与监督（示意）· Owners may rate and comment below each real record.
+                </p>
+              </div>
+            </ManagerDeskSampleCard>
+          ) : null}
 
           {loadingInspections ? (
             <div className="flex justify-center py-20">
@@ -3185,19 +3144,21 @@ export function ManagerTasks() {
             ) : null}
           </div>
 
-          <ManagerDeskSampleCard titleLine="公共事项 · 未来真实公示样式">
-            <div className="rounded-xl border border-teal-100 bg-white/95 px-4 py-3 space-y-2 text-sm text-gray-800">
-              <p className="text-[11px] font-semibold text-teal-800">公共问题跟进 · 示例标题</p>
-              <p className="text-xs text-gray-600 leading-relaxed">
-                事项描述（示例）：大堂照明改造征求意见，物业将组织业主表决并公示时间表。
-              </p>
-              <div className="rounded-lg bg-teal-50/80 border border-teal-100 px-3 py-2 text-xs text-teal-900">
-                <span className="font-semibold">物业回复（示例）：</span>
-                已列入下月业委会议程，并将更新在此公共事项报告中。
+          {!loadingPM && publicMatters.length === 0 ? (
+            <ManagerDeskSampleCard titleLine="公共事项 · 未来真实公示样式">
+              <div className="rounded-xl border border-teal-100 bg-white/95 px-4 py-3 space-y-2 text-sm text-gray-800">
+                <p className="text-[11px] font-semibold text-teal-800">公共问题跟进 · 示例标题</p>
+                <p className="text-xs text-gray-600 leading-relaxed">
+                  事项描述（示例）：大堂照明改造征求意见，物业将组织业主表决并公示时间表。
+                </p>
+                <div className="rounded-lg bg-teal-50/80 border border-teal-100 px-3 py-2 text-xs text-teal-900">
+                  <span className="font-semibold">物业回复（示例）：</span>
+                  已列入下月业委会议程，并将更新在此公共事项报告中。
+                </div>
+                <p className="text-xs text-amber-600 pt-1">★★★★☆ 全体业主可在正式发布记录底部评价与补充线索。</p>
               </div>
-              <p className="text-xs text-amber-600 pt-1">★★★★☆ 全体业主可在正式发布记录底部评价与补充线索。</p>
-            </div>
-          </ManagerDeskSampleCard>
+            </ManagerDeskSampleCard>
+          ) : null}
 
           {loadingPM ? (
             <div className="flex justify-center py-16">
@@ -3334,18 +3295,20 @@ export function ManagerTasks() {
             </div>
           </div>
 
-          <ManagerDeskSampleCard titleLine="经理月报 · 未来真实公示样式">
-            <div className="rounded-xl border border-[#1D9E75]/20 bg-white px-4 py-3 space-y-3 text-sm text-gray-800">
-              <p className="text-xs font-semibold text-gray-500">2026 年 3 月 · 已发布</p>
-              <div>
-                <p className="text-[11px] font-medium text-gray-500 mb-0.5">本月物业运行摘要</p>
-                <p className="text-xs leading-relaxed text-gray-700">
-                  示例：本月完成消防年检复检，绿化养护按合同执行；快递间照明已更换 LED。
-                </p>
+          {!loadingMR && monthlyReports.length === 0 ? (
+            <ManagerDeskSampleCard titleLine="经理月报 · 未来真实公示样式">
+              <div className="rounded-xl border border-[#1D9E75]/20 bg-white px-4 py-3 space-y-3 text-sm text-gray-800">
+                <p className="text-xs font-semibold text-gray-500">2026 年 3 月 · 已发布</p>
+                <div>
+                  <p className="text-[11px] font-medium text-gray-500 mb-0.5">本月物业运行摘要</p>
+                  <p className="text-xs leading-relaxed text-gray-700">
+                    示例：本月完成消防年检复检，绿化养护按合同执行；快递间照明已更换 LED。
+                  </p>
+                </div>
+                <p className="text-xs text-amber-600 border-t border-gray-100 pt-2">★★★★☆ 业主可在真实月报下方提交公开评价与监督意见。</p>
               </div>
-              <p className="text-xs text-amber-600 border-t border-gray-100 pt-2">★★★★☆ 业主可在真实月报下方提交公开评价与监督意见。</p>
-            </div>
-          </ManagerDeskSampleCard>
+            </ManagerDeskSampleCard>
+          ) : null}
 
           {loadingMR ? (
             <div className="flex justify-center py-16">
