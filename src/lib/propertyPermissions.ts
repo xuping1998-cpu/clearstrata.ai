@@ -44,9 +44,13 @@ function staffForPropertyInvitesAndJoinReview(role: UserRole | null | undefined)
   return STAFF_INVITE_JOIN_ROLES.has(r);
 }
 
-/** Active property role from `property_members` (not global `profiles.role`). */
+/**
+ * Invoice approve / reject / mark paid (`pending_review` → `approved` / `rejected`, `paid`).
+ * Property managers upload only — excluded here (matches product rule; backend RLS may still allow updates).
+ */
 export function canManageInvoiceWorkflow(role: UserRole | null | undefined): boolean {
-  return role === 'council' || role === 'admin' || role === 'property_admin' || role === 'manager';
+  const r = normalizeRoleKey(role);
+  return r === 'council' || r === 'admin' || r === 'property_admin';
 }
 
 export function canDeleteInvoice(
@@ -55,8 +59,10 @@ export function canDeleteInvoice(
   uploadedBy: string,
 ): boolean {
   if (!profileId) return false;
+  const r = normalizeRoleKey(role);
+  if (r === 'manager') return false;
   if (profileId === uploadedBy) return true;
-  return canManageInvoiceWorkflow(role) || role === 'manager';
+  return canManageInvoiceWorkflow(role);
 }
 
 /** 审核加入申请（/admin/join-requests）：与 staffForPropertyInvitesAndJoinReview 一致 */

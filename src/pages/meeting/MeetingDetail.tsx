@@ -44,7 +44,7 @@ export function MeetingDetail() {
   const meetingId = meetingIdParam ?? legacyVotingId;
   const { user } = useAuth();
   const { currentPropertyId, roleInProperty } = useProperty();
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
   const en = language === 'en';
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -374,7 +374,8 @@ export function MeetingDetail() {
           to={backToListHref}
           className="inline-flex items-center gap-2 text-clearstrata-brand-700 font-medium hover:text-clearstrata-brand-900 hover:underline mb-6"
         >
-          <ArrowLeft size={18} /> {isVotingRoute ? (en ? 'Back to voting list' : '返回投票列表') : en ? 'Back to meetings' : '返回会议列表'}
+          <ArrowLeft size={18} />{' '}
+          {isVotingRoute ? (en ? 'Back to voting list' : '返回投票列表') : t('meeting_back_list')}
         </Link>
         <p className="text-center text-gray-700 text-lg">{en ? meetingUiStrings.notFound.en : meetingUiStrings.notFound.zh}</p>
       </div>
@@ -409,7 +410,7 @@ export function MeetingDetail() {
                 className="inline-flex w-fit items-center gap-2 rounded-lg bg-white/20 px-3 py-2 text-sm font-medium text-white ring-1 ring-white/35 hover:bg-white/30 transition-colors"
               >
                 <ArrowLeft size={18} />
-                {isVotingRoute ? (en ? 'Back to voting list' : '返回投票列表') : en ? 'Back to meetings' : '返回会议列表'}
+                {isVotingRoute ? (en ? 'Back to voting list' : '返回投票列表') : t('meeting_back_list')}
               </Link>
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/90 mb-2 drop-shadow-sm">

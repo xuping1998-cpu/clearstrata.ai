@@ -30,7 +30,7 @@ export function MeetingEditor() {
   const isEdit = Boolean(meetingId);
   const { user } = useAuth();
   const { currentPropertyId, ready: propertyReady } = useProperty();
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
   const en = language === 'en';
   const navigate = useNavigate();
 
@@ -167,7 +167,7 @@ export function MeetingEditor() {
     <div className="mx-auto max-w-2xl px-4 py-8">
       <Link to="/meetings" className="mb-6 inline-flex items-center gap-1 text-sm font-medium text-clearstrata-brand-800 hover:underline">
         <ChevronLeft className="size-4" />
-        {en ? 'Meetings' : '会议'}
+        {t('nav_meetings_records')}
       </Link>
 
       <h1 className="text-2xl font-bold text-gray-900">

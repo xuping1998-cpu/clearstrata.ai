@@ -56,7 +56,7 @@ const translations: Record<string, Record<Language, string>> = {
   nav_pricing: { en: 'Pricing', zh: '定价' },
   nav_contact: { en: 'Contact', zh: '联系' },
   nav_procurement: { en: 'Procurement Inquiry', zh: '采购询价' },
-  nav_voting: { en: 'Meeting & Voting', zh: '会议投票' },
+  nav_voting: { en: 'Meetings & Voting', zh: '会议投票' },
   nav_maintenance: { en: 'Maintenance', zh: '维修申请' },
   nav_finance: { en: 'Expense Review', zh: '支出审核' },
   nav_owner_info: { en: 'Owner Information', zh: '业主信息' },
@@ -76,7 +76,13 @@ const translations: Record<string, Record<Language, string>> = {
   nav_people_management: { en: 'People management', zh: '人员管理' },
   nav_property_settings: { en: 'Property settings', zh: '物业设置' },
   nav_audit_log: { en: 'Audit log', zh: '审计日志' },
-  nav_meetings_records: { en: 'Meetings', zh: '会议记录' },
+  nav_meetings_records: { en: 'Meetings & Voting', zh: '会议投票' },
+
+  meetings_page_subtitle: {
+    en: 'Remote meetings and electronic voting, enabling owners to participate anytime, anywhere, with transparent and fair decisions.',
+    zh: '电子投票与远程会议，业主随时随地参与表决，让每一项决议都公正透明。',
+  },
+  nav_owner_voting: { en: 'Owner Voting', zh: '业主电子表决' },
 
   current_property_not_loaded: {
     en: 'Current property context is not loaded',
@@ -170,7 +176,7 @@ const translations: Record<string, Record<Language, string>> = {
   procurement_approve: { en: 'Approve', zh: '批准' },
   procurement_public_notice: { en: 'Start Public Notice', zh: '开始公示' },
 
-  vote_title: { en: 'Meeting & Voting Records', zh: '会议投票记录' },
+  vote_title: { en: 'Meetings & Voting Records', zh: '会议投票记录' },
   vote_new: { en: 'New Vote', zh: '发起投票' },
   vote_duration: { en: 'Duration (days)', zh: '持续时间（天）' },
   vote_quorum: { en: 'Quorum %', zh: '法定人数%' },
@@ -264,7 +270,7 @@ const translations: Record<string, Record<Language, string>> = {
   success: { en: 'Success', zh: '成功' },
 
   meeting_not_found: { en: 'Meeting not found', zh: '未找到该会议' },
-  meeting_back_list: { en: 'Back to meetings', zh: '返回会议列表' },
+  meeting_back_list: { en: 'Back to Meetings & Voting', zh: '返回会议投票' },
   meeting_save_failed: { en: 'Could not save changes. Check your connection or permissions.', zh: '保存失败，请检查网络或权限。' },
   vote_success: { en: 'Vote recorded', zh: '投票成功' },
   vote_failed: { en: 'Vote failed', zh: '投票失败' },

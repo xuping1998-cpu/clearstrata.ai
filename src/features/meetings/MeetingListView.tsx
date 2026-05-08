@@ -21,7 +21,7 @@ interface Props {
 export function MeetingListView({ variant }: Props) {
   const { user } = useAuth();
   const { currentPropertyId, roleInProperty, ready: propertyReady } = useProperty();
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
   const en = language === 'en';
   const navigate = useNavigate();
 
@@ -105,14 +105,7 @@ export function MeetingListView({ variant }: Props) {
     );
   }
 
-  const title =
-    variant === 'voting'
-      ? en
-        ? 'Meetings & Voting'
-        : '会议投票'
-      : en
-        ? 'Meetings'
-        : '会议';
+  const title = t('nav_meetings_records');
 
   /** 单会议详情：两 variant 各自固定前缀，统一透传 propertyId（有则必带）。 */
   const hrefForMeeting = (meetingId: string | null | undefined): string | null => {
@@ -155,9 +148,7 @@ export function MeetingListView({ variant }: Props) {
           <Users size={32} />
           <h1 className="text-3xl font-bold">{title}</h1>
         </div>
-        <p className="text-white/90 ml-14 max-w-7xl mx-auto">
-          {en ? 'Property-scoped meetings for the current fiscal year.' : '当前财政年度、按物业隔离的会议列表。'}
-        </p>
+        <p className="text-white/90 ml-14 max-w-7xl mx-auto">{t('meetings_page_subtitle')}</p>
       </div>
 
       <div className="max-w-7xl mx-auto p-6 space-y-6">

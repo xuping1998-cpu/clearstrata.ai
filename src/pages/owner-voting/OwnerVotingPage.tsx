@@ -51,10 +51,6 @@ interface BallotRow {
 
 export type VotingPhaseUi = 'not_started' | 'voting_live' | 'closed';
 
-function isMeetingStatus(v: string): v is MeetingStatus {
-  return v === 'draft' || v === 'open' || v === 'closed' || v === 'archived';
-}
-
 function unwrapMeeting(rel: SnapshotRowRaw['owner_vote_meetings']): OwnerVoteMeetingRow | null {
   if (rel == null) return null;
   if (Array.isArray(rel)) return rel.length ? rel[0] ?? null : null;
@@ -136,7 +132,7 @@ function votingPhaseTone(phase: VotingPhaseUi): 'neutral' | 'success' | 'warning
 
 export function OwnerVotingPage() {
   const { user, loading: authLoading } = useAuth();
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
   const zh = language !== 'en';
 
   const [loadState, setLoadState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
@@ -402,7 +398,7 @@ export function OwnerVotingPage() {
         <p className="mt-2 max-w-3xl text-sm text-gray-600 sm:text-base">{subline}</p>
         <p className="mt-3">
           <Link to="/meetings" className="text-sm font-medium text-clearstrata-ui-primary hover:underline">
-            {zh ? '« 返回会议记录' : '« Back to meetings'}
+            {`« ${t('meeting_back_list')}`}
           </Link>
         </p>
       </div>
