@@ -566,7 +566,7 @@ function JobCard({
               className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-clearstrata-ui-primary text-white rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors"
             >
               <FileText size={16} />
-              {l ? 'Open Finance → Invoices' : '财务报表 · 上传/审批发票'}
+              {l ? 'Open Expense Review' : '支出审核 · 上传/审批发票'}
             </Link>
             {isCouncil && (
               <button onClick={() => onMarkCompleted(job.id)}

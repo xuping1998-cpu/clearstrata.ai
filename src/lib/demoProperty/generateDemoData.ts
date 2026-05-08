@@ -254,7 +254,7 @@ export function generateDemoData(input: GenerateDemoDataInput): GeneratedDemoDat
   const notices: DemoNoticeGen[] = [
     {
       title: '本月公共电费公示',
-      body: '管理处已上传分项读数，业主可于「财务报表」中查看明细（演示数据）。',
+      body: '管理处已上传分项读数，业主可于「支出审核」中查看明细（演示数据）。',
       date: '2026-03-10',
     },
     {

@@ -221,7 +221,9 @@ export function InvoiceUpload() {
 
       <h1 className="text-2xl font-bold text-gray-900">{en ? 'Upload invoice' : '上传发票'}</h1>
       <p className="mt-2 text-sm text-gray-600">
-        {en ? 'PDF or image. We run OCR, then save the invoice under Finance.' : '支持 PDF 或图片。系统将识别并保存到财务模块。'}
+        {en
+          ? 'PDF or image. We run OCR, then save the invoice under Expense Review.'
+          : '支持 PDF 或图片。系统将识别并保存到支出审核模块。'}
       </p>
 
       <div className="mt-6 flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-gray-50/80 px-4 py-3 text-sm">

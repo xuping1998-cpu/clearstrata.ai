@@ -19,11 +19,11 @@ export function DemoPropertyMockFinancePanel() {
 
       <div>
         <p className="text-xs font-medium text-gray-500">{d.buildingLabel}</p>
-        <h1 className="mt-1 text-3xl font-bold text-gray-900">{en ? 'Financial reports' : '财务报表'}</h1>
+        <h1 className="mt-1 text-3xl font-bold text-gray-900">{en ? 'Expense Review' : '支出审核'}</h1>
         <p className="mt-2 text-gray-600">
           {en
-            ? 'Mock totals and invoice register. No Supabase reads or writes.'
-            : '示意总额与发票台账。不连接 Supabase、不写库。'}
+            ? 'Review, file, and track property expenses so every expense is clear and transparent.'
+            : '审核、归档和追踪物业费用，让每一笔支出干净透明。'}
         </p>
       </div>
 

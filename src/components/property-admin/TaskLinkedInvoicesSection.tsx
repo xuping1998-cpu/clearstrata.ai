@@ -89,8 +89,8 @@ export function TaskLinkedInvoicesSection({ taskId, propertyId, relatedInvoiceId
       </div>
       <p className="mt-1 text-xs text-gray-500">
         {en
-          ? 'Same records as in Finance → Invoice Management (single source of truth).'
-          : '与「财务报表 → 发票管理」中为同一批 invoices 记录，不重复存储。'}
+          ? 'Same records as in Invoice Management (single source of truth).'
+          : '与「发票管理」中为同一批 invoices 记录，不重复存储。'}
       </p>
       <ul className="mt-4 divide-y divide-gray-100">
         {rows.map((r) => (

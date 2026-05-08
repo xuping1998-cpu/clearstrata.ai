@@ -616,8 +616,8 @@ export function PropertyTaskDetail() {
         <h2 className="text-lg font-bold text-gray-900">{en ? 'Timeline' : '执行时间线'}</h2>
         <p className="mt-1 text-xs text-gray-500">
           {en
-            ? 'Task events, logs, linked invoices, finance audit trail (read-only), and task attachments. Approve invoices in Financial Reports.'
-            : '任务事件、工作日志、关联发票、财务审计记录（invoice_audit_log，只读）及本任务附件上传记录。发票审批请在「财务报表 → 发票管理」操作。'}
+            ? 'Task events, logs, linked invoices, finance audit trail (read-only), and task attachments. Approve invoices in Expense Review.'
+            : '任务事件、工作日志、关联发票、财务审计记录（invoice_audit_log，只读）及本任务附件上传记录。发票审批请在「支出审核」操作。'}
         </p>
         <ul className="mt-4 space-y-3">
           {sortedTimelineDesc.map((item) => (
@@ -696,8 +696,8 @@ export function PropertyTaskDetail() {
         <span className="font-medium text-gray-800">{en ? 'Invoice approval' : '发票审批'}</span>
         {' · '}
         {en
-          ? 'Performed only in Financial Reports → Invoice Management. The timeline above shows audit history for linked invoices (read-only).'
-          : '请在「财务报表 → 发票管理」进行审核/驳回/标记付款；上方时间线仅展示已有关联发票的审计记录（只读）。'}
+          ? 'Performed only in Expense Review. The timeline above shows audit history for linked invoices (read-only).'
+          : '请在「支出审核」进行审核/驳回/标记付款；上方时间线仅展示已有关联发票的审计记录（只读）。'}
         {approvalCount === 0 ? (
           <span className="block mt-1 text-amber-800">
             {en ? 'No finance audit entries for linked invoices yet.' : '当前关联发票暂无财务审计时间线。'}

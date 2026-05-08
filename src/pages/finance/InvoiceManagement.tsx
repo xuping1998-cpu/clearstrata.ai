@@ -8,12 +8,9 @@ import {
   AlertTriangle,
   Eye,
   Loader2,
-  Search,
-  Filter,
   Trash2,
   CheckCircle,
   Download,
-  Calendar,
   FileSpreadsheet,
   FileDown,
   ShieldAlert,
@@ -29,7 +26,6 @@ import { canManageInvoiceWorkflow, canDeleteInvoice } from '../../lib/financePer
 import { fetchTaskTitleByInvoiceIds, fetchTasksForInvoice, type LinkedTask } from '../../lib/invoiceTaskLinks';
 import { computeQuoteInvoiceVariance, isRedAlertVariance, type QuoteVarianceResult } from '../../lib/quoteInvoiceVariance';
 import { exportInvoiceApprovalPdf } from '../../lib/pdf/exportInvoiceApprovalPdf';
-import { exportMonthlyAbnormalInvoicesMeetingPackPdf } from '../../lib/pdf/exportMonthlyAbnormalInvoicesMeetingPackPdf';
 import { QuoteVariancePanel } from '../../components/finance/QuoteVariancePanel';
 import { scheduleInvoiceAiAuditAfterInsert } from '../../lib/invoiceAudit';
 import {
@@ -137,22 +133,13 @@ function quoteVarianceShortLabel(v: QuoteVarianceResult, l: boolean): string {
   }
 }
 
-/** 列表年份/月度汇总：金额、张数、异常及主要状态计数 */
-function aggregateInvoiceList(rows: Invoice[]) {
+/** 账本折叠行汇总：总金额与张数（不做审批流水状态统计） */
+function aggregateInvoiceLedger(rows: Invoice[]) {
   let total = 0;
-  let abnormal = 0;
-  let pending_review = 0;
-  let approved = 0;
-  let paid = 0;
   for (const inv of rows) {
     total += Number(inv.total_amount) || 0;
-    const flag = inv.budget_anomaly_flag != null && String(inv.budget_anomaly_flag).trim() !== '';
-    if (inv.is_abnormal || inv.has_anomalies || flag) abnormal++;
-    if (inv.status === 'pending_review') pending_review++;
-    else if (inv.status === 'approved') approved++;
-    else if (inv.status === 'paid') paid++;
   }
-  return { total, count: rows.length, abnormal, pending_review, approved, paid };
+  return { total, count: rows.length };
 }
 
 function statusStyle(status: string): { labelZh: string; labelEn: string; className: string } {
@@ -342,7 +329,7 @@ export function InvoiceManagement({
   rangeThisMonthOnly?: boolean;
 } = {}) {
   const { profile } = useAuth();
-  const { currentPropertyId, memberships, roleInProperty } = useProperty();
+  const { currentPropertyId, roleInProperty } = useProperty();
   const { language } = useLanguage();
   const l = language === 'en';
 
@@ -352,10 +339,6 @@ export function InvoiceManagement({
   const [uploadProgress, setUploadProgress] = useState('');
   const [uploadAiHint, setUploadAiHint] = useState('');
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<Invoice | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [rejectTarget, setRejectTarget] = useState<Invoice | null>(null);
@@ -367,7 +350,6 @@ export function InvoiceManagement({
   const [quoteVarianceByInvoiceId, setQuoteVarianceByInvoiceId] = useState<Record<string, QuoteVarianceResult>>({});
   /** 关联报价是否超预算承诺（pending 审批时可读，用于必填审批理由） */
   const [quoteOverBudgetByInvoiceId, setQuoteOverBudgetByInvoiceId] = useState<Record<string, boolean>>({});
-  const [exportingMeetingPack, setExportingMeetingPack] = useState(false);
   const [uploadAccountingYear, setUploadAccountingYear] = useState(() => currentAccountingDefaults().year);
   const [uploadAccountingMonth, setUploadAccountingMonth] = useState(() => currentAccountingDefaults().month);
   const [expandedYears, setExpandedYears] = useState<Set<number>>(() => new Set());
@@ -1067,24 +1049,10 @@ export function InvoiceManagement({
         if (!redVar && !abnormalish && !flagged && !budgetEx) return false;
         if (rangeThisMonthOnly && !abnormalFilterOnly && !createdAtInCurrentMonth(inv.created_at)) return false;
       }
-      const q = searchTerm.trim().toLowerCase();
-      const matchSearch =
-        !q ||
-        inv.vendor_name?.toLowerCase().includes(q) ||
-        inv.invoice_number?.toLowerCase().includes(q) ||
-        inv.file_name?.toLowerCase().includes(q);
-      const matchStatus = statusFilter === 'all' || inv.status === statusFilter;
-      const d = inv.invoice_date;
-      const matchFrom = !dateFrom || d >= dateFrom;
-      const matchTo = !dateTo || d <= dateTo;
-      return matchSearch && matchStatus && matchFrom && matchTo;
+      return true;
     });
   }, [
     invoices,
-    searchTerm,
-    statusFilter,
-    dateFrom,
-    dateTo,
     dangerFilterOnly,
     auditFilterOnly,
     abnormalFilterOnly,
@@ -1109,26 +1077,12 @@ export function InvoiceManagement({
 
   const hasActiveFilter = useMemo(
     () =>
-      searchTerm.trim() !== '' ||
-      statusFilter !== 'all' ||
-      Boolean(dateFrom) ||
-      Boolean(dateTo) ||
       dangerFilterOnly ||
       auditFilterOnly ||
       abnormalFilterOnly ||
       highRiskFilterOnly ||
       rangeThisMonthOnly,
-    [
-      searchTerm,
-      statusFilter,
-      dateFrom,
-      dateTo,
-      dangerFilterOnly,
-      auditFilterOnly,
-      abnormalFilterOnly,
-      highRiskFilterOnly,
-      rangeThisMonthOnly,
-    ],
+    [dangerFilterOnly, auditFilterOnly, abnormalFilterOnly, highRiskFilterOnly, rangeThisMonthOnly],
   );
 
   const accountingYearSelectOptions = useMemo(() => {
@@ -1178,16 +1132,6 @@ export function InvoiceManagement({
     });
   }, [filtered, hasActiveFilter]);
 
-  const statusCounts = useMemo(() => {
-    return invoices.reduce(
-      (acc, inv) => {
-        acc[inv.status] = (acc[inv.status] || 0) + 1;
-        return acc;
-      },
-      {} as Record<string, number>
-    );
-  }, [invoices]);
-
   const exportRows = (asExcel: boolean) => {
     const headers = l
       ? ['Vendor', 'Invoice #', 'Date', 'Subtotal', 'Tax', 'Total', 'Category', 'Status']
@@ -1231,29 +1175,6 @@ export function InvoiceManagement({
     const c = CATEGORIES.find((x) => x.value === value);
     if (!c) return value || '-';
     return l ? c.labelEn : c.labelZh;
-  };
-
-  const handleExportMeetingPackPdf = async () => {
-    if (!currentPropertyId) return;
-    setExportingMeetingPack(true);
-    try {
-      const propertyName =
-        memberships.find((m) => m.propertyId === currentPropertyId)?.name ?? (l ? 'Property' : '物业');
-      await exportMonthlyAbnormalInvoicesMeetingPackPdf({
-        zh: !l,
-        propertyId: currentPropertyId,
-        propertyName,
-      });
-    } catch (e) {
-      if (e instanceof Error && e.message === 'NO_ABNORMAL_IN_MONTH') {
-        alert(l ? 'No abnormal invoices to export for this month.' : '当前月份暂无异常发票可导出');
-        return;
-      }
-      console.error('exportMonthlyAbnormalInvoicesMeetingPackPdf', e);
-      alert(l ? 'Export failed.' : '导出失败');
-    } finally {
-      setExportingMeetingPack(false);
-    }
   };
 
   if (loading) {
@@ -1336,47 +1257,6 @@ export function InvoiceManagement({
           </Link>
         </div>
       )}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
-        <SummaryCard
-          label={l ? 'Pending review' : '待审核'}
-          value={statusCounts['pending_review'] || 0}
-          className="border-l-4 border-blue-500 bg-blue-50/80"
-        />
-        <SummaryCard
-          label={l ? 'Approved' : '已批准'}
-          value={statusCounts['approved'] || 0}
-          className="border-l-4 border-clearstrata-brand-500 bg-clearstrata-ui-soft/90"
-        />
-        <SummaryCard
-          label={l ? 'Paid' : '已付款'}
-          value={statusCounts['paid'] || 0}
-          className="border-l-4 border-cyan-500 bg-cyan-50/80"
-        />
-        <SummaryCard
-          label={l ? 'Exception' : '异常'}
-          value={(statusCounts['flagged'] || 0) + (statusCounts['rejected'] || 0)}
-          className="border-l-4 border-red-500 bg-red-50/80"
-        />
-      </div>
-
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <button
-          type="button"
-          onClick={() => void handleExportMeetingPackPdf()}
-          disabled={exportingMeetingPack || !currentPropertyId}
-          className="inline-flex max-w-full items-center gap-2 rounded-lg bg-gray-900 px-3 py-2 text-xs font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50 sm:px-4 sm:py-2.5 sm:text-sm"
-        >
-          {exportingMeetingPack ? (
-            <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
-          ) : (
-            <FileDown className="h-4 w-4 shrink-0" />
-          )}
-          <span className="min-w-0 text-left leading-snug">
-            {l ? 'Export monthly meeting pack (PDF)' : '导出本月异常发票会议包 PDF'}
-          </span>
-        </button>
-      </div>
-
       {uploadProgress && (
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center gap-3">
           {uploadProgress.includes('!') || uploadProgress.includes('Done') ? (
@@ -1396,97 +1276,40 @@ export function InvoiceManagement({
 
       <div className="min-w-0 rounded-xl border border-gray-100 bg-white shadow-sm">
         <div className="border-b border-gray-200 p-2.5 sm:p-3 md:p-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative w-full shrink-0 md:w-[220px] lg:w-[240px]">
-              <Search size={16} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => exportRows(false)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 sm:gap-2 sm:px-3 sm:py-2 sm:text-sm"
+            >
+              <FileText size={14} />
+              CSV
+            </button>
+            <button
+              type="button"
+              onClick={() => exportRows(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 sm:gap-2 sm:px-3 sm:py-2 sm:text-sm"
+            >
+              <FileSpreadsheet size={14} />
+              Excel
+            </button>
+            <label
+              className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-clearstrata-ui-primary px-2.5 py-1.5 text-xs font-medium text-white transition-colors sm:gap-2 sm:px-3 sm:py-2 sm:text-sm ${
+                uploading ? 'pointer-events-none opacity-50' : 'hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive'
+              }`}
+            >
+              <Upload size={16} className="sm:h-[18px] sm:w-[18px]" />
+              {uploading ? (l ? 'Working…' : '处理中…') : l ? 'Upload' : '上传发票'}
               <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder={l ? 'Search vendor, invoice #...' : '搜索供应商、发票号...'}
-                className="w-full rounded-lg border border-gray-300 py-1.5 pl-9 pr-2 text-sm focus:ring-2 focus:ring-clearstrata-ui-primary md:py-2 md:pl-9 md:pr-3"
+                type="file"
+                className="hidden"
+                accept=".pdf,.jpg,.jpeg,.png"
+                onChange={handleUpload}
+                disabled={uploading}
               />
-            </div>
-            <div className="flex min-w-0 shrink-0 items-center gap-1.5">
-              <Filter size={16} className="shrink-0 text-gray-400" aria-hidden />
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-[150px] max-w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-clearstrata-ui-primary md:px-3 md:py-2"
-              >
-                <option value="all">{l ? 'All statuses' : '全部状态'}</option>
-                {(
-                  [
-                    'pending_upload',
-                    'ai_processing',
-                    'pending_review',
-                    'approved',
-                    'paid',
-                    'flagged',
-                    'rejected',
-                    'ai_extraction_failed',
-                  ] as const
-                ).map((key) => (
-                  <option key={key} value={key}>
-                    {l ? statusStyle(key).labelEn : statusStyle(key).labelZh}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex shrink-0 items-center gap-1.5">
-              <Calendar size={16} className="shrink-0 text-gray-400" aria-hidden />
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                className="w-[145px] max-w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-clearstrata-ui-primary md:py-2"
-              />
-            </div>
-            <div className="flex shrink-0 items-center gap-1.5">
-              <Calendar size={16} className="w-4 shrink-0 text-gray-400 opacity-0 sm:opacity-100" aria-hidden />
-              <input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                className="w-[145px] max-w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-clearstrata-ui-primary md:py-2"
-                title={l ? 'To' : '结束日期'}
-              />
-            </div>
-            <div className="flex w-full flex-wrap items-center gap-2 md:ml-auto md:w-auto md:justify-end">
-              <button
-                type="button"
-                onClick={() => exportRows(false)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 sm:gap-2 sm:px-3 sm:py-2 sm:text-sm"
-              >
-                <FileText size={14} />
-                CSV
-              </button>
-              <button
-                type="button"
-                onClick={() => exportRows(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 sm:gap-2 sm:px-3 sm:py-2 sm:text-sm"
-              >
-                <FileSpreadsheet size={14} />
-                Excel
-              </button>
-              <label
-                className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-clearstrata-ui-primary px-2.5 py-1.5 text-xs font-medium text-white transition-colors sm:gap-2 sm:px-3 sm:py-2 sm:text-sm ${
-                  uploading ? 'pointer-events-none opacity-50' : 'hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive'
-                }`}
-              >
-                <Upload size={16} className="sm:h-[18px] sm:w-[18px]" />
-                {uploading ? (l ? 'Working…' : '处理中…') : l ? 'Upload' : '上传发票'}
-                <input
-                  type="file"
-                  className="hidden"
-                  accept=".pdf,.jpg,.jpeg,.png"
-                  onChange={handleUpload}
-                  disabled={uploading}
-                />
-              </label>
-            </div>
+            </label>
           </div>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-gray-100 pt-2.5">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-gray-100 pt-2.5 mt-2.5">
             <span className="text-xs font-medium text-gray-600">
               {l ? 'Accounting period (new uploads)' : '归档账期（新上传）'}
             </span>
@@ -1536,7 +1359,7 @@ export function InvoiceManagement({
               const monthMap = groupedByAccounting.byYear.get(accYear);
               const months = monthMap ? [...monthMap.keys()].sort((a, b) => b - a) : [];
               const yearInvoices = filtered.filter((i) => effectiveAccountingYear(i) === accYear);
-              const yAgg = aggregateInvoiceList(yearInvoices);
+              const yAgg = aggregateInvoiceLedger(yearInvoices);
               const yearOpen = expandedYears.has(accYear);
               return (
                 <div key={accYear} className="border-b border-gray-100 last:border-b-0">
@@ -1554,15 +1377,15 @@ export function InvoiceManagement({
                       <span className="font-semibold text-gray-900">{l ? String(accYear) : `${accYear}年`}</span>
                       <span className="mt-0.5 block text-xs leading-relaxed text-gray-600">
                         {l
-                          ? `${fmtAccountingMoney(yAgg.total)} · ${yAgg.count} invoices · ${yAgg.abnormal} flagged · pending ${yAgg.pending_review} · approved ${yAgg.approved} · paid ${yAgg.paid}`
-                          : `总额 ${fmtAccountingMoney(yAgg.total)}｜发票 ${yAgg.count} 张｜异常 ${yAgg.abnormal} 张｜待审核 ${yAgg.pending_review}｜已批准 ${yAgg.approved}｜已付款 ${yAgg.paid}`}
+                          ? `${fmtAccountingMoney(yAgg.total)} · ${yAgg.count} invoices`
+                          : `总额 ${fmtAccountingMoney(yAgg.total)}｜${yAgg.count} 张发票`}
                       </span>
                     </span>
                   </button>
                   {yearOpen &&
                     months.map((accMonth) => {
                       const monthList = monthMap?.get(accMonth) ?? [];
-                      const mAgg = aggregateInvoiceList(monthList);
+                      const mAgg = aggregateInvoiceLedger(monthList);
                       const mk = `${accYear}-${accMonth}`;
                       const monthOpen = expandedMonths.has(mk);
                       return (
@@ -1585,8 +1408,8 @@ export function InvoiceManagement({
                               </span>
                               <span className="mt-0.5 block text-xs leading-relaxed text-gray-600">
                                 {l
-                                  ? `${fmtAccountingMoney(mAgg.total)} · ${mAgg.count} invoices · ${mAgg.abnormal} flagged · pending ${mAgg.pending_review} · approved ${mAgg.approved} · paid ${mAgg.paid}`
-                                  : `总额 ${fmtAccountingMoney(mAgg.total)}｜发票 ${mAgg.count} 张｜异常 ${mAgg.abnormal} 张｜待审核 ${mAgg.pending_review}｜已批准 ${mAgg.approved}｜已付款 ${mAgg.paid}`}
+                                  ? `${fmtAccountingMoney(mAgg.total)} · ${mAgg.count} invoices`
+                                  : `总额 ${fmtAccountingMoney(mAgg.total)}｜${mAgg.count} 张发票`}
                               </span>
                             </span>
                           </button>
@@ -2045,15 +1868,6 @@ export function InvoiceManagement({
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function SummaryCard({ label, value, className }: { label: string; value: number; className: string }) {
-  return (
-    <div className={`min-w-0 rounded-xl p-3 sm:p-4 xl:p-5 ${className}`}>
-      <div className="mb-1 truncate text-xs text-gray-600 sm:text-sm">{label}</div>
-      <div className="text-xl font-bold tabular-nums text-gray-900 sm:text-2xl xl:text-3xl">{value}</div>
     </div>
   );
 }

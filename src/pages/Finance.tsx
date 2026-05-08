@@ -114,13 +114,13 @@ export function Finance() {
       <BackButton />
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-gray-900">
-          {l ? 'Financial Reports' : '财务报表'}
+          {l ? 'Expense Review' : '支出审核'}
         </h1>
         <p className="text-gray-600 mt-2">
           {financeFullAccess
             ? l
-              ? 'Official invoices, approval workflow, and reports. Create tasks and quotes in other modules; link them here via task / quote fields.'
-              : '正式发票、审批与统计。任务与报价在「物业经理任务」「采购询价」中创建，通过来源任务与 quote 字段在此闭环。'
+              ? 'Review, file, and track property expenses so every expense is clear and transparent.'
+              : '审核、归档和追踪物业费用，让每一笔支出干净透明。'
             : l
               ? 'Published monthly financial summaries for owners'
               : '业主可查看已发布的月度财务摘要'}
