@@ -29,6 +29,7 @@ import { Profile } from './pages/Profile';
 import { Hiring } from './pages/Hiring';
 import { Compliance } from './pages/Compliance';
 import { MeetingDetail } from './pages/meeting/MeetingDetail';
+import { OwnerVotingPage } from './pages/owner-voting/OwnerVotingPage';
 import { PricingPage } from './pages/PricingPage';
 import { Contact } from './pages/Contact';
 import { PropertyPicker } from './pages/PropertyPicker';
@@ -361,6 +362,7 @@ function AuthenticatedRoutes() {
       <Route path="/meetings/new" element={<MeetingEditor />} />
       <Route path="/meetings/:meetingId/edit" element={<MeetingEditor />} />
       <Route path="/meetings/:meetingId" element={<MeetingDetail />} />
+      <Route path="/owner-voting" element={<OwnerVotingPage />} />
       <Route path="/finance" element={<Finance />} />
       <Route path="/hiring" element={<Hiring />} />
       <Route path="/owner-info" element={<OwnerInfo />} />
@@ -784,7 +786,12 @@ function AppMain() {
     return <NoActiveMembershipGate />;
   }
 
-  if (!publicPath && !isDemoPropertyMock && !currentPropertyId) {
+  if (
+    !publicPath &&
+    !isDemoPropertyMock &&
+    location.pathname !== '/owner-voting' &&
+    !currentPropertyId
+  ) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">

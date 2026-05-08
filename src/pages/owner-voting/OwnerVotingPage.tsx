@@ -1,0 +1,551 @@
+import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { Loader2 } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { StatusBadge } from '@/components/status/StatusBadge';
+
+export type VoteChoice = 'yes' | 'no' | 'abstain';
+export type MeetingStatus = 'draft' | 'open' | 'closed' | 'archived';
+export type MeetingType = 'agm' | 'sgm';
+export type ResolutionThreshold = 'majority' | 'three_quarter' | 'unanimous';
+
+interface OwnerVoteMeetingRow {
+  id: string;
+  title: string;
+  description: string | null;
+  meeting_type: string;
+  status: string;
+  scheduled_at: string | null;
+  voting_opens_at: string | null;
+  voting_closes_at: string | null;
+}
+
+interface SnapshotRowRaw {
+  id: string;
+  meeting_id: string;
+  property_id: string;
+  unit_no: string | null;
+  is_eligible: boolean;
+  owner_vote_meetings: OwnerVoteMeetingRow | OwnerVoteMeetingRow[] | null;
+}
+
+export interface ResolutionRow {
+  id: string;
+  meeting_id: string;
+  title: string;
+  description: string | null;
+  threshold: string;
+  display_order: number | null;
+}
+
+interface BallotRow {
+  id: string;
+  meeting_id: string;
+  resolution_id: string;
+  unit_no: string | null;
+  choice: VoteChoice;
+  updated_at: string | null;
+}
+
+export type VotingPhaseUi = 'not_started' | 'voting_live' | 'closed';
+
+function isMeetingStatus(v: string): v is MeetingStatus {
+  return v === 'draft' || v === 'open' || v === 'closed' || v === 'archived';
+}
+
+function unwrapMeeting(rel: SnapshotRowRaw['owner_vote_meetings']): OwnerVoteMeetingRow | null {
+  if (rel == null) return null;
+  if (Array.isArray(rel)) return rel.length ? rel[0] ?? null : null;
+  return rel;
+}
+
+function meetingTypeLabel(mt: string, zh: boolean): string {
+  if (mt === 'agm') return zh ? '业主周年大会 AGM' : 'AGM';
+  if (mt === 'sgm') return zh ? '业主特别大会 SGM' : 'SGM';
+  return mt.toUpperCase();
+}
+
+function thresholdLabel(threshold: string, zh: boolean): string {
+  if (threshold === 'majority') return zh ? '普通多数' : 'Majority';
+  if (threshold === 'three_quarter') return zh ? '3/4 票' : '3/4 votes';
+  if (threshold === 'unanimous') return zh ? '全票通过' : 'Unanimous';
+  return threshold;
+}
+
+function phaseLabelText(phase: VotingPhaseUi, zh: boolean): string {
+  if (phase === 'not_started') return zh ? '未开始' : 'Not started';
+  if (phase === 'voting_live') return zh ? '投票中' : 'Open for voting';
+  return zh ? '已截止' : 'Closed';
+}
+
+function parseRpcError(msg: string, zh: boolean): string | null {
+  const m = msg.toLowerCase();
+  if (m.includes('voting_not_open') || m.includes('voting not open')) {
+    return zh ? '投票尚未开放或已经截止' : 'Voting has not opened or has ended.';
+  }
+  if (m.includes('not_eligible_to_vote') || m.includes('not eligible')) {
+    return zh ? '你不在本次表决资格名单中' : 'You are not on the eligible voters list for this vote.';
+  }
+  if (m.includes('not_authenticated')) {
+    return zh ? '请先登录' : 'Please sign in.';
+  }
+  return null;
+}
+
+/** Product rules: voting only when opens ≤ now ≤ closes AND DB status === 'open'; else closed / not_started per spec */
+export function getVotingPhase(
+  votingOpensIso: string | null,
+  votingClosesIso: string | null,
+  statusRaw: string,
+  now: Date,
+): VotingPhaseUi {
+  const opens = votingOpensIso ? new Date(votingOpensIso) : null;
+  const closes = votingClosesIso ? new Date(votingClosesIso) : null;
+  const oOk = opens != null && !Number.isNaN(opens!.getTime());
+  const cOk = closes != null && !Number.isNaN(closes!.getTime());
+  const status = statusRaw.trim();
+
+  if (oOk && now < opens!) return 'not_started';
+  if (oOk && cOk && now >= opens! && now <= closes! && status === 'open') return 'voting_live';
+  return 'closed';
+}
+
+function normalizeChoice(raw: unknown): VoteChoice | null {
+  const s = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
+  if (s === 'yes' || s === 'no' || s === 'abstain') return s;
+  return null;
+}
+
+interface MeetingPack {
+  snapshotId: string;
+  meetingId: string;
+  propertyId: string;
+  unitNo: string | null;
+  meeting: OwnerVoteMeetingRow;
+  resolutions: ResolutionRow[];
+  ballotsByResolution: Map<string, BallotRow>;
+}
+
+function votingPhaseTone(phase: VotingPhaseUi): 'neutral' | 'success' | 'warning' {
+  if (phase === 'not_started') return 'neutral';
+  if (phase === 'voting_live') return 'success';
+  return 'warning';
+}
+
+export function OwnerVotingPage() {
+  const { user, loading: authLoading } = useAuth();
+  const { language } = useLanguage();
+  const zh = language !== 'en';
+
+  const [loadState, setLoadState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [meetingPacks, setMeetingPacks] = useState<MeetingPack[]>([]);
+
+  const [toast, setToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  const [submittingId, setSubmittingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = window.setTimeout(() => setToast(null), 4000);
+    return () => window.clearTimeout(t);
+  }, [toast]);
+
+  const reload = useCallback(async () => {
+    if (!user?.id) {
+      setMeetingPacks([]);
+      setLoadState('done');
+      return;
+    }
+
+    setLoadState('loading');
+    setLoadError(null);
+    try {
+      const { data: snapRows, error: snapErr } = await supabase
+        .from('owner_vote_voter_snapshot')
+        .select(
+          `
+          id,
+          meeting_id,
+          property_id,
+          unit_no,
+          is_eligible,
+          owner_vote_meetings (
+            id,
+            title,
+            description,
+            meeting_type,
+            status,
+            scheduled_at,
+            voting_opens_at,
+            voting_closes_at
+          )
+        `,
+        )
+        .eq('user_id', user.id)
+        .eq('is_eligible', true);
+
+      if (snapErr) throw snapErr;
+
+      const rawSnapshots = ((snapRows ?? []) as SnapshotRowRaw[]).filter((r) => {
+        const mt = unwrapMeeting(r.owner_vote_meetings);
+        if (!mt) return false;
+        const st = mt.status.trim();
+        return ['open', 'closed', 'archived'].includes(st);
+      });
+
+      const meetingIds = [...new Set(rawSnapshots.map((r) => r.meeting_id).filter(Boolean))];
+      if (meetingIds.length === 0) {
+        setMeetingPacks([]);
+        setLoadState('done');
+        return;
+      }
+
+      const [resRes, ballotRes] = await Promise.all([
+        supabase
+          .from('owner_vote_resolutions')
+          .select('id, meeting_id, title, description, threshold, display_order')
+          .in('meeting_id', meetingIds)
+          .order('display_order', { ascending: true }),
+        supabase
+          .from('owner_vote_ballots')
+          .select('id, meeting_id, resolution_id, unit_no, choice, updated_at')
+          .eq('voter_user_id', user.id)
+          .in('meeting_id', meetingIds),
+      ]);
+
+      if (resRes.error) throw resRes.error;
+      if (ballotRes.error) throw ballotRes.error;
+
+      const resolutionList = ((resRes.data ?? []) as unknown[]).map((row): ResolutionRow => {
+        const x = row as Record<string, unknown>;
+        const displayOrderRaw = x.display_order;
+        const display_order =
+          typeof displayOrderRaw === 'number'
+            ? displayOrderRaw
+            : displayOrderRaw != null && String(displayOrderRaw).trim() !== ''
+              ? Number(displayOrderRaw)
+              : null;
+        return {
+          id: String(x.id ?? ''),
+          meeting_id: String(x.meeting_id ?? ''),
+          title: String(x.title ?? ''),
+          description: x.description != null ? String(x.description) : null,
+          threshold: String(x.threshold ?? ''),
+          display_order:
+            display_order !== null && Number.isFinite(display_order) ? Math.floor(display_order) : null,
+        };
+      });
+
+      const ballotList = ((ballotRes.data ?? []) as unknown[])
+        .map((row): BallotRow | null => {
+          const x = row as Record<string, unknown>;
+          const ch = normalizeChoice(x.choice);
+          if (!ch) return null;
+          return {
+            id: String(x.id ?? ''),
+            meeting_id: String(x.meeting_id ?? ''),
+            resolution_id: String(x.resolution_id ?? ''),
+            unit_no: x.unit_no != null ? String(x.unit_no) : null,
+            choice: ch,
+            updated_at: x.updated_at != null ? String(x.updated_at) : null,
+          };
+        })
+        .filter((b): b is BallotRow => b != null);
+
+      const ballotsByMeetingRes = new Map<string, Map<string, BallotRow>>();
+      for (const b of ballotList) {
+        if (!ballotsByMeetingRes.has(b.meeting_id)) ballotsByMeetingRes.set(b.meeting_id, new Map());
+        ballotsByMeetingRes.get(b.meeting_id)!.set(b.resolution_id, b);
+      }
+
+      const byMeetingRes = new Map<string, ResolutionRow[]>();
+      for (const res of resolutionList) {
+        if (!byMeetingRes.has(res.meeting_id)) byMeetingRes.set(res.meeting_id, []);
+        byMeetingRes.get(res.meeting_id)!.push(res);
+      }
+
+      const packs: MeetingPack[] = rawSnapshots.flatMap((s) => {
+        const mt = unwrapMeeting(s.owner_vote_meetings);
+        if (!mt) return [];
+        const res = [...(byMeetingRes.get(s.meeting_id) ?? [])];
+        res.sort((a, b) => {
+          const da = a.display_order ?? Number.MAX_SAFE_INTEGER;
+          const db = b.display_order ?? Number.MAX_SAFE_INTEGER;
+          if (da !== db) return da - db;
+          return a.title.localeCompare(b.title, zh ? 'zh' : 'en');
+        });
+        return [
+          {
+            snapshotId: s.id,
+            meetingId: s.meeting_id,
+            propertyId: s.property_id,
+            unitNo: s.unit_no,
+            meeting: mt,
+            resolutions: res,
+            ballotsByResolution: new Map(ballotsByMeetingRes.get(s.meeting_id) ?? []),
+          },
+        ];
+      });
+
+      packs.sort((a, b) => {
+        const ta = a.meeting.scheduled_at || a.meeting.voting_opens_at || '';
+        const tb = b.meeting.scheduled_at || b.meeting.voting_opens_at || '';
+        return tb.localeCompare(ta);
+      });
+
+      setMeetingPacks(packs);
+      setLoadState('done');
+    } catch (e: unknown) {
+      console.error('[owner-voting]', e);
+      const msg = e instanceof Error ? e.message : String(e);
+      setLoadError(msg);
+      setLoadState('error');
+      setMeetingPacks([]);
+    }
+  }, [user?.id, zh]);
+
+  useEffect(() => {
+    if (authLoading) return;
+    void reload();
+  }, [authLoading, reload]);
+
+  const submitVote = useCallback(
+    async (resolutionId: string, choice: VoteChoice) => {
+      if (!user?.id) {
+        setToast({ kind: 'error', text: zh ? '请先登录' : 'Please sign in.' });
+        return;
+      }
+      setSubmittingId(resolutionId);
+      try {
+        const { error } = await supabase.rpc('submit_owner_vote', {
+          p_resolution_id: resolutionId,
+          p_choice: choice,
+        });
+        if (error) {
+          const mapped = parseRpcError(error.message, zh);
+          setToast({
+            kind: 'error',
+            text: mapped ?? error.message,
+          });
+          return;
+        }
+        setToast({ kind: 'success', text: zh ? '投票已记录' : 'Vote recorded.' });
+        await reload();
+      } catch (e: unknown) {
+        const raw = e instanceof Error ? e.message : String(e);
+        setToast({ kind: 'error', text: parseRpcError(raw, zh) ?? raw });
+      } finally {
+        setSubmittingId(null);
+      }
+    },
+    [user?.id, zh, reload],
+  );
+
+  const now = new Date();
+  const headline = zh ? '业主电子表决' : 'Owner electronic voting';
+  const subline = zh
+    ? '在规定时间内直接完成 SGM / AGM 决议表决。系统按一户一票记录，并自动归档审计记录。'
+    : 'Cast your SGM / AGM resolution votes within the voting window. One vote per unit; audit trails are retained.';
+
+  if (authLoading || loadState === 'loading' || loadState === 'idle') {
+    return (
+      <div className="mx-auto flex max-w-5xl flex-col items-center justify-center gap-3 px-4 py-12 text-gray-600">
+        <Loader2 className="h-10 w-10 animate-spin text-clearstrata-ui-primary" aria-hidden />
+        <p className="text-sm">{zh ? '加载中…' : 'Loading…'}</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="mx-auto max-w-5xl px-4 py-12 text-center">
+        <p className="text-gray-700">{zh ? '请先登录后查看业主表决。' : 'Please sign in to view owner voting.'}</p>
+      </div>
+    );
+  }
+
+  if (loadState === 'error') {
+    return (
+      <div className="mx-auto max-w-5xl space-y-3 px-4 py-12">
+        <h1 className="text-2xl font-bold text-gray-900">{headline}</h1>
+        <p className="text-sm text-red-700">{loadError ?? (zh ? '加载失败' : 'Failed to load')}</p>
+        <button
+          type="button"
+          onClick={() => void reload()}
+          className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50"
+        >
+          {zh ? '重试' : 'Retry'}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto max-w-5xl px-4 py-6 sm:py-10">
+      {toast ? (
+        <div
+          className={`fixed bottom-6 left-1/2 z-[60] max-w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border px-4 py-3 text-sm shadow-lg ${
+            toast.kind === 'success'
+              ? 'border-clearstrata-state-success-border bg-clearstrata-state-success-surface text-clearstrata-state-success-text'
+              : 'border-clearstrata-state-danger-border bg-clearstrata-state-danger-surface text-clearstrata-state-danger-text'
+          }`}
+          role="status"
+        >
+          {toast.text}
+        </div>
+      ) : null}
+
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">{headline}</h1>
+        <p className="mt-2 max-w-3xl text-sm text-gray-600 sm:text-base">{subline}</p>
+        <p className="mt-3">
+          <Link to="/meetings" className="text-sm font-medium text-clearstrata-ui-primary hover:underline">
+            {zh ? '« 返回会议记录' : '« Back to meetings'}
+          </Link>
+        </p>
+      </div>
+
+      {meetingPacks.length === 0 ? (
+        <div className="rounded-2xl border border-gray-200 bg-white p-10 text-center text-gray-600 shadow-sm">
+          {zh ? '当前没有需要你参与的业主表决。' : 'There is no owner vote that requires your participation right now.'}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-8">
+          {meetingPacks.map((pack) => {
+            const mt = pack.meeting;
+            const ms = mt.status.trim();
+
+            const phase = getVotingPhase(mt.voting_opens_at, mt.voting_closes_at, ms, now);
+            const votesEnabled = phase === 'voting_live';
+
+            const dateOpts: Intl.DateTimeFormatOptions =
+              zh
+                ? { dateStyle: 'short', timeStyle: 'short' }
+                : { dateStyle: 'medium', timeStyle: 'short' };
+
+            const fmtTs = (iso: string | null) => {
+              if (!iso) return zh ? '—' : '—';
+              const d = new Date(iso);
+              if (Number.isNaN(d.getTime())) return zh ? '—' : '—';
+              return d.toLocaleString(zh ? 'zh-CN' : 'en-CA', dateOpts);
+            };
+
+            return (
+              <article key={pack.snapshotId} className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+                <div className="border-b border-gray-100 p-5 sm:p-6">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <span className="mb-2 inline-flex items-center rounded-lg bg-clearstrata-ui-soft px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-clearstrata-brand-900 ring-1 ring-clearstrata-ui-softBorder">
+                        {meetingTypeLabel(mt.meeting_type, zh)}
+                      </span>
+                      <h2 className="mt-2 text-lg font-bold text-gray-900 sm:text-xl">{mt.title}</h2>
+                      {mt.description ? (
+                        <p className="mt-2 whitespace-pre-wrap text-sm text-gray-600">{mt.description}</p>
+                      ) : null}
+                      <p className="mt-3 text-sm text-gray-700">
+                        <span className="font-medium text-gray-900">{zh ? '你的房号：' : 'Your unit:'}</span>{' '}
+                        {pack.unitNo?.trim() || (zh ? '—' : '—')}
+                      </p>
+                      <p className="mt-1 text-xs text-gray-500">{zh ? '每户一票 · 以系统记录为准' : 'One vote per unit · as recorded system-side'}</p>
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-2">
+                      <StatusBadge tone={votingPhaseTone(phase)} size="sm">
+                        {phaseLabelText(phase, zh)}
+                      </StatusBadge>
+                    </div>
+                  </div>
+                  <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+                    <div className="rounded-lg bg-gray-50 px-3 py-2">
+                      <dt className="text-xs text-gray-500">{zh ? '投票开放' : 'Voting opens'}</dt>
+                      <dd className="font-medium text-gray-900">{fmtTs(mt.voting_opens_at)}</dd>
+                    </div>
+                    <div className="rounded-lg bg-gray-50 px-3 py-2">
+                      <dt className="text-xs text-gray-500">{zh ? '投票截止' : 'Voting closes'}</dt>
+                      <dd className="font-medium text-gray-900">{fmtTs(mt.voting_closes_at)}</dd>
+                    </div>
+                  </dl>
+                </div>
+
+                <div className="divide-y divide-gray-100 px-5 pb-5 sm:px-6">
+                  {pack.resolutions.length === 0 ? (
+                    <p className="py-8 text-center text-sm text-gray-500">
+                      {zh ? '暂无决议项目。' : 'No resolutions for this meeting.'}
+                    </p>
+                  ) : (
+                    pack.resolutions.map((res) => {
+                      const ballot = pack.ballotsByResolution.get(res.id);
+                      const submitting = submittingId === res.id;
+                      const choiceBtn =
+                        `inline-flex min-h-[42px] flex-1 items-center justify-center rounded-xl border px-3 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-45 sm:min-h-0`;
+
+                      return (
+                        <div key={res.id} className="py-5 first:pt-4">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <h3 className="text-base font-semibold text-gray-900">{res.title}</h3>
+                            <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-800">
+                              {thresholdLabel(res.threshold, zh)}
+                            </span>
+                          </div>
+                          {res.description ? (
+                            <p className="mt-2 whitespace-pre-wrap text-sm text-gray-600">{res.description}</p>
+                          ) : null}
+                          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                            <button
+                              type="button"
+                              disabled={!votesEnabled || submitting}
+                              onClick={() => void submitVote(res.id, 'yes')}
+                              className={`${choiceBtn} border-clearstrata-ui-primary bg-clearstrata-ui-soft text-clearstrata-brand-900 ring-1 ring-clearstrata-ui-softBorder ${
+                                ballot?.choice === 'yes'
+                                  ? 'bg-clearstrata-ui-primary text-white ring-clearstrata-ui-primaryHover'
+                                  : 'hover:bg-clearstrata-brand-50'
+                              }`}
+                            >
+                              {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                              {zh ? '同意' : 'Yes'}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!votesEnabled || submitting}
+                              onClick={() => void submitVote(res.id, 'no')}
+                              className={`${choiceBtn} border-red-300 text-red-800 hover:bg-red-50 ${
+                                ballot?.choice === 'no'
+                                  ? 'border-red-600 bg-red-600 text-white hover:bg-red-700'
+                                  : ''
+                              }`}
+                            >
+                              {zh ? '反对' : 'No'}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!votesEnabled || submitting}
+                              onClick={() => void submitVote(res.id, 'abstain')}
+                              className={`${choiceBtn} border-gray-300 text-gray-800 hover:bg-gray-50 ${
+                                ballot?.choice === 'abstain'
+                                  ? 'border-gray-600 bg-gray-700 text-white hover:bg-gray-800'
+                                  : ''
+                              }`}
+                            >
+                              {zh ? '弃权' : 'Abstain'}
+                            </button>
+                          </div>
+                          {ballot?.updated_at ? (
+                            <p className="mt-2 text-[11px] text-gray-500">
+                              {zh ? '最近一次提交：' : 'Last submitted: '}
+                              {new Date(ballot.updated_at).toLocaleString(zh ? 'zh-CN' : 'en-CA', dateOpts)}
+                            </p>
+                          ) : null}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}

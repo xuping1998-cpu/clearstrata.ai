@@ -42,6 +42,9 @@ function isModulePathActive(location: ReturnType<typeof useLocation>, path: stri
   if (path === '/meetings') {
     return location.pathname === '/meetings' || location.pathname.startsWith('/meetings/');
   }
+  if (path === '/owner-voting') {
+    return location.pathname === '/owner-voting';
+  }
   if (path === '/procurement') {
     return location.pathname === '/procurement' || location.pathname.startsWith('/procurement/');
   }
@@ -160,6 +163,7 @@ export function Layout({ children }: LayoutProps) {
       { path: '/compliance', icon: FileText, label: t('nav_help_compliance'), iconBg: 'bg-indigo-500' },
       { path: '/finance', icon: DollarSign, label: t('nav_finance'), iconBg: 'bg-clearstrata-brand-600' },
       { path: '/meetings', icon: CalendarDays, label: t('nav_meetings_records'), iconBg: 'bg-violet-600' },
+      { path: '/owner-voting', icon: Vote, label: t('nav_owner_voting'), iconBg: 'bg-violet-500' },
     ] as Array<{ path: string; icon: LucideIcon; label: string; iconBg: string }>;
   }, [t, isDemoMode, isDemoPropertyMock, location.pathname, language]);
 
