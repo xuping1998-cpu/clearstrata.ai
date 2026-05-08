@@ -6,6 +6,7 @@ import { useProperty } from '../contexts/PropertyContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { supabase } from '../lib/supabase';
 import { scheduleInvoiceAiAuditAfterInsert } from '../lib/invoiceAudit';
+import { currentAccountingDefaults } from '../lib/invoiceAccountingPeriod';
 
 function readFileAsBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -28,6 +29,8 @@ export function InvoiceUpload() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
+  const [accountingYear, setAccountingYear] = useState(() => currentAccountingDefaults().year);
+  const [accountingMonth, setAccountingMonth] = useState(() => currentAccountingDefaults().month);
 
   async function handleFile(file: File) {
     if (!profile || !currentPropertyId) {
@@ -157,6 +160,8 @@ export function InvoiceUpload() {
           uploaded_by: profile.id,
           status: 'pending_review',
           fiscal_year: fiscalYear,
+          accounting_year: accountingYear,
+          accounting_month: accountingMonth,
         })
         .select('id')
         .single();
@@ -218,6 +223,37 @@ export function InvoiceUpload() {
       <p className="mt-2 text-sm text-gray-600">
         {en ? 'PDF or image. We run OCR, then save the invoice under Finance.' : '支持 PDF 或图片。系统将识别并保存到财务模块。'}
       </p>
+
+      <div className="mt-6 flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-gray-50/80 px-4 py-3 text-sm">
+        <span className="font-medium text-gray-700">{en ? 'Accounting period' : '归档账期'}</span>
+        <select
+          value={accountingYear}
+          onChange={(e) => setAccountingYear(Number(e.target.value))}
+          className="rounded-lg border border-gray-300 bg-white px-3 py-2"
+          aria-label={en ? 'Year' : '归档年份'}
+        >
+          {Array.from({ length: 16 }, (_, i) => new Date().getFullYear() - 12 + i).map((y) => (
+            <option key={y} value={y}>
+              {en ? y : `${y}年`}
+            </option>
+          ))}
+        </select>
+        <select
+          value={accountingMonth}
+          onChange={(e) => setAccountingMonth(Number(e.target.value))}
+          className="rounded-lg border border-gray-300 bg-white px-3 py-2"
+          aria-label={en ? 'Month' : '归档月份'}
+        >
+          {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+            <option key={m} value={m}>
+              {en ? m : `${m}月`}
+            </option>
+          ))}
+        </select>
+        <span className="text-xs text-gray-500">
+          {en ? 'Choose which books month this invoice is filed under.' : '选择该发票归入哪个月作账（可与开票日不同）。'}
+        </span>
+      </div>
 
       <div className="mt-8">
         <input

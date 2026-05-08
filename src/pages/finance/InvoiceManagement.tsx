@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Upload,
@@ -32,6 +32,11 @@ import { exportInvoiceApprovalPdf } from '../../lib/pdf/exportInvoiceApprovalPdf
 import { exportMonthlyAbnormalInvoicesMeetingPackPdf } from '../../lib/pdf/exportMonthlyAbnormalInvoicesMeetingPackPdf';
 import { QuoteVariancePanel } from '../../components/finance/QuoteVariancePanel';
 import { scheduleInvoiceAiAuditAfterInsert } from '../../lib/invoiceAudit';
+import {
+  currentAccountingDefaults,
+  effectiveAccountingMonth,
+  effectiveAccountingYear,
+} from '../../lib/invoiceAccountingPeriod';
 
 interface Invoice {
   id: string;
@@ -77,6 +82,11 @@ interface Invoice {
   /** approved/paid 时由库计算锁定；pending 时常为 null */
   is_budget_exceeded?: boolean | null;
   uploader?: { full_name_en: string; full_name_zh?: string };
+  /** 财务账套归档：用户选择的自然年（与发票开具日无关） */
+  accounting_year?: number | null;
+  /** 财务账套归档：1–12 */
+  accounting_month?: number | null;
+  budget_anomaly_flag?: string | null;
 }
 
 interface AuditEntry {
@@ -125,6 +135,24 @@ function quoteVarianceShortLabel(v: QuoteVarianceResult, l: boolean): string {
     default:
       return l ? 'OK' : '正常';
   }
+}
+
+/** 列表年份/月度汇总：金额、张数、异常及主要状态计数 */
+function aggregateInvoiceList(rows: Invoice[]) {
+  let total = 0;
+  let abnormal = 0;
+  let pending_review = 0;
+  let approved = 0;
+  let paid = 0;
+  for (const inv of rows) {
+    total += Number(inv.total_amount) || 0;
+    const flag = inv.budget_anomaly_flag != null && String(inv.budget_anomaly_flag).trim() !== '';
+    if (inv.is_abnormal || inv.has_anomalies || flag) abnormal++;
+    if (inv.status === 'pending_review') pending_review++;
+    else if (inv.status === 'approved') approved++;
+    else if (inv.status === 'paid') paid++;
+  }
+  return { total, count: rows.length, abnormal, pending_review, approved, paid };
 }
 
 function statusStyle(status: string): { labelZh: string; labelEn: string; className: string } {
@@ -340,6 +368,11 @@ export function InvoiceManagement({
   /** 关联报价是否超预算承诺（pending 审批时可读，用于必填审批理由） */
   const [quoteOverBudgetByInvoiceId, setQuoteOverBudgetByInvoiceId] = useState<Record<string, boolean>>({});
   const [exportingMeetingPack, setExportingMeetingPack] = useState(false);
+  const [uploadAccountingYear, setUploadAccountingYear] = useState(() => currentAccountingDefaults().year);
+  const [uploadAccountingMonth, setUploadAccountingMonth] = useState(() => currentAccountingDefaults().month);
+  const [expandedYears, setExpandedYears] = useState<Set<number>>(() => new Set());
+  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(() => new Set());
+  const expandAccountingUiDone = useRef(false);
 
   const canAudit = canManageInvoiceWorkflow(roleInProperty);
 
@@ -772,6 +805,8 @@ export function InvoiceManagement({
         uploaded_by: profile.id,
         status: 'pending_review',
         fiscal_year: fiscalYear,
+        accounting_year: uploadAccountingYear,
+        accounting_month: uploadAccountingMonth,
         })
         .select('id')
         .single();
@@ -1058,6 +1093,91 @@ export function InvoiceManagement({
     quoteVarianceByInvoiceId,
   ]);
 
+  const groupedByAccounting = useMemo(() => {
+    const byYear = new Map<number, Map<number, Invoice[]>>();
+    for (const inv of filtered) {
+      const y = effectiveAccountingYear(inv);
+      const m = effectiveAccountingMonth(inv);
+      if (!byYear.has(y)) byYear.set(y, new Map());
+      const ym = byYear.get(y)!;
+      if (!ym.has(m)) ym.set(m, []);
+      ym.get(m)!.push(inv);
+    }
+    const years = [...byYear.keys()].sort((a, b) => b - a);
+    return { byYear, years };
+  }, [filtered]);
+
+  const hasActiveFilter = useMemo(
+    () =>
+      searchTerm.trim() !== '' ||
+      statusFilter !== 'all' ||
+      Boolean(dateFrom) ||
+      Boolean(dateTo) ||
+      dangerFilterOnly ||
+      auditFilterOnly ||
+      abnormalFilterOnly ||
+      highRiskFilterOnly ||
+      rangeThisMonthOnly,
+    [
+      searchTerm,
+      statusFilter,
+      dateFrom,
+      dateTo,
+      dangerFilterOnly,
+      auditFilterOnly,
+      abnormalFilterOnly,
+      highRiskFilterOnly,
+      rangeThisMonthOnly,
+    ],
+  );
+
+  const accountingYearSelectOptions = useMemo(() => {
+    const cy = new Date().getFullYear();
+    return Array.from({ length: 16 }, (_, i) => cy - 12 + i);
+  }, []);
+
+  useEffect(() => {
+    expandAccountingUiDone.current = false;
+  }, [currentPropertyId]);
+
+  useEffect(() => {
+    if (invoices.length === 0 || expandAccountingUiDone.current) return;
+    let maxY = -1;
+    let maxM = -1;
+    for (const inv of invoices) {
+      const y = effectiveAccountingYear(inv);
+      const m = effectiveAccountingMonth(inv);
+      if (y > maxY || (y === maxY && m > maxM)) {
+        maxY = y;
+        maxM = m;
+      }
+    }
+    if (maxY < 0 || maxM < 0) return;
+    setExpandedYears(new Set([maxY]));
+    setExpandedMonths(new Set([`${maxY}-${maxM}`]));
+    expandAccountingUiDone.current = true;
+  }, [invoices]);
+
+  useEffect(() => {
+    if (!hasActiveFilter || filtered.length === 0) return;
+    setExpandedYears((prev) => {
+      const n = new Set(prev);
+      for (const inv of filtered) {
+        n.add(effectiveAccountingYear(inv));
+      }
+      return n;
+    });
+    setExpandedMonths((prev) => {
+      const n = new Set(prev);
+      for (const inv of filtered) {
+        const y = effectiveAccountingYear(inv);
+        const m = effectiveAccountingMonth(inv);
+        n.add(`${y}-${m}`);
+      }
+      return n;
+    });
+  }, [filtered, hasActiveFilter]);
+
   const statusCounts = useMemo(() => {
     return invoices.reduce(
       (acc, inv) => {
@@ -1143,6 +1263,28 @@ export function InvoiceManagement({
       </div>
     );
   }
+
+  const toggleAccountingYear = (y: number) => {
+    setExpandedYears((prev) => {
+      const n = new Set(prev);
+      if (n.has(y)) n.delete(y);
+      else n.add(y);
+      return n;
+    });
+  };
+
+  const toggleAccountingMonth = (y: number, m: number) => {
+    const key = `${y}-${m}`;
+    setExpandedMonths((prev) => {
+      const n = new Set(prev);
+      if (n.has(key)) n.delete(key);
+      else n.add(key);
+      return n;
+    });
+  };
+
+  const fmtAccountingMoney = (n: number) =>
+    `$${n.toLocaleString(l ? 'en-CA' : 'zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 
   return (
     <div className="mx-0 min-w-0 w-full max-w-none space-y-6">
@@ -1344,22 +1486,120 @@ export function InvoiceManagement({
               </label>
             </div>
           </div>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-gray-100 pt-2.5">
+            <span className="text-xs font-medium text-gray-600">
+              {l ? 'Accounting period (new uploads)' : '归档账期（新上传）'}
+            </span>
+            <select
+              value={uploadAccountingYear}
+              onChange={(e) => setUploadAccountingYear(Number(e.target.value))}
+              className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-clearstrata-ui-primary"
+              aria-label={l ? 'Accounting year' : '归档年份'}
+            >
+              {accountingYearSelectOptions.map((y) => (
+                <option key={y} value={y}>
+                  {l ? y : `${y}年`}
+                </option>
+              ))}
+            </select>
+            <select
+              value={uploadAccountingMonth}
+              onChange={(e) => setUploadAccountingMonth(Number(e.target.value))}
+              className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:ring-2 focus:ring-clearstrata-ui-primary"
+              aria-label={l ? 'Accounting month' : '归档月份'}
+            >
+              {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                <option key={m} value={m}>
+                  {l ? m : `${m}月`}
+                </option>
+              ))}
+            </select>
+            <span className="text-[11px] text-gray-500">
+              {l ? 'Grouping only; not invoice / payment date.' : '决定列表归属年月，与开票日、付款日、上传时间无关。'}
+            </span>
+          </div>
         </div>
 
-        {filtered.length === 0 ? (
+        {invoices.length === 0 ? (
           <div className="p-12 text-center">
             <FileText size={48} className="mx-auto mb-4 text-gray-300" />
             <p className="text-gray-500">{l ? 'No invoices' : '暂无发票记录'}</p>
           </div>
+        ) : filtered.length === 0 ? (
+          <div className="p-12 text-center">
+            <FileText size={48} className="mx-auto mb-4 text-gray-300" />
+            <p className="text-gray-500">{l ? 'No invoices match filters.' : '暂无符合筛选的发票'}</p>
+          </div>
         ) : (
           <>
-            <div className="hidden max-w-full overflow-x-auto md:block [scrollbar-width:thin]">
+            {groupedByAccounting.years.map((accYear) => {
+              const monthMap = groupedByAccounting.byYear.get(accYear);
+              const months = monthMap ? [...monthMap.keys()].sort((a, b) => b - a) : [];
+              const yearInvoices = filtered.filter((i) => effectiveAccountingYear(i) === accYear);
+              const yAgg = aggregateInvoiceList(yearInvoices);
+              const yearOpen = expandedYears.has(accYear);
+              return (
+                <div key={accYear} className="border-b border-gray-100 last:border-b-0">
+                  <button
+                    type="button"
+                    onClick={() => toggleAccountingYear(accYear)}
+                    className="flex w-full items-start gap-2 px-3 py-3 text-left text-sm hover:bg-gray-50 sm:px-4"
+                  >
+                    {yearOpen ? (
+                      <ChevronDown className="mt-0.5 size-4 shrink-0 text-gray-500" aria-hidden />
+                    ) : (
+                      <ChevronRight className="mt-0.5 size-4 shrink-0 text-gray-500" aria-hidden />
+                    )}
+                    <span className="min-w-0 flex-1">
+                      <span className="font-semibold text-gray-900">{l ? String(accYear) : `${accYear}年`}</span>
+                      <span className="mt-0.5 block text-xs leading-relaxed text-gray-600">
+                        {l
+                          ? `${fmtAccountingMoney(yAgg.total)} · ${yAgg.count} invoices · ${yAgg.abnormal} flagged · pending ${yAgg.pending_review} · approved ${yAgg.approved} · paid ${yAgg.paid}`
+                          : `总额 ${fmtAccountingMoney(yAgg.total)}｜发票 ${yAgg.count} 张｜异常 ${yAgg.abnormal} 张｜待审核 ${yAgg.pending_review}｜已批准 ${yAgg.approved}｜已付款 ${yAgg.paid}`}
+                      </span>
+                    </span>
+                  </button>
+                  {yearOpen &&
+                    months.map((accMonth) => {
+                      const monthList = monthMap?.get(accMonth) ?? [];
+                      const mAgg = aggregateInvoiceList(monthList);
+                      const mk = `${accYear}-${accMonth}`;
+                      const monthOpen = expandedMonths.has(mk);
+                      return (
+                        <div key={mk} className="border-t border-gray-100 bg-slate-50/25">
+                          <button
+                            type="button"
+                            onClick={() => toggleAccountingMonth(accYear, accMonth)}
+                            className="flex w-full items-start gap-2 px-3 py-2.5 pl-7 text-left text-sm hover:bg-slate-100/70 sm:px-4 sm:pl-9"
+                          >
+                            {monthOpen ? (
+                              <ChevronDown className="mt-0.5 size-4 shrink-0 text-gray-500" aria-hidden />
+                            ) : (
+                              <ChevronRight className="mt-0.5 size-4 shrink-0 text-gray-500" aria-hidden />
+                            )}
+                            <span className="min-w-0 flex-1">
+                              <span className="font-medium text-gray-900">
+                                {l
+                                  ? `${accYear}-${String(accMonth).padStart(2, '0')}`
+                                  : `${accYear}年${accMonth}月`}
+                              </span>
+                              <span className="mt-0.5 block text-xs leading-relaxed text-gray-600">
+                                {l
+                                  ? `${fmtAccountingMoney(mAgg.total)} · ${mAgg.count} invoices · ${mAgg.abnormal} flagged · pending ${mAgg.pending_review} · approved ${mAgg.approved} · paid ${mAgg.paid}`
+                                  : `总额 ${fmtAccountingMoney(mAgg.total)}｜发票 ${mAgg.count} 张｜异常 ${mAgg.abnormal} 张｜待审核 ${mAgg.pending_review}｜已批准 ${mAgg.approved}｜已付款 ${mAgg.paid}`}
+                              </span>
+                            </span>
+                          </button>
+                          {monthOpen && (
+                            <>
+                              <div className="hidden max-w-full overflow-x-auto md:block [scrollbar-width:thin]">
               <table className="w-full min-w-0 max-w-full table-fixed border-collapse text-xs">
                 <colgroup>
-                  <col style={{ width: '17%' }} />
-                  <col style={{ width: '10%' }} />
-                  <col style={{ width: '74px' }} />
+                  <col style={{ width: '16%' }} />
                   <col style={{ width: '9%' }} />
+                  <col style={{ width: '70px' }} />
+                  <col style={{ width: '72px' }} />
+                  <col style={{ width: '8%' }} />
                   <col style={{ width: '7%' }} />
                   <col style={{ width: '36px' }} />
                   <col style={{ width: '7%' }} />
@@ -1377,6 +1617,9 @@ export function InvoiceManagement({
                     </th>
                     <th className="whitespace-nowrap px-1 py-1.5 text-left text-[10px] font-medium uppercase tracking-wide text-gray-500 sm:px-1.5 sm:py-2">
                       {l ? 'Date' : '日期'}
+                    </th>
+                    <th className="whitespace-nowrap px-1 py-1.5 text-left text-[10px] font-medium uppercase tracking-wide text-gray-500 sm:px-1.5 sm:py-2">
+                      {l ? 'Book' : '归档'}
                     </th>
                     <th className="min-w-0 px-1 py-1.5 text-right text-[10px] font-medium uppercase tracking-wide text-gray-500 sm:px-1.5 sm:py-2">
                       {l ? 'Total' : '总计'}
@@ -1414,7 +1657,7 @@ export function InvoiceManagement({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {filtered.map((inv) => {
+                  {monthList.map((inv) => {
                     const st = statusStyle(inv.status);
                     const qv = quoteVarianceByInvoiceId[inv.id];
                     return (
@@ -1465,6 +1708,11 @@ export function InvoiceManagement({
                             month: 'numeric',
                             day: 'numeric',
                           })}
+                        </td>
+                        <td className="whitespace-nowrap px-1 py-1.5 text-[11px] tabular-nums text-gray-600 sm:px-1.5 sm:py-2">
+                          {l
+                            ? `${effectiveAccountingYear(inv)}-${String(effectiveAccountingMonth(inv)).padStart(2, '0')}`
+                            : `${effectiveAccountingYear(inv)}年${effectiveAccountingMonth(inv)}月`}
                         </td>
                         <td className="min-w-0 whitespace-nowrap px-1 py-1.5 text-right text-xs font-semibold tabular-nums text-gray-900 sm:px-1.5 sm:py-2">
                           ${Number(inv.total_amount).toFixed(2)}
@@ -1588,7 +1836,7 @@ export function InvoiceManagement({
             </div>
 
             <div className="md:hidden p-4 space-y-3">
-              {filtered.map((inv) => {
+              {monthList.map((inv) => {
                 const st = statusStyle(inv.status);
                 const qv = quoteVarianceByInvoiceId[inv.id];
                 return (
@@ -1631,6 +1879,12 @@ export function InvoiceManagement({
                     <div className="text-sm text-gray-600 space-y-1">
                       <div>
                         {inv.invoice_number || '—'} · {new Date(inv.invoice_date).toLocaleDateString(l ? 'en-CA' : 'zh-CN')}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {l ? 'Book: ' : '归档：'}
+                        {l
+                          ? `${effectiveAccountingYear(inv)}-${String(effectiveAccountingMonth(inv)).padStart(2, '0')}`
+                          : `${effectiveAccountingYear(inv)}年${effectiveAccountingMonth(inv)}月`}
                       </div>
                       <div className="font-bold text-gray-900">${Number(inv.total_amount).toFixed(2)}</div>
                       {qv ? (
@@ -1689,6 +1943,14 @@ export function InvoiceManagement({
                 );
               })}
             </div>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
+                </div>
+              );
+            })}
           </>
         )}
 
@@ -2218,6 +2480,14 @@ function InvoiceDetailModal({
               <InfoField
                 label={l ? 'Invoice date' : '开票日期'}
                 value={new Date(invoice.invoice_date).toLocaleDateString(l ? 'en-CA' : 'zh-CN')}
+              />
+              <InfoField
+                label={l ? 'Accounting period' : '归档年月'}
+                value={
+                  l
+                    ? `${effectiveAccountingYear(invoice)}-${String(effectiveAccountingMonth(invoice)).padStart(2, '0')}`
+                    : `${effectiveAccountingYear(invoice)}年${effectiveAccountingMonth(invoice)}月`
+                }
               />
               <InfoField
                 label={l ? 'Total amount' : '金额（含税）'}
