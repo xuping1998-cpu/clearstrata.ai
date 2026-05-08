@@ -1,18 +1,17 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { FileText, Bot, TrendingUp, BarChart3, PieChart } from 'lucide-react';
+import { FileText, Bot, TrendingUp, PieChart, FileSpreadsheet, Upload } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useProperty } from '../contexts/PropertyContext';
 import { BackButton } from '../components/BackButton';
-import { InvoiceManagement } from './finance/InvoiceManagement';
+import { InvoiceManagement, type InvoiceManagementHandle } from './finance/InvoiceManagement';
 import InvoiceInterpreter from './finance/InvoiceInterpreter';
 import { RevenueDashboard } from './finance/RevenueDashboard';
-import { MonthlySummary } from './finance/MonthlySummary';
 import { FinanceBudgetTab } from './finance/FinanceBudgetTab';
 import { DemoPropertyMockFinancePanel } from '@/components/demoProperty/DemoPropertyMockFinancePanel';
 import { DemoCreatePropertyCtaCard } from '@/components/onboarding/DemoCreatePropertyCta';
 
-type FinanceTab = 'invoices' | 'budget' | 'interpreter' | 'revenue' | 'summary';
+type FinanceTab = 'invoices' | 'budget' | 'interpreter' | 'revenue';
 
 interface TabConfig {
   key: FinanceTab;
@@ -26,7 +25,6 @@ const allTabs: TabConfig[] = [
   { key: 'budget', labelEn: 'Budget', labelZh: '年度预算', icon: <PieChart size={18} /> },
   { key: 'interpreter', labelEn: 'AI Interpreter', labelZh: 'AI发票解读', icon: <Bot size={18} /> },
   { key: 'revenue', labelEn: 'Revenue Dashboard', labelZh: '收入看板', icon: <TrendingUp size={18} /> },
-  { key: 'summary', labelEn: 'Monthly Summary', labelZh: '月度摘要', icon: <BarChart3 size={18} /> },
 ];
 
 export function Finance() {
@@ -53,12 +51,12 @@ export function Finance() {
     currentRole === 'property_admin' ||
     currentRole === 'manager';
 
-  const visibleTabs = useMemo(
-    () => (financeFullAccess ? allTabs : allTabs.filter((t) => t.key === 'summary')),
-    [financeFullAccess]
-  );
+  const visibleTabs = useMemo(() => (financeFullAccess ? allTabs : []), [financeFullAccess]);
 
-  const [activeTab, setActiveTab] = useState<FinanceTab>('summary');
+  const [activeTab, setActiveTab] = useState<FinanceTab>('invoices');
+  const invoiceLedgerRef = useRef<InvoiceManagementHandle>(null);
+  const [invoiceToolbarUploading, setInvoiceToolbarUploading] = useState(false);
+
   const invoiceHighlightId = searchParams.get('invoice');
   const filterDanger = searchParams.get('filter') === 'danger';
   const filterAudit = searchParams.get('filter') === 'audit';
@@ -67,7 +65,11 @@ export function Finance() {
   const rangeThisMonth = searchParams.get('range') === 'this_month';
 
   useEffect(() => {
+    if (!financeFullAccess) return;
+
     const tab = searchParams.get('tab') as FinanceTab | null;
+    const validTabs = ['invoices', 'budget', 'interpreter', 'revenue'] as const;
+
     if (
       (filterDanger || filterAudit || filterAbnormal || filterHighRisk) &&
       financeFullAccess
@@ -75,14 +77,10 @@ export function Finance() {
       setActiveTab('invoices');
       return;
     }
-    if (
-      tab &&
-      ['invoices', 'budget', 'interpreter', 'revenue', 'summary'].includes(tab) &&
-      financeFullAccess
-    ) {
+    if (tab && (validTabs as readonly string[]).includes(tab)) {
       setActiveTab(tab);
     } else {
-      setActiveTab(financeFullAccess ? 'invoices' : 'summary');
+      setActiveTab('invoices');
     }
   }, [
     financeFullAccess,
@@ -113,9 +111,7 @@ export function Finance() {
     <div className="mx-0 min-w-0 w-full max-w-none">
       <BackButton />
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900">
-          {l ? 'Expense Review' : '支出审核'}
-        </h1>
+        <h1 className="text-3xl font-bold text-gray-900">{l ? 'Expense Review' : '支出审核'}</h1>
         <p className="text-gray-600 mt-2">
           {financeFullAccess
             ? l
@@ -127,29 +123,76 @@ export function Finance() {
         </p>
       </div>
 
-      {visibleTabs.length > 1 && (
-        <div className="mb-6 max-w-full overflow-x-auto border-b border-gray-200 [scrollbar-width:thin]">
-          <nav className="flex min-w-0 flex-wrap gap-1 sm:min-w-max sm:flex-nowrap">
-            {visibleTabs.map((tab) => (
+      {financeFullAccess && visibleTabs.length > 0 && (
+        <div className="mb-6 flex min-w-0 flex-col gap-3 border-b border-gray-200 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
+          <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:thin]">
+            <nav className="flex min-w-0 flex-wrap gap-1 sm:min-w-max sm:flex-nowrap">
+              {visibleTabs.map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`flex items-center gap-1.5 whitespace-nowrap border-b-2 px-2.5 pb-3 text-sm font-medium transition-colors sm:gap-2 sm:px-4 ${
+                    activeTab === tab.key
+                      ? 'border-[#1D9E75] text-[#1D9E75]'
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {tab.icon}
+                  {l ? tab.labelEn : tab.labelZh}
+                </button>
+              ))}
+            </nav>
+          </div>
+          {activeTab === 'invoices' && (
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 pb-3">
               <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`flex items-center gap-1.5 whitespace-nowrap border-b-2 px-2.5 pb-3 text-sm font-medium transition-colors sm:gap-2 sm:px-4 ${
-                  activeTab === tab.key
-                    ? 'border-[#1D9E75] text-[#1D9E75]'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                type="button"
+                onClick={() => invoiceLedgerRef.current?.exportCsv()}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 sm:gap-2 sm:px-3 sm:py-2 sm:text-sm"
+              >
+                <FileText size={14} />
+                CSV
+              </button>
+              <button
+                type="button"
+                onClick={() => invoiceLedgerRef.current?.exportExcel()}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 sm:gap-2 sm:px-3 sm:py-2 sm:text-sm"
+              >
+                <FileSpreadsheet size={14} />
+                Excel
+              </button>
+              <button
+                type="button"
+                disabled={invoiceToolbarUploading}
+                onClick={() => invoiceLedgerRef.current?.openUploadModal()}
+                className={`inline-flex items-center gap-1.5 rounded-lg bg-clearstrata-ui-primary px-2.5 py-1.5 text-xs font-medium text-white transition-colors sm:gap-2 sm:px-3 sm:py-2 sm:text-sm ${
+                  invoiceToolbarUploading
+                    ? 'pointer-events-none opacity-50'
+                    : 'hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive'
                 }`}
               >
-                {tab.icon}
-                {l ? tab.labelEn : tab.labelZh}
+                <Upload size={16} className="sm:h-[18px] sm:w-[18px]" />
+                {invoiceToolbarUploading ? (l ? 'Working…' : '处理中…') : l ? 'Upload' : '上传发票'}
               </button>
-            ))}
-          </nav>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!financeFullAccess && (
+        <div className="mb-6 rounded-xl border border-gray-200 bg-gray-50/90 px-4 py-12 text-center text-sm text-gray-600">
+          {l
+            ? 'Invoice and budget tools require council or property manager access.'
+            : '发票与预算相关功能需要业委会或管理处权限。'}
         </div>
       )}
 
       {financeFullAccess && activeTab === 'invoices' && (
         <InvoiceManagement
+          ref={invoiceLedgerRef}
+          hideToolbar
+          onUploadingChange={setInvoiceToolbarUploading}
           highlightInvoiceId={invoiceHighlightId}
           dangerFilterOnly={filterDanger}
           auditFilterOnly={filterAudit}
@@ -161,7 +204,6 @@ export function Finance() {
       {financeFullAccess && activeTab === 'budget' && <FinanceBudgetTab />}
       {financeFullAccess && activeTab === 'interpreter' && <InvoiceInterpreter />}
       {financeFullAccess && activeTab === 'revenue' && <RevenueDashboard />}
-      {(activeTab === 'summary' || !financeFullAccess) && <MonthlySummary />}
     </div>
   );
 }

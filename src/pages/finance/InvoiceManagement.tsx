@@ -1,4 +1,13 @@
-import { useState, useEffect, useCallback, useMemo, useRef, type ChangeEvent } from 'react';
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+  forwardRef,
+  useImperativeHandle,
+  type ChangeEvent,
+} from 'react';
 import { Link } from 'react-router-dom';
 import {
   Upload,
@@ -314,14 +323,13 @@ function createdAtInCurrentMonth(createdAt: string): boolean {
   return c.getFullYear() === now.getFullYear() && c.getMonth() === now.getMonth();
 }
 
-export function InvoiceManagement({
-  highlightInvoiceId,
-  dangerFilterOnly = false,
-  auditFilterOnly = false,
-  abnormalFilterOnly = false,
-  highRiskFilterOnly = false,
-  rangeThisMonthOnly = false,
-}: {
+export type InvoiceManagementHandle = {
+  exportCsv: () => void;
+  exportExcel: () => void;
+  openUploadModal: () => void;
+};
+
+export type InvoiceManagementProps = {
   highlightInvoiceId?: string | null;
   /** 仅显示「明显高于报价」的红色预警发票（首页「查看全部」） */
   dangerFilterOnly?: boolean;
@@ -333,7 +341,25 @@ export function InvoiceManagement({
   highRiskFilterOnly?: boolean;
   /** 与 abnormal 等组合：仅保留创建时间落在本自然月的发票 */
   rangeThisMonthOnly?: boolean;
-} = {}) {
+  /** 隐藏列表页内嵌 CSV / Excel / 上传（由父级工具栏触发） */
+  hideToolbar?: boolean;
+  /** 上报上传进行中状态（供外部工具栏禁用按钮） */
+  onUploadingChange?: (uploading: boolean) => void;
+};
+
+export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceManagementProps>(function InvoiceManagement(
+  {
+    highlightInvoiceId,
+    dangerFilterOnly = false,
+    auditFilterOnly = false,
+    abnormalFilterOnly = false,
+    highRiskFilterOnly = false,
+    rangeThisMonthOnly = false,
+    hideToolbar = false,
+    onUploadingChange,
+  },
+  ref,
+) {
   const { profile } = useAuth();
   const { currentPropertyId, roleInProperty } = useProperty();
   const { language } = useLanguage();
@@ -612,6 +638,14 @@ export function InvoiceManagement({
     const inv = invoices.find((i) => i.id === highlightInvoiceId);
     if (inv) setSelectedInvoice(inv);
   }, [highlightInvoiceId, invoices]);
+
+  useEffect(() => {
+    setSelectedInvoice((prev) => {
+      if (!prev) return prev;
+      const next = invoices.find((i) => i.id === prev.id);
+      return next ?? prev;
+    });
+  }, [invoices]);
 
   const logAudit = async (
     invoiceId: string,
@@ -1149,44 +1183,61 @@ export function InvoiceManagement({
     });
   }, [filtered, hasActiveFilter]);
 
-  const exportRows = (asExcel: boolean) => {
-    const headers = l
-      ? ['Vendor', 'Invoice #', 'Date', 'Subtotal', 'Tax', 'Total', 'Category', 'Status']
-      : ['供应商', '发票号', '日期', '税前', '税额', '总计', '分类', '状态'];
-    const rows = filtered.map((inv) => {
-      const st = statusStyle(inv.status);
-      const cat = CATEGORIES.find((c) => c.value === inv.category);
-      const catLabel = l ? cat?.labelEn ?? inv.category : cat?.labelZh ?? inv.category;
-      return [
-        inv.vendor_name,
-        inv.invoice_number || '',
-        inv.invoice_date,
-        Number(inv.subtotal).toFixed(2),
-        Number(inv.tax_amount || 0).toFixed(2),
-        Number(inv.total_amount).toFixed(2),
-        catLabel || '',
-        l ? st.labelEn : st.labelZh,
-      ];
-    });
-    const esc = (cell: string | number) => {
-      const s = String(cell);
-      if (s.includes(',') || s.includes('"') || s.includes('\n')) return `"${s.replace(/"/g, '""')}"`;
-      return s;
-    };
-    const sep = asExcel ? '\t' : ',';
-    const lines = [headers.join(sep), ...rows.map((r) => r.map(esc).join(sep))];
-    const bom = '\uFEFF';
-    const blob = new Blob([bom + lines.join('\n')], {
-      type: asExcel ? 'application/vnd.ms-excel;charset=utf-8' : 'text/csv;charset=utf-8',
-    });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = asExcel
-      ? `invoices-${new Date().toISOString().slice(0, 10)}.xls`
-      : `invoices-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  };
+  const exportRows = useCallback(
+    (asExcel: boolean) => {
+      const headers = l
+        ? ['Vendor', 'Invoice #', 'Date', 'Subtotal', 'Tax', 'Total', 'Category', 'Status']
+        : ['供应商', '发票号', '日期', '税前', '税额', '总计', '分类', '状态'];
+      const rows = filtered.map((inv) => {
+        const st = statusStyle(inv.status);
+        const cat = CATEGORIES.find((c) => c.value === inv.category);
+        const catLabel = l ? cat?.labelEn ?? inv.category : cat?.labelZh ?? inv.category;
+        return [
+          inv.vendor_name,
+          inv.invoice_number || '',
+          inv.invoice_date,
+          Number(inv.subtotal).toFixed(2),
+          Number(inv.tax_amount || 0).toFixed(2),
+          Number(inv.total_amount).toFixed(2),
+          catLabel || '',
+          l ? st.labelEn : st.labelZh,
+        ];
+      });
+      const esc = (cell: string | number) => {
+        const s = String(cell);
+        if (s.includes(',') || s.includes('"') || s.includes('\n')) return `"${s.replace(/"/g, '""')}"`;
+        return s;
+      };
+      const sep = asExcel ? '\t' : ',';
+      const lines = [headers.join(sep), ...rows.map((r) => r.map(esc).join(sep))];
+      const bom = '\uFEFF';
+      const blob = new Blob([bom + lines.join('\n')], {
+        type: asExcel ? 'application/vnd.ms-excel;charset=utf-8' : 'text/csv;charset=utf-8',
+      });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = asExcel
+        ? `invoices-${new Date().toISOString().slice(0, 10)}.xls`
+        : `invoices-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    },
+    [filtered, l],
+  );
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      exportCsv: () => exportRows(false),
+      exportExcel: () => exportRows(true),
+      openUploadModal,
+    }),
+    [exportRows, openUploadModal],
+  );
+
+  useEffect(() => {
+    onUploadingChange?.(uploading);
+  }, [uploading, onUploadingChange]);
 
   const catLabel = (value: string | null | undefined) => {
     const c = CATEGORIES.find((x) => x.value === value);
@@ -1388,37 +1439,39 @@ export function InvoiceManagement({
       )}
 
       <div className="min-w-0 rounded-xl border border-gray-100 bg-white shadow-sm">
-        <div className="border-b border-gray-200 p-2.5 sm:p-3 md:p-4">
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => exportRows(false)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 sm:gap-2 sm:px-3 sm:py-2 sm:text-sm"
-            >
-              <FileText size={14} />
-              CSV
-            </button>
-            <button
-              type="button"
-              onClick={() => exportRows(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 sm:gap-2 sm:px-3 sm:py-2 sm:text-sm"
-            >
-              <FileSpreadsheet size={14} />
-              Excel
-            </button>
-            <button
-              type="button"
-              disabled={uploading}
-              onClick={openUploadModal}
-              className={`inline-flex items-center gap-1.5 rounded-lg bg-clearstrata-ui-primary px-2.5 py-1.5 text-xs font-medium text-white transition-colors sm:gap-2 sm:px-3 sm:py-2 sm:text-sm ${
-                uploading ? 'pointer-events-none opacity-50' : 'hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive'
-              }`}
-            >
-              <Upload size={16} className="sm:h-[18px] sm:w-[18px]" />
-              {uploading ? (l ? 'Working…' : '处理中…') : l ? 'Upload' : '上传发票'}
-            </button>
+        {!hideToolbar ? (
+          <div className="border-b border-gray-200 p-2.5 sm:p-3 md:p-4">
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => exportRows(false)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 sm:gap-2 sm:px-3 sm:py-2 sm:text-sm"
+              >
+                <FileText size={14} />
+                CSV
+              </button>
+              <button
+                type="button"
+                onClick={() => exportRows(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 sm:gap-2 sm:px-3 sm:py-2 sm:text-sm"
+              >
+                <FileSpreadsheet size={14} />
+                Excel
+              </button>
+              <button
+                type="button"
+                disabled={uploading}
+                onClick={openUploadModal}
+                className={`inline-flex items-center gap-1.5 rounded-lg bg-clearstrata-ui-primary px-2.5 py-1.5 text-xs font-medium text-white transition-colors sm:gap-2 sm:px-3 sm:py-2 sm:text-sm ${
+                  uploading ? 'pointer-events-none opacity-50' : 'hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive'
+                }`}
+              >
+                <Upload size={16} className="sm:h-[18px] sm:w-[18px]" />
+                {uploading ? (l ? 'Working…' : '处理中…') : l ? 'Upload' : '上传发票'}
+              </button>
+            </div>
           </div>
-        </div>
+        ) : null}
 
         {invoices.length === 0 ? (
           <div className="p-12 text-center">
@@ -1947,7 +2000,7 @@ export function InvoiceManagement({
       )}
     </div>
   );
-}
+});
 
 function InvoiceDetailModal({
   invoice,
@@ -1978,6 +2031,12 @@ function InvoiceDetailModal({
   const [editing, setEditing] = useState(false);
   const [editCategory, setEditCategory] = useState(invoice.category || 'general');
   const [editNotes, setEditNotes] = useState(invoice.notes || '');
+  const [editAccountingYear, setEditAccountingYear] = useState(() =>
+    effectiveAccountingYear(invoice),
+  );
+  const [editAccountingMonth, setEditAccountingMonth] = useState(() =>
+    effectiveAccountingMonth(invoice),
+  );
   const [saving, setSaving] = useState(false);
   const [linkedTasks, setLinkedTasks] = useState<LinkedTask[]>([]);
   const [quoteVarianceResult, setQuoteVarianceResult] = useState<QuoteVarianceResult | null>(null);
@@ -2037,8 +2096,15 @@ function InvoiceDetailModal({
   useEffect(() => {
     setEditCategory(invoice.category || 'general');
     setEditNotes(invoice.notes || '');
+    setEditAccountingYear(effectiveAccountingYear(invoice));
+    setEditAccountingMonth(effectiveAccountingMonth(invoice));
     setApprovalNote('');
   }, [invoice]);
+
+  const accountingYearModalOptions = useMemo(() => {
+    const cy = new Date().getFullYear();
+    return Array.from({ length: 16 }, (_, i) => cy - 12 + i);
+  }, []);
 
   useEffect(() => {
     void loadAiAuditBundle();
@@ -2226,6 +2292,8 @@ function InvoiceDetailModal({
           property_id: currentPropertyId,
           category: editCategory,
           notes: editNotes || null,
+          accounting_year: editAccountingYear,
+          accounting_month: editAccountingMonth,
           updated_at: new Date().toISOString(),
         })
         .eq('property_id', currentPropertyId)
@@ -2380,6 +2448,13 @@ function InvoiceDetailModal({
                     : `${effectiveAccountingYear(invoice)}年${effectiveAccountingMonth(invoice)}月`
                 }
               />
+              {canAudit && !editing && (
+                <p className="col-span-full -mt-2 text-[11px] text-gray-500 sm:col-span-2">
+                  {l
+                    ? 'Until you edit and save ledger period here, grouping may follow upload/created time.'
+                    : '若尚未写入归档年月，分组会暂时按上传/创建日期推算；点击「编辑」可写入归档年份与月份。'}
+                </p>
+              )}
               <InfoField
                 label={l ? 'Total amount' : '金额（含税）'}
                 value={`$${Number(invoice.total_amount).toFixed(2)}`}
@@ -2824,6 +2899,47 @@ function InvoiceDetailModal({
             </h3>
           {editing && canAudit ? (
             <div className="space-y-3 border border-gray-200 rounded-xl p-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="edit-acc-year" className="block text-sm font-medium text-gray-700 mb-1">
+                    {l ? 'Accounting year' : '归档年份'}
+                  </label>
+                  <select
+                    id="edit-acc-year"
+                    value={editAccountingYear}
+                    onChange={(e) => setEditAccountingYear(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  >
+                    {accountingYearModalOptions.map((y) => (
+                      <option key={y} value={y}>
+                        {l ? y : `${y}年`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="edit-acc-month" className="block text-sm font-medium text-gray-700 mb-1">
+                    {l ? 'Accounting month' : '归档月份'}
+                  </label>
+                  <select
+                    id="edit-acc-month"
+                    value={editAccountingMonth}
+                    onChange={(e) => setEditAccountingMonth(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  >
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                      <option key={m} value={m}>
+                        {l ? m : `${m}月`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <p className="text-xs text-gray-500">
+                {l
+                  ? 'Sets which ledger year/month this invoice belongs to. Independent of invoice date, payment date, and upload time.'
+                  : '决定这张发票计入哪一年度的哪个月账本；与开票日、付款日、上传时间无关。'}
+              </p>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{l ? 'Category' : '分类'}</label>
                 <select
@@ -2858,7 +2974,13 @@ function InvoiceDetailModal({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setEditing(false)}
+                  onClick={() => {
+                    setEditing(false);
+                    setEditCategory(invoice.category || 'general');
+                    setEditNotes(invoice.notes || '');
+                    setEditAccountingYear(effectiveAccountingYear(invoice));
+                    setEditAccountingMonth(effectiveAccountingMonth(invoice));
+                  }}
                   className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium"
                 >
                   {l ? 'Cancel' : '取消'}
