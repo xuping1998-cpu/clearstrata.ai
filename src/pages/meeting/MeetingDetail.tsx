@@ -20,7 +20,9 @@ import {
   meetingTitleZhFirst,
   resetFailedInvitations,
   sendMeetingInvitations,
+  updateMeetingAgendaItem,
   updateVote,
+  type VoteRule,
   type MeetingAgendaRow,
   type MeetingDetailBundle,
   type MeetingInvitationRow,
@@ -33,7 +35,8 @@ import { supabase } from '../../lib/supabase';
 import { shouldDeferAutoPropertyRedirects } from '../../lib/authRecovery';
 import { samePropertyId } from '../../lib/propertyIdMatch';
 import { labelFormat, labelMeetingType, labelStatus, labelVoteRule, labelVoteStatus, meetingUiStrings } from '../../features/meetings/labels';
-import { councilMeetingTitleForOwnerVoteBinding, isOwnerVotingMeeting } from '@/features/meetings/ownerVotingCouncil';
+import { councilMeetingTitleForOwnerVoteBinding, findOwnerVoteResolutionForAgenda, isOwnerVotingMeeting } from '@/features/meetings/ownerVotingCouncil';
+import { stripWrittenRemoteMeta } from '@/features/meetings/meetingFormatModel';
 import { OwnerVotingInlineControlBar } from '@/components/meetings/OwnerVotingInlineControlBar';
 import { MeetingOwnerVoteResolutionResults } from '@/components/meetings/MeetingOwnerVoteResolutionResults';
 import { StatusAlert, StatusBadge } from '@/components/status';
@@ -68,6 +71,14 @@ export function MeetingDetail() {
   const [newAgendaEn, setNewAgendaEn] = useState('');
   const [newAgendaVote, setNewAgendaVote] = useState(false);
   const [newVoteRule, setNewVoteRule] = useState<'simple_majority' | 'three_quarter' | 'unanimous'>('simple_majority');
+  const [agendaEdit, setAgendaEdit] = useState<{
+    agendaId: string;
+    title_zh: string;
+    title_en: string;
+    requires_vote: boolean;
+    vote_rule: VoteRule;
+    started_with_vote: boolean;
+  } | null>(null);
   const [inviteProfileById, setInviteProfileById] = useState<
     Record<string, { full_name_en: string | null; full_name_zh: string | null; email: string | null }>
   >({});
@@ -77,7 +88,7 @@ export function MeetingDetail() {
   const [ovMeta, setOvMeta] = useState<{
     loading: boolean;
     meeting: OwnerVoteMeetingLite | null;
-    resolutions: Array<{ id: string; title: string; threshold: string }>;
+    resolutions: Array<{ id: string; title: string; threshold: string; display_order?: number | null }>;
     resolutionCount: number;
     eligibleCount: number;
   }>({ loading: false, meeting: null, resolutions: [], resolutionCount: 0, eligibleCount: 0 });
@@ -202,6 +213,16 @@ export function MeetingDetail() {
     }
     void refreshOwnerVoteMeta();
   }, [meeting, currentPropertyId, refreshOwnerVoteMeta]);
+
+  useEffect(() => {
+    if (shouldDeferAutoPropertyRedirects()) return;
+    if (!meeting || !isOwnerVotingMeeting(meeting)) return;
+    const onVis = () => {
+      if (document.visibilityState === 'visible') void refreshOwnerVoteMeta();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [meeting, refreshOwnerVoteMeta]);
 
   useEffect(() => {
     if (!evToast) return;
@@ -396,6 +417,115 @@ export function MeetingDetail() {
 
     setBusy(false);
     await load();
+  }
+
+  async function handlePersistAgendaEdit() {
+    if (!meeting || !propertyIdForAgenda || !user?.id || !agendaEdit) return;
+    const row = bundle.agendaItems.find((x) => x.id === agendaEdit.agendaId);
+    if (!row) return;
+
+    const tzh = agendaEdit.title_zh.trim();
+    const ten = agendaEdit.title_en.trim();
+    if (!tzh && !ten) {
+      setActionErr(en ? 'Enter a title.' : '请填写议程标题。');
+      return;
+    }
+
+    const resolutionsForMatch = ovMeta.resolutions.map((r) => ({
+      id: r.id,
+      title: r.title,
+      display_order: r.display_order ?? null,
+    }));
+    const matchedRes = findOwnerVoteResolutionForAgenda(
+      { sort_order: row.sort_order, title_zh: row.title_zh, title_en: row.title_en },
+      resolutionsForMatch,
+    );
+
+    if (agendaEdit.started_with_vote && !agendaEdit.requires_vote && matchedRes) {
+      const { count, error: cErr } = await supabase
+        .from('owner_vote_ballots')
+        .select('id', { count: 'exact', head: true })
+        .eq('property_id', propertyIdForAgenda)
+        .eq('resolution_id', matchedRes.id);
+      if (cErr) console.warn('[MeetingDetail] ballot count', cErr.message);
+      if ((typeof count === 'number' ? count : 0) > 0) {
+        setActionErr(t('meeting_agenda_cannot_remove_vote_has_ballots'));
+        return;
+      }
+    }
+
+    setBusy(true);
+    setActionErr(null);
+
+    const { error: upAgendaErr } = await updateMeetingAgendaItem({
+      propertyId: propertyIdForAgenda,
+      meetingId: meeting.id,
+      agendaItemId: row.id,
+      titleZh: tzh || null,
+      titleEn: ten || null,
+      descriptionEn: row.description_en,
+      descriptionZh: row.description_zh,
+      requiresVote: agendaEdit.requires_vote,
+      voteRule: agendaEdit.requires_vote ? agendaEdit.vote_rule : null,
+    });
+    if (upAgendaErr) {
+      setActionErr(upAgendaErr.message);
+      setBusy(false);
+      return;
+    }
+
+    const voteRow = voteByAgendaId.get(row.id);
+    if (voteRow && agendaEdit.requires_vote) {
+      await updateVote(voteRow.id, meeting.property_id, {
+        title_en: ten || null,
+        title_zh: tzh || null,
+        vote_rule: agendaEdit.vote_rule,
+      });
+    }
+
+    if (isOwnerVotingMeeting(meeting) && isStaff && agendaEdit.requires_vote) {
+      const ensured = await ensureOwnerVoteMeetingForCouncilMeeting({
+        propertyId: propertyIdForAgenda,
+        meeting,
+        userId: user.id,
+      });
+
+      if (ensured.error || !ensured.id) {
+        console.error('[MeetingDetail] ensure OV on agenda edit', ensured.error);
+      } else {
+        const titleForRes = tzh || ten || (en ? 'Untitled resolution' : '未命名决议');
+        const matchedBefore = findOwnerVoteResolutionForAgenda(
+          { sort_order: row.sort_order, title_zh: row.title_zh, title_en: row.title_en },
+          resolutionsForMatch,
+        );
+        if (matchedBefore) {
+          const { error: rErr } = await supabase
+            .from('owner_vote_resolutions')
+            .update({
+              title: titleForRes,
+              threshold: mapVoteRuleToOwnerVoteThreshold(agendaEdit.vote_rule),
+              display_order: row.sort_order,
+            } as Record<string, unknown>)
+            .eq('id', matchedBefore.id)
+            .eq('meeting_id', ensured.id);
+          if (rErr) console.error('[MeetingDetail] owner_vote_resolutions update', rErr);
+        } else {
+          const { error: insErr } = await supabase.from('owner_vote_resolutions').insert({
+            meeting_id: ensured.id,
+            title: titleForRes,
+            description: null,
+            threshold: mapVoteRuleToOwnerVoteThreshold(agendaEdit.vote_rule),
+            display_order: row.sort_order,
+          });
+          if (insErr) console.error('[MeetingDetail] owner_vote_resolutions insert (edit)', insErr);
+        }
+      }
+    }
+
+    setAgendaEdit(null);
+    setBusy(false);
+    await load();
+    await refreshOwnerVoteMeta();
   }
 
   useEffect(() => {
@@ -710,7 +840,9 @@ export function MeetingDetail() {
                 </div>
                 <div>
                   <dt className="text-gray-500">{en ? 'Description (ZH)' : '说明（中）'}</dt>
-                  <dd className="text-gray-900 whitespace-pre-wrap">{meeting.description_zh || '—'}</dd>
+                  <dd className="text-gray-900 whitespace-pre-wrap">
+                    {stripWrittenRemoteMeta(meeting.description_zh) || '—'}
+                  </dd>
                 </div>
                 <div>
                   <dt className="text-gray-500">{en ? meetingUiStrings.format.en : meetingUiStrings.format.zh}</dt>
@@ -753,43 +885,132 @@ export function MeetingDetail() {
                   const my = vote ? bundle.myBallotsByVoteId[vote.id] : undefined;
                   return (
                     <div key={agenda.id} className="border border-gray-100 rounded-lg p-4 bg-gray-50/50">
-                      <div className="flex flex-wrap items-center gap-2 mb-2">
-                        <span className="text-xs text-gray-500">#{agenda.sort_order}</span>
-                        {agenda.requires_vote ? (
-                          <StatusBadge tone="success" size="sm">
-                            {en ? 'Vote required' : '需要表决'}
-                          </StatusBadge>
-                        ) : (
-                          <StatusBadge tone="neutral" size="sm">
-                            {en ? 'Discussion' : '讨论'}
-                          </StatusBadge>
-                        )}
-                        {agenda.vote_rule && (
-                          <StatusBadge tone="neutral" size="sm">
-                            {labelVoteRule(agenda.vote_rule, en)}
-                          </StatusBadge>
-                        )}
+                      <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs text-gray-500">#{agenda.sort_order}</span>
+                          {agendaEdit?.agendaId !== agenda.id &&
+                            (agenda.requires_vote ? (
+                              <StatusBadge tone="success" size="sm">
+                                {en ? 'Vote required' : '需要表决'}
+                              </StatusBadge>
+                            ) : (
+                              <StatusBadge tone="neutral" size="sm">
+                                {en ? 'Discussion' : '讨论'}
+                              </StatusBadge>
+                            ))}
+                          {agendaEdit?.agendaId !== agenda.id && agenda.vote_rule ? (
+                            <StatusBadge tone="neutral" size="sm">
+                              {labelVoteRule(agenda.vote_rule, en)}
+                            </StatusBadge>
+                          ) : null}
+                        </div>
+                        {isStaff && agendaEdit?.agendaId !== agenda.id ? (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() =>
+                              setAgendaEdit({
+                                agendaId: agenda.id,
+                                title_zh: agenda.title_zh ?? '',
+                                title_en: agenda.title_en ?? '',
+                                requires_vote: agenda.requires_vote,
+                                vote_rule: (agenda.vote_rule ?? 'simple_majority') as VoteRule,
+                                started_with_vote: agenda.requires_vote,
+                              })
+                            }
+                            className="text-sm px-3 py-1.5 rounded-lg border border-gray-300 text-gray-800 hover:bg-white disabled:opacity-50"
+                          >
+                            {t('meeting_agenda_edit')}
+                          </button>
+                        ) : null}
                       </div>
-                      <h3 className="font-medium text-gray-900">
-                        {agenda.title_zh?.trim() || agenda.title_en || (en ? meetingUiStrings.untitled.en : meetingUiStrings.untitled.zh)}
-                      </h3>
-                      {(agenda.description_zh || agenda.description_en) && (
-                        <p className="text-sm text-gray-600 mt-1 whitespace-pre-wrap">{agenda.description_zh || agenda.description_en}</p>
-                      )}
+                      {agendaEdit?.agendaId === agenda.id ? (
+                        <div className="space-y-3 mt-1">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <input
+                              value={agendaEdit.title_zh}
+                              onChange={(e) => setAgendaEdit((prev) => (prev ? { ...prev, title_zh: e.target.value } : prev))}
+                              placeholder={en ? 'Title (Chinese)' : '标题（中文）'}
+                              className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                            />
+                            <input
+                              value={agendaEdit.title_en}
+                              onChange={(e) => setAgendaEdit((prev) => (prev ? { ...prev, title_en: e.target.value } : prev))}
+                              placeholder={en ? 'Title (English)' : '标题（英文）'}
+                              className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                            />
+                          </div>
+                          <label className="flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={agendaEdit.requires_vote}
+                              onChange={(e) => setAgendaEdit((prev) => (prev ? { ...prev, requires_vote: e.target.checked } : prev))}
+                            />
+                            {en ? 'Requires vote' : '需要表决'}
+                          </label>
+                          {agendaEdit.requires_vote ? (
+                            <label className="block text-sm space-y-1">
+                              <span className="font-medium text-gray-800">{en ? 'Vote threshold' : '表决门槛'}</span>
+                              <select
+                                value={agendaEdit.vote_rule}
+                                onChange={(e) =>
+                                  setAgendaEdit((prev) =>
+                                    prev ? { ...prev, vote_rule: e.target.value as VoteRule } : prev,
+                                  )
+                                }
+                                className="w-full max-w-md rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                              >
+                                <option value="simple_majority">{en ? 'Simple majority' : '普通多数'}</option>
+                                <option value="three_quarter">{en ? 'Three-quarters' : '3/4 票'}</option>
+                                <option value="unanimous">{en ? 'Unanimous' : '全票通过'}</option>
+                              </select>
+                            </label>
+                          ) : null}
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => void handlePersistAgendaEdit()}
+                              className="text-sm px-4 py-2 rounded-lg bg-clearstrata-ui-primary text-white hover:bg-clearstrata-ui-primaryHover disabled:opacity-50"
+                            >
+                              {t('meeting_agenda_save')}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => setAgendaEdit(null)}
+                              className="text-sm px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50"
+                            >
+                              {t('meeting_agenda_cancel')}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <h3 className="font-medium text-gray-900">
+                            {agenda.title_zh?.trim() ||
+                              agenda.title_en ||
+                              (en ? meetingUiStrings.untitled.en : meetingUiStrings.untitled.zh)}
+                          </h3>
+                          {(agenda.description_zh || agenda.description_en) && (
+                            <p className="text-sm text-gray-600 mt-1 whitespace-pre-wrap">
+                              {agenda.description_zh || agenda.description_en}
+                            </p>
+                          )}
 
-                      {agenda.requires_vote && !vote && isStaff && (
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() => handleCreateVote(agenda)}
-                          className="mt-3 text-sm px-3 py-1.5 rounded-lg bg-clearstrata-ui-primary text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:opacity-50"
-                        >
-                          {en ? 'Create vote' : '创建表决'}
-                        </button>
-                      )}
+                          {agenda.requires_vote && !vote && isStaff && (
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => handleCreateVote(agenda)}
+                              className="mt-3 text-sm px-3 py-1.5 rounded-lg bg-clearstrata-ui-primary text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:opacity-50"
+                            >
+                              {en ? 'Create vote' : '创建表决'}
+                            </button>
+                          )}
 
-                      {vote && (
-                        <div className="mt-4 space-y-3 border-t border-gray-200 pt-3">
+                          {vote && (
+                            <div className="mt-4 space-y-3 border-t border-gray-200 pt-3">
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="text-xs font-medium text-gray-700">{en ? 'Vote status' : '表决状态'}:</span>
                             <StatusBadge tone="neutral" size="sm">
@@ -858,6 +1079,8 @@ export function MeetingDetail() {
                           )}
                         </div>
                       )}
+                        </>
+                      )}
                     </div>
                   );
                 })}
@@ -910,7 +1133,54 @@ export function MeetingDetail() {
               </div>
         </section>
 
-        {/* Layer 3 — invitations & resolutions */}
+        {/* Layer 3 — formal owner-vote resolution results (before invitations) */}
+        <section className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4 border-b pb-2">
+            <h2 className="text-lg font-semibold text-gray-900">
+              {showCouncilOwnerVoteUi ? t('meeting_resolution_results_title') : en ? 'Resolutions' : '决议'}
+            </h2>
+            {showCouncilOwnerVoteUi ? (
+              <button
+                type="button"
+                disabled={ovMeta.loading || ovBusy}
+                onClick={() => void refreshOwnerVoteMeta()}
+                className="inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg border border-gray-300 text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+              >
+                <RefreshCw size={16} className={ovMeta.loading ? 'animate-spin shrink-0' : 'shrink-0'} />
+                {t('meeting_resolution_refresh_results')}
+              </button>
+            ) : null}
+          </div>
+          {showCouncilOwnerVoteUi ? (
+            <MeetingOwnerVoteResolutionResults
+              loading={ovMeta.loading}
+              ownerVoteMeeting={ovMeta.meeting}
+              resolutions={ovMeta.resolutions}
+              resultRows={ovResolutionResults}
+              eligibleFallback={ovMeta.eligibleCount}
+              t={t}
+              languageEn={en}
+            />
+          ) : bundle.resolutions.length === 0 ? (
+            <p className="text-sm text-gray-600">
+              {en ? 'No resolutions recorded yet.' : '暂无决议记录。'}
+            </p>
+          ) : (
+            <ul className="space-y-3 text-sm">
+              {bundle.resolutions.map((r) => (
+                <li key={r.id} className="border-l-4 border-clearstrata-ui-primary pl-3">
+                  <p className="text-gray-900">{r.resolution_text}</p>
+                  <p className="text-gray-500 mt-1">
+                    {en ? 'Outcome' : '结果'}: {r.outcome}
+                    {r.followup_required ? (en ? ' · Follow-up' : ' · 需跟进') : ''}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        {/* Layer 4 — invitations */}
         <section className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm space-y-8">
           <div>
             <h2 className="text-lg font-semibold text-gray-900 mb-4 border-b pb-2 flex items-center gap-2">
@@ -1041,39 +1311,6 @@ export function MeetingDetail() {
                   </button>
                 )}
               </div>
-            )}
-          </div>
-
-          <div className="border-t border-gray-100 pt-8">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 border-b pb-2">
-              {showCouncilOwnerVoteUi ? t('meeting_resolution_results_title') : en ? 'Resolutions' : '决议'}
-            </h2>
-            {showCouncilOwnerVoteUi ? (
-              <MeetingOwnerVoteResolutionResults
-                loading={ovMeta.loading}
-                ownerVoteMeeting={ovMeta.meeting}
-                resolutions={ovMeta.resolutions}
-                resultRows={ovResolutionResults}
-                eligibleFallback={ovMeta.eligibleCount}
-                t={t}
-                languageEn={en}
-              />
-            ) : bundle.resolutions.length === 0 ? (
-              <p className="text-sm text-gray-600">
-                {en ? 'No resolutions recorded yet.' : '暂无决议记录。'}
-              </p>
-            ) : (
-              <ul className="space-y-3 text-sm">
-                {bundle.resolutions.map((r) => (
-                  <li key={r.id} className="border-l-4 border-clearstrata-ui-primary pl-3">
-                    <p className="text-gray-900">{r.resolution_text}</p>
-                    <p className="text-gray-500 mt-1">
-                      {en ? 'Outcome' : '结果'}: {r.outcome}
-                      {r.followup_required ? (en ? ' · Follow-up' : ' · 需跟进') : ''}
-                    </p>
-                  </li>
-                ))}
-              </ul>
             )}
           </div>
         </section>

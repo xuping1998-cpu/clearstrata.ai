@@ -499,7 +499,7 @@ export function OwnerVotingPage() {
                               }`}
                             >
                               {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                              {zh ? '同意' : 'Yes'}
+                              {t('meeting_vote_yes')}
                             </button>
                             <button
                               type="button"
@@ -511,7 +511,8 @@ export function OwnerVotingPage() {
                                   : ''
                               }`}
                             >
-                              {zh ? '反对' : 'No'}
+                              {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                              {t('meeting_vote_no')}
                             </button>
                             <button
                               type="button"
@@ -523,7 +524,8 @@ export function OwnerVotingPage() {
                                   : ''
                               }`}
                             >
-                              {zh ? '弃权' : 'Abstain'}
+                              {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                              {t('meeting_vote_abstain')}
                             </button>
                           </div>
                           {ballot?.updated_at ? (

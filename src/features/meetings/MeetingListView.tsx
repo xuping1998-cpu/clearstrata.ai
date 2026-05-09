@@ -11,6 +11,7 @@ import {
   type MeetingRow,
 } from './api';
 import { labelFormat, labelMeetingType, labelStatus, meetingUiStrings } from './labels';
+import { stripWrittenRemoteMeta } from './meetingFormatModel';
 
 type Variant = 'voting' | 'meetings';
 
@@ -241,7 +242,11 @@ export function MeetingListView({ variant }: Props) {
                     </h2>
                     {(m.description_zh || m.description_en) && (
                       <p className="text-sm text-gray-600 line-clamp-2 mt-1">
-                        {(m.description_zh || m.description_en || '').slice(0, 200)}
+                        {(() => {
+                          const zh = m.description_zh ? stripWrittenRemoteMeta(m.description_zh) : '';
+                          const raw = zh || m.description_en || '';
+                          return raw.slice(0, 200);
+                        })()}
                       </p>
                     )}
                   </div>

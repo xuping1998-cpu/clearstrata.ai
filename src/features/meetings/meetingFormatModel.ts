@@ -4,8 +4,21 @@ export type MeetingFormatUi = 'in_person' | 'live_remote' | 'hybrid' | 'written_
 
 const META_START = '<!--clearstrata-written-remote\n';
 const META_END = '\n-->';
+/** Fallback: strip malformed or alternate whitespace variants of the written-remote marker. */
+const WRITTEN_REMOTE_HTML_COMMENT_RE = /<!--\s*clearstrata-written-remote\b[\s\S]*?-->/gi;
 
 export type WrittenRemoteMetaV1 = { v: 1; discussion_closes_at: string };
+
+/**
+ * Removes embedded written-remote meta from description text for display only.
+ * Does not affect {@link embedWrittenRemoteMeta} / {@link extractWrittenRemoteMeta} storage format.
+ */
+export function stripWrittenRemoteMeta(text?: string | null): string {
+  let s = text ?? '';
+  s = s.replace(WRITTEN_REMOTE_HTML_COMMENT_RE, '');
+  s = extractWrittenRemoteMeta(s).cleanDescriptionZh;
+  return s.replace(/\s+$/u, '').trim();
+}
 
 export function extractWrittenRemoteMeta(descriptionZh: string | null | undefined): {
   cleanDescriptionZh: string;

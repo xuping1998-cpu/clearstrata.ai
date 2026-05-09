@@ -635,6 +635,38 @@ export async function createAgendaItem(input: {
   return { id: data?.id as string | undefined, error };
 }
 
+export async function updateMeetingAgendaItem(input: {
+  propertyId: string;
+  meetingId: string;
+  agendaItemId: string;
+  titleEn?: string | null;
+  titleZh?: string | null;
+  descriptionEn?: string | null;
+  descriptionZh?: string | null;
+  requiresVote: boolean;
+  voteRule?: VoteRule | null;
+}) {
+  const { data, error } = await withProperty(
+    supabase
+      .from('meeting_agenda_items')
+      .update({
+        title_en: input.titleEn ?? null,
+        title_zh: input.titleZh ?? null,
+        description_en: input.descriptionEn ?? null,
+        description_zh: input.descriptionZh ?? null,
+        requires_vote: input.requiresVote,
+        vote_rule: input.voteRule ?? null,
+      } as Record<string, unknown>) as any,
+    input.propertyId,
+  )
+    .eq('id', input.agendaItemId)
+    .eq('meeting_id', input.meetingId)
+    .select('id')
+    .maybeSingle();
+
+  return { id: data?.id as string | undefined, error };
+}
+
 const DEFAULT_OPTION_KEYS = [
   { key: 'for', label_en: 'For', label_zh: '赞成', so: 0 },
   { key: 'against', label_en: 'Against', label_zh: '反对', so: 1 },
@@ -961,7 +993,16 @@ export function ballotTallies(ballots: MeetingBallotRow[]) {
 export async function updateVote(
   voteId: string,
   propertyId: string,
-  patch: Partial<{ status: VoteStatus; opens_at: string | null; closes_at: string | null }>,
+  patch: Partial<{
+    status: VoteStatus;
+    opens_at: string | null;
+    closes_at: string | null;
+    title_en: string | null;
+    title_zh: string | null;
+    description_en: string | null;
+    description_zh: string | null;
+    vote_rule: VoteRule;
+  }>,
 ) {
   return await withProperty(
     supabase.from('meeting_votes').update({ ...patch, property_id: propertyId }) as any,
@@ -1083,7 +1124,7 @@ export async function fetchOwnerVoteMeetingMetaForCouncilMeeting(params: {
   meeting: MeetingRow;
 }): Promise<{
   meeting: OwnerVoteMeetingLite | null;
-  resolutions: Array<{ id: string; title: string; threshold: string }>;
+  resolutions: Array<{ id: string; title: string; threshold: string; display_order: number | null }>;
   resolutionCount: number;
   eligibleCount: number;
   error: Error | null;
@@ -1120,15 +1161,26 @@ export async function fetchOwnerVoteMeetingMetaForCouncilMeeting(params: {
 
   const resQ = await supabase
     .from('owner_vote_resolutions')
-    .select('id,title,threshold')
+    .select('id,title,threshold,display_order')
     .eq('meeting_id', mid)
     .order('display_order', { ascending: true });
 
-  const resolutionsRaw = (resQ.data ?? []) as { id: string; title: unknown; threshold: unknown }[];
+  const resolutionsRaw = (resQ.data ?? []) as {
+    id: string;
+    title: unknown;
+    threshold: unknown;
+    display_order: unknown;
+  }[];
   const resolutions = resolutionsRaw.map((r) => ({
     id: String(r.id),
     title: typeof r.title === 'string' ? r.title : '',
     threshold: typeof r.threshold === 'string' ? r.threshold : String(r.threshold ?? ''),
+    display_order:
+      typeof r.display_order === 'number'
+        ? r.display_order
+        : r.display_order != null && String(r.display_order).trim() !== '' && Number.isFinite(Number(r.display_order))
+          ? Number(r.display_order)
+          : null,
   }));
 
   const eligC = await supabase
@@ -1180,10 +1232,19 @@ export function normalizeOwnerVoteResolutionResultRow(raw: Record<string, unknow
   if (!resolution_id) return null;
   const title = raw.title != null ? String(raw.title) : null;
   const threshold = raw.threshold != null ? String(raw.threshold) : null;
-  const yes_count = pickNumOvResult(raw, ['yes_count', 'yesCount']);
-  const no_count = pickNumOvResult(raw, ['no_count', 'noCount']);
-  const abstain_count = pickNumOvResult(raw, ['abstain_count', 'abstainCount']);
-  const total_cast = pickNumOvResult(raw, ['total_cast', 'totalCast', 'votes_cast']);
+  const yes_count = pickNumOvResult(raw, [
+    'yes_count',
+    'yesCount',
+    'yes_votes',
+    'votes_yes',
+    'for_count',
+    'approve_count',
+    'approve',
+    'yes',
+  ]);
+  const no_count = pickNumOvResult(raw, ['no_count', 'noCount', 'votes_no', 'against_count', 'reject_count', 'no']);
+  const abstain_count = pickNumOvResult(raw, ['abstain_count', 'abstainCount', 'votes_abstain', 'abstain']);
+  const total_cast = pickNumOvResult(raw, ['total_cast', 'totalCast', 'votes_cast', 'cast_count']);
   const eligible_count = pickNumOvResult(raw, ['eligible_count', 'eligibleCount', 'eligible_voters']);
   let passedVal: boolean | null = null;
   const pv = raw.passed ?? raw.is_passed;
@@ -1204,22 +1265,97 @@ export function normalizeOwnerVoteResolutionResultRow(raw: Record<string, unknow
   };
 }
 
-/** Reads formal tallies from `owner_vote_resolution_results` (no ballot table scans). */
+async function aggregatesFromOwnerVoteBallots(
+  propertyId: string,
+  ownerVoteMeetingId: string,
+): Promise<{ byResolution: Map<string, { yes: number; no: number; abstain: number }>; error: Error | null }> {
+  const m = new Map<string, { yes: number; no: number; abstain: number }>();
+  const { data, error } = await supabase
+    .from('owner_vote_ballots')
+    .select('resolution_id,choice')
+    .eq('property_id', propertyId)
+    .eq('meeting_id', ownerVoteMeetingId);
+  if (error) return { byResolution: m, error: new Error(error.message) };
+  for (const raw of (data ?? []) as { resolution_id?: string; choice?: string }[]) {
+    const rid = String(raw.resolution_id ?? '').trim();
+    if (!rid) continue;
+    const ch = String(raw.choice ?? '').trim().toLowerCase();
+    const cur = m.get(rid) ?? { yes: 0, no: 0, abstain: 0 };
+    if (ch === 'yes') cur.yes += 1;
+    else if (ch === 'no') cur.no += 1;
+    else if (ch === 'abstain') cur.abstain += 1;
+    m.set(rid, cur);
+  }
+  return { byResolution: m, error: null };
+}
+
+function viewCountsAreBlank(r: OwnerVoteResolutionResultNormalized | undefined): boolean {
+  if (!r) return true;
+  const y = r.yes_count ?? 0;
+  const n = r.no_count ?? 0;
+  const a = r.abstain_count ?? 0;
+  const t = r.total_cast ?? 0;
+  return y === 0 && n === 0 && a === 0 && t === 0;
+}
+
+/**
+ * Reads tallies from `owner_vote_resolution_results`; merges in live counts from `owner_vote_ballots`
+ * when the view row is blank (stale projections, mismatched joins, or RLS quirks on the view only).
+ */
 export async function fetchOwnerVoteResolutionResultsForOwnerMeeting(params: {
   propertyId: string;
   ownerVoteMeetingId: string;
 }): Promise<{ rows: OwnerVoteResolutionResultNormalized[]; error: Error | null }> {
   const { propertyId, ownerVoteMeetingId } = params;
-  const { data, error } = await supabase
-    .from('owner_vote_resolution_results')
-    .select('*')
-    .eq('property_id', propertyId)
-    .eq('meeting_id', ownerVoteMeetingId);
-  if (error) return { rows: [], error: new Error(error.message) };
-  const rows: OwnerVoteResolutionResultNormalized[] = [];
+  const [{ data, error }, ballots] = await Promise.all([
+    supabase
+      .from('owner_vote_resolution_results')
+      .select('*')
+      .eq('property_id', propertyId)
+      .eq('meeting_id', ownerVoteMeetingId),
+    aggregatesFromOwnerVoteBallots(propertyId, ownerVoteMeetingId),
+  ]);
+
+  let viewErr: Error | null = error ? new Error(error.message) : null;
+  if (ballots.error) viewErr ??= ballots.error;
+
+  const viewRows: OwnerVoteResolutionResultNormalized[] = [];
   for (const row of data ?? []) {
     const n = normalizeOwnerVoteResolutionResultRow(row as Record<string, unknown>);
-    if (n) rows.push(n);
+    if (n) viewRows.push(n);
   }
-  return { rows, error: null };
+
+  const merged = new Map<string, OwnerVoteResolutionResultNormalized>();
+  for (const r of viewRows) merged.set(r.resolution_id, r);
+
+  for (const [rid, c] of ballots.byResolution) {
+    const total = c.yes + c.no + c.abstain;
+    if (total === 0) continue;
+    const existing = merged.get(rid);
+    if (!existing) {
+      merged.set(rid, {
+        resolution_id: rid,
+        title: null,
+        threshold: null,
+        yes_count: c.yes,
+        no_count: c.no,
+        abstain_count: c.abstain,
+        total_cast: total,
+        eligible_count: 0,
+        passed: null,
+      });
+      continue;
+    }
+    if (viewCountsAreBlank(existing) || existing.total_cast < total) {
+      merged.set(rid, {
+        ...existing,
+        yes_count: c.yes,
+        no_count: c.no,
+        abstain_count: c.abstain,
+        total_cast: total,
+      });
+    }
+  }
+
+  return { rows: [...merged.values()], error: viewErr };
 }

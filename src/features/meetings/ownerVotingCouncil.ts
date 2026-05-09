@@ -59,6 +59,45 @@ export function ownerVoteMeetingTypeForInsert(meeting: MeetingRowWithExtras): 'a
   return 'sgm';
 }
 
+/** Minimal agenda fields for resolving an owner_vote_resolution without DB `agenda_item_id`. */
+export type AgendaForResolutionMatch = {
+  sort_order: number | null | undefined;
+  title_zh?: string | null;
+  title_en?: string | null;
+};
+
+export type OwnerVoteResolutionLite = {
+  id: string;
+  title: string;
+  display_order?: number | null;
+};
+
+/**
+ * Finds the resolution row that best matches an agenda item.
+ *
+ * TODO(backend): Add `agenda_item_id` on `owner_vote_resolutions` (and backfill) so linkage is stable.
+ * Until then: prefer `display_order === sort_order`, then title match against zh/en.
+ */
+export function findOwnerVoteResolutionForAgenda(
+  agenda: AgendaForResolutionMatch,
+  resolutions: OwnerVoteResolutionLite[],
+): OwnerVoteResolutionLite | null {
+  if (resolutions.length === 0) return null;
+  const ord = agenda.sort_order;
+  if (ord != null && Number.isFinite(Number(ord))) {
+    const n = Number(ord);
+    const byOrd = resolutions.find((r) => r.display_order != null && Number(r.display_order) === n);
+    if (byOrd) return byOrd;
+  }
+  const zh = agenda.title_zh?.trim() ?? '';
+  const en = agenda.title_en?.trim() ?? '';
+  const byTitle = resolutions.find((r) => {
+    const t = r.title?.trim() ?? '';
+    return (zh && t === zh) || (en && t === en);
+  });
+  return byTitle ?? null;
+}
+
 export function addDaysIso(fromIsoOrNull: string | null | undefined, days: number): string {
   const base = fromIsoOrNull?.trim()
     ? new Date(fromIsoOrNull)

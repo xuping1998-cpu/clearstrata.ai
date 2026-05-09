@@ -10,7 +10,7 @@ import {
 export type OwnerVoteInlineMetaState = {
   loading: boolean;
   meeting: OwnerVoteMeetingLite | null;
-  resolutions: Array<{ id: string; title: string; threshold: string }>;
+  resolutions: Array<{ id: string; title: string; threshold: string; display_order?: number | null }>;
   resolutionCount: number;
   eligibleCount: number;
 };
