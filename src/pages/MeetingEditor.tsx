@@ -235,18 +235,16 @@ export function MeetingEditor() {
         : {}),
     };
 
-    const readiness = noticeReadiness(readinessMeeting, agendaCount, {
-      writtenRemote: written,
-      discussionClosesIso: written ? isoFromDatetimeLocal(discCloseLocal) : null,
-    });
-
-    if ((form.status === 'open' || form.status === 'closed') && !readiness.ok) {
-      setErr(
-        en
-          ? 'Titles, schedules, meeting type, format and at least one agenda item are required before this stage.'
-          : '进入该会议状态需满足：中英文标题其一、时间安排、类型、形式，以及至少一条议程。',
-      );
-      return;
+    if (form.status !== 'draft') {
+      const readiness = noticeReadiness(readinessMeeting, agendaCount, {
+        writtenRemote: written,
+        discussionClosesIso: written ? isoFromDatetimeLocal(discCloseLocal) : null,
+      });
+      if (!readiness.ok) {
+        const key = written ? 'meeting_create_notice_ready_written_missing' : 'meeting_create_notice_ready_sync_missing';
+        setErr(t(key));
+        return;
+      }
     }
 
     setErr(null);
@@ -526,8 +524,11 @@ export function MeetingEditor() {
           )}
         </div>
 
-        <div className="text-sm text-gray-600 bg-amber-50 border border-amber-100 rounded-lg p-3">
-          {t('meeting_editor_schedule_guard_note')}
+        <div className="text-sm text-gray-600 bg-amber-50 border border-amber-100 rounded-lg p-3 space-y-2">
+          <p>{t('meeting_editor_schedule_guard_note')}</p>
+          {!isEdit ? (
+            <p className="pt-2 border-t border-amber-200">{t('meeting_create_save_then_agenda_hint')}</p>
+          ) : null}
         </div>
 
         {err ? <p className="text-sm text-red-600">{err}</p> : null}

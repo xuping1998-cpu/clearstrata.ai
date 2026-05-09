@@ -234,20 +234,27 @@ export function meetingTitleZhFirst(m: Pick<MeetingRow, 'title_zh' | 'title_en'>
 export function noticeReadiness(
   meeting: Partial<MeetingRow>,
   agendaCount: number,
-  opts?: { writtenRemote?: boolean; discussionClosesIso?: string | null },
+  opts?: {
+    writtenRemote?: boolean;
+    discussionClosesIso?: string | null;
+    /** When false, permits zero agenda rows (draft / pre-detail save). Default true. */
+    requireAgenda?: boolean;
+  },
 ) {
   const hasTitle =
     (meeting.title_en && meeting.title_en.trim().length > 0) ||
     (meeting.title_zh && meeting.title_zh.trim().length > 0);
   const written = !!opts?.writtenRemote;
+  const requireAgenda = opts?.requireAgenda !== false;
   const hasScheduleBlock = written
     ? !!meeting.scheduled_at &&
       !!meeting.voting_open_at &&
       !!meeting.voting_close_at &&
       !!(opts?.discussionClosesIso && String(opts.discussionClosesIso).trim())
     : !!meeting.scheduled_at;
+  const agendaOk = !requireAgenda || agendaCount >= 1;
   return {
-    ok: !!meeting.meeting_type && hasTitle && hasScheduleBlock && !!meeting.meeting_format && agendaCount >= 1,
+    ok: !!meeting.meeting_type && hasTitle && hasScheduleBlock && !!meeting.meeting_format && agendaOk,
     hasTitle,
     hasScheduledAt: hasScheduleBlock,
     hasFormat: !!meeting.meeting_format,

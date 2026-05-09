@@ -221,6 +221,11 @@ const translations: Record<string, Record<Language, string>> = {
   voting_opens: { en: 'Voting opens', zh: '投票开放时间' },
   voting_closes: { en: 'Voting closes', zh: '投票截止时间' },
 
+  meeting_status_draft: { en: 'Draft', zh: '草稿' },
+  meeting_status_active: { en: 'Active', zh: '进行中' },
+  meeting_status_closed: { en: 'Closed', zh: '已结束' },
+  meeting_status_archived: { en: 'Archived', zh: '已归档' },
+  meeting_status_draft_label: { en: 'Draft', zh: '草稿' },
   meeting_status_active_label: { en: 'Active', zh: '进行中' },
   meeting_status_closed_label: { en: 'Closed', zh: '已结束' },
   meeting_status_archived_label: { en: 'Archived', zh: '已归档' },
@@ -237,8 +242,21 @@ const translations: Record<string, Record<Language, string>> = {
   },
   meeting_editor_schedule_guard_note: {
     en:
-      'The database may still enforce extra checks when advancing certain meeting states or sending notices.',
-    zh: '在提交「已安排」或发送通知时，数据库可能仍会校验标题、时间及议程等条件。',
+      'When moving beyond draft or sending notices, the system validates required fields (including agenda when applicable).',
+    zh: '从草稿进入其他会议状态或发送通知时，系统将校验必填项（含议程等，视流程而定）。',
+  },
+  meeting_create_notice_ready_sync_missing: {
+    en: 'Before sending notices, provide a title, meeting type, meeting format, meeting time, and at least one agenda item.',
+    zh: '发送通知前需要标题、会议类型、会议形式、会议时间，并至少添加一条议程。',
+  },
+  meeting_create_notice_ready_written_missing: {
+    en:
+      'Written remote meetings require a discussion period, a voting period, and at least one agenda item. Mark agenda items that require formal voting.',
+    zh: '远程书面会议需要设置讨论期、投票期，并至少添加一条议程；需要正式表决的议程请勾选“需要表决”。',
+  },
+  meeting_create_save_then_agenda_hint: {
+    en: 'After saving, add agenda items on the meeting detail page. At least one agenda item is required before sending notices.',
+    zh: '保存会议后，请在会议详情中添加议程；发送通知前至少需要一条议程。',
   },
 
   meeting_status: { en: 'Meeting status', zh: '会议状态' },
