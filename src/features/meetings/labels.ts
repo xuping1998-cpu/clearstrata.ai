@@ -1,4 +1,5 @@
 import type { MeetingFormat, MeetingStatus, MeetingType, VoteRule, VoteStatus } from './api';
+import { extractWrittenRemoteMeta } from './meetingFormatModel';
 
 const meetingTypeZh: Record<MeetingType, string> = {
   agm: 'AGM',
@@ -13,29 +14,29 @@ const meetingTypeEn: Record<MeetingType, string> = {
 };
 
 const formatZh: Record<MeetingFormat, string> = {
-  in_person: '线下',
-  electronic: '线上',
-  hybrid: '混合',
+  in_person: '线下会议',
+  electronic: '实时远程会议',
+  hybrid: '混合会议',
 };
 
 const formatEn: Record<MeetingFormat, string> = {
-  in_person: 'In person',
-  electronic: 'Electronic',
+  in_person: 'In-person',
+  electronic: 'Live Remote',
   hybrid: 'Hybrid',
 };
 
 const statusZh: Record<MeetingStatus, string> = {
   draft: '草稿',
-  scheduled: '已安排',
-  open: '投票中',
-  closed: '已关闭',
+  scheduled: '进行中',
+  open: '进行中',
+  closed: '已结束',
   archived: '已归档',
 };
 
 const statusEn: Record<MeetingStatus, string> = {
   draft: 'Draft',
-  scheduled: 'Scheduled',
-  open: 'Open',
+  scheduled: 'Active',
+  open: 'Active',
   closed: 'Closed',
   archived: 'Archived',
 };
@@ -74,10 +75,17 @@ export function labelMeetingType(t: string, en: boolean): string {
   return t;
 }
 
-export function labelFormat(t: string, en: boolean): string {
-  const k = t as MeetingFormat;
+export function labelFormat(
+  fmt: string,
+  en: boolean,
+  extras?: { descriptionZh?: string | null },
+): string {
+  const k = fmt as MeetingFormat;
+  if (k === 'hybrid' && extras?.descriptionZh != null && extractWrittenRemoteMeta(extras.descriptionZh).meta) {
+    return en ? 'Written Remote' : '远程书面会议';
+  }
   if (k in formatZh) return en ? formatEn[k] : formatZh[k];
-  return t;
+  return fmt;
 }
 
 export function labelStatus(t: string, en: boolean): string {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Mail, RefreshCw, Users } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useProperty } from '../../contexts/PropertyContext';
@@ -9,9 +9,13 @@ import {
   castBallot,
   createAgendaItem,
   createVote,
+  ensureOwnerVoteMeetingForCouncilMeeting,
+  fetchOwnerVoteMeetingMetaForCouncilMeeting,
+  fetchOwnerVoteResolutionResultsForOwnerMeeting,
   fetchMeetingCore,
   fetchMeetingExtras,
   invitationSummary,
+  mapVoteRuleToOwnerVoteThreshold,
   markMeetingInvitationOpened,
   meetingTitleZhFirst,
   resetFailedInvitations,
@@ -22,11 +26,16 @@ import {
   type MeetingInvitationRow,
   type MeetingVoteOptionRow,
   type MeetingVoteRow,
+  type OwnerVoteMeetingLite,
+  type OwnerVoteResolutionResultNormalized,
 } from '../../features/meetings/api';
 import { supabase } from '../../lib/supabase';
 import { shouldDeferAutoPropertyRedirects } from '../../lib/authRecovery';
 import { samePropertyId } from '../../lib/propertyIdMatch';
 import { labelFormat, labelMeetingType, labelStatus, labelVoteRule, labelVoteStatus, meetingUiStrings } from '../../features/meetings/labels';
+import { councilMeetingTitleForOwnerVoteBinding, isOwnerVotingMeeting } from '@/features/meetings/ownerVotingCouncil';
+import { OwnerVotingInlineControlBar } from '@/components/meetings/OwnerVotingInlineControlBar';
+import { MeetingOwnerVoteResolutionResults } from '@/components/meetings/MeetingOwnerVoteResolutionResults';
 import { StatusAlert, StatusBadge } from '@/components/status';
 
 const initialBundle = (): MeetingDetailBundle => ({
@@ -42,6 +51,7 @@ const initialBundle = (): MeetingDetailBundle => ({
 export function MeetingDetail() {
   const { meetingId: meetingIdParam, id: legacyVotingId } = useParams<{ meetingId?: string; id?: string }>();
   const meetingId = meetingIdParam ?? legacyVotingId;
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { currentPropertyId, roleInProperty } = useProperty();
   const { language, t } = useLanguage();
@@ -62,6 +72,16 @@ export function MeetingDetail() {
     Record<string, { full_name_en: string | null; full_name_zh: string | null; email: string | null }>
   >({});
   const [inviteToast, setInviteToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  const [evToast, setEvToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  const [ovBusy, setOvBusy] = useState(false);
+  const [ovMeta, setOvMeta] = useState<{
+    loading: boolean;
+    meeting: OwnerVoteMeetingLite | null;
+    resolutions: Array<{ id: string; title: string; threshold: string }>;
+    resolutionCount: number;
+    eligibleCount: number;
+  }>({ loading: false, meeting: null, resolutions: [], resolutionCount: 0, eligibleCount: 0 });
+  const [ovResolutionResults, setOvResolutionResults] = useState<OwnerVoteResolutionResultNormalized[]>([]);
   const openedTrackedRef = useRef<string | null>(null);
 
   const isStaff =
@@ -144,6 +164,50 @@ export function MeetingDetail() {
   }, [bundle.invitations, location.pathname, location.hash, location.search]);
 
   const meeting = bundle.meeting;
+
+  const refreshOwnerVoteMeta = useCallback(async () => {
+    if (!meeting || !currentPropertyId || !isOwnerVotingMeeting(meeting)) {
+      setOvMeta({ loading: false, meeting: null, resolutions: [], resolutionCount: 0, eligibleCount: 0 });
+      setOvResolutionResults([]);
+      return;
+    }
+    setOvMeta((p) => ({ ...p, loading: true }));
+    const r = await fetchOwnerVoteMeetingMetaForCouncilMeeting({ propertyId: currentPropertyId, meeting });
+    let viewRows: OwnerVoteResolutionResultNormalized[] = [];
+    if (r.meeting?.id) {
+      const vr = await fetchOwnerVoteResolutionResultsForOwnerMeeting({
+        propertyId: currentPropertyId,
+        ownerVoteMeetingId: r.meeting.id,
+      });
+      viewRows = vr.rows;
+      if (vr.error) console.error('[MeetingDetail] owner_vote_resolution_results', vr.error);
+    }
+    setOvMeta({
+      loading: false,
+      meeting: r.meeting,
+      resolutions: r.resolutions,
+      resolutionCount: r.resolutionCount,
+      eligibleCount: r.eligibleCount,
+    });
+    setOvResolutionResults(viewRows);
+    if (r.error) console.error('[MeetingDetail] owner vote meta', r.error);
+  }, [meeting, currentPropertyId, bundle.agendaItems.length]);
+
+  useEffect(() => {
+    if (shouldDeferAutoPropertyRedirects()) return;
+    if (!meeting || !currentPropertyId || !isOwnerVotingMeeting(meeting)) {
+      setOvMeta({ loading: false, meeting: null, resolutions: [], resolutionCount: 0, eligibleCount: 0 });
+      setOvResolutionResults([]);
+      return;
+    }
+    void refreshOwnerVoteMeta();
+  }, [meeting, currentPropertyId, refreshOwnerVoteMeta]);
+
+  useEffect(() => {
+    if (!evToast) return;
+    const h = window.setTimeout(() => setEvToast(null), 8000);
+    return () => window.clearTimeout(h);
+  }, [evToast]);
 
   const isVotingRoute =
     location.pathname.startsWith('/voting') && !location.pathname.includes('/demo/voting');
@@ -264,21 +328,72 @@ export function MeetingDetail() {
     setBusy(true);
     setActionErr(null);
     const nextOrder = bundle.agendaItems.length + 1;
+    const savedTitleZh = newAgendaZh.trim();
+    const savedTitleEn = newAgendaEn.trim();
+    const savedVoteRule = newVoteRule;
+    const savedWantsVote = newAgendaVote;
+
     const { error } = await createAgendaItem({
       propertyId: propertyIdForAgenda,
       meetingId: meeting.id,
       sortOrder: nextOrder,
-      titleEn: newAgendaEn.trim() || null,
-      titleZh: newAgendaZh.trim() || null,
-      requiresVote: newAgendaVote,
-      voteRule: newAgendaVote ? newVoteRule : null,
+      titleEn: savedTitleEn || null,
+      titleZh: savedTitleZh || null,
+      requiresVote: savedWantsVote,
+      voteRule: savedWantsVote ? savedVoteRule : null,
     });
-    if (error) setActionErr(error.message);
-    else {
-      setNewAgendaZh('');
-      setNewAgendaEn('');
-      setNewAgendaVote(false);
+
+    if (error) {
+      setActionErr(error.message);
+      setBusy(false);
+      await load();
+      return;
     }
+
+    setNewAgendaZh('');
+    setNewAgendaEn('');
+    setNewAgendaVote(false);
+
+    if (
+      savedWantsVote &&
+      isOwnerVotingMeeting(meeting) &&
+      isStaff &&
+      currentPropertyId &&
+      user?.id
+    ) {
+      const ensured = await ensureOwnerVoteMeetingForCouncilMeeting({
+        propertyId: propertyIdForAgenda,
+        meeting,
+        userId: user.id,
+      });
+
+      if (ensured.error || !ensured.id) {
+        console.error('[MeetingDetail] ensureOwnerVoteMeetingForCouncilMeeting', ensured.error);
+        setActionErr(
+          en
+            ? 'Agenda added, but owner vote meeting could not be created. Add formal resolutions later in expense review if needed.'
+            : '议程已添加，但业主表决会议准备失败，正式决议未同步。请稍后在业主表决管理中补充。',
+        );
+      } else {
+        const resTitle = savedTitleZh || savedTitleEn || (en ? 'Untitled resolution' : '未命名决议');
+        const { error: resErr } = await supabase.from('owner_vote_resolutions').insert({
+          meeting_id: ensured.id,
+          title: resTitle,
+          description: null,
+          threshold: mapVoteRuleToOwnerVoteThreshold(savedVoteRule),
+          display_order: nextOrder,
+        });
+        if (resErr) {
+          console.error('[MeetingDetail] owner_vote_resolutions insert', resErr);
+          setActionErr(
+            en
+              ? 'Agenda added, but the formal owner vote resolution could not be created. You can add it later.'
+              : '议程已添加，但正式表决决议创建失败，请稍后补充。',
+          );
+        }
+      }
+    }
+
     setBusy(false);
     await load();
   }
@@ -355,6 +470,94 @@ export function MeetingDetail() {
     await load();
   }
 
+  async function handleEnableElectronicVoting() {
+    if (!meeting || !user?.id || !currentPropertyId) return;
+    if (!councilMeetingTitleForOwnerVoteBinding(meeting).trim()) {
+      setEvToast({
+        kind: 'error',
+        text: en
+          ? 'Add a Chinese or English meeting title before enabling electronic voting.'
+          : '请先为本次会议填写标题后再启用。',
+      });
+      return;
+    }
+    setOvBusy(true);
+    const { id, error } = await ensureOwnerVoteMeetingForCouncilMeeting({
+      propertyId: currentPropertyId,
+      meeting,
+      userId: user.id,
+    });
+    if (error || !id) {
+      console.error('[MeetingDetail] enable electronic voting', error);
+      setEvToast({
+        kind: 'error',
+        text: error?.message ?? (en ? 'Could not enable electronic voting.' : '启用失败。'),
+      });
+      setOvBusy(false);
+      return;
+    }
+    setEvToast({ kind: 'success', text: t('meeting_ov_enabled_toast') });
+    setOvBusy(false);
+    await refreshOwnerVoteMeta();
+  }
+
+  async function handleFreezeOwnerVoteSnapshot() {
+    const ov = ovMeta.meeting;
+    if (!ov?.id) return;
+    const st = ov.status?.trim().toLowerCase() ?? '';
+    if (st === 'open' && !window.confirm(t('meeting_ov_freeze_confirm_open'))) return;
+    setOvBusy(true);
+    const { error } = await supabase.rpc('freeze_owner_vote_snapshot', { p_meeting_id: ov.id });
+    if (error) {
+      console.error('[MeetingDetail] freeze_owner_vote_snapshot', error);
+      setEvToast({ kind: 'error', text: error.message });
+    } else {
+      setEvToast({ kind: 'success', text: t('meeting_ov_freeze_toast') });
+    }
+    setOvBusy(false);
+    await refreshOwnerVoteMeta();
+  }
+
+  async function handleOpenOwnerVoteMeeting() {
+    const ov = ovMeta.meeting;
+    if (!ov?.id) return;
+    if (!ov.snapshot_frozen_at || ovMeta.resolutionCount <= 0) {
+      setEvToast({ kind: 'error', text: t('meeting_ov_need_resolution_and_snapshot') });
+      return;
+    }
+    setOvBusy(true);
+    const { error } = await supabase
+      .from('owner_vote_meetings')
+      .update({ status: 'open', updated_at: new Date().toISOString() } as Record<string, unknown>)
+      .eq('id', ov.id);
+    if (error) {
+      console.error('[MeetingDetail] open owner vote meeting', error);
+      setEvToast({ kind: 'error', text: error.message });
+    } else {
+      setEvToast({ kind: 'success', text: t('meeting_ev_open_toast') });
+    }
+    setOvBusy(false);
+    await refreshOwnerVoteMeta();
+  }
+
+  async function handleCloseOwnerVoteMeeting() {
+    const ov = ovMeta.meeting;
+    if (!ov?.id || ov.status?.trim().toLowerCase() !== 'open') return;
+    setOvBusy(true);
+    const { error } = await supabase
+      .from('owner_vote_meetings')
+      .update({ status: 'closed', updated_at: new Date().toISOString() } as Record<string, unknown>)
+      .eq('id', ov.id);
+    if (error) {
+      console.error('[MeetingDetail] close owner vote meeting', error);
+      setEvToast({ kind: 'error', text: error.message });
+    } else {
+      setEvToast({ kind: 'success', text: t('meeting_ev_close_toast') });
+    }
+    setOvBusy(false);
+    await refreshOwnerVoteMeta();
+  }
+
   if (!user) {
     return <div className="min-h-screen flex items-center justify-center text-gray-600">{en ? 'Sign in required.' : '请先登录。'}</div>;
   }
@@ -399,6 +602,8 @@ export function MeetingDetail() {
     return en ? 'Abstain' : '弃权';
   }
 
+  const showCouncilOwnerVoteUi = !!(meeting && currentPropertyId && isOwnerVotingMeeting(meeting));
+
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
       <div className="border-b border-white/25 bg-clearstrata-hero text-white shadow-md shadow-clearstrata-ui-primary/25">
@@ -421,7 +626,7 @@ export function MeetingDetail() {
                     {labelMeetingType(meeting.meeting_type, en)}
                   </span>
                   <span className="px-2.5 py-0.5 rounded-md text-xs font-medium bg-white/25 text-white ring-1 ring-white/40 shadow-sm">
-                    {labelFormat(meeting.meeting_format, en)}
+                    {labelFormat(meeting.meeting_format, en, { descriptionZh: meeting.description_zh })}
                   </span>
                 </div>
                 <h1 className="text-2xl sm:text-3xl font-bold text-white leading-snug break-words">
@@ -462,15 +667,26 @@ export function MeetingDetail() {
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 -mt-6 relative z-10">
         <div className="rounded-2xl border border-gray-200/90 bg-white p-5 sm:p-8 shadow-[0_16px_50px_-12px_rgba(6,61,47,0.14)] space-y-8">
-        {inviteToast ? (
-          <div className="fixed bottom-6 left-1/2 z-50 max-w-lg w-[min(100%,28rem)] -translate-x-1/2 px-4">
-            <StatusAlert
-              tone={inviteToast.kind === 'success' ? 'success' : 'danger'}
-              variant="solid"
-              className="shadow-lg"
-            >
-              {inviteToast.text}
-            </StatusAlert>
+        {(inviteToast || evToast) ? (
+          <div className="fixed bottom-6 left-1/2 z-50 flex max-w-lg w-[min(100%,28rem)] -translate-x-1/2 flex-col gap-2 px-4">
+            {inviteToast ? (
+              <StatusAlert
+                tone={inviteToast.kind === 'success' ? 'success' : 'danger'}
+                variant="solid"
+                className="shadow-lg"
+              >
+                {inviteToast.text}
+              </StatusAlert>
+            ) : null}
+            {evToast ? (
+              <StatusAlert
+                tone={evToast.kind === 'success' ? 'success' : 'danger'}
+                variant="solid"
+                className="shadow-lg"
+              >
+                {evToast.text}
+              </StatusAlert>
+            ) : null}
           </div>
         ) : null}
         {actionErr ? (
@@ -498,7 +714,7 @@ export function MeetingDetail() {
                 </div>
                 <div>
                   <dt className="text-gray-500">{en ? meetingUiStrings.format.en : meetingUiStrings.format.zh}</dt>
-                  <dd>{labelFormat(meeting.meeting_format, en)}</dd>
+                  <dd>{labelFormat(meeting.meeting_format, en, { descriptionZh: meeting.description_zh })}</dd>
                 </div>
                 <div>
                   <dt className="text-gray-500">{en ? 'Notice sent' : '通知发出时间'}</dt>
@@ -512,6 +728,23 @@ export function MeetingDetail() {
               <h2 className="text-lg font-semibold text-gray-900 mb-4 border-b pb-2">
                 {en ? meetingUiStrings.sectionAgenda.en : meetingUiStrings.sectionAgenda.zh}
               </h2>
+              {showCouncilOwnerVoteUi ? (
+                <OwnerVotingInlineControlBar
+                  meeting={meeting}
+                  isStaff={isStaff}
+                  userId={user?.id}
+                  languageEn={en}
+                  t={t}
+                  onNavigateOwnerVoting={() => navigate('/owner-voting')}
+                  meta={ovMeta}
+                  ovBusy={ovBusy}
+                  canEnableBinding={Boolean(councilMeetingTitleForOwnerVoteBinding(meeting).trim())}
+                  onEnableElectronicVoting={() => void handleEnableElectronicVoting()}
+                  onFreezeSnapshot={() => void handleFreezeOwnerVoteSnapshot()}
+                  onOpenVoting={() => void handleOpenOwnerVoteMeeting()}
+                  onCloseVoting={() => void handleCloseOwnerVoteMeeting()}
+                />
+              ) : null}
               <div className="space-y-6">
                 {bundle.agendaItems.map((agenda) => {
                   const vote = voteByAgendaId.get(agenda.id);
@@ -656,15 +889,18 @@ export function MeetingDetail() {
                       {en ? 'Requires vote' : '需要表决'}
                     </label>
                     {newAgendaVote && (
-                      <select
-                        value={newVoteRule}
-                        onChange={(e) => setNewVoteRule(e.target.value as typeof newVoteRule)}
-                        className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                      >
-                        <option value="simple_majority">{labelVoteRule('simple_majority', en)}</option>
-                        <option value="three_quarter">{labelVoteRule('three_quarter', en)}</option>
-                        <option value="unanimous">{labelVoteRule('unanimous', en)}</option>
-                      </select>
+                      <label className="block text-sm space-y-1">
+                        <span className="font-medium text-gray-800">{en ? 'Vote threshold' : '表决门槛'}</span>
+                        <select
+                          value={newVoteRule}
+                          onChange={(e) => setNewVoteRule(e.target.value as typeof newVoteRule)}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                        >
+                          <option value="simple_majority">{en ? 'Simple majority' : '普通多数'}</option>
+                          <option value="three_quarter">{en ? 'Three-quarters' : '3/4 票'}</option>
+                          <option value="unanimous">{en ? 'Unanimous' : '全票通过'}</option>
+                        </select>
+                      </label>
                     )}
                     <button type="submit" disabled={busy} className="text-sm px-4 py-2 rounded-lg bg-gray-900 text-white disabled:opacity-50">
                       {en ? 'Add' : '添加'}
@@ -809,8 +1045,20 @@ export function MeetingDetail() {
           </div>
 
           <div className="border-t border-gray-100 pt-8">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 border-b pb-2">{en ? 'Resolutions' : '决议'}</h2>
-            {bundle.resolutions.length === 0 ? (
+            <h2 className="text-lg font-semibold text-gray-900 mb-4 border-b pb-2">
+              {showCouncilOwnerVoteUi ? t('meeting_resolution_results_title') : en ? 'Resolutions' : '决议'}
+            </h2>
+            {showCouncilOwnerVoteUi ? (
+              <MeetingOwnerVoteResolutionResults
+                loading={ovMeta.loading}
+                ownerVoteMeeting={ovMeta.meeting}
+                resolutions={ovMeta.resolutions}
+                resultRows={ovResolutionResults}
+                eligibleFallback={ovMeta.eligibleCount}
+                t={t}
+                languageEn={en}
+              />
+            ) : bundle.resolutions.length === 0 ? (
               <p className="text-sm text-gray-600">
                 {en ? 'No resolutions recorded yet.' : '暂无决议记录。'}
               </p>

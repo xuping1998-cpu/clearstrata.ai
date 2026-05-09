@@ -230,7 +230,7 @@ export function MeetingListView({ variant }: Props) {
                         {labelMeetingType(m.meeting_type, en)}
                       </span>
                       <span className="px-2 py-0.5 rounded-full text-xs font-medium border border-clearstrata-ui-softBorder bg-clearstrata-brand-50 text-clearstrata-brand-800">
-                        {labelFormat(m.meeting_format, en)}
+                        {labelFormat(m.meeting_format, en, { descriptionZh: m.description_zh })}
                       </span>
                       <span className="px-2 py-0.5 rounded-full text-xs font-semibold border border-clearstrata-ui-softBorder bg-clearstrata-brand-100 text-clearstrata-brand-800">
                         {labelStatus(m.status, en)}

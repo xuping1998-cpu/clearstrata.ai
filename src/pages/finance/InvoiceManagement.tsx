@@ -26,6 +26,7 @@ import {
   Sparkles,
   ChevronDown,
   ChevronRight,
+  PenLine,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useProperty } from '../../contexts/PropertyContext';
@@ -118,6 +119,10 @@ const CATEGORIES = [
   { value: 'plumbing', labelZh: '管道', labelEn: 'Plumbing' },
   { value: 'electrical', labelZh: '电气', labelEn: 'Electrical' },
 ];
+
+/** Month selectors for archive-period modal (1–12). */
+const MONTH_OPTS: readonly number[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+const MONTH_LABEL_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
 
 function quoteVarianceBadgeClass(v: QuoteVarianceResult): string {
   switch (v.warningLevel) {
@@ -376,6 +381,10 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
   const [rejectTarget, setRejectTarget] = useState<Invoice | null>(null);
   const [rejectNote, setRejectNote] = useState('');
   const [rejectSubmitting, setRejectSubmitting] = useState(false);
+  const [archiveEditTarget, setArchiveEditTarget] = useState<Invoice | null>(null);
+  const [archiveEditYear, setArchiveEditYear] = useState<number>(() => new Date().getFullYear());
+  const [archiveEditMonth, setArchiveEditMonth] = useState<number>(() => new Date().getMonth() + 1);
+  const [archiveSaving, setArchiveSaving] = useState(false);
   const [invoiceTaskSource, setInvoiceTaskSource] = useState<
     Record<string, { taskId: string; title: string }>
   >({});
@@ -428,6 +437,65 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
       .order('created_at', { ascending: false });
     if (data) setInvoices(data as Invoice[]);
   }, [currentPropertyId]);
+
+  const openArchiveModal = useCallback((inv: Invoice) => {
+    setArchiveEditYear(effectiveAccountingYear(inv));
+    setArchiveEditMonth(effectiveAccountingMonth(inv));
+    setArchiveEditTarget(inv);
+  }, []);
+
+  const saveArchivePeriod = useCallback(async () => {
+    if (!archiveEditTarget || !currentPropertyId || !profile?.id) return;
+    if (!canManageInvoiceWorkflow(roleInProperty)) return;
+    const y = Math.floor(Number(archiveEditYear));
+    const m = Math.floor(Number(archiveEditMonth));
+    if (!Number.isFinite(y) || y < 1900 || y > 2100) {
+      window.alert(l ? 'Enter a valid year (1900–2100).' : '请输入有效年份（1900–2100）。');
+      return;
+    }
+    if (!Number.isFinite(m) || m < 1 || m > 12) {
+      window.alert(l ? 'Enter a valid month (1–12).' : '请输入有效月份（1–12）。');
+      return;
+    }
+    setArchiveSaving(true);
+    try {
+      const { error } = await supabase
+        .from('invoices')
+        .update({
+          accounting_year: y,
+          accounting_month: m,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', archiveEditTarget.id)
+        .eq('property_id', currentPropertyId);
+      if (error) {
+        window.alert(error.message);
+        return;
+      }
+      await supabase.from('invoice_audit_log').insert({
+        property_id: currentPropertyId,
+        invoice_id: archiveEditTarget.id,
+        actor_id: profile.id,
+        action: 'edit_details',
+        notes: null,
+        old_status: archiveEditTarget.status,
+        new_status: archiveEditTarget.status,
+      });
+      setArchiveEditTarget(null);
+      await loadInvoicesQuiet();
+    } finally {
+      setArchiveSaving(false);
+    }
+  }, [
+    archiveEditTarget,
+    archiveEditYear,
+    archiveEditMonth,
+    currentPropertyId,
+    profile?.id,
+    roleInProperty,
+    loadInvoicesQuiet,
+    l,
+  ]);
 
   useEffect(() => {
     void loadInvoices();
@@ -1604,7 +1672,7 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
                     >
                       {l ? 'Status' : '状态'}
                     </th>
-                    <th className="w-[88px] min-w-[88px] max-w-[88px] whitespace-nowrap px-0.5 py-1.5 text-center text-[10px] font-medium uppercase tracking-wide text-gray-500 sm:py-2">
+                    <th className="w-[104px] min-w-[104px] max-w-[116px] whitespace-nowrap px-0.5 py-1.5 text-center text-[10px] font-medium uppercase tracking-wide text-gray-500 sm:py-2">
                       {l ? 'Actions' : '操作'}
                     </th>
                   </tr>
@@ -1724,7 +1792,7 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
                           </span>
                         </td>
                         <td
-                          className="w-[88px] min-w-[88px] max-w-[88px] overflow-visible px-0.5 py-1.5 text-center align-top sm:py-2"
+                          className="w-[104px] min-w-[104px] max-w-[116px] overflow-visible px-0.5 py-1.5 text-center align-top sm:py-2"
                           onClick={(e) => e.stopPropagation()}
                         >
                           <div className="flex w-full flex-col items-stretch gap-1">
@@ -1737,6 +1805,16 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
                               >
                                 <Eye size={14} />
                               </button>
+                              {canAudit && (
+                                <button
+                                  type="button"
+                                  onClick={() => openArchiveModal(inv)}
+                                  className="rounded-md p-1 text-gray-500 hover:bg-clearstrata-ui-soft hover:text-clearstrata-ui-primary"
+                                  title={l ? 'Edit archive year / month' : '修改归档'}
+                                >
+                                  <PenLine size={14} aria-hidden />
+                                </button>
+                              )}
                               {canDeleteInvoice(roleInProperty, profile?.id, inv.uploaded_by) && (
                                 <button
                                   type="button"
@@ -1860,6 +1938,31 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
                         </div>
                       ) : null}
                     </div>
+                    <div
+                      className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {canAudit && (
+                        <button
+                          type="button"
+                          onClick={() => openArchiveModal(inv)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-800 hover:bg-gray-50"
+                        >
+                          <PenLine className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                          {l ? 'Edit archive' : '修改归档'}
+                        </button>
+                      )}
+                      {canDeleteInvoice(roleInProperty, profile?.id, inv.uploaded_by) && (
+                        <button
+                          type="button"
+                          onClick={() => setDeleteConfirm(inv)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-red-100 bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-800 hover:bg-red-100"
+                        >
+                          <Trash2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                          {l ? 'Delete' : '删除'}
+                        </button>
+                      )}
+                    </div>
                     {canAudit && inv.status === 'pending_review' && (
                       <div className="flex gap-2 mt-3" onClick={(e) => e.stopPropagation()}>
                         <button
@@ -1963,6 +2066,74 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
                 className="flex-1 py-2.5 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50"
               >
                 {rejectSubmitting ? (l ? 'Saving…' : '提交中…') : l ? 'Confirm reject' : '确认驳回'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {archiveEditTarget && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+          <div
+            role="dialog"
+            aria-labelledby="invoice-archive-heading"
+            className="max-h-[min(560px,calc(100vh-4rem))] w-full max-w-md overflow-y-auto rounded-xl bg-white p-6 shadow-xl"
+          >
+            <h3 id="invoice-archive-heading" className="mb-1 text-lg font-semibold text-gray-900">
+              {l ? 'Edit archive period' : '修改归档年月'}
+            </h3>
+            <p className="mb-4 text-xs leading-relaxed text-gray-600">
+              {archiveEditTarget.vendor_name}{' '}
+              {archiveEditTarget.invoice_number ? `#${archiveEditTarget.invoice_number}` : ''}
+            </p>
+            <p className="mb-4 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-700">
+              {l
+                ? 'Controls which bookkeeping year/month this invoice is grouped under. It does not change invoice date, payment date, or upload time.'
+                : '决定这张发票进入哪个年度/月度账本；与发票日期、付款日、上传时间无关。'}
+            </p>
+            <div className="grid gap-4">
+              <label className="block text-sm">
+                <span className="font-medium text-gray-800">{l ? 'Accounting year' : '归档年份'}</span>
+                <input
+                  type="number"
+                  min={1900}
+                  max={2100}
+                  value={archiveEditYear}
+                  onChange={(e) => setArchiveEditYear(Number(e.target.value))}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="font-medium text-gray-800">{l ? 'Accounting month' : '归档月份'}</span>
+                <select
+                  value={archiveEditMonth}
+                  onChange={(e) => setArchiveEditMonth(Number(e.target.value))}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                >
+                  {MONTH_OPTS.map((m) => (
+                    <option key={m} value={m}>
+                      {l ? MONTH_LABEL_EN[m - 1] : `${m} 月`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                disabled={archiveSaving}
+                onClick={() => setArchiveEditTarget(null)}
+                className="flex-1 rounded-lg border border-gray-300 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                {l ? 'Cancel' : '取消'}
+              </button>
+              <button
+                type="button"
+                disabled={archiveSaving}
+                onClick={() => void saveArchivePeriod()}
+                className="flex-1 rounded-lg bg-clearstrata-ui-primary py-2.5 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:opacity-50"
+              >
+                {archiveSaving ? (l ? 'Saving…' : '保存中…') : l ? 'Save' : '保存'}
               </button>
             </div>
           </div>

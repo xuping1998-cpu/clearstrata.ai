@@ -1,6 +1,12 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
 import { withProperty } from '../../lib/supabaseTenant';
+import {
+  addDaysIso,
+  councilMeetingTitleForOwnerVoteBinding,
+  isOwnerVotingMeeting,
+  ownerVoteMeetingTypeForInsert,
+} from './ownerVotingCouncil';
 
 export type SendMeetingInvitesResult = {
   attempted: number;
@@ -224,19 +230,26 @@ export function meetingTitleZhFirst(m: Pick<MeetingRow, 'title_zh' | 'title_en'>
   return zh || en || '';
 }
 
-export function noticeReadiness(meeting: Partial<MeetingRow>, agendaCount: number) {
+/** When `writtenRemote`, requires discussion open + closes (meta elsewhere) + voting open/close. */
+export function noticeReadiness(
+  meeting: Partial<MeetingRow>,
+  agendaCount: number,
+  opts?: { writtenRemote?: boolean; discussionClosesIso?: string | null },
+) {
   const hasTitle =
     (meeting.title_en && meeting.title_en.trim().length > 0) ||
     (meeting.title_zh && meeting.title_zh.trim().length > 0);
+  const written = !!opts?.writtenRemote;
+  const hasScheduleBlock = written
+    ? !!meeting.scheduled_at &&
+      !!meeting.voting_open_at &&
+      !!meeting.voting_close_at &&
+      !!(opts?.discussionClosesIso && String(opts.discussionClosesIso).trim())
+    : !!meeting.scheduled_at;
   return {
-    ok:
-      !!meeting.meeting_type &&
-      hasTitle &&
-      !!meeting.scheduled_at &&
-      !!meeting.meeting_format &&
-      agendaCount >= 1,
+    ok: !!meeting.meeting_type && hasTitle && hasScheduleBlock && !!meeting.meeting_format && agendaCount >= 1,
     hasTitle,
-    hasScheduledAt: !!meeting.scheduled_at,
+    hasScheduledAt: hasScheduleBlock,
     hasFormat: !!meeting.meeting_format,
     agendaCount,
   };
@@ -527,6 +540,8 @@ export async function createMeeting(input: {
   descriptionEn?: string | null;
   descriptionZh?: string | null;
   scheduledAt?: string | null;
+  votingOpenAt?: string | null;
+  votingCloseAt?: string | null;
   meetingFormat: MeetingFormat;
   status?: MeetingStatus;
   createdBy: string;
@@ -542,6 +557,8 @@ export async function createMeeting(input: {
       description_en: input.descriptionEn ?? null,
       description_zh: input.descriptionZh ?? null,
       scheduled_at: input.scheduledAt ?? null,
+      voting_open_at: input.votingOpenAt ?? null,
+      voting_close_at: input.votingCloseAt ?? null,
       meeting_format: input.meetingFormat,
       status: input.status ?? 'draft',
       created_by: input.createdBy,
@@ -943,4 +960,259 @@ export async function updateVote(
     supabase.from('meeting_votes').update({ ...patch, property_id: propertyId }) as any,
     propertyId,
   ).eq('id', voteId);
+}
+
+/** Maps council `meeting_votes.vote_rule` to `owner_vote_resolutions.threshold`. */
+export function mapVoteRuleToOwnerVoteThreshold(
+  voteRule: VoteRule | null | undefined,
+): 'majority' | 'three_quarter' | 'unanimous' {
+  if (voteRule === 'three_quarter') return 'three_quarter';
+  if (voteRule === 'unanimous') return 'unanimous';
+  return 'majority';
+}
+
+/**
+ * Ensures an `owner_vote_meetings` row exists for the current AGM/SGM council meeting (by title binding).
+ * No-op returns `{ id: null, error: null }` when the meeting type is not owner-votable.
+ */
+export async function ensureOwnerVoteMeetingForCouncilMeeting(params: {
+  propertyId: string;
+  meeting: MeetingRow;
+  userId: string;
+}): Promise<{ id: string | null; error: Error | null }> {
+  const { propertyId, meeting, userId } = params;
+
+  if (!isOwnerVotingMeeting(meeting)) {
+    return { id: null, error: null };
+  }
+
+  const title = councilMeetingTitleForOwnerVoteBinding(meeting).trim();
+  if (!title) {
+    return {
+      id: null,
+      error: new Error('Meeting needs a Chinese or English title before owner vote records can be created.'),
+    };
+  }
+
+  try {
+    const { data: existing, error: qErr } = await supabase
+      .from('owner_vote_meetings')
+      .select('id')
+      .eq('property_id', propertyId)
+      .eq('title', title)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (qErr) return { id: null, error: new Error(qErr.message) };
+    const existingId =
+      existing &&
+      typeof existing === 'object' &&
+      existing !== null &&
+      'id' in existing &&
+      (existing as { id: unknown }).id != null
+        ? String((existing as { id: string }).id)
+        : null;
+    if (existingId) return { id: existingId, error: null };
+
+    const scheduledIso = meeting.scheduled_at?.trim()
+      ? new Date(meeting.scheduled_at).toISOString()
+      : null;
+
+    const descZh = meeting.description_zh?.trim();
+    const descEn = meeting.description_en?.trim();
+    const descriptionParts = [descZh, descEn].filter((x): x is string => Boolean(x));
+    const description = descriptionParts.length ? descriptionParts.join('\n\n').slice(0, 24000) : null;
+
+    const row = {
+      property_id: propertyId,
+      meeting_type: ownerVoteMeetingTypeForInsert(meeting),
+      title,
+      description,
+      scheduled_at: scheduledIso,
+      voting_opens_at: new Date().toISOString(),
+      voting_closes_at: addDaysIso(scheduledIso ?? null, 7),
+      status: 'draft',
+      created_by: userId,
+    };
+
+    const { data: inserted, error: insErr } = await supabase
+      .from('owner_vote_meetings')
+      .insert(row)
+      .select('id')
+      .maybeSingle();
+
+    if (insErr) return { id: null, error: new Error(insErr.message) };
+    const newId =
+      inserted &&
+      typeof inserted === 'object' &&
+      inserted !== null &&
+      'id' in inserted &&
+      (inserted as { id: unknown }).id != null
+        ? String((inserted as { id: string }).id)
+        : null;
+    return { id: newId, error: null };
+  } catch (e: unknown) {
+    return { id: null, error: e instanceof Error ? e : new Error(String(e)) };
+  }
+}
+
+/** Slim row for council meeting ↔ owner_vote_meetings binding (no auto-create). */
+export type OwnerVoteMeetingLite = {
+  id: string;
+  status: string;
+  voting_opens_at: string | null;
+  voting_closes_at: string | null;
+  snapshot_frozen_at: string | null;
+  created_at: string;
+};
+
+/**
+ * Loads the latest `owner_vote_meetings` row for this council meeting (by title binding) plus counts.
+ * Does not insert — use `ensureOwnerVoteMeetingForCouncilMeeting` or agenda “需要表决” flow to create.
+ */
+export async function fetchOwnerVoteMeetingMetaForCouncilMeeting(params: {
+  propertyId: string;
+  meeting: MeetingRow;
+}): Promise<{
+  meeting: OwnerVoteMeetingLite | null;
+  resolutions: Array<{ id: string; title: string; threshold: string }>;
+  resolutionCount: number;
+  eligibleCount: number;
+  error: Error | null;
+}> {
+  const { propertyId, meeting } = params;
+
+  if (!isOwnerVotingMeeting(meeting)) {
+    return { meeting: null, resolutions: [], resolutionCount: 0, eligibleCount: 0, error: null };
+  }
+
+  const title = councilMeetingTitleForOwnerVoteBinding(meeting).trim();
+  if (!title) {
+    return { meeting: null, resolutions: [], resolutionCount: 0, eligibleCount: 0, error: null };
+  }
+
+  const { data: row, error: qErr } = await supabase
+    .from('owner_vote_meetings')
+    .select('id,status,voting_opens_at,voting_closes_at,snapshot_frozen_at,created_at')
+    .eq('property_id', propertyId)
+    .eq('title', title)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (qErr) {
+    return { meeting: null, resolutions: [], resolutionCount: 0, eligibleCount: 0, error: new Error(qErr.message) };
+  }
+
+  if (!row || typeof row !== 'object' || !('id' in row) || row.id == null) {
+    return { meeting: null, resolutions: [], resolutionCount: 0, eligibleCount: 0, error: null };
+  }
+
+  const mid = String(row.id);
+
+  const resQ = await supabase
+    .from('owner_vote_resolutions')
+    .select('id,title,threshold')
+    .eq('meeting_id', mid)
+    .order('display_order', { ascending: true });
+
+  const resolutionsRaw = (resQ.data ?? []) as { id: string; title: unknown; threshold: unknown }[];
+  const resolutions = resolutionsRaw.map((r) => ({
+    id: String(r.id),
+    title: typeof r.title === 'string' ? r.title : '',
+    threshold: typeof r.threshold === 'string' ? r.threshold : String(r.threshold ?? ''),
+  }));
+
+  const eligC = await supabase
+    .from('owner_vote_voter_snapshot')
+    .select('id', { count: 'exact', head: true })
+    .eq('meeting_id', mid)
+    .eq('is_eligible', true);
+
+  const resolutionCount = resolutions.length;
+  const eligibleCount = typeof eligC.count === 'number' ? eligC.count : 0;
+  const countErr = resQ.error ?? eligC.error;
+  if (countErr) {
+    console.error('[fetchOwnerVoteMeetingMetaForCouncilMeeting]', countErr);
+  }
+
+  return {
+    meeting: row as OwnerVoteMeetingLite,
+    resolutions,
+    resolutionCount,
+    eligibleCount,
+    error: countErr ? new Error(countErr.message) : null,
+  };
+}
+
+/** Normalized row from `owner_vote_resolution_results` view. */
+export type OwnerVoteResolutionResultNormalized = {
+  resolution_id: string;
+  title: string | null;
+  threshold: string | null;
+  yes_count: number;
+  no_count: number;
+  abstain_count: number;
+  total_cast: number;
+  eligible_count: number;
+  passed: boolean | null;
+};
+
+function pickNumOvResult(raw: Record<string, unknown>, keys: string[]): number {
+  for (const k of keys) {
+    const v = raw[k];
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+    if (typeof v === 'string' && v.trim() !== '' && !Number.isNaN(Number(v))) return Number(v);
+  }
+  return 0;
+}
+
+export function normalizeOwnerVoteResolutionResultRow(raw: Record<string, unknown>): OwnerVoteResolutionResultNormalized | null {
+  const resolution_id = String(raw.resolution_id ?? raw.resolutionId ?? '').trim();
+  if (!resolution_id) return null;
+  const title = raw.title != null ? String(raw.title) : null;
+  const threshold = raw.threshold != null ? String(raw.threshold) : null;
+  const yes_count = pickNumOvResult(raw, ['yes_count', 'yesCount']);
+  const no_count = pickNumOvResult(raw, ['no_count', 'noCount']);
+  const abstain_count = pickNumOvResult(raw, ['abstain_count', 'abstainCount']);
+  const total_cast = pickNumOvResult(raw, ['total_cast', 'totalCast', 'votes_cast']);
+  const eligible_count = pickNumOvResult(raw, ['eligible_count', 'eligibleCount', 'eligible_voters']);
+  let passedVal: boolean | null = null;
+  const pv = raw.passed ?? raw.is_passed;
+  if (typeof pv === 'boolean') passedVal = pv;
+  else if (pv === null || pv === undefined) passedVal = null;
+  else if (pv === 't' || pv === 'true' || pv === 1) passedVal = true;
+  else if (pv === 'f' || pv === 'false' || pv === 0) passedVal = false;
+  return {
+    resolution_id,
+    title,
+    threshold,
+    yes_count,
+    no_count,
+    abstain_count,
+    total_cast,
+    eligible_count,
+    passed: passedVal,
+  };
+}
+
+/** Reads formal tallies from `owner_vote_resolution_results` (no ballot table scans). */
+export async function fetchOwnerVoteResolutionResultsForOwnerMeeting(params: {
+  propertyId: string;
+  ownerVoteMeetingId: string;
+}): Promise<{ rows: OwnerVoteResolutionResultNormalized[]; error: Error | null }> {
+  const { propertyId, ownerVoteMeetingId } = params;
+  const { data, error } = await supabase
+    .from('owner_vote_resolution_results')
+    .select('*')
+    .eq('property_id', propertyId)
+    .eq('meeting_id', ownerVoteMeetingId);
+  if (error) return { rows: [], error: new Error(error.message) };
+  const rows: OwnerVoteResolutionResultNormalized[] = [];
+  for (const row of data ?? []) {
+    const n = normalizeOwnerVoteResolutionResultRow(row as Record<string, unknown>);
+    if (n) rows.push(n);
+  }
+  return { rows, error: null };
 }
