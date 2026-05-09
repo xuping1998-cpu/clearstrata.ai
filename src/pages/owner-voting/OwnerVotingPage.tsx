@@ -5,6 +5,12 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { StatusBadge } from '@/components/status/StatusBadge';
+import {
+  extractElectionAgendaMeta,
+  finalizeElectionMeta,
+  type ElectionAgendaMetaV1,
+} from '@/features/meetings/electionAgendaModel';
+import { resolveCouncilMeetingIdForOwnerVoteTitle } from '@/features/meetings/ownerVotingCouncil';
 
 export type VoteChoice = 'yes' | 'no' | 'abstain';
 export type MeetingStatus = 'draft' | 'open' | 'closed' | 'archived';
@@ -87,6 +93,12 @@ function parseRpcError(msg: string, zh: boolean): string | null {
   if (m.includes('not_authenticated')) {
     return zh ? '请先登录' : 'Please sign in.';
   }
+  if (m.includes('too_many_candidates') || m.includes('invalid_selection')) {
+    return zh ? '选择人数超过上限' : 'Too many candidates selected.';
+  }
+  if (m.includes('invalid_candidate_id')) {
+    return zh ? '选择无效（候选人未接受或未登记）' : 'Invalid candidate selection.';
+  }
   return null;
 }
 
@@ -114,6 +126,13 @@ function normalizeChoice(raw: unknown): VoteChoice | null {
   return null;
 }
 
+export interface ElectionAgendaBrief {
+  agendaItemId: string;
+  sortOrder: number;
+  title: string;
+  meta: ElectionAgendaMetaV1;
+}
+
 interface MeetingPack {
   snapshotId: string;
   meetingId: string;
@@ -122,12 +141,165 @@ interface MeetingPack {
   meeting: OwnerVoteMeetingRow;
   resolutions: ResolutionRow[];
   ballotsByResolution: Map<string, BallotRow>;
+  electionAgendas: ElectionAgendaBrief[];
+  electionSelections: Map<string, string[]>;
 }
 
 function votingPhaseTone(phase: VotingPhaseUi): 'neutral' | 'success' | 'warning' {
   if (phase === 'not_started') return 'neutral';
   if (phase === 'voting_live') return 'success';
   return 'warning';
+}
+
+function parseStoredCandidateIds(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const x of raw) {
+    if (typeof x === 'string' && x.trim()) out.push(x.trim());
+  }
+  return out;
+}
+
+type CouncilElectionBlockProps = {
+  zh: boolean;
+  t: (key: string) => string;
+  meetingId: string;
+  brief: ElectionAgendaBrief;
+  votesEnabled: boolean;
+  busy: boolean;
+  initialSelected: string[];
+  onBusy: (v: boolean) => void;
+  onToast: (toast: { kind: 'success' | 'error'; text: string }) => void;
+  onReload: () => Promise<void>;
+};
+
+function OwnerCouncilElectionBlock({
+  zh,
+  t,
+  meetingId,
+  brief,
+  votesEnabled,
+  busy,
+  initialSelected,
+  onBusy,
+  onToast,
+  onReload,
+}: CouncilElectionBlockProps) {
+  const [picked, setPicked] = useState<Set<string>>(() => new Set(initialSelected));
+  const meta = finalizeElectionMeta(brief.meta);
+  const maxPick = Math.min(Math.max(1, meta.max_choices_per_unit), Math.max(1, meta.seats));
+  const list = meta.candidates
+    .filter((c) => c.accepted)
+    .sort((a, b) => a.name.localeCompare(b.name, zh ? 'zh' : 'en'));
+
+  async function submit() {
+    onBusy(true);
+    try {
+      const { data, error } = await supabase.rpc('submit_owner_election_ballot', {
+        p_meeting_id: meetingId,
+        p_agenda_item_id: brief.agendaItemId,
+        p_selected_candidate_ids: [...picked],
+      });
+      if (error) {
+        onToast({ kind: 'error', text: parseRpcError(error.message, zh) ?? error.message });
+        return;
+      }
+      const payload = data as { ok?: boolean; error?: string } | null;
+      if (payload && typeof payload === 'object' && payload.ok === false) {
+        const hint = parseRpcError(String(payload.error ?? ''), zh);
+        onToast({
+          kind: 'error',
+          text: hint ?? (zh ? `提交失败（${payload.error ?? ''}）` : `Submit failed (${payload.error ?? ''}).`),
+        });
+        return;
+      }
+      onToast({ kind: 'success', text: zh ? '选票已提交' : 'Ballot submitted.' });
+      await onReload();
+    } catch (e) {
+      const raw = e instanceof Error ? e.message : String(e);
+      onToast({ kind: 'error', text: parseRpcError(raw, zh) ?? raw });
+    } finally {
+      onBusy(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-amber-200/80 bg-amber-50/20 p-4 space-y-3">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-amber-900/80">{t('meeting_election_title')}</p>
+        <h4 className="mt-1 text-base font-semibold text-gray-900">{brief.title.trim() || '—'}</h4>
+      </div>
+      <dl className="grid gap-2 text-xs sm:grid-cols-2">
+        <div>
+          <dt className="text-gray-500">{t('meeting_election_seats')}</dt>
+          <dd className="font-medium text-gray-900">{meta.seats}</dd>
+        </div>
+        <div>
+          <dt className="text-gray-500">{t('meeting_election_max_choices')}</dt>
+          <dd className="font-medium text-gray-900">{maxPick}</dd>
+        </div>
+      </dl>
+      <ul className="space-y-2">
+        {list.length === 0 ? (
+          <li className="text-sm text-gray-600">{zh ? '暂无已接受提名的候选人。' : 'No accepted candidates listed.'}</li>
+        ) : (
+          list.map((c) => {
+            const checked = picked.has(c.id);
+            const atCap = picked.size >= maxPick && !checked;
+            return (
+              <li key={c.id}>
+                <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-transparent px-1 py-1 hover:border-amber-200/80">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={checked}
+                    disabled={!votesEnabled || busy || atCap}
+                    onChange={(ev) => {
+                      const on = ev.target.checked;
+                      setPicked((prev) => {
+                        const next = new Set(prev);
+                        if (!on) {
+                          next.delete(c.id);
+                          return next;
+                        }
+                        if (next.size >= maxPick) {
+                          onToast({
+                            kind: 'error',
+                            text: t('meeting_election_selected_too_many'),
+                          });
+                          return prev;
+                        }
+                        next.add(c.id);
+                        return next;
+                      });
+                    }}
+                  />
+                  <span className="min-w-0 text-sm text-gray-900">
+                    <span className="font-medium">{c.name}</span>
+                    {c.unit_no ? (
+                      <span className="ml-1 text-xs text-gray-500">({String(c.unit_no)})</span>
+                    ) : null}
+                    {c.statement ? (
+                      <span className="mt-0.5 block whitespace-pre-wrap text-xs text-gray-600">{c.statement}</span>
+                    ) : null}
+                  </span>
+                </label>
+              </li>
+            );
+          })
+        )}
+      </ul>
+      <button
+        type="button"
+        disabled={!votesEnabled || busy}
+        onClick={() => void submit()}
+        className="inline-flex items-center justify-center rounded-lg bg-clearstrata-ui-primary px-4 py-2 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover disabled:opacity-50"
+      >
+        {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden /> : null}
+        {t('meeting_election_submit_ballot')}
+      </button>
+    </div>
+  );
 }
 
 export function OwnerVotingPage() {
@@ -141,6 +313,7 @@ export function OwnerVotingPage() {
 
   const [toast, setToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
+  const [electionSubmitKey, setElectionSubmitKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (!toast) return;
@@ -198,7 +371,7 @@ export function OwnerVotingPage() {
         return;
       }
 
-      const [resRes, ballotRes] = await Promise.all([
+      const [resRes, ballotRes, ebRes] = await Promise.all([
         supabase
           .from('owner_vote_resolutions')
           .select('id, meeting_id, title, description, threshold, display_order')
@@ -209,10 +382,26 @@ export function OwnerVotingPage() {
           .select('id, meeting_id, resolution_id, unit_no, choice, updated_at')
           .eq('voter_user_id', user.id)
           .in('meeting_id', meetingIds),
+        supabase
+          .from('owner_election_ballots')
+          .select('meeting_id, agenda_item_id, selected_candidate_ids')
+          .eq('voter_user_id', user.id)
+          .in('meeting_id', meetingIds),
       ]);
 
       if (resRes.error) throw resRes.error;
       if (ballotRes.error) throw ballotRes.error;
+      if (ebRes.error) throw ebRes.error;
+
+      const electionBallotsByMeeting = new Map<string, Map<string, string[]>>();
+      for (const row of ((ebRes.data ?? []) as Array<Record<string, unknown>>).filter(Boolean)) {
+        const mid = String(row.meeting_id ?? '');
+        const aid = String(row.agenda_item_id ?? '');
+        if (!mid || !aid) continue;
+        const ids = parseStoredCandidateIds(row.selected_candidate_ids);
+        if (!electionBallotsByMeeting.has(mid)) electionBallotsByMeeting.set(mid, new Map());
+        electionBallotsByMeeting.get(mid)!.set(aid, ids);
+      }
 
       const resolutionList = ((resRes.data ?? []) as unknown[]).map((row): ResolutionRow => {
         const x = row as Record<string, unknown>;
@@ -262,7 +451,7 @@ export function OwnerVotingPage() {
         byMeetingRes.get(res.meeting_id)!.push(res);
       }
 
-      const packs: MeetingPack[] = rawSnapshots.flatMap((s) => {
+      const packsIncomplete: MeetingPack[] = rawSnapshots.flatMap((s) => {
         const mt = unwrapMeeting(s.owner_vote_meetings);
         if (!mt) return [];
         const res = [...(byMeetingRes.get(s.meeting_id) ?? [])];
@@ -272,6 +461,7 @@ export function OwnerVotingPage() {
           if (da !== db) return da - db;
           return a.title.localeCompare(b.title, zh ? 'zh' : 'en');
         });
+        const sel = electionBallotsByMeeting.get(s.meeting_id);
         return [
           {
             snapshotId: s.id,
@@ -281,15 +471,59 @@ export function OwnerVotingPage() {
             meeting: mt,
             resolutions: res,
             ballotsByResolution: new Map(ballotsByMeetingRes.get(s.meeting_id) ?? []),
+            electionAgendas: [],
+            electionSelections: sel ? new Map(sel) : new Map<string, string[]>(),
           },
         ];
       });
 
-      packs.sort((a, b) => {
+      packsIncomplete.sort((a, b) => {
         const ta = a.meeting.scheduled_at || a.meeting.voting_opens_at || '';
         const tb = b.meeting.scheduled_at || b.meeting.voting_opens_at || '';
         return tb.localeCompare(ta);
       });
+
+      const packs: MeetingPack[] = await Promise.all(
+        packsIncomplete.map(async (p) => {
+          let electionAgendas: ElectionAgendaBrief[] = [];
+          try {
+            const cid = await resolveCouncilMeetingIdForOwnerVoteTitle(supabase, p.propertyId, p.meeting.title);
+            if (cid) {
+              const ag = await supabase
+                .from('meeting_agenda_items')
+                .select('id, title_zh, title_en, description_zh, sort_order')
+                .eq('meeting_id', cid)
+                .eq('property_id', p.propertyId);
+              if (ag.error) {
+                console.warn('[owner-voting] meeting_agenda_items for election', ag.error.message);
+              } else {
+                const rows =
+                  ((ag.data ?? []) as unknown as Array<{
+                    id: string;
+                    title_zh: string | null;
+                    title_en: string | null;
+                    description_zh: string | null;
+                    sort_order: number | null;
+                  }>) ?? [];
+                for (const row of rows) {
+                  const m = extractElectionAgendaMeta(row.description_zh ?? '').meta;
+                  if (m?.agenda_type !== 'council_election') continue;
+                  electionAgendas.push({
+                    agendaItemId: row.id,
+                    sortOrder: row.sort_order != null && Number.isFinite(Number(row.sort_order)) ? Number(row.sort_order) : 9999,
+                    title: row.title_zh?.trim() || row.title_en?.trim() || '',
+                    meta: finalizeElectionMeta(m),
+                  });
+                }
+                electionAgendas.sort((a, b) => a.sortOrder - b.sortOrder);
+              }
+            }
+          } catch (e) {
+            console.warn('[owner-voting] election agenda resolve', e);
+          }
+          return { ...p, electionAgendas };
+        }),
+      );
 
       setMeetingPacks(packs);
       setLoadState('done');
@@ -464,13 +698,15 @@ export function OwnerVotingPage() {
                   </dl>
                 </div>
 
-                <div className="divide-y divide-gray-100 px-5 pb-5 sm:px-6">
-                  {pack.resolutions.length === 0 ? (
-                    <p className="py-8 text-center text-sm text-gray-500">
-                      {zh ? '暂无决议项目。' : 'No resolutions for this meeting.'}
-                    </p>
-                  ) : (
-                    pack.resolutions.map((res) => {
+                <div className="px-5 pb-5 sm:px-6">
+                  <div className="divide-y divide-gray-100">
+                    {pack.resolutions.length === 0 && pack.electionAgendas.length === 0 ? (
+                      <p className="py-8 text-center text-sm text-gray-500">
+                        {zh ? '暂无表决或选举议程。' : 'No resolutions or elections for this meeting.'}
+                      </p>
+                    ) : null}
+                    {pack.resolutions.length > 0
+                      ? pack.resolutions.map((res) => {
                       const ballot = pack.ballotsByResolution.get(res.id);
                       const submitting = submittingId === res.id;
                       const choiceBtn =
@@ -537,7 +773,31 @@ export function OwnerVotingPage() {
                         </div>
                       );
                     })
-                  )}
+                      : null}
+                  </div>
+                  {pack.electionAgendas.length > 0 ? (
+                    <div className={`space-y-4 ${pack.resolutions.length > 0 ? 'mt-6 border-t border-gray-100 pt-6' : 'pt-4'}`}>
+                      {pack.electionAgendas.map((ea) => {
+                        const k = `${pack.meetingId}:${ea.agendaItemId}`;
+                        const initial = pack.electionSelections.get(ea.agendaItemId) ?? [];
+                        return (
+                          <OwnerCouncilElectionBlock
+                            key={`${ea.agendaItemId}:${initial.join('|')}`}
+                            zh={zh}
+                            t={t}
+                            meetingId={pack.meetingId}
+                            brief={ea}
+                            votesEnabled={votesEnabled}
+                            busy={electionSubmitKey === k}
+                            initialSelected={initial}
+                            onBusy={(v) => setElectionSubmitKey(v ? k : null)}
+                            onToast={setToast}
+                            onReload={reload}
+                          />
+                        );
+                      })}
+                    </div>
+                  ) : null}
                 </div>
               </article>
             );

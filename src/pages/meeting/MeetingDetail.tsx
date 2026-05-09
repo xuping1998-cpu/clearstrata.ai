@@ -36,10 +36,49 @@ import { shouldDeferAutoPropertyRedirects } from '../../lib/authRecovery';
 import { samePropertyId } from '../../lib/propertyIdMatch';
 import { labelFormat, labelMeetingType, labelStatus, labelVoteRule, labelVoteStatus, meetingUiStrings } from '../../features/meetings/labels';
 import { councilMeetingTitleForOwnerVoteBinding, findOwnerVoteResolutionForAgenda, isOwnerVotingMeeting } from '@/features/meetings/ownerVotingCouncil';
-import { stripWrittenRemoteMeta } from '@/features/meetings/meetingFormatModel';
+import {
+  defaultElectionMeta,
+  displayAgendaZhWithoutElection,
+  embedElectionAgendaMeta,
+  extractElectionAgendaMeta,
+  finalizeElectionMeta,
+} from '@/features/meetings/electionAgendaModel';
+import {
+  CouncilElectionResultsBlock,
+  type OwnerElectionBallotLite,
+} from '@/components/meetings/CouncilElectionResultsBlock';
+import { MeetingElectionCandidatesPanel } from '@/components/meetings/MeetingElectionCandidatesPanel';
+import {
+  extractGovernanceMeta,
+  meetingSgmRequisitionRequiredUnits,
+  MEETING_SGM_REQUISITION_PERCENT_DEFAULT,
+  stripWrittenRemoteMeta,
+  type MeetingInitiationType,
+} from '@/features/meetings/meetingFormatModel';
 import { OwnerVotingInlineControlBar } from '@/components/meetings/OwnerVotingInlineControlBar';
 import { MeetingOwnerVoteResolutionResults } from '@/components/meetings/MeetingOwnerVoteResolutionResults';
 import { StatusAlert, StatusBadge } from '@/components/status';
+
+function initiationTypeLabel(type: MeetingInitiationType, t: (key: string) => string): string {
+  switch (type) {
+    case 'council_initiated':
+      return t('meeting_initiation_council');
+    case 'owner_requisitioned':
+      return t('meeting_initiation_owner_requisitioned');
+    case 'annual_required':
+      return t('meeting_initiation_annual_required');
+    default:
+      return '—';
+  }
+}
+
+type AgendaKindUi = 'normal' | 'resolution' | 'election';
+
+function agendaKindFromRow(a: MeetingAgendaRow): AgendaKindUi {
+  const meta = extractElectionAgendaMeta(a.description_zh ?? '').meta;
+  if (meta?.agenda_type === 'council_election') return 'election';
+  return a.requires_vote ? 'resolution' : 'normal';
+}
 
 const initialBundle = (): MeetingDetailBundle => ({
   meeting: null,
@@ -69,15 +108,21 @@ export function MeetingDetail() {
   const [busy, setBusy] = useState(false);
   const [newAgendaZh, setNewAgendaZh] = useState('');
   const [newAgendaEn, setNewAgendaEn] = useState('');
-  const [newAgendaVote, setNewAgendaVote] = useState(false);
+  const [newAgendaKind, setNewAgendaKind] = useState<AgendaKindUi>('normal');
+  const [newElectionSeats, setNewElectionSeats] = useState(3);
+  const [newElectionMaxChoices, setNewElectionMaxChoices] = useState(3);
+  const [newElectionSelfNom, setNewElectionSelfNom] = useState(true);
   const [newVoteRule, setNewVoteRule] = useState<'simple_majority' | 'three_quarter' | 'unanimous'>('simple_majority');
   const [agendaEdit, setAgendaEdit] = useState<{
     agendaId: string;
     title_zh: string;
     title_en: string;
-    requires_vote: boolean;
+    kind: AgendaKindUi;
     vote_rule: VoteRule;
-    started_with_vote: boolean;
+    started_kind: AgendaKindUi;
+    election_seats: number;
+    election_max_choices: number;
+    election_allow_self_nomination: boolean;
   } | null>(null);
   const [inviteProfileById, setInviteProfileById] = useState<
     Record<string, { full_name_en: string | null; full_name_zh: string | null; email: string | null }>
@@ -93,6 +138,7 @@ export function MeetingDetail() {
     eligibleCount: number;
   }>({ loading: false, meeting: null, resolutions: [], resolutionCount: 0, eligibleCount: 0 });
   const [ovResolutionResults, setOvResolutionResults] = useState<OwnerVoteResolutionResultNormalized[]>([]);
+  const [ownerElectionBallots, setOwnerElectionBallots] = useState<OwnerElectionBallotLite[]>([]);
   const openedTrackedRef = useRef<string | null>(null);
 
   const isStaff =
@@ -176,10 +222,34 @@ export function MeetingDetail() {
 
   const meeting = bundle.meeting;
 
+  const governanceMeta = useMemo(() => {
+    if (!meeting?.description_zh) return null;
+    return extractGovernanceMeta(meeting.description_zh).meta;
+  }, [meeting?.description_zh]);
+
+  const electionBundles = useMemo(() => {
+    return bundle.agendaItems.flatMap((a) => {
+      const m = extractElectionAgendaMeta(a.description_zh ?? '').meta;
+      if (m?.agenda_type !== 'council_election') return [];
+      return [{ agenda: a, meta: finalizeElectionMeta(m) }];
+    });
+  }, [bundle.agendaItems]);
+
+  const electionBallotsByAgenda = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const b of ownerElectionBallots) {
+      const id = String(b.agenda_item_id ?? '');
+      if (!id) continue;
+      m.set(id, (m.get(id) ?? 0) + 1);
+    }
+    return m;
+  }, [ownerElectionBallots]);
+
   const refreshOwnerVoteMeta = useCallback(async () => {
     if (!meeting || !currentPropertyId || !isOwnerVotingMeeting(meeting)) {
       setOvMeta({ loading: false, meeting: null, resolutions: [], resolutionCount: 0, eligibleCount: 0 });
       setOvResolutionResults([]);
+      setOwnerElectionBallots([]);
       return;
     }
     setOvMeta((p) => ({ ...p, loading: true }));
@@ -201,6 +271,22 @@ export function MeetingDetail() {
       eligibleCount: r.eligibleCount,
     });
     setOvResolutionResults(viewRows);
+
+    if (r.meeting?.id) {
+      const eb = await supabase
+        .from('owner_election_ballots')
+        .select('agenda_item_id, selected_candidate_ids')
+        .eq('meeting_id', r.meeting.id);
+      if (eb.error) {
+        console.error('[MeetingDetail] owner_election_ballots', eb.error.message);
+        setOwnerElectionBallots([]);
+      } else {
+        setOwnerElectionBallots(((eb.data ?? []) as OwnerElectionBallotLite[]) ?? []);
+      }
+    } else {
+      setOwnerElectionBallots([]);
+    }
+
     if (r.error) console.error('[MeetingDetail] owner vote meta', r.error);
   }, [meeting, currentPropertyId, bundle.agendaItems.length]);
 
@@ -209,9 +295,9 @@ export function MeetingDetail() {
     if (!meeting || !currentPropertyId || !isOwnerVotingMeeting(meeting)) {
       setOvMeta({ loading: false, meeting: null, resolutions: [], resolutionCount: 0, eligibleCount: 0 });
       setOvResolutionResults([]);
+      setOwnerElectionBallots([]);
       return;
     }
-    void refreshOwnerVoteMeta();
   }, [meeting, currentPropertyId, refreshOwnerVoteMeta]);
 
   useEffect(() => {
@@ -352,7 +438,20 @@ export function MeetingDetail() {
     const savedTitleZh = newAgendaZh.trim();
     const savedTitleEn = newAgendaEn.trim();
     const savedVoteRule = newVoteRule;
-    const savedWantsVote = newAgendaVote;
+    const savedKind = newAgendaKind;
+    const requiresVote = savedKind === 'resolution';
+
+    let descriptionZh: string | undefined;
+    if (savedKind === 'election') {
+      descriptionZh = embedElectionAgendaMeta(
+        '',
+        defaultElectionMeta({
+          seats: newElectionSeats,
+          max_choices_per_unit: newElectionMaxChoices,
+          allow_self_nomination: newElectionSelfNom,
+        }),
+      );
+    }
 
     const { error } = await createAgendaItem({
       propertyId: propertyIdForAgenda,
@@ -360,8 +459,9 @@ export function MeetingDetail() {
       sortOrder: nextOrder,
       titleEn: savedTitleEn || null,
       titleZh: savedTitleZh || null,
-      requiresVote: savedWantsVote,
-      voteRule: savedWantsVote ? savedVoteRule : null,
+      descriptionZh,
+      requiresVote,
+      voteRule: requiresVote ? savedVoteRule : null,
     });
 
     if (error) {
@@ -373,15 +473,9 @@ export function MeetingDetail() {
 
     setNewAgendaZh('');
     setNewAgendaEn('');
-    setNewAgendaVote(false);
+    setNewAgendaKind('normal');
 
-    if (
-      savedWantsVote &&
-      isOwnerVotingMeeting(meeting) &&
-      isStaff &&
-      currentPropertyId &&
-      user?.id
-    ) {
+    if (requiresVote && isOwnerVotingMeeting(meeting) && isStaff && currentPropertyId && user?.id) {
       const ensured = await ensureOwnerVoteMeetingForCouncilMeeting({
         propertyId: propertyIdForAgenda,
         meeting,
@@ -441,7 +535,10 @@ export function MeetingDetail() {
       resolutionsForMatch,
     );
 
-    if (agendaEdit.started_with_vote && !agendaEdit.requires_vote && matchedRes) {
+    const startedKind = agendaEdit.started_kind;
+    const nextKind = agendaEdit.kind;
+
+    if (startedKind === 'resolution' && nextKind !== 'resolution' && matchedRes) {
       const { count, error: cErr } = await supabase
         .from('owner_vote_ballots')
         .select('id', { count: 'exact', head: true })
@@ -454,6 +551,48 @@ export function MeetingDetail() {
       }
     }
 
+    if (startedKind === 'resolution' && nextKind === 'election' && matchedRes) {
+      const { count, error: cErr } = await supabase
+        .from('owner_vote_ballots')
+        .select('id', { count: 'exact', head: true })
+        .eq('property_id', propertyIdForAgenda)
+        .eq('resolution_id', matchedRes.id);
+      if (cErr) console.warn('[MeetingDetail] ballot count (to election)', cErr.message);
+      if ((typeof count === 'number' ? count : 0) > 0) {
+        setActionErr(t('meeting_agenda_cannot_make_election_resolution_has_ballots'));
+        return;
+      }
+    }
+
+    if (startedKind === 'election' && nextKind !== 'election') {
+      const n = electionBallotsByAgenda.get(row.id) ?? 0;
+      if (n > 0) {
+        setActionErr(t('meeting_agenda_cannot_remove_election_has_ballots'));
+        return;
+      }
+    }
+
+    const peeled = extractElectionAgendaMeta(row.description_zh ?? '').cleanDescriptionZh.trim();
+    const nextRequiresVote = nextKind === 'resolution';
+
+    let descriptionZh: string | null | undefined = row.description_zh;
+    if (nextKind === 'election') {
+      const previousMeta = extractElectionAgendaMeta(row.description_zh ?? '').meta ?? defaultElectionMeta();
+      const base = finalizeElectionMeta(previousMeta);
+      const merged: typeof base = {
+        ...base,
+        seats: Math.max(1, Math.floor(Number(agendaEdit.election_seats) || 1)),
+        max_choices_per_unit: Math.max(1, Math.floor(Number(agendaEdit.election_max_choices) || 1)),
+        allow_self_nomination: agendaEdit.election_allow_self_nomination,
+        candidates: [...base.candidates],
+      };
+      descriptionZh = embedElectionAgendaMeta(peeled || null, merged);
+    } else {
+      descriptionZh = peeled.trim() ? peeled : null;
+    }
+
+    const nextVoteRule = nextRequiresVote ? agendaEdit.vote_rule : null;
+
     setBusy(true);
     setActionErr(null);
 
@@ -464,9 +603,9 @@ export function MeetingDetail() {
       titleZh: tzh || null,
       titleEn: ten || null,
       descriptionEn: row.description_en,
-      descriptionZh: row.description_zh,
-      requiresVote: agendaEdit.requires_vote,
-      voteRule: agendaEdit.requires_vote ? agendaEdit.vote_rule : null,
+      descriptionZh,
+      requiresVote: nextRequiresVote,
+      voteRule: nextVoteRule,
     });
     if (upAgendaErr) {
       setActionErr(upAgendaErr.message);
@@ -475,7 +614,7 @@ export function MeetingDetail() {
     }
 
     const voteRow = voteByAgendaId.get(row.id);
-    if (voteRow && agendaEdit.requires_vote) {
+    if (voteRow && nextRequiresVote) {
       await updateVote(voteRow.id, meeting.property_id, {
         title_en: ten || null,
         title_zh: tzh || null,
@@ -483,7 +622,7 @@ export function MeetingDetail() {
       });
     }
 
-    if (isOwnerVotingMeeting(meeting) && isStaff && agendaEdit.requires_vote) {
+    if (isOwnerVotingMeeting(meeting) && isStaff && nextRequiresVote) {
       const ensured = await ensureOwnerVoteMeetingForCouncilMeeting({
         propertyId: propertyIdForAgenda,
         meeting,
@@ -651,7 +790,7 @@ export function MeetingDetail() {
   async function handleOpenOwnerVoteMeeting() {
     const ov = ovMeta.meeting;
     if (!ov?.id) return;
-    if (!ov.snapshot_frozen_at || ovMeta.resolutionCount <= 0) {
+    if (!ov.snapshot_frozen_at || (ovMeta.resolutionCount <= 0 && electionBundles.length <= 0)) {
       setEvToast({ kind: 'error', text: t('meeting_ov_need_resolution_and_snapshot') });
       return;
     }
@@ -845,6 +984,57 @@ export function MeetingDetail() {
                   </dd>
                 </div>
                 <div>
+                  <dt className="text-gray-500">{t('meeting_initiation_type')}</dt>
+                  <dd className="text-gray-900">
+                    {governanceMeta
+                      ? initiationTypeLabel(governanceMeta.initiation_type, t)
+                      : t('meeting_initiation_council')}
+                  </dd>
+                </div>
+                {governanceMeta?.initiation_type === 'owner_requisitioned' ? (
+                  <div className="sm:col-span-2 rounded-lg border border-gray-100 bg-gray-50/90 p-4 space-y-2 text-sm">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <span className="text-gray-500">{t('meeting_total_voting_units')}: </span>
+                        <span className="font-medium text-gray-900">{governanceMeta.total_voting_units ?? '—'}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">{t('meeting_required_percent')}: </span>
+                        <span className="font-medium text-gray-900">
+                          {governanceMeta.required_percent ?? MEETING_SGM_REQUISITION_PERCENT_DEFAULT}%
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">{t('meeting_required_units')}: </span>
+                        <span className="font-medium text-gray-900">
+                          {governanceMeta.required_units ??
+                            meetingSgmRequisitionRequiredUnits(
+                              governanceMeta.total_voting_units ?? 0,
+                              governanceMeta.required_percent ?? MEETING_SGM_REQUISITION_PERCENT_DEFAULT,
+                            )}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">{t('meeting_signed_units')}: </span>
+                        <span className="font-medium text-gray-900">{governanceMeta.signed_units ?? '—'}</span>
+                      </div>
+                    </div>
+                    <div className="pt-2 border-t border-gray-200">
+                      <span className="text-gray-500">{en ? 'Status' : '状态'}: </span>
+                      <span className="font-semibold text-gray-900">
+                        {(governanceMeta.signed_units ?? 0) >=
+                        (governanceMeta.required_units ??
+                          meetingSgmRequisitionRequiredUnits(
+                            governanceMeta.total_voting_units ?? 0,
+                            governanceMeta.required_percent ?? MEETING_SGM_REQUISITION_PERCENT_DEFAULT,
+                          ))
+                          ? t('meeting_requisition_met')
+                          : t('meeting_requisition_not_met')}
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
+                <div>
                   <dt className="text-gray-500">{en ? meetingUiStrings.format.en : meetingUiStrings.format.zh}</dt>
                   <dd>{labelFormat(meeting.meeting_format, en, { descriptionZh: meeting.description_zh })}</dd>
                 </div>
@@ -879,26 +1069,33 @@ export function MeetingDetail() {
               ) : null}
               <div className="space-y-6">
                 {bundle.agendaItems.map((agenda) => {
+                  const agendaKindUi = agendaKindFromRow(agenda);
                   const vote = voteByAgendaId.get(agenda.id);
                   const ballots = vote ? bundle.ballotsByVoteId[vote.id] ?? [] : [];
                   const tallies = ballotTallies(ballots);
                   const my = vote ? bundle.myBallotsByVoteId[vote.id] : undefined;
+                  const descShowZh = displayAgendaZhWithoutElection(agenda.description_zh);
                   return (
                     <div key={agenda.id} className="border border-gray-100 rounded-lg p-4 bg-gray-50/50">
                       <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-xs text-gray-500">#{agenda.sort_order}</span>
-                          {agendaEdit?.agendaId !== agenda.id &&
-                            (agenda.requires_vote ? (
-                              <StatusBadge tone="success" size="sm">
-                                {en ? 'Vote required' : '需要表决'}
-                              </StatusBadge>
-                            ) : (
-                              <StatusBadge tone="neutral" size="sm">
-                                {en ? 'Discussion' : '讨论'}
-                              </StatusBadge>
-                            ))}
-                          {agendaEdit?.agendaId !== agenda.id && agenda.vote_rule ? (
+                          {agendaEdit?.agendaId !== agenda.id && agendaKindUi === 'election' ? (
+                            <StatusBadge tone="warning" size="sm">
+                              {t('meeting_agenda_type_election')}
+                            </StatusBadge>
+                          ) : null}
+                          {agendaEdit?.agendaId !== agenda.id && agendaKindUi === 'resolution' ? (
+                            <StatusBadge tone="success" size="sm">
+                              {t('meeting_agenda_type_resolution')}
+                            </StatusBadge>
+                          ) : null}
+                          {agendaEdit?.agendaId !== agenda.id && agendaKindUi === 'normal' ? (
+                            <StatusBadge tone="neutral" size="sm">
+                              {t('meeting_agenda_type_normal')}
+                            </StatusBadge>
+                          ) : null}
+                          {agendaEdit?.agendaId !== agenda.id && agendaKindUi === 'resolution' && agenda.vote_rule ? (
                             <StatusBadge tone="neutral" size="sm">
                               {labelVoteRule(agenda.vote_rule, en)}
                             </StatusBadge>
@@ -908,16 +1105,22 @@ export function MeetingDetail() {
                           <button
                             type="button"
                             disabled={busy}
-                            onClick={() =>
+                            onClick={() => {
+                              const k = agendaKindFromRow(agenda);
+                              const peeledMeta = extractElectionAgendaMeta(agenda.description_zh ?? '').meta;
+                              const fin = finalizeElectionMeta(peeledMeta ?? defaultElectionMeta());
                               setAgendaEdit({
                                 agendaId: agenda.id,
                                 title_zh: agenda.title_zh ?? '',
                                 title_en: agenda.title_en ?? '',
-                                requires_vote: agenda.requires_vote,
+                                kind: k,
                                 vote_rule: (agenda.vote_rule ?? 'simple_majority') as VoteRule,
-                                started_with_vote: agenda.requires_vote,
-                              })
-                            }
+                                started_kind: k,
+                                election_seats: fin.seats,
+                                election_max_choices: fin.max_choices_per_unit,
+                                election_allow_self_nomination: fin.allow_self_nomination,
+                              });
+                            }}
                             className="text-sm px-3 py-1.5 rounded-lg border border-gray-300 text-gray-800 hover:bg-white disabled:opacity-50"
                           >
                             {t('meeting_agenda_edit')}
@@ -940,19 +1143,29 @@ export function MeetingDetail() {
                               className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
                             />
                           </div>
-                          <label className="flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
-                              checked={agendaEdit.requires_vote}
-                              onChange={(e) => setAgendaEdit((prev) => (prev ? { ...prev, requires_vote: e.target.checked } : prev))}
-                            />
-                            {en ? 'Requires vote' : '需要表决'}
+                          <label className="block text-sm">
+                            <span className="font-medium text-gray-800">{t('meeting_agenda_type')}</span>
+                            <select
+                              value={agendaEdit.kind}
+                              disabled={busy}
+                              onChange={(e) =>
+                                setAgendaEdit((prev) =>
+                                  prev ? { ...prev, kind: e.target.value as AgendaKindUi } : prev,
+                                )
+                              }
+                              className="mt-1 w-full max-w-md rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                            >
+                              <option value="normal">{t('meeting_agenda_type_normal')}</option>
+                              <option value="resolution">{t('meeting_agenda_type_resolution')}</option>
+                              <option value="election">{t('meeting_agenda_type_election')}</option>
+                            </select>
                           </label>
-                          {agendaEdit.requires_vote ? (
+                          {agendaEdit.kind === 'resolution' ? (
                             <label className="block text-sm space-y-1">
                               <span className="font-medium text-gray-800">{en ? 'Vote threshold' : '表决门槛'}</span>
                               <select
                                 value={agendaEdit.vote_rule}
+                                disabled={busy}
                                 onChange={(e) =>
                                   setAgendaEdit((prev) =>
                                     prev ? { ...prev, vote_rule: e.target.value as VoteRule } : prev,
@@ -965,6 +1178,63 @@ export function MeetingDetail() {
                                 <option value="unanimous">{en ? 'Unanimous' : '全票通过'}</option>
                               </select>
                             </label>
+                          ) : null}
+                          {agendaEdit.kind === 'election' ? (
+                            <div className="grid gap-3 sm:grid-cols-3">
+                              <label className="block text-sm space-y-1">
+                                <span className="font-medium text-gray-800">{t('meeting_election_seats')}</span>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  disabled={busy}
+                                  value={agendaEdit.election_seats}
+                                  onChange={(e) =>
+                                    setAgendaEdit((prev) =>
+                                      prev
+                                        ? {
+                                            ...prev,
+                                            election_seats: Math.max(1, Number(e.target.value) || 1),
+                                          }
+                                        : prev,
+                                    )
+                                  }
+                                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                />
+                              </label>
+                              <label className="block text-sm space-y-1">
+                                <span className="font-medium text-gray-800">{t('meeting_election_max_choices')}</span>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  disabled={busy}
+                                  value={agendaEdit.election_max_choices}
+                                  onChange={(e) =>
+                                    setAgendaEdit((prev) =>
+                                      prev
+                                        ? {
+                                            ...prev,
+                                            election_max_choices: Math.max(1, Number(e.target.value) || 1),
+                                          }
+                                        : prev,
+                                    )
+                                  }
+                                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                />
+                              </label>
+                              <label className="flex items-center gap-2 text-sm sm:items-end pb-2">
+                                <input
+                                  type="checkbox"
+                                  disabled={busy}
+                                  checked={agendaEdit.election_allow_self_nomination}
+                                  onChange={(e) =>
+                                    setAgendaEdit((prev) =>
+                                      prev ? { ...prev, election_allow_self_nomination: e.target.checked } : prev,
+                                    )
+                                  }
+                                />
+                                {t('meeting_election_allow_self_nomination')}
+                              </label>
+                            </div>
                           ) : null}
                           <div className="flex flex-wrap gap-2">
                             <button
@@ -992,13 +1262,13 @@ export function MeetingDetail() {
                               agenda.title_en ||
                               (en ? meetingUiStrings.untitled.en : meetingUiStrings.untitled.zh)}
                           </h3>
-                          {(agenda.description_zh || agenda.description_en) && (
+                          {(descShowZh || agenda.description_en) && (
                             <p className="text-sm text-gray-600 mt-1 whitespace-pre-wrap">
-                              {agenda.description_zh || agenda.description_en}
+                              {descShowZh || agenda.description_en}
                             </p>
                           )}
 
-                          {agenda.requires_vote && !vote && isStaff && (
+                          {agendaKindUi !== 'election' && agenda.requires_vote && !vote && isStaff && (
                             <button
                               type="button"
                               disabled={busy}
@@ -1009,76 +1279,94 @@ export function MeetingDetail() {
                             </button>
                           )}
 
-                          {vote && (
+                          {agendaKindUi !== 'election' && vote ? (
                             <div className="mt-4 space-y-3 border-t border-gray-200 pt-3">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-xs font-medium text-gray-700">{en ? 'Vote status' : '表决状态'}:</span>
-                            <StatusBadge tone="neutral" size="sm">
-                              {labelVoteStatus(vote.status, en)}
-                            </StatusBadge>
-                            <span className="text-xs text-gray-600">
-                              {en ? 'Vote rule' : '投票规则'}: {labelVoteRule(vote.vote_rule, en)}
-                            </span>
-                          </div>
-
-                          {isStaff && vote.status === 'draft' && (
-                            <button
-                              type="button"
-                              disabled={busy}
-                              onClick={() => handleOpenVote(vote.id)}
-                              className="text-sm px-3 py-1.5 rounded-lg bg-clearstrata-ui-primary text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:opacity-50"
-                            >
-                              {en ? 'Open voting' : '开放投票'}
-                            </button>
-                          )}
-                          {isStaff && vote.status === 'open' && (
-                            <button
-                              type="button"
-                              disabled={busy}
-                              onClick={() => handleCloseVote(vote.id)}
-                              className="text-sm px-3 py-1.5 rounded-lg bg-clearstrata-brand-700 text-white hover:bg-clearstrata-brand-800 active:bg-clearstrata-brand-900 disabled:opacity-50"
-                            >
-                              {en ? 'Close voting' : '关闭投票'}
-                            </button>
-                          )}
-
-                          {vote.status === 'open' && (
-                            <div className="space-y-2">
-                              <p className="text-sm text-gray-700">{en ? 'Cast your ballot' : '投票'}</p>
-                              <div className="flex flex-wrap gap-2">
-                                {vote.options.map((opt) => (
-                                  <button
-                                    key={opt.id}
-                                    type="button"
-                                    disabled={busy}
-                                    onClick={() => handleBallot(vote.id, opt.option_key)}
-                                    className={`px-3 py-2 rounded-lg border text-sm ${
-                                      my?.selected_option_key === opt.option_key
-                                        ? 'border-clearstrata-ui-primary bg-clearstrata-ui-primary/10 text-clearstrata-ui-softText'
-                                        : 'border-gray-200 bg-white hover:border-clearstrata-ui-primary/40'
-                                    }`}
-                                  >
-                                    {en ? opt.label_en || opt.option_key : opt.label_zh || opt.label_en || opt.option_key}
-                                  </button>
-                                ))}
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-xs font-medium text-gray-700">{en ? 'Vote status' : '表决状态'}:</span>
+                                <StatusBadge tone="neutral" size="sm">
+                                  {labelVoteStatus(vote.status, en)}
+                                </StatusBadge>
+                                <span className="text-xs text-gray-600">
+                                  {en ? 'Vote rule' : '投票规则'}: {labelVoteRule(vote.vote_rule, en)}
+                                </span>
                               </div>
-                            </div>
-                          )}
 
-                          {(vote.status === 'closed' || vote.status === 'passed' || vote.status === 'failed') && (
-                            <div className="text-sm text-gray-800">
-                              <p className="font-medium mb-1">{en ? 'Results' : '结果汇总'}</p>
-                              <ul className="list-disc pl-5">
-                                {Object.entries(tallies).map(([k, n]) => (
-                                  <li key={k}>
-                                    {k}: {n}
-                                  </li>
-                                ))}
-                              </ul>
+                              {isStaff && vote.status === 'draft' && (
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => handleOpenVote(vote.id)}
+                                  className="text-sm px-3 py-1.5 rounded-lg bg-clearstrata-ui-primary text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:opacity-50"
+                                >
+                                  {en ? 'Open voting' : '开放投票'}
+                                </button>
+                              )}
+                              {isStaff && vote.status === 'open' && (
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => handleCloseVote(vote.id)}
+                                  className="text-sm px-3 py-1.5 rounded-lg bg-clearstrata-brand-700 text-white hover:bg-clearstrata-brand-800 active:bg-clearstrata-brand-900 disabled:opacity-50"
+                                >
+                                  {en ? 'Close voting' : '关闭投票'}
+                                </button>
+                              )}
+
+                              {vote.status === 'open' && (
+                                <div className="space-y-2">
+                                  <p className="text-sm text-gray-700">{en ? 'Cast your ballot' : '投票'}</p>
+                                  <div className="flex flex-wrap gap-2">
+                                    {vote.options.map((opt) => (
+                                      <button
+                                        key={opt.id}
+                                        type="button"
+                                        disabled={busy}
+                                        onClick={() => handleBallot(vote.id, opt.option_key)}
+                                        className={`px-3 py-2 rounded-lg border text-sm ${
+                                          my?.selected_option_key === opt.option_key
+                                            ? 'border-clearstrata-ui-primary bg-clearstrata-ui-primary/10 text-clearstrata-ui-softText'
+                                            : 'border-gray-200 bg-white hover:border-clearstrata-ui-primary/40'
+                                        }`}
+                                      >
+                                        {en ? opt.label_en || opt.option_key : opt.label_zh || opt.label_en || opt.option_key}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {(vote.status === 'closed' ||
+                                vote.status === 'passed' ||
+                                vote.status === 'failed') && (
+                                <div className="text-sm text-gray-800">
+                                  <p className="font-medium mb-1">{en ? 'Results' : '结果汇总'}</p>
+                                  <ul className="list-disc pl-5">
+                                    {Object.entries(tallies).map(([k, n]) => (
+                                      <li key={k}>
+                                        {k}: {n}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
                             </div>
-                          )}
-                        </div>
-                      )}
+                          ) : null}
+
+                          {agendaKindUi === 'election' && propertyIdForAgenda ? (
+                            <MeetingElectionCandidatesPanel
+                              agenda={agenda}
+                              propertyId={propertyIdForAgenda}
+                              meetingId={meeting.id}
+                              canEdit={isStaff}
+                              electionBallotCount={electionBallotsByAgenda.get(agenda.id) ?? 0}
+                              languageEn={en}
+                              t={t}
+                              onUpdated={async () => {
+                                await load();
+                                await refreshOwnerVoteMeta();
+                              }}
+                            />
+                          ) : null}
                         </>
                       )}
                     </div>
@@ -1107,15 +1395,25 @@ export function MeetingDetail() {
                         className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
                       />
                     </div>
-                    <label className="flex items-center gap-2 text-sm">
-                      <input type="checkbox" checked={newAgendaVote} onChange={(e) => setNewAgendaVote(e.target.checked)} />
-                      {en ? 'Requires vote' : '需要表决'}
+                    <label className="block text-sm space-y-1">
+                      <span className="font-medium text-gray-800">{t('meeting_agenda_type')}</span>
+                      <select
+                        value={newAgendaKind}
+                        disabled={busy}
+                        onChange={(e) => setNewAgendaKind(e.target.value as AgendaKindUi)}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      >
+                        <option value="normal">{t('meeting_agenda_type_normal')}</option>
+                        <option value="resolution">{t('meeting_agenda_type_resolution')}</option>
+                        <option value="election">{t('meeting_agenda_type_election')}</option>
+                      </select>
                     </label>
-                    {newAgendaVote && (
+                    {newAgendaKind === 'resolution' && (
                       <label className="block text-sm space-y-1">
                         <span className="font-medium text-gray-800">{en ? 'Vote threshold' : '表决门槛'}</span>
                         <select
                           value={newVoteRule}
+                          disabled={busy}
                           onChange={(e) => setNewVoteRule(e.target.value as typeof newVoteRule)}
                           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                         >
@@ -1124,6 +1422,41 @@ export function MeetingDetail() {
                           <option value="unanimous">{en ? 'Unanimous' : '全票通过'}</option>
                         </select>
                       </label>
+                    )}
+                    {newAgendaKind === 'election' && (
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <label className="block text-sm space-y-1">
+                          <span className="font-medium text-gray-800">{t('meeting_election_seats')}</span>
+                          <input
+                            type="number"
+                            min={1}
+                            disabled={busy}
+                            value={newElectionSeats}
+                            onChange={(e) => setNewElectionSeats(Number(e.target.value) || 1)}
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                          />
+                        </label>
+                        <label className="block text-sm space-y-1">
+                          <span className="font-medium text-gray-800">{t('meeting_election_max_choices')}</span>
+                          <input
+                            type="number"
+                            min={1}
+                            disabled={busy}
+                            value={newElectionMaxChoices}
+                            onChange={(e) => setNewElectionMaxChoices(Number(e.target.value) || 1)}
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                          />
+                        </label>
+                        <label className="flex items-center gap-2 text-sm sm:items-end pb-2">
+                          <input
+                            type="checkbox"
+                            checked={newElectionSelfNom}
+                            disabled={busy}
+                            onChange={(e) => setNewElectionSelfNom(e.target.checked)}
+                          />
+                          {t('meeting_election_allow_self_nomination')}
+                        </label>
+                      </div>
                     )}
                     <button type="submit" disabled={busy} className="text-sm px-4 py-2 rounded-lg bg-gray-900 text-white disabled:opacity-50">
                       {en ? 'Add' : '添加'}
@@ -1152,15 +1485,36 @@ export function MeetingDetail() {
             ) : null}
           </div>
           {showCouncilOwnerVoteUi ? (
-            <MeetingOwnerVoteResolutionResults
-              loading={ovMeta.loading}
-              ownerVoteMeeting={ovMeta.meeting}
-              resolutions={ovMeta.resolutions}
-              resultRows={ovResolutionResults}
-              eligibleFallback={ovMeta.eligibleCount}
-              t={t}
-              languageEn={en}
-            />
+            <>
+              {ovMeta.loading ? <p className="text-sm text-gray-500">{t('meeting_ov_loading')}</p> : null}
+              {!ovMeta.loading && !ovMeta.meeting ? (
+                <p className="text-sm text-gray-600">{t('meeting_vote_not_enabled')}</p>
+              ) : null}
+              {!ovMeta.loading && ovMeta.meeting && ovMeta.resolutions.length === 0 && electionBundles.length === 0 ? (
+                <p className="text-sm text-gray-600">{t('meeting_vote_no_resolutions')}</p>
+              ) : null}
+              {!ovMeta.loading && ovMeta.resolutions.length > 0 ? (
+                <MeetingOwnerVoteResolutionResults
+                  loading={false}
+                  ownerVoteMeeting={ovMeta.meeting}
+                  resolutions={ovMeta.resolutions}
+                  resultRows={ovResolutionResults}
+                  eligibleFallback={ovMeta.eligibleCount}
+                  t={t}
+                  languageEn={en}
+                />
+              ) : null}
+              {!ovMeta.loading && ovMeta.meeting && electionBundles.length > 0 ? (
+                <CouncilElectionResultsBlock
+                  ownerVoteStatus={ovMeta.meeting.status ?? ''}
+                  eligibleFallback={ovMeta.eligibleCount}
+                  electionAgendas={electionBundles}
+                  ballots={ownerElectionBallots}
+                  languageEn={en}
+                  t={t}
+                />
+              ) : null}
+            </>
           ) : bundle.resolutions.length === 0 ? (
             <p className="text-sm text-gray-600">
               {en ? 'No resolutions recorded yet.' : '暂无决议记录。'}

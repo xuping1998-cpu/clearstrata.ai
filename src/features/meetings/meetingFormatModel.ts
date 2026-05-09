@@ -7,17 +7,105 @@ const META_END = '\n-->';
 /** Fallback: strip malformed or alternate whitespace variants of the written-remote marker. */
 const WRITTEN_REMOTE_HTML_COMMENT_RE = /<!--\s*clearstrata-written-remote\b[\s\S]*?-->/gi;
 
+const GOV_META_START = '<!--clearstrata-meeting-governance\n';
+const GOV_META_END = '\n-->';
+const GOVERNANCE_HTML_COMMENT_RE = /<!--\s*clearstrata-meeting-governance\b[\s\S]*?-->/gi;
+
 export type WrittenRemoteMetaV1 = { v: 1; discussion_closes_at: string };
 
+export type MeetingInitiationType = 'council_initiated' | 'owner_requisitioned' | 'annual_required';
+
+export type MeetingGovernanceMetaV1 = {
+  v: 1;
+  initiation_type: MeetingInitiationType;
+  total_voting_units?: number;
+  required_percent?: number;
+  required_units?: number;
+  signed_units?: number;
+};
+
+export const MEETING_SGM_REQUISITION_PERCENT_DEFAULT = 20;
+
+/** Owners’ requisition to convene an SGM: required signed units (20% default). */
+export function meetingSgmRequisitionRequiredUnits(
+  totalVotingUnits: number,
+  percent: number = MEETING_SGM_REQUISITION_PERCENT_DEFAULT,
+): number {
+  const n = Math.max(0, Math.floor(totalVotingUnits));
+  if (n <= 0) return 0;
+  return Math.ceil((n * percent) / 100);
+}
+
+function isValidInitiationType(x: unknown): x is MeetingInitiationType {
+  return x === 'council_initiated' || x === 'owner_requisitioned' || x === 'annual_required';
+}
+
 /**
- * Removes embedded written-remote meta from description text for display only.
- * Does not affect {@link embedWrittenRemoteMeta} / {@link extractWrittenRemoteMeta} storage format.
+ * Removes embedded meeting-internal HTML comment blocks from `description_zh` for display only
+ * (written-remote scheduling + meeting-governance / SGM requisition).
  */
 export function stripWrittenRemoteMeta(text?: string | null): string {
   let s = text ?? '';
   s = s.replace(WRITTEN_REMOTE_HTML_COMMENT_RE, '');
+  s = s.replace(GOVERNANCE_HTML_COMMENT_RE, '');
+  s = extractGovernanceMeta(s).cleanDescriptionZh;
   s = extractWrittenRemoteMeta(s).cleanDescriptionZh;
   return s.replace(/\s+$/u, '').trim();
+}
+
+export function extractGovernanceMeta(descriptionZh: string | null | undefined): {
+  cleanDescriptionZh: string;
+  meta: MeetingGovernanceMetaV1 | null;
+} {
+  const s = descriptionZh ?? '';
+  const i = s.lastIndexOf(GOV_META_START);
+  if (i < 0) return { cleanDescriptionZh: s, meta: null };
+  const end = s.indexOf(GOV_META_END, i + GOV_META_START.length);
+  if (end < 0) return { cleanDescriptionZh: s, meta: null };
+  const raw = s.slice(i + GOV_META_START.length, end).trim();
+  let meta: MeetingGovernanceMetaV1 | null = null;
+  try {
+    const o = JSON.parse(raw) as Record<string, unknown>;
+    if (o && o.v === 1 && isValidInitiationType(o.initiation_type)) {
+      meta = {
+        v: 1,
+        initiation_type: o.initiation_type,
+      };
+      const tu = o.total_voting_units;
+      const su = o.signed_units;
+      const rp = o.required_percent;
+      const ru = o.required_units;
+      if (typeof tu === 'number' && Number.isFinite(tu)) meta.total_voting_units = Math.floor(tu);
+      if (typeof su === 'number' && Number.isFinite(su)) meta.signed_units = Math.floor(su);
+      if (typeof rp === 'number' && Number.isFinite(rp)) meta.required_percent = rp;
+      if (typeof ru === 'number' && Number.isFinite(ru)) meta.required_units = Math.floor(ru);
+    }
+  } catch {
+    /* ignore */
+  }
+  const clean = `${s.slice(0, i)}${s.slice(end + GOV_META_END.length)}`.replace(/\s+$/u, '');
+  return { cleanDescriptionZh: clean, meta };
+}
+
+export function embedGovernanceMeta(base: string | null | undefined, payload: MeetingGovernanceMetaV1): string {
+  const without = extractGovernanceMeta(base ?? '').cleanDescriptionZh.replace(/\s+$/u, '');
+  const block = `${GOV_META_START}${JSON.stringify(payload)}${GOV_META_END}`;
+  return without ? `${without}\n\n${block}` : block;
+}
+
+/** Parse `description_zh` into user-visible text plus embedded metas (governance outermost when both present). */
+export function peelMeetingDescriptionZhForEditor(full: string | null | undefined): {
+  userText: string;
+  writtenRemoteMeta: WrittenRemoteMetaV1 | null;
+  governanceMeta: MeetingGovernanceMetaV1 | null;
+} {
+  const gov = extractGovernanceMeta(full);
+  const wr = extractWrittenRemoteMeta(gov.cleanDescriptionZh);
+  return {
+    userText: wr.cleanDescriptionZh,
+    writtenRemoteMeta: wr.meta,
+    governanceMeta: gov.meta,
+  };
 }
 
 export function extractWrittenRemoteMeta(descriptionZh: string | null | undefined): {

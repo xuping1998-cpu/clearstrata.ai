@@ -1,4 +1,5 @@
 import type { MeetingRow } from './api';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 function meetingTitleZhFirstPick(m: Pick<MeetingRow, 'title_zh' | 'title_en'>): string {
   const zh = m.title_zh?.trim();
@@ -110,4 +111,35 @@ export function addDaysIso(fromIsoOrNull: string | null | undefined, days: numbe
   const d = new Date(base.getTime());
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString();
+}
+
+/**
+ * Resolves council `meetings.id` tied to `owner_vote_meetings.title` (same heuristic as Postgres RPC).
+ */
+export async function resolveCouncilMeetingIdForOwnerVoteTitle(
+  client: SupabaseClient,
+  propertyId: string,
+  ownerVoteTitle: string,
+): Promise<string | null> {
+  const t = ownerVoteTitle.trim();
+  if (!t) return null;
+
+  const { data, error } = await client
+    .from('meetings')
+    .select('id, title_zh, title_en, meeting_type, created_at')
+    .eq('property_id', propertyId)
+    .order('created_at', { ascending: false });
+
+  if (error || !Array.isArray(data)) return null;
+
+  for (const row of data as Array<Pick<MeetingRow, 'id' | 'title_zh' | 'title_en' | 'meeting_type'>>) {
+    const mt = String(row.meeting_type ?? '')
+      .trim()
+      .toLowerCase();
+    if (mt !== 'agm' && mt !== 'sgm') continue;
+    const zh = String(row.title_zh ?? '').trim();
+    const en = String(row.title_en ?? '').trim();
+    if (zh === t || en === t) return row.id;
+  }
+  return null;
 }

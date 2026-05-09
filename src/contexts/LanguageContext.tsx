@@ -107,8 +107,9 @@ const translations: Record<string, Record<Language, string>> = {
   meeting_ov_eligible_units: { en: 'Eligible units', zh: '有资格投票户数' },
   meeting_ov_resolution_count: { en: 'Resolutions', zh: '决议数' },
   meeting_ov_need_resolution_and_snapshot: {
-    en: 'Please add at least one voting agenda item and freeze the voter list first.',
-    zh: '请先添加需要表决的议程，并冻结投票资格名单。',
+    en:
+      'Please add at least one voting resolution agenda or council election agenda, then freeze the voter list before opening voting.',
+    zh: '请先添加至少一条「表决议程」或「选举议程」，并冻结投票资格名单后再打开表决。',
   },
   meeting_ov_freeze_confirm_open: {
     en:
@@ -166,8 +167,9 @@ const translations: Record<string, Record<Language, string>> = {
   meeting_ev_open_toast: { en: 'Voting is now open', zh: '投票已打开' },
   meeting_ev_close_toast: { en: 'Voting has been closed', zh: '投票已关闭' },
   meeting_ev_open_prereq: {
-    en: 'Please add vote-required agenda items and freeze the voter eligibility list first.',
-    zh: '请先添加需要表决的议程，并冻结投票资格名单。',
+    en:
+      'Please add vote-required or election agenda items, then freeze the voter eligibility list first.',
+    zh: '请先添加「表决议程」或「选举议程」，并冻结投票资格名单。',
   },
   meeting_ev_freeze_confirm_open: {
     en:
@@ -183,6 +185,16 @@ const translations: Record<string, Record<Language, string>> = {
   meeting_ev_snapshot_label: { en: 'Voter list', zh: '冻结名单' },
 
   meeting_resolution_results_title: { en: 'Resolution Results', zh: '决议结果' },
+  meeting_initiation_type: { en: 'Meeting initiation', zh: '会议发起方式' },
+  meeting_initiation_council: { en: 'Council initiated', zh: '业委会发起' },
+  meeting_initiation_owner_requisitioned: { en: 'Owner requisitioned', zh: '业主联名要求召开' },
+  meeting_initiation_annual_required: { en: 'Annual required', zh: '年度法定会议' },
+  meeting_total_voting_units: { en: 'Total voting units', zh: '总投票权数' },
+  meeting_required_percent: { en: 'Required threshold', zh: '法定门槛' },
+  meeting_required_units: { en: 'Required signed units', zh: '所需联名户数' },
+  meeting_signed_units: { en: 'Signed units', zh: '已联名户数' },
+  meeting_requisition_met: { en: 'SGM threshold met', zh: '已达到召开 SGM 门槛' },
+  meeting_requisition_not_met: { en: 'SGM threshold not met', zh: '尚未达到召开 SGM 门槛' },
   meeting_resolution_refresh_results: { en: 'Refresh tallies', zh: '刷新结果' },
   meeting_agenda_edit: { en: 'Edit item', zh: '编辑' },
   meeting_agenda_save: { en: 'Save', zh: '保存' },
@@ -216,6 +228,36 @@ const translations: Record<string, Record<Language, string>> = {
   meeting_vote_no_resolutions: {
     en: 'No voting agenda items have been added yet.',
     zh: '尚未添加需要表决的议程。',
+  },
+  meeting_agenda_type: { en: 'Agenda type', zh: '议程类型' },
+  meeting_agenda_type_normal: { en: 'Agenda item', zh: '普通议程' },
+  meeting_agenda_type_resolution: { en: 'Voting resolution', zh: '表决议程' },
+  meeting_agenda_type_election: { en: 'Election', zh: '选举议程' },
+  meeting_election_title: { en: 'Council election', zh: '业委会选举' },
+  meeting_election_seats: { en: 'Seats', zh: '应选席位数' },
+  meeting_election_max_choices: { en: 'Max choices per unit', zh: '每户最多可选人数' },
+  meeting_election_allow_self_nomination: { en: 'Allow self-nomination', zh: '允许自荐' },
+  meeting_election_candidates: { en: 'Candidates', zh: '候选人' },
+  meeting_election_add_candidate: { en: 'Add candidate', zh: '添加候选人' },
+  meeting_election_candidate_name: { en: 'Candidate name', zh: '候选人姓名' },
+  meeting_election_candidate_unit: { en: 'Unit', zh: '房号' },
+  meeting_election_candidate_statement: { en: 'Statement', zh: '竞选说明' },
+  meeting_election_nominated_by: { en: 'Nominated by', zh: '提名人' },
+  meeting_election_accepted: { en: 'Accepted nomination', zh: '已接受提名' },
+  meeting_election_submit_ballot: { en: 'Submit ballot', zh: '提交选票' },
+  meeting_election_selected_too_many: {
+    en: 'Too many candidates selected',
+    zh: '选择人数超过上限',
+  },
+  meeting_election_tentative_winner: { en: 'Tentative winner', zh: '暂定当选' },
+  meeting_election_winner: { en: 'Elected', zh: '当选' },
+  meeting_agenda_cannot_remove_election_has_ballots: {
+    en: 'Election ballots exist for this item; convert back only after resetting ballots (requires admin/backend).',
+    zh: '该选举议程已有业主选票记录，无法再改回其它议程类型。',
+  },
+  meeting_agenda_cannot_make_election_resolution_has_ballots: {
+    en: 'This item already has formal resolution ballots; convert to election is blocked.',
+    zh: '该议程已有业主大会正式表决选票，无法再改为选举议程。',
   },
 
   meeting_format_in_person: { en: 'In-person', zh: '线下会议' },

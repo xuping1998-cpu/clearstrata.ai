@@ -15,12 +15,18 @@ import {
   type MeetingType,
 } from '../features/meetings/api';
 import {
-  extractWrittenRemoteMeta,
+  embedGovernanceMeta,
   embedWrittenRemoteMeta,
   meetingFormatUiFromRow,
   dbFormatFromUi,
   isWrittenRemoteUi,
+  peelMeetingDescriptionZhForEditor,
+  stripWrittenRemoteMeta,
+  MEETING_SGM_REQUISITION_PERCENT_DEFAULT,
+  meetingSgmRequisitionRequiredUnits,
   type MeetingFormatUi,
+  type MeetingGovernanceMetaV1,
+  type MeetingInitiationType,
 } from '../features/meetings/meetingFormatModel';
 import { isOwnerVotingMeeting } from '../features/meetings/ownerVotingCouncil';
 
@@ -50,6 +56,12 @@ function addDaysDatetimeLocal(loc: string, days: number): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+function parseNonNegativeInt(s: string): number {
+  const n = Number.parseInt(String(s).trim(), 10);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.floor(n);
+}
+
 const defaultForm = {
   meeting_type: 'council' as MeetingType,
   title_en: '',
@@ -62,7 +74,28 @@ const defaultForm = {
   discussion_closes_at: '',
   voting_opens_at: '',
   voting_closes_at: '',
+  initiation_type: 'council_initiated' as MeetingInitiationType,
+  total_voting_units: '',
+  signed_units: '',
 };
+
+function buildGovernanceMetaForSave(form: typeof defaultForm): MeetingGovernanceMetaV1 {
+  const init = form.initiation_type;
+  if (init !== 'owner_requisitioned') {
+    return { v: 1, initiation_type: init };
+  }
+  const total = parseNonNegativeInt(form.total_voting_units);
+  const signed = parseNonNegativeInt(form.signed_units);
+  const requiredUnits = meetingSgmRequisitionRequiredUnits(total);
+  return {
+    v: 1,
+    initiation_type: 'owner_requisitioned',
+    total_voting_units: total,
+    required_percent: MEETING_SGM_REQUISITION_PERCENT_DEFAULT,
+    required_units: requiredUnits,
+    signed_units: signed,
+  };
+}
 
 export function MeetingEditor() {
   const { meetingId } = useParams<{ meetingId?: string }>();
@@ -101,7 +134,9 @@ export function MeetingEditor() {
       }
       setDetailMeeting(m);
       const uiFmt = meetingFormatUiFromRow(m);
-      const { cleanDescriptionZh, meta } = extractWrittenRemoteMeta(m.description_zh);
+      const layers = peelMeetingDescriptionZhForEditor(m.description_zh);
+      const meta = layers.writtenRemoteMeta;
+      const gov = layers.governanceMeta;
       let discClose = '';
       let vOpen = '';
       let vClose = '';
@@ -129,13 +164,22 @@ export function MeetingEditor() {
         title_en: m.title_en ?? '',
         title_zh: m.title_zh ?? '',
         description_en: m.description_en ?? '',
-        description_zh: cleanDescriptionZh,
+        description_zh: layers.userText,
         scheduled_at: sliceDatetimeLocal(m.scheduled_at),
         meeting_format_ui: uiFmt,
         status: statusMapped,
         discussion_closes_at: discClose,
         voting_opens_at: vOpen,
         voting_closes_at: vClose,
+        initiation_type: gov?.initiation_type ?? 'council_initiated',
+        total_voting_units:
+          gov?.total_voting_units != null && Number.isFinite(gov.total_voting_units)
+            ? String(Math.floor(gov.total_voting_units))
+            : '',
+        signed_units:
+          gov?.signed_units != null && Number.isFinite(gov.signed_units)
+            ? String(Math.floor(gov.signed_units))
+            : '',
       });
       setAgendaCount(bundle.agendaItems.length);
       setLoading(false);
@@ -218,11 +262,12 @@ export function MeetingEditor() {
       }
       descriptionZhFinal = embedWrittenRemoteMeta(form.description_zh || '', dcIso);
     } else {
-      const stripped = extractWrittenRemoteMeta(form.description_zh).cleanDescriptionZh;
-      descriptionZhFinal = stripped;
+      descriptionZhFinal = stripWrittenRemoteMeta(form.description_zh);
       votingOpenIso = null;
       votingCloseIso = null;
     }
+
+    descriptionZhFinal = embedGovernanceMeta(descriptionZhFinal, buildGovernanceMetaForSave(form));
 
     const readinessMeeting: Partial<MeetingRow> = {
       meeting_type: form.meeting_type,
@@ -404,6 +449,65 @@ export function MeetingEditor() {
         </div>
 
         <div>
+          <label className="block text-sm font-medium text-gray-700">{t('meeting_initiation_type')}</label>
+          <select
+            value={form.initiation_type}
+            onChange={(e) =>
+              setForm((f) => ({
+                ...f,
+                initiation_type: e.target.value as MeetingInitiationType,
+              }))
+            }
+            className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-900"
+          >
+            <option value="council_initiated">{t('meeting_initiation_council')}</option>
+            <option value="owner_requisitioned">{t('meeting_initiation_owner_requisitioned')}</option>
+            <option value="annual_required">{t('meeting_initiation_annual_required')}</option>
+          </select>
+        </div>
+
+        {form.initiation_type === 'owner_requisitioned' ? (
+          <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-4 space-y-3">
+            <p className="text-sm font-medium text-gray-800">{t('meeting_initiation_owner_requisitioned')}</p>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">{t('meeting_total_voting_units')}</label>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={form.total_voting_units}
+                onChange={(e) => setForm((f) => ({ ...f, total_voting_units: e.target.value }))}
+                className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-900"
+              />
+            </div>
+            <p className="text-sm text-gray-700">
+              {t('meeting_required_percent')}: {MEETING_SGM_REQUISITION_PERCENT_DEFAULT}%
+            </p>
+            <p className="text-sm text-gray-700">
+              {t('meeting_required_units')}:{' '}
+              {meetingSgmRequisitionRequiredUnits(parseNonNegativeInt(form.total_voting_units))}
+            </p>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">{t('meeting_signed_units')}</label>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={form.signed_units}
+                onChange={(e) => setForm((f) => ({ ...f, signed_units: e.target.value }))}
+                className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-900"
+              />
+            </div>
+            <p className="text-sm font-medium text-gray-900">
+              {parseNonNegativeInt(form.signed_units) >=
+              meetingSgmRequisitionRequiredUnits(parseNonNegativeInt(form.total_voting_units))
+                ? t('meeting_requisition_met')
+                : t('meeting_requisition_not_met')}
+            </p>
+          </div>
+        ) : null}
+
+        <div>
           <label className="block text-sm font-medium text-gray-700">{en ? 'Meeting format' : '会议形式'}</label>
           <select
             value={form.meeting_format_ui}
@@ -423,8 +527,7 @@ export function MeetingEditor() {
                   };
                 }
                 if (isWrittenRemoteUi(f.meeting_format_ui) && !isWrittenRemoteUi(v)) {
-                  const { cleanDescriptionZh } = extractWrittenRemoteMeta(f.description_zh);
-                  return { ...f, meeting_format_ui: v, description_zh: cleanDescriptionZh };
+                  return { ...f, meeting_format_ui: v, description_zh: stripWrittenRemoteMeta(f.description_zh) };
                 }
                 return { ...f, meeting_format_ui: v };
               });
