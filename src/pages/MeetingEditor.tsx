@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useProperty } from '../contexts/PropertyContext';
@@ -29,6 +29,7 @@ import {
   type MeetingInitiationType,
 } from '../features/meetings/meetingFormatModel';
 import { isOwnerVotingMeeting } from '../features/meetings/ownerVotingCouncil';
+import { canManagePropertyMeetings } from '@/lib/meetingPermissions';
 
 function sliceDatetimeLocal(iso: string | null | undefined): string {
   if (!iso?.trim()) return '';
@@ -101,7 +102,7 @@ export function MeetingEditor() {
   const { meetingId } = useParams<{ meetingId?: string }>();
   const isEdit = Boolean(meetingId);
   const { user } = useAuth();
-  const { currentPropertyId, ready: propertyReady } = useProperty();
+  const { currentPropertyId, ready: propertyReady, roleInProperty } = useProperty();
   const { language, t } = useLanguage();
   const en = language === 'en';
   const navigate = useNavigate();
@@ -372,6 +373,10 @@ export function MeetingEditor() {
 
   if (!currentPropertyId) {
     return <div className="p-8 text-center text-gray-600">{en ? 'Select a property first.' : '请先选择物业。'}</div>;
+  }
+
+  if (!canManagePropertyMeetings(roleInProperty)) {
+    return <Navigate to="/owner-voting" replace />;
   }
 
   const syncTimeModes = !(form.meeting_format_ui === 'written_remote');

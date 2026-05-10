@@ -37,6 +37,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { shouldDeferAutoPropertyRedirects } from '../../lib/authRecovery';
 import { samePropertyId } from '../../lib/propertyIdMatch';
+import { canManagePropertyMeetings } from '@/lib/meetingPermissions';
 import { labelFormat, labelMeetingType, labelStatus, labelVoteRule, labelVoteStatus, meetingUiStrings } from '../../features/meetings/labels';
 import {
   addDaysIso,
@@ -119,7 +120,7 @@ export function MeetingDetail() {
   const meetingId = meetingIdParam ?? legacyVotingId;
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { currentPropertyId, roleInProperty } = useProperty();
+  const { currentPropertyId, roleInProperty, ready: propertyReady } = useProperty();
   const { language, t } = useLanguage();
   const en = language === 'en';
   const location = useLocation();
@@ -171,11 +172,14 @@ export function MeetingDetail() {
   const openedTrackedRef = useRef<string | null>(null);
   const prevNewAgendaKindRef = useRef<AgendaKindUi>('normal');
 
-  const isStaff =
-    roleInProperty === 'council' ||
-    roleInProperty === 'manager' ||
-    roleInProperty === 'property_admin' ||
-    roleInProperty === 'admin';
+  const canManageCouncilMeetings = canManagePropertyMeetings(roleInProperty);
+
+  useEffect(() => {
+    if (!propertyReady || !meetingId) return;
+    if (!location.pathname.startsWith('/meetings/')) return;
+    if (canManageCouncilMeetings) return;
+    navigate(`/voting/${encodeURIComponent(meetingId)}${location.search}${location.hash}`, { replace: true });
+  }, [propertyReady, meetingId, location.pathname, location.search, location.hash, navigate, canManageCouncilMeetings]);
 
   const propertyIdForAgenda = currentPropertyId ?? bundle.meeting?.property_id ?? null;
 
@@ -573,7 +577,7 @@ export function MeetingDetail() {
     setNewAgendaEn('');
     setNewAgendaKind('normal');
 
-    if (requiresVote && isOwnerVotingMeeting(meeting) && isStaff && currentPropertyId && user?.id) {
+    if (requiresVote && isOwnerVotingMeeting(meeting) && canManageCouncilMeetings && currentPropertyId && user?.id) {
       const ensured = await ensureOwnerVoteMeetingForCouncilMeeting({
         propertyId: propertyIdForAgenda,
         meeting,
@@ -785,7 +789,7 @@ export function MeetingDetail() {
       });
     }
 
-    if (isOwnerVotingMeeting(meeting) && isStaff && nextRequiresVote) {
+    if (isOwnerVotingMeeting(meeting) && canManageCouncilMeetings && nextRequiresVote) {
       const ensured = await ensureOwnerVoteMeetingForCouncilMeeting({
         propertyId: propertyIdForAgenda,
         meeting,
@@ -1089,7 +1093,7 @@ export function MeetingDetail() {
                 </dl>
               </div>
             </div>
-            {isStaff && (
+            {canManageCouncilMeetings && (
               <Link
                 to={`/meetings/${meeting.id}/edit?${new URLSearchParams({ propertyId: meeting.property_id }).toString()}`}
                 className="shrink-0 self-start rounded-lg bg-white/22 px-4 py-2.5 text-sm font-medium text-white ring-1 ring-white/40 hover:bg-white/34 transition-colors lg:mt-12 shadow-sm"
@@ -1220,7 +1224,7 @@ export function MeetingDetail() {
               {showCouncilOwnerVoteUi ? (
                 <OwnerVotingInlineControlBar
                   meeting={meeting}
-                  isStaff={isStaff}
+                  isStaff={canManageCouncilMeetings}
                   userId={user?.id}
                   languageEn={en}
                   t={t}
@@ -1276,7 +1280,7 @@ export function MeetingDetail() {
                             </StatusBadge>
                           ) : null}
                         </div>
-                        {isStaff && agendaEdit?.agendaId !== agenda.id ? (
+                        {canManageCouncilMeetings && agendaEdit?.agendaId !== agenda.id ? (
                           <button
                             type="button"
                             disabled={busy}
@@ -1511,7 +1515,7 @@ export function MeetingDetail() {
 
                           {agendaKindUi !== 'election' && agenda.requires_vote ? (
                             !vote ? (
-                              isStaff ? (
+                              canManageCouncilMeetings ? (
                                 <button
                                   type="button"
                                   disabled={busy}
@@ -1540,7 +1544,7 @@ export function MeetingDetail() {
                                 </span>
                               </div>
 
-                              {isStaff && vote!.status === 'draft' && (
+                              {canManageCouncilMeetings && vote!.status === 'draft' && (
                                 <button
                                   type="button"
                                   disabled={busy}
@@ -1550,7 +1554,7 @@ export function MeetingDetail() {
                                   {en ? 'Open voting' : '开放投票'}
                                 </button>
                               )}
-                              {isStaff && vote!.status === 'open' && (
+                              {canManageCouncilMeetings && vote!.status === 'open' && (
                                 <button
                                   type="button"
                                   disabled={busy}
@@ -1608,7 +1612,7 @@ export function MeetingDetail() {
                               meetingId={meeting.id}
                               ownerVoteMeetingId={showCouncilOwnerVoteUi ? ovMeta.meeting?.id : null}
                               eligibleUnitNo={viewerOvUnitNo}
-                              canEdit={isStaff}
+                              canEdit={canManageCouncilMeetings}
                               electionBallotCount={electionBallotsByAgenda.get(agenda.id) ?? 0}
                               languageEn={en}
                               t={t}
@@ -1629,7 +1633,7 @@ export function MeetingDetail() {
                   </p>
                 )}
 
-                {isStaff && propertyIdForAgenda && (
+                {canManageCouncilMeetings && propertyIdForAgenda && (
                   <form onSubmit={handleAddAgenda} className="mt-6 border border-dashed border-gray-300 rounded-lg p-4 space-y-3 bg-white">
                     <p className="text-sm font-medium text-gray-800">{en ? 'Add agenda item' : '添加议程'}</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1920,7 +1924,7 @@ export function MeetingDetail() {
               </div>
             ) : null}
 
-            {isStaff && (
+            {canManageCouncilMeetings && (
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"

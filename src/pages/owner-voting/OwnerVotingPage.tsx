@@ -30,6 +30,8 @@ interface OwnerVoteMeetingRow {
   voting_opens_at: string | null;
   voting_closes_at: string | null;
   snapshot_frozen_at?: string | null;
+  /** For list ordering fallback */
+  created_at?: string | null;
 }
 
 interface SnapshotRowRaw {
@@ -161,6 +163,31 @@ interface MeetingPack {
   electionSelections: Map<string, string[]>;
 }
 
+/** scheduled_at DESC nulls last, then created_at DESC */
+function compareOwnerMeetingPacksBySchedule(a: MeetingPack, b: MeetingPack): number {
+  const sa = (a.meeting.scheduled_at ?? '').trim();
+  const sb = (b.meeting.scheduled_at ?? '').trim();
+  const aMissing = !sa;
+  const bMissing = !sb;
+  if (aMissing !== bMissing) return aMissing ? 1 : -1;
+
+  if (!aMissing && !bMissing) {
+    const diffMs = new Date(sb).getTime() - new Date(sa).getTime();
+    if (diffMs !== 0) return diffMs;
+  }
+
+  const ca = (a.meeting.created_at ?? '').trim();
+  const cb = (b.meeting.created_at ?? '').trim();
+  return cb.localeCompare(ca);
+}
+
+/** 列表次要操作：结束态显示「查看结果」 */
+function ownerVoteMeetingShowsViewResults(mt: OwnerVoteMeetingRow, votePhase: VotingPhaseUi): boolean {
+  const st = mt.status.trim().toLowerCase();
+  if (st === 'closed' || st === 'archived' || st === 'ended') return true;
+  return votePhase === 'closed';
+}
+
 function votingPhaseTone(phase: VotingPhaseUi): 'neutral' | 'success' | 'warning' {
   if (phase === 'not_started') return 'neutral';
   if (phase === 'voting_live') return 'success';
@@ -187,7 +214,7 @@ type CouncilElectionBlockProps = {
   busy: boolean;
   initialSelected: string[];
   onBusy: (v: boolean) => void;
-  onToast: (toast: { kind: 'success' | 'error'; text: string }) => void;
+  onToast: (toast: { kind: 'success' | 'error' | 'info'; text: string }) => void;
   onReload: () => Promise<void>;
 };
 
@@ -496,7 +523,7 @@ export function OwnerVotingPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [meetingPacks, setMeetingPacks] = useState<MeetingPack[]>([]);
 
-  const [toast, setToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  const [toast, setToast] = useState<{ kind: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [electionSubmitKey, setElectionSubmitKey] = useState<string | null>(null);
 
@@ -534,7 +561,8 @@ export function OwnerVotingPage() {
             scheduled_at,
             voting_opens_at,
             voting_closes_at,
-            snapshot_frozen_at
+            snapshot_frozen_at,
+            created_at
           )
         `,
         )
@@ -663,11 +691,7 @@ export function OwnerVotingPage() {
         ];
       });
 
-      packsIncomplete.sort((a, b) => {
-        const ta = a.meeting.scheduled_at || a.meeting.voting_opens_at || '';
-        const tb = b.meeting.scheduled_at || b.meeting.voting_opens_at || '';
-        return tb.localeCompare(ta);
-      });
+      packsIncomplete.sort(compareOwnerMeetingPacksBySchedule);
 
       const packs: MeetingPack[] = await Promise.all(
         packsIncomplete.map(async (p) => {
@@ -715,6 +739,8 @@ export function OwnerVotingPage() {
           return { ...p, electionAgendas };
         }),
       );
+
+      packs.sort(compareOwnerMeetingPacksBySchedule);
 
       setMeetingPacks(packs);
       setLoadState('done');
@@ -810,7 +836,9 @@ export function OwnerVotingPage() {
           className={`fixed bottom-6 left-1/2 z-[60] max-w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border px-4 py-3 text-sm shadow-lg ${
             toast.kind === 'success'
               ? 'border-clearstrata-state-success-border bg-clearstrata-state-success-surface text-clearstrata-state-success-text'
-              : 'border-clearstrata-state-danger-border bg-clearstrata-state-danger-surface text-clearstrata-state-danger-text'
+              : toast.kind === 'info'
+                ? 'border-gray-300 bg-gray-900 text-white'
+                : 'border-clearstrata-state-danger-border bg-clearstrata-state-danger-surface text-clearstrata-state-danger-text'
           }`}
           role="status"
         >
@@ -826,6 +854,22 @@ export function OwnerVotingPage() {
             {`« ${t('meeting_back_list')}`}
           </Link>
         </p>
+      </div>
+
+      <div className="mb-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+        <h2 className="text-lg font-bold text-gray-900">{zh ? '发起特别大会联署' : 'SGM petition (reserved)'}</h2>
+        <p className="mt-2 text-sm leading-relaxed text-gray-600">
+          {zh
+            ? '当业委会不作为时，业主可依法发起 SGM 联署；达到法定门槛后可升级为正式特别大会。'
+            : 'When the strata council cannot act, owners may pursue a lawful SGM petition; once statutory thresholds are met it may become a formal special general meeting.'}
+        </p>
+        <button
+          type="button"
+          className="mt-4 rounded-lg bg-clearstrata-ui-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:opacity-60"
+          onClick={() => setToast({ kind: 'info', text: zh ? '联署发起功能即将开放。' : 'Petition launch is opening soon.' })}
+        >
+          {zh ? '发起联署' : 'Start petition'}
+        </button>
       </div>
 
       {meetingPacks.length === 0 ? (
@@ -1025,6 +1069,22 @@ export function OwnerVotingPage() {
                       })}
                     </div>
                   ) : null}
+                </div>
+                <div className="border-t border-gray-100 px-5 py-4 sm:px-6">
+                  <Link
+                    to={`/voting/${encodeURIComponent(pack.meetingId)}?${new URLSearchParams({
+                      propertyId: String(pack.propertyId),
+                    }).toString()}`}
+                    className="inline-flex w-full items-center justify-center rounded-xl bg-clearstrata-ui-primary px-4 py-2.5 text-center text-sm font-semibold text-white shadow-sm hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive sm:w-auto sm:min-w-[11rem]"
+                  >
+                    {ownerVoteMeetingShowsViewResults(mt, phase)
+                      ? zh
+                        ? '查看结果'
+                        : 'View results'
+                      : zh
+                        ? '进入会议投票'
+                        : 'Enter meeting voting'}
+                  </Link>
                 </div>
               </article>
             );

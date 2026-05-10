@@ -33,14 +33,22 @@ import { DemoGeneratedDataProvider } from '../contexts/DemoGeneratedDataContext'
 import { DemoCreatePropertyCtaButton } from './onboarding/DemoCreatePropertyCta';
 import { realPropertyJoinPath } from '@/lib/propertyEntryRoutes';
 import { isPlatformAdmin } from '@/lib/permissions';
+import { meetingsNavHref } from '@/lib/meetingPermissions';
 
 interface LayoutProps {
   children: ReactNode;
 }
 
 function isModulePathActive(location: ReturnType<typeof useLocation>, path: string): boolean {
-  if (path === '/meetings') {
-    return location.pathname === '/meetings' || location.pathname.startsWith('/meetings/');
+  if (path === '/meetings' || path === '/owner-voting') {
+    const p = location.pathname;
+    return (
+      p === '/meetings' ||
+      p.startsWith('/meetings/') ||
+      p === '/owner-voting' ||
+      p === '/voting' ||
+      p.startsWith('/voting/')
+    );
   }
   if (path === '/procurement') {
     return location.pathname === '/procurement' || location.pathname.startsWith('/procurement/');
@@ -159,9 +167,9 @@ export function Layout({ children }: LayoutProps) {
       { path: '/procurement', icon: ShoppingCart, label: t('nav_procurement'), iconBg: 'bg-blue-500' },
       { path: '/compliance', icon: FileText, label: t('nav_help_compliance'), iconBg: 'bg-indigo-500' },
       { path: '/finance', icon: DollarSign, label: t('nav_finance'), iconBg: 'bg-clearstrata-brand-600' },
-      { path: '/meetings', icon: CalendarDays, label: t('nav_meetings_records'), iconBg: 'bg-violet-600' },
+      { path: meetingsNavHref(roleInProperty), icon: CalendarDays, label: t('nav_meetings_records'), iconBg: 'bg-violet-600' },
     ] as Array<{ path: string; icon: LucideIcon; label: string; iconBg: string }>;
-  }, [t, isDemoMode, isDemoPropertyMock, location.pathname, language]);
+  }, [t, isDemoMode, isDemoPropertyMock, location.pathname, language, roleInProperty]);
 
   const systemNavItems = useMemo(
     () =>

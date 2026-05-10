@@ -27,6 +27,7 @@ import {
   extractElectionAgendaMeta,
   finalizeElectionMeta,
 } from './electionAgendaModel';
+import { canManagePropertyMeetings } from '@/lib/meetingPermissions';
 
 type MeetingCardExtras = {
   resolutionAgendaCount: number;
@@ -123,11 +124,7 @@ export function MeetingListView({ variant }: Props) {
     Record<string, OwnerVoteMeetingCardRow>
   >({});
 
-  const isStaff =
-    roleInProperty === 'council' ||
-    roleInProperty === 'manager' ||
-    roleInProperty === 'property_admin' ||
-    roleInProperty === 'admin';
+  const canManageMeetings = canManagePropertyMeetings(roleInProperty);
 
   const load = useCallback(async () => {
     if (!user || !propertyReady) return;
@@ -252,6 +249,8 @@ export function MeetingListView({ variant }: Props) {
 
   const primaryCtaLabel = en ? 'Enter meeting voting' : '进入会议投票';
 
+  const rowViewResultsLabel = en ? 'View results' : '查看结果';
+
   return (
     <div className="min-h-screen bg-gray-50 pb-16">
       <div className="bg-gradient-to-r from-clearstrata-brand-500 to-clearstrata-brand-600 text-white p-6">
@@ -273,6 +272,17 @@ export function MeetingListView({ variant }: Props) {
 
       <div className="max-w-7xl mx-auto p-6 space-y-6">
         {err ? <p className="text-sm text-red-600">{err}</p> : null}
+
+        {variant === 'meetings' && canManageMeetings ? (
+          <div className="flex flex-wrap justify-end gap-2">
+            <Link
+              to="/owner-voting"
+              className="inline-flex items-center rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-900 hover:bg-violet-100"
+            >
+              {en ? 'My voting' : '我的投票'}
+            </Link>
+          </div>
+        ) : null}
 
         {stats && (
           <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
@@ -300,7 +310,7 @@ export function MeetingListView({ variant }: Props) {
                   {stats.agm === 'ok' ? (en ? 'OK — AGM on file' : '正常 — 本年度已有 AGM') : en ? 'Missing AGM' : '缺 AGM'}
                 </p>
               </div>
-              {isStaff && (
+              {canManageMeetings && (
                 <div className="ml-auto">
                   <Link
                     to="/meetings/new"
@@ -315,7 +325,7 @@ export function MeetingListView({ variant }: Props) {
           </div>
         )}
 
-        {!stats && isStaff && (
+        {!stats && canManageMeetings && (
           <div className="flex justify-end">
             <Link
               to="/meetings/new"
@@ -335,6 +345,21 @@ export function MeetingListView({ variant }: Props) {
               const rowId = m.id != null && String(m.id).trim() !== '' ? String(m.id).trim() : '';
               const detailHref = rowId ? hrefForMeeting(rowId) : null;
               const cardInteractive = detailHref !== null;
+              const councilBind = councilMeetingTitleForOwnerVoteBinding(m).trim();
+              const ovLite = councilBind ? ovCardByCouncilTitle[councilBind] : undefined;
+              const showOwnerVoteFlow = !!(councilBind && isOwnerVotingMeeting(m));
+
+              let rowCta = primaryCtaLabel;
+              if (cardInteractive && showOwnerVoteFlow && ovLite) {
+                const ovSt = ovLite.status?.trim().toLowerCase() ?? '';
+                const rawClose = ovLite.voting_closes_at?.trim() ?? '';
+                const closesMs = rawClose ? new Date(rawClose).getTime() : NaN;
+                const pastClose = Number.isFinite(closesMs) && Date.now() > closesMs;
+                const ended =
+                  ovSt === 'closed' || ovSt === 'archived' || ovSt === 'ended' || pastClose;
+                if (ended) rowCta = rowViewResultsLabel;
+              }
+
               const cardClass = [
                 'group w-full text-left p-6 block transition-all duration-150',
                 cardInteractive
@@ -370,10 +395,6 @@ export function MeetingListView({ variant }: Props) {
                     )}
                     {(() => {
                       const extras = rowId ? cardExtrasByMeetingId[rowId] ?? emptyExtras() : emptyExtras();
-                      const councilBind = councilMeetingTitleForOwnerVoteBinding(m).trim();
-                      const ovLite = councilBind ? ovCardByCouncilTitle[councilBind] : undefined;
-                      const showFlow = !!(councilBind && isOwnerVotingMeeting(m));
-
                       const writtenRm = isWrittenRemoteUi(meetingFormatUiFromRow(m));
                       const disc = councilWrittenRemoteWindows(m);
                       const fb = councilMeetingVotingWindowFallback(m);
@@ -388,7 +409,7 @@ export function MeetingListView({ variant }: Props) {
                         .replace('{r}', String(extras.resolutionAgendaCount))
                         .replace('{e}', String(extras.electionAgendaCount));
 
-                      if (!showFlow) return null;
+                      if (!showOwnerVoteFlow) return null;
 
                       return (
                         <div className="mt-3 border-t border-gray-100 pt-3 text-[11px] sm:text-xs text-gray-600 space-y-1">
@@ -436,7 +457,7 @@ export function MeetingListView({ variant }: Props) {
                           : 'bg-gray-200 text-gray-500',
                       ].join(' ')}
                     >
-                      {cardInteractive ? primaryCtaLabel : en ? 'Unavailable' : '无法进入'}
+                      {cardInteractive ? rowCta : en ? 'Unavailable' : '无法进入'}
                     </span>
                   </div>
                 </div>

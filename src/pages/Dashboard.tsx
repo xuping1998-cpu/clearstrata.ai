@@ -3,14 +3,17 @@ import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { GUEST_PROPERTY_STORAGE_KEY, useProperty } from '../contexts/PropertyContext';
-import HomeBudgetPanel from '@/components/dashboard/HomeBudgetPanel';
 import { DemoPropertyMockHomePanel } from '@/components/demoProperty/DemoPropertyMockHomePanel';
 import { DemoCreatePropertyCtaCard } from '@/components/onboarding/DemoCreatePropertyCta';
 import { TrialUpgradeCard } from '@/components/billing/TrialUpgradeCard';
+import { ImportantUpdatesDashboardCard } from '@/components/dashboard/ImportantUpdatesDashboardCard';
+import { QuickAccessDashboardCard } from '@/components/dashboard/QuickAccessDashboardCard';
+import { HomeServicesDashboardCard } from '@/components/dashboard/HomeServicesDashboardCard';
 import { supabase } from '@/lib/supabase';
 import { getTrialDaysRemaining, getTrialState } from '@/lib/subscription';
 import { realPropertyJoinPath } from '@/lib/propertyEntryRoutes';
 import { samePropertyId } from '@/lib/propertyIdMatch';
+import { meetingsNavHref } from '@/lib/meetingPermissions';
 
 export function Dashboard() {
   const { language } = useLanguage();
@@ -18,7 +21,16 @@ export function Dashboard() {
   const navigate = useNavigate();
   const location = useLocation();
   const { session } = useAuth();
-  const { isGuest, isDemoMode, guestPropertyCode, isDemoPropertyMock, currentPropertyId, memberships, ready: propertyReady } = useProperty();
+  const {
+    isGuest,
+    isDemoMode,
+    guestPropertyCode,
+    isDemoPropertyMock,
+    currentPropertyId,
+    memberships,
+    ready: propertyReady,
+    roleInProperty,
+  } = useProperty();
 
   const [trialRow, setTrialRow] = useState<{ subscription_status?: string | null; trial_ends_at?: string | null } | null>(null);
 
@@ -59,7 +71,6 @@ export function Dashboard() {
         <div className="mb-4">
           <DemoCreatePropertyCtaCard />
         </div>
-        <HomeBudgetPanel />
       </>
     );
   }
@@ -90,7 +101,6 @@ export function Dashboard() {
         <div className="mb-4">
           <DemoCreatePropertyCtaCard />
         </div>
-        <HomeBudgetPanel />
       </>
     );
   }
@@ -127,6 +137,9 @@ export function Dashboard() {
 
   return (
     <>
+      <ImportantUpdatesDashboardCard langEn={en} />
+      <QuickAccessDashboardCard langEn={en} meetingsHref={meetingsNavHref(roleInProperty)} />
+      <HomeServicesDashboardCard langEn={en} />
       <div className="mb-4 rounded-2xl border border-clearstrata-ui-softBorder bg-clearstrata-ui-soft px-4 py-3 shadow-sm">
         <div className="flex flex-col gap-3">
           <div className="flex items-center gap-3 flex-wrap">
@@ -144,13 +157,6 @@ export function Dashboard() {
               className="inline-flex items-center justify-center rounded-xl border border-clearstrata-ui-softBorder bg-white px-3 py-2 text-sm font-semibold text-clearstrata-brand-900 hover:bg-clearstrata-brand-50"
             >
               邀请成员
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate('/invoices/upload')}
-              className="inline-flex items-center justify-center rounded-xl border border-clearstrata-ui-softBorder bg-white px-3 py-2 text-sm font-semibold text-clearstrata-brand-900 hover:bg-clearstrata-brand-50"
-            >
-              上传第一张发票
             </button>
           </div>
 
@@ -186,7 +192,6 @@ export function Dashboard() {
         const daysLeft = getTrialDaysRemaining(ends);
         return <TrialUpgradeCard state={state} daysLeft={daysLeft} />;
       })()}
-      <HomeBudgetPanel />
     </>
   );
 }
