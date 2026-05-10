@@ -668,8 +668,26 @@ export function MeetingDetail() {
       }
     }
 
-    const peeled = extractElectionAgendaMeta(row.description_zh ?? '').cleanDescriptionZh.trim();
+    /** Council-level `meeting_votes` ballots (distinct from owner_vote_ballots). */
+    const councilVoteRow = voteByAgendaId.get(row.id);
+    if (startedKind === 'resolution' && nextKind === 'election' && councilVoteRow) {
+      const councilBallots = bundle.ballotsByVoteId[councilVoteRow.id] ?? [];
+      if (councilBallots.length > 0) {
+        setActionErr(
+          en
+            ? 'This agenda already has ballots on its council vote. Close or archive that vote before converting to an election agenda.'
+            : '该议程关联的「会议表决」已有投票记录，请先结束或归档后再转为选举议程。',
+        );
+        return;
+      }
+    }
+
+    const existing = row.description_zh ?? '';
+    const peeled = extractElectionAgendaMeta(existing).cleanDescriptionZh.trim();
+
+    /** Resolution-only; council election meta lives in description_zh blob. */
     const nextRequiresVote = nextKind === 'resolution';
+    const nextVoteRule: VoteRule | null = nextRequiresVote ? agendaEdit.vote_rule : null;
 
     let descriptionZh: string | null | undefined = row.description_zh;
     if (nextKind === 'election') {
@@ -677,12 +695,10 @@ export function MeetingDetail() {
 
       if (upgradingToElectionFromNonElection) {
         const pairFallback = defaultElectionNominationIsoPair(meeting, ovMeta.meeting);
-        const fallbackOpens = pairFallback.opens;
-        const fallbackCloses = pairFallback.closes;
         const nomination_opens_at =
-          fromDatetimeLocalValue(agendaEdit.election_nomination_opens_dl) ?? fallbackOpens;
+          fromDatetimeLocalValue(agendaEdit.election_nomination_opens_dl) ?? pairFallback.opens;
         const nomination_closes_at =
-          fromDatetimeLocalValue(agendaEdit.election_nomination_closes_dl) ?? fallbackCloses;
+          fromDatetimeLocalValue(agendaEdit.election_nomination_closes_dl) ?? pairFallback.closes;
         descriptionZh = embedElectionAgendaMeta(
           peeled || null,
           defaultElectionMeta({
@@ -723,8 +739,6 @@ export function MeetingDetail() {
       descriptionZh = peeled.trim() ? peeled : null;
     }
 
-    const nextVoteRule = nextRequiresVote ? agendaEdit.vote_rule : null;
-
     setBusy(true);
     setActionErr(null);
 
@@ -745,9 +759,24 @@ export function MeetingDetail() {
       return;
     }
 
-    const voteRow = voteByAgendaId.get(row.id);
-    if (voteRow && nextRequiresVote) {
-      await updateVote(voteRow.id, meeting.property_id, {
+    if (
+      startedKind === 'resolution' &&
+      nextKind === 'election' &&
+      councilVoteRow
+    ) {
+      const { error: delCouncilVoteErr } = await supabase
+        .from('meeting_votes')
+        .delete()
+        .eq('property_id', propertyIdForAgenda)
+        .eq('id', councilVoteRow.id)
+        .eq('meeting_id', meeting.id);
+      if (delCouncilVoteErr) {
+        console.warn('[MeetingDetail] delete orphan meeting_vote after election conversion', delCouncilVoteErr.message);
+      }
+    }
+
+    if (councilVoteRow && nextRequiresVote) {
+      await updateVote(councilVoteRow.id, meeting.property_id, {
         title_en: ten || null,
         title_zh: tzh || null,
         vote_rule: agendaEdit.vote_rule,

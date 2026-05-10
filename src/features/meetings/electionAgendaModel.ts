@@ -141,7 +141,11 @@ export function extractElectionAgendaMeta(descriptionZh: string | null | undefin
   if (s[j] === '\n') j++;
 
   const endRel = s.indexOf('\n-->', j);
-  if (endRel < 0) return { cleanDescriptionZh: s.replace(/\s+$/u, '').trimEnd(), meta: null };
+  /** Unclosed blob would leave a duplicate marker prefix on re-embed → meta stays null forever. Strip from opener onward. */
+  if (endRel < 0) {
+    const clean = s.slice(0, i).replace(/\s+$/u, '').trimEnd();
+    return { cleanDescriptionZh: clean, meta: null };
+  }
 
   const raw = s.slice(j, endRel).trim();
   let meta: ElectionAgendaMetaV1 | null = null;
