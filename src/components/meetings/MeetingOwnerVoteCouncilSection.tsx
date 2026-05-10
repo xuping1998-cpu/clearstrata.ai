@@ -6,10 +6,13 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import type { MeetingAgendaRow, MeetingRow } from '@/features/meetings/api';
 import {
-  addDaysIso,
   councilMeetingTitleForOwnerVoteBinding,
   ownerVoteMeetingTypeForInsert,
 } from '@/features/meetings/ownerVotingCouncil';
+import {
+  councilMeetingVotingWindowFallback,
+  deriveOwnerVoteMeetingVotingTimes,
+} from '@/features/meetings/meetingFormatModel';
 import { StatusBadge } from '@/components/status/StatusBadge';
 
 type OvMeetingRow = {
@@ -144,6 +147,7 @@ export function MeetingOwnerVoteCouncilSection({ meeting, agendaItems, isStaff }
   const en = language === 'en';
 
   const bindingTitle = councilMeetingTitleForOwnerVoteBinding(meeting);
+  const plannedVotingWindow = councilMeetingVotingWindowFallback(meeting);
 
   const [loading, setLoading] = useState(true);
   const [ovMeeting, setOvMeeting] = useState<OvMeetingRow | null>(null);
@@ -283,6 +287,7 @@ export function MeetingOwnerVoteCouncilSection({ meeting, agendaItems, isStaff }
     }
 
     const scheduledIso = meeting.scheduled_at ? new Date(meeting.scheduled_at).toISOString() : null;
+    const { voting_opens_at, voting_closes_at } = deriveOwnerVoteMeetingVotingTimes(meeting);
 
     const row = {
       property_id: meeting.property_id,
@@ -290,8 +295,8 @@ export function MeetingOwnerVoteCouncilSection({ meeting, agendaItems, isStaff }
       title: tit,
       description: descriptionForInsert(meeting, agendaItems),
       scheduled_at: scheduledIso,
-      voting_opens_at: new Date().toISOString(),
-      voting_closes_at: addDaysIso(scheduledIso, 7),
+      voting_opens_at,
+      voting_closes_at,
       status: 'draft',
       created_by: user.id,
     };
@@ -371,6 +376,19 @@ export function MeetingOwnerVoteCouncilSection({ meeting, agendaItems, isStaff }
     if (!canOpenVoting) {
       setToast({ kind: 'error', text: t('meeting_ov_need_res_and_freeze') });
       return;
+    }
+    const openIso = ovMeeting.voting_opens_at?.trim();
+    if (openIso) {
+      const openMs = new Date(openIso).getTime();
+      if (!Number.isNaN(openMs) && Date.now() < openMs) {
+        setToast({
+          kind: 'error',
+          text: en
+            ? 'Voting is not open yet; you cannot open before the scheduled time.'
+            : '投票尚未到开放时间，不能提前打开。',
+        });
+        return;
+      }
     }
     setBusy(true);
     try {
@@ -458,14 +476,26 @@ export function MeetingOwnerVoteCouncilSection({ meeting, agendaItems, isStaff }
               : null}
           </p>
           {bindingTitle.trim() ? (
-            <button
-              type="button"
-              disabled={busy || !user?.id}
-              onClick={() => void handleEnable()}
-              className="rounded-xl bg-clearstrata-ui-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover disabled:opacity-50"
-            >
-              {t('meeting_ov_enable')}
-            </button>
+            <>
+              <div className="text-sm space-y-1 text-gray-700 mb-3">
+                <p>
+                  <span className="text-gray-600">{t('meeting_ov_vote_opens')}:</span>{' '}
+                  <span className="font-medium text-gray-900">{fmtTs(plannedVotingWindow.votingOpens)}</span>
+                </p>
+                <p>
+                  <span className="text-gray-600">{t('meeting_ov_vote_closes')}:</span>{' '}
+                  <span className="font-medium text-gray-900">{fmtTs(plannedVotingWindow.votingCloses)}</span>
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={busy || !user?.id}
+                onClick={() => void handleEnable()}
+                className="rounded-xl bg-clearstrata-ui-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover disabled:opacity-50"
+              >
+                {t('meeting_ov_enable')}
+              </button>
+            </>
           ) : null}
         </div>
       ) : (

@@ -1,8 +1,8 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
 import { withProperty } from '../../lib/supabaseTenant';
+import { deriveOwnerVoteMeetingVotingTimes } from './meetingFormatModel';
 import {
-  addDaysIso,
   councilMeetingTitleForOwnerVoteBinding,
   isOwnerVotingMeeting,
   ownerVoteMeetingTypeForInsert,
@@ -1130,14 +1130,15 @@ export async function ensureOwnerVoteMeetingForCouncilMeeting(params: {
     const descriptionParts = [descZh, descEn].filter((x): x is string => Boolean(x));
     const description = descriptionParts.length ? descriptionParts.join('\n\n').slice(0, 24000) : null;
 
+    const { voting_opens_at, voting_closes_at } = deriveOwnerVoteMeetingVotingTimes(meeting);
     const row = {
       property_id: propertyId,
       meeting_type: ownerVoteMeetingTypeForInsert(meeting),
       title,
       description,
       scheduled_at: scheduledIso,
-      voting_opens_at: new Date().toISOString(),
-      voting_closes_at: addDaysIso(scheduledIso ?? null, 7),
+      voting_opens_at,
+      voting_closes_at,
       status: 'draft',
       created_by: userId,
     };
@@ -1337,7 +1338,13 @@ async function aggregatesFromOwnerVoteBallots(
   for (const raw of (data ?? []) as { resolution_id?: string; choice?: string }[]) {
     const rid = String(raw.resolution_id ?? '').trim();
     if (!rid) continue;
-    const ch = String(raw.choice ?? '').trim().toLowerCase();
+    const chRaw = String(raw.choice ?? '').trim().toLowerCase();
+    /** Align with optional DB/RPC spellings; only rows in `owner_vote_ballots` (not council `meeting_ballots`). */
+    let ch: 'yes' | 'no' | 'abstain' | null = null;
+    if (chRaw === 'yes' || chRaw === 'approve' || chRaw === 'for') ch = 'yes';
+    else if (chRaw === 'no' || chRaw === 'reject' || chRaw === 'against') ch = 'no';
+    else if (chRaw === 'abstain') ch = 'abstain';
+    if (!ch) continue;
     const cur = m.get(rid) ?? { yes: 0, no: 0, abstain: 0 };
     if (ch === 'yes') cur.yes += 1;
     else if (ch === 'no') cur.no += 1;
@@ -1359,6 +1366,9 @@ function viewCountsAreBlank(r: OwnerVoteResolutionResultNormalized | undefined):
 /**
  * Reads tallies from `owner_vote_resolution_results`; merges in live counts from `owner_vote_ballots`
  * when the view row is blank (stale projections, mismatched joins, or RLS quirks on the view only).
+ *
+ * Expects `meeting_id` = `owner_vote_meetings.id` (not council `meetings.id`), and `resolution_id` =
+ * `owner_vote_resolutions.id`, matching how `submit_owner_vote` and ballot rows are stored.
  */
 export async function fetchOwnerVoteResolutionResultsForOwnerMeeting(params: {
   propertyId: string;

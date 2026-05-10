@@ -955,6 +955,19 @@ export function MeetingDetail() {
       setEvToast({ kind: 'error', text: t('meeting_ov_need_resolution_and_snapshot') });
       return;
     }
+    const openIso = ov.voting_opens_at?.trim();
+    if (openIso) {
+      const openMs = new Date(openIso).getTime();
+      if (!Number.isNaN(openMs) && Date.now() < openMs) {
+        setEvToast({
+          kind: 'error',
+          text: en
+            ? 'Voting is not open yet; you cannot open before the scheduled time.'
+            : '投票尚未到开放时间，不能提前打开。',
+        });
+        return;
+      }
+    }
     setOvBusy(true);
     const { error } = await supabase
       .from('owner_vote_meetings')
@@ -1232,9 +1245,11 @@ export function MeetingDetail() {
                 {bundle.agendaItems.map((agenda) => {
                   const agendaKindUi = agendaKindFromRow(agenda);
                   const vote = voteByAgendaId.get(agenda.id);
-                  const ballots = vote ? bundle.ballotsByVoteId[vote.id] ?? [] : [];
-                  const tallies = ballotTallies(ballots);
-                  const my = vote ? bundle.myBallotsByVoteId[vote.id] : undefined;
+                  const legacyCouncilVoteUi =
+                    !showCouncilOwnerVoteUi && agendaKindUi !== 'election' && vote;
+                  const ballots = legacyCouncilVoteUi ? bundle.ballotsByVoteId[vote!.id] ?? [] : [];
+                  const tallies = legacyCouncilVoteUi ? ballotTallies(ballots) : {};
+                  const my = legacyCouncilVoteUi ? bundle.myBallotsByVoteId[vote!.id] : undefined;
                   const descShowZh = displayAgendaZhWithoutElection(agenda.description_zh);
                   return (
                     <div key={agenda.id} className="border border-gray-100 rounded-lg p-4 bg-gray-50/50">
@@ -1256,7 +1271,10 @@ export function MeetingDetail() {
                               {t('meeting_agenda_type_normal')}
                             </StatusBadge>
                           ) : null}
-                          {agendaEdit?.agendaId !== agenda.id && agendaKindUi === 'resolution' && agenda.vote_rule ? (
+                          {agendaEdit?.agendaId !== agenda.id &&
+                          agendaKindUi === 'resolution' &&
+                          agenda.vote_rule &&
+                          !showCouncilOwnerVoteUi ? (
                             <StatusBadge tone="neutral" size="sm">
                               {labelVoteRule(agenda.vote_rule, en)}
                             </StatusBadge>
@@ -1488,7 +1506,8 @@ export function MeetingDetail() {
                               agenda.title_en ||
                               (en ? meetingUiStrings.untitled.en : meetingUiStrings.untitled.zh)}
                           </h3>
-                          {(descShowZh || agenda.description_en) && (
+                          {(descShowZh || agenda.description_en) &&
+                          !(showCouncilOwnerVoteUi && agendaKindUi === 'resolution') && (
                             <p className="text-sm text-gray-600 mt-1 whitespace-pre-wrap">
                               {descShowZh || agenda.description_en}
                             </p>
@@ -1513,49 +1532,49 @@ export function MeetingDetail() {
                             )
                           ) : null}
 
-                          {agendaKindUi !== 'election' && vote ? (
+                          {legacyCouncilVoteUi ? (
                             <div className="mt-4 space-y-3 border-t border-gray-200 pt-3">
                               <div className="flex flex-wrap items-center gap-2">
                                 <span className="text-xs font-medium text-gray-700">{en ? 'Vote status' : '表决状态'}:</span>
                                 <StatusBadge tone="neutral" size="sm">
-                                  {labelVoteStatus(vote.status, en)}
+                                  {labelVoteStatus(vote!.status, en)}
                                 </StatusBadge>
                                 <span className="text-xs text-gray-600">
-                                  {en ? 'Vote rule' : '投票规则'}: {labelVoteRule(vote.vote_rule, en)}
+                                  {en ? 'Vote rule' : '投票规则'}: {labelVoteRule(vote!.vote_rule, en)}
                                 </span>
                               </div>
 
-                              {isStaff && vote.status === 'draft' && (
+                              {isStaff && vote!.status === 'draft' && (
                                 <button
                                   type="button"
                                   disabled={busy}
-                                  onClick={() => handleOpenVote(vote.id)}
+                                  onClick={() => handleOpenVote(vote!.id)}
                                   className="text-sm px-3 py-1.5 rounded-lg bg-clearstrata-ui-primary text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:opacity-50"
                                 >
                                   {en ? 'Open voting' : '开放投票'}
                                 </button>
                               )}
-                              {isStaff && vote.status === 'open' && (
+                              {isStaff && vote!.status === 'open' && (
                                 <button
                                   type="button"
                                   disabled={busy}
-                                  onClick={() => handleCloseVote(vote.id)}
+                                  onClick={() => handleCloseVote(vote!.id)}
                                   className="text-sm px-3 py-1.5 rounded-lg bg-clearstrata-brand-700 text-white hover:bg-clearstrata-brand-800 active:bg-clearstrata-brand-900 disabled:opacity-50"
                                 >
                                   {en ? 'Close voting' : '关闭投票'}
                                 </button>
                               )}
 
-                              {vote.status === 'open' && (
+                              {vote!.status === 'open' && (
                                 <div className="space-y-2">
                                   <p className="text-sm text-gray-700">{en ? 'Cast your ballot' : '投票'}</p>
                                   <div className="flex flex-wrap gap-2">
-                                    {vote.options.map((opt) => (
+                                    {vote!.options.map((opt) => (
                                       <button
                                         key={opt.id}
                                         type="button"
                                         disabled={busy}
-                                        onClick={() => handleBallot(vote.id, opt.option_key)}
+                                        onClick={() => handleBallot(vote!.id, opt.option_key)}
                                         className={`px-3 py-2 rounded-lg border text-sm ${
                                           my?.selected_option_key === opt.option_key
                                             ? 'border-clearstrata-ui-primary bg-clearstrata-ui-primary/10 text-clearstrata-ui-softText'
@@ -1569,9 +1588,9 @@ export function MeetingDetail() {
                                 </div>
                               )}
 
-                              {(vote.status === 'closed' ||
-                                vote.status === 'passed' ||
-                                vote.status === 'failed') && (
+                              {(vote!.status === 'closed' ||
+                                vote!.status === 'passed' ||
+                                vote!.status === 'failed') && (
                                 <div className="text-sm text-gray-800">
                                   <p className="font-medium mb-1">{en ? 'Results' : '结果汇总'}</p>
                                   <ul className="list-disc pl-5">

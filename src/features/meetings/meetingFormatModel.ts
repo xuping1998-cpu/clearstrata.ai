@@ -1,4 +1,5 @@
 import type { MeetingFormat, MeetingRow } from './api';
+import { addDaysIso } from './ownerVotingCouncil';
 
 export type MeetingFormatUi = 'in_person' | 'live_remote' | 'hybrid' | 'written_remote';
 
@@ -11,7 +12,12 @@ const GOV_META_START = '<!--clearstrata-meeting-governance\n';
 const GOV_META_END = '\n-->';
 const GOVERNANCE_HTML_COMMENT_RE = /<!--\s*clearstrata-meeting-governance\b[\s\S]*?-->/gi;
 
-export type WrittenRemoteMetaV1 = { v: 1; discussion_closes_at: string };
+export type WrittenRemoteMetaV1 = {
+  v: 1;
+  discussion_closes_at?: string;
+  voting_open_at?: string;
+  voting_close_at?: string;
+};
 
 export type MeetingInitiationType = 'council_initiated' | 'owner_requisitioned' | 'annual_required';
 
@@ -120,8 +126,20 @@ export function extractWrittenRemoteMeta(descriptionZh: string | null | undefine
   const raw = s.slice(i + META_START.length, end).trim();
   let meta: WrittenRemoteMetaV1 | null = null;
   try {
-    const o = JSON.parse(raw) as WrittenRemoteMetaV1;
-    if (o && o.v === 1 && typeof o.discussion_closes_at === 'string') meta = o;
+    const o = JSON.parse(raw) as Record<string, unknown>;
+    if (o && o.v === 1) {
+      const dc = typeof o.discussion_closes_at === 'string' ? o.discussion_closes_at.trim() : '';
+      const vo = typeof o.voting_open_at === 'string' ? o.voting_open_at.trim() : '';
+      const vc = typeof o.voting_close_at === 'string' ? o.voting_close_at.trim() : '';
+      if (dc || vo || vc) {
+        meta = {
+          v: 1,
+          ...(dc ? { discussion_closes_at: dc } : {}),
+          ...(vo ? { voting_open_at: vo } : {}),
+          ...(vc ? { voting_close_at: vc } : {}),
+        };
+      }
+    }
   } catch {
     /* ignore */
   }
@@ -182,6 +200,10 @@ export function councilMeetingVotingWindowFallback(m: MeetingRow): {
   const vo = m.voting_open_at?.trim() ? m.voting_open_at : null;
   const vc = m.voting_close_at?.trim() ? m.voting_close_at : null;
   if (vo || vc) return { votingOpens: vo, votingCloses: vc };
+  const { meta } = extractWrittenRemoteMeta(m.description_zh);
+  const metaOpen = meta?.voting_open_at?.trim() ? meta.voting_open_at : null;
+  const metaClose = meta?.voting_close_at?.trim() ? meta.voting_close_at : null;
+  if (metaOpen || metaClose) return { votingOpens: metaOpen, votingCloses: metaClose };
   const w = councilWrittenRemoteWindows(m);
   if (w.discussionOpens || w.discussionCloses) {
     return {
@@ -190,4 +212,26 @@ export function councilMeetingVotingWindowFallback(m: MeetingRow): {
     };
   }
   return { votingOpens: null, votingCloses: null };
+}
+
+/**
+ * Insert-time voting window for `owner_vote_meetings` — never prefer “now” over scheduled council fields.
+ * Open priority: `meetings.voting_open_at` → written-remote meta `voting_open_at` → meta `discussion_closes_at` → now.
+ * Close priority: `meetings.voting_close_at` → meta `voting_close_at` → opens + 7 days.
+ */
+export function deriveOwnerVoteMeetingVotingTimes(m: MeetingRow): {
+  voting_opens_at: string;
+  voting_closes_at: string;
+} {
+  const rowOpen = m.voting_open_at?.trim() ?? '';
+  const rowClose = m.voting_close_at?.trim() ?? '';
+  const { meta } = extractWrittenRemoteMeta(m.description_zh);
+  const metaOpen = meta?.voting_open_at?.trim() ?? '';
+  const metaClose = meta?.voting_close_at?.trim() ?? '';
+  const discClose = meta?.discussion_closes_at?.trim() ?? '';
+
+  const voting_opens_at = rowOpen || metaOpen || discClose || new Date().toISOString();
+  const voting_closes_at = rowClose || metaClose || addDaysIso(voting_opens_at, 7);
+
+  return { voting_opens_at, voting_closes_at };
 }
