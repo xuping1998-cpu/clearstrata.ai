@@ -673,30 +673,52 @@ export function MeetingDetail() {
 
     let descriptionZh: string | null | undefined = row.description_zh;
     if (nextKind === 'election') {
-      const previousMeta = extractElectionAgendaMeta(row.description_zh ?? '').meta ?? defaultElectionMeta();
-      const base = finalizeElectionMeta(previousMeta);
-      const ballotsN = electionBallotsByAgenda.get(row.id) ?? 0;
-      let nextSeats = Math.max(1, Math.floor(Number(agendaEdit.election_seats) || 1));
-      let nextMax = Math.max(1, Math.floor(Number(agendaEdit.election_max_choices) || 1));
+      const upgradingToElectionFromNonElection = startedKind !== 'election';
 
-      if (ballotsN > 0 && (nextSeats !== base.seats || nextMax !== base.max_choices_per_unit)) {
-        setActionErr(t('meeting_election_rules_locked'));
-        return;
+      if (upgradingToElectionFromNonElection) {
+        const pairFallback = defaultElectionNominationIsoPair(meeting, ovMeta.meeting);
+        const fallbackOpens = pairFallback.opens;
+        const fallbackCloses = pairFallback.closes;
+        const nomination_opens_at =
+          fromDatetimeLocalValue(agendaEdit.election_nomination_opens_dl) ?? fallbackOpens;
+        const nomination_closes_at =
+          fromDatetimeLocalValue(agendaEdit.election_nomination_closes_dl) ?? fallbackCloses;
+        descriptionZh = embedElectionAgendaMeta(
+          peeled || null,
+          defaultElectionMeta({
+            seats: 7,
+            max_choices_per_unit: 7,
+            allow_self_nomination: true,
+            nomination_opens_at,
+            nomination_closes_at,
+          }),
+        );
+      } else {
+        const previousMeta = extractElectionAgendaMeta(row.description_zh ?? '').meta ?? defaultElectionMeta();
+        const base = finalizeElectionMeta(previousMeta);
+        const ballotsN = electionBallotsByAgenda.get(row.id) ?? 0;
+        let nextSeats = Math.max(1, Math.floor(Number(agendaEdit.election_seats) || 1));
+        let nextMax = Math.max(1, Math.floor(Number(agendaEdit.election_max_choices) || 1));
+
+        if (ballotsN > 0 && (nextSeats !== base.seats || nextMax !== base.max_choices_per_unit)) {
+          setActionErr(t('meeting_election_rules_locked'));
+          return;
+        }
+
+        const nomOpensIso = fromDatetimeLocalValue(agendaEdit.election_nomination_opens_dl);
+        const nomClosesIso = fromDatetimeLocalValue(agendaEdit.election_nomination_closes_dl);
+
+        const merged = {
+          ...base,
+          seats: nextSeats,
+          max_choices_per_unit: nextMax,
+          allow_self_nomination: agendaEdit.election_allow_self_nomination,
+          candidates: [...base.candidates],
+          nomination_opens_at: nomOpensIso ?? base.nomination_opens_at,
+          nomination_closes_at: nomClosesIso ?? base.nomination_closes_at,
+        };
+        descriptionZh = embedElectionAgendaMeta(peeled || null, merged);
       }
-
-      const nomOpensIso = fromDatetimeLocalValue(agendaEdit.election_nomination_opens_dl);
-      const nomClosesIso = fromDatetimeLocalValue(agendaEdit.election_nomination_closes_dl);
-
-      const merged = {
-        ...base,
-        seats: nextSeats,
-        max_choices_per_unit: nextMax,
-        allow_self_nomination: agendaEdit.election_allow_self_nomination,
-        candidates: [...base.candidates],
-        nomination_opens_at: nomOpensIso ?? base.nomination_opens_at,
-        nomination_closes_at: nomClosesIso ?? base.nomination_closes_at,
-      };
-      descriptionZh = embedElectionAgendaMeta(peeled || null, merged);
     } else {
       descriptionZh = peeled.trim() ? peeled : null;
     }
