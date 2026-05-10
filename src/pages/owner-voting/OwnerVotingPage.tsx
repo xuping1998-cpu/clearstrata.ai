@@ -6,8 +6,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { StatusBadge } from '@/components/status/StatusBadge';
 import {
+  buildElectionNominationRibbon,
+  electionNominationPhase,
   extractElectionAgendaMeta,
   finalizeElectionMeta,
+  isFormalElectionVotingAllowed,
   type ElectionAgendaMetaV1,
 } from '@/features/meetings/electionAgendaModel';
 import { resolveCouncilMeetingIdForOwnerVoteTitle } from '@/features/meetings/ownerVotingCouncil';
@@ -99,6 +102,18 @@ function parseRpcError(msg: string, zh: boolean): string | null {
   if (m.includes('invalid_candidate_id')) {
     return zh ? '选择无效（候选人未接受或未登记）' : 'Invalid candidate selection.';
   }
+  if (m.includes('nomination_still_open')) {
+    return zh ? '提名期尚未截止，正式投票将在提名截止后开放。' : 'Formal voting will open after the nomination period closes.';
+  }
+  if (m.includes('nomination_not_started')) {
+    return zh ? '提名尚未开始。' : 'Nomination has not started.';
+  }
+  if (m.includes('nomination_closed') || m.includes('self_nomination_not_allowed')) {
+    return zh ? '无法再自荐或修改提名。' : 'Self-nomination or nomination updates are no longer available.';
+  }
+  if (m.includes('duplicate_candidate')) {
+    return zh ? '该房号已报名候选人。' : 'This unit already has a candidate.';
+  }
   return null;
 }
 
@@ -165,7 +180,9 @@ type CouncilElectionBlockProps = {
   t: (key: string) => string;
   meetingId: string;
   brief: ElectionAgendaBrief;
-  votesEnabled: boolean;
+  votePhase: VotingPhaseUi;
+  ownerMeetingStatus: string;
+  eligibleUnitNo: string | null;
   busy: boolean;
   initialSelected: string[];
   onBusy: (v: boolean) => void;
@@ -178,19 +195,38 @@ function OwnerCouncilElectionBlock({
   t,
   meetingId,
   brief,
-  votesEnabled,
+  votePhase,
+  ownerMeetingStatus,
+  eligibleUnitNo,
   busy,
   initialSelected,
   onBusy,
   onToast,
   onReload,
 }: CouncilElectionBlockProps) {
+  const now = new Date();
   const [picked, setPicked] = useState<Set<string>>(() => new Set(initialSelected));
-  const meta = finalizeElectionMeta(brief.meta);
+  const [selfNomOpen, setSelfNomOpen] = useState(false);
+  const [selfNomBusy, setSelfNomBusy] = useState(false);
+  const [selfForm, setSelfForm] = useState({ name: '', statement: '' });
+
+  const meta = finalizeElectionMeta(brief.meta, now);
   const maxPick = Math.min(Math.max(1, meta.max_choices_per_unit), Math.max(1, meta.seats));
-  const list = meta.candidates
+  const nomPhase = electionNominationPhase(now, meta);
+  const nominationBlocking = nomPhase === 'before_open' || nomPhase === 'collecting';
+  const nominationComplete = isFormalElectionVotingAllowed(now, meta);
+  const ovSt = ownerMeetingStatus.trim().toLowerCase();
+  const ovClosed = ovSt === 'closed' || ovSt === 'archived';
+  const showBallotSubmit = nominationComplete && votePhase === 'voting_live' && !ovClosed;
+
+  const sortedAll = [...meta.candidates].sort((a, b) => a.name.localeCompare(b.name, zh ? 'zh' : 'en'));
+  const sortedAccepted = meta.candidates
     .filter((c) => c.accepted)
     .sort((a, b) => a.name.localeCompare(b.name, zh ? 'zh' : 'en'));
+  const list = nominationBlocking ? sortedAll : sortedAccepted;
+
+  const unitLc = eligibleUnitNo?.trim().toLowerCase() ?? '';
+  const dupUnit = !!(unitLc && sortedAll.some((c) => String(c.unit_no ?? '').trim().toLowerCase() === unitLc));
 
   async function submit() {
     onBusy(true);
@@ -223,6 +259,44 @@ function OwnerCouncilElectionBlock({
     }
   }
 
+  async function submitSelfNomination() {
+    const nm = selfForm.name.trim();
+    if (!nm || !eligibleUnitNo?.trim()) return;
+    setSelfNomBusy(true);
+    try {
+      const { data, error } = await supabase.rpc('submit_owner_election_nomination', {
+        p_meeting_id: meetingId,
+        p_agenda_item_id: brief.agendaItemId,
+        p_name: nm,
+        p_statement: selfForm.statement.trim(),
+      });
+      if (error) {
+        onToast({ kind: 'error', text: parseRpcError(error.message, zh) ?? error.message });
+        return;
+      }
+      const payload = data as { ok?: boolean; error?: string } | null;
+      if (payload && typeof payload === 'object' && payload.ok === false) {
+        onToast({
+          kind: 'error',
+          text: parseRpcError(String(payload.error ?? ''), zh) ?? String(payload.error),
+        });
+        return;
+      }
+      onToast({ kind: 'success', text: zh ? '自荐已提交' : 'Self-nomination saved.' });
+      setSelfNomOpen(false);
+      setSelfForm({ name: '', statement: '' });
+      await onReload();
+    } catch (e) {
+      const raw = e instanceof Error ? e.message : String(e);
+      onToast({ kind: 'error', text: parseRpcError(raw, zh) ?? raw });
+    } finally {
+      setSelfNomBusy(false);
+    }
+  }
+
+  const canSelfNomForm =
+    meta.allow_self_nomination && !ovClosed && nomPhase === 'collecting' && !!eligibleUnitNo?.trim() && !dupUnit;
+
   return (
     <div className="rounded-xl border border-amber-200/80 bg-amber-50/20 p-4 space-y-3">
       <div>
@@ -239,22 +313,48 @@ function OwnerCouncilElectionBlock({
           <dd className="font-medium text-gray-900">{maxPick}</dd>
         </div>
       </dl>
+
+      {nominationBlocking ? (
+        <p className="rounded-lg bg-white/60 px-3 py-2 text-xs text-amber-900 ring-1 ring-amber-200/80">
+          {t('meeting_election_vote_after_nomination')}
+        </p>
+      ) : null}
+      {!nominationBlocking && votePhase !== 'voting_live' && !ovClosed ? (
+        <p className="text-xs text-gray-600">{zh ? '表决尚未处于可投票时间段。' : 'Voting is not open in this period.'}</p>
+      ) : null}
+      {ovClosed ? (
+        <p className="text-xs font-medium text-gray-800">{zh ? '业主表决已结束。' : 'Owner voting has ended.'}</p>
+      ) : null}
+
       <ul className="space-y-2">
         {list.length === 0 ? (
-          <li className="text-sm text-gray-600">{zh ? '暂无已接受提名的候选人。' : 'No accepted candidates listed.'}</li>
+          <li className="text-sm text-gray-600">
+            {nominationBlocking
+              ? zh
+                ? '暂无候选人。物业管理员可添加或由业主自荐报名。'
+                : 'No candidates yet. Managers may add nominees, or owners may nominate themselves when allowed.'
+              : zh
+                ? '暂无已接受提名的候选人。'
+                : 'No accepted candidates listed.'}
+          </li>
         ) : (
           list.map((c) => {
             const checked = picked.has(c.id);
             const atCap = picked.size >= maxPick && !checked;
             return (
               <li key={c.id}>
-                <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-transparent px-1 py-1 hover:border-amber-200/80">
+                <label
+                  className={`flex items-start gap-2 rounded-lg border border-transparent px-1 py-1 ${
+                    showBallotSubmit ? 'cursor-pointer hover:border-amber-200/80' : 'cursor-default opacity-95'
+                  }`}
+                >
                   <input
                     type="checkbox"
                     className="mt-1"
                     checked={checked}
-                    disabled={!votesEnabled || busy || atCap}
+                    disabled={!showBallotSubmit || busy || atCap || !c.accepted}
                     onChange={(ev) => {
+                      if (!showBallotSubmit) return;
                       const on = ev.target.checked;
                       setPicked((prev) => {
                         const next = new Set(prev);
@@ -279,6 +379,11 @@ function OwnerCouncilElectionBlock({
                     {c.unit_no ? (
                       <span className="ml-1 text-xs text-gray-500">({String(c.unit_no)})</span>
                     ) : null}
+                    {nominationBlocking && typeof c.accepted === 'boolean' ? (
+                      <span className="ml-2 text-[11px] text-gray-500">
+                        [{c.accepted ? t('meeting_election_accepted') : zh ? '未接受' : 'Not accepted'}]
+                      </span>
+                    ) : null}
                     {c.statement ? (
                       <span className="mt-0.5 block whitespace-pre-wrap text-xs text-gray-600">{c.statement}</span>
                     ) : null}
@@ -289,15 +394,94 @@ function OwnerCouncilElectionBlock({
           })
         )}
       </ul>
-      <button
-        type="button"
-        disabled={!votesEnabled || busy}
-        onClick={() => void submit()}
-        className="inline-flex items-center justify-center rounded-lg bg-clearstrata-ui-primary px-4 py-2 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover disabled:opacity-50"
-      >
-        {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden /> : null}
-        {t('meeting_election_submit_ballot')}
-      </button>
+
+      {meta.allow_self_nomination && !ovClosed && nomPhase === 'before_open' ? (
+        <p className="text-xs text-gray-600">{zh ? '提名尚未开放。' : 'Nomination has not opened yet.'}</p>
+      ) : null}
+
+      {meta.allow_self_nomination && !ovClosed && nomPhase === 'ended' ? (
+        <p className="text-xs text-gray-600">{t('meeting_election_self_nomination_closed')}</p>
+      ) : null}
+
+      {dupUnit && meta.allow_self_nomination ? (
+        <p className="text-xs text-gray-600">{t('meeting_election_duplicate_candidate')}</p>
+      ) : null}
+
+      {canSelfNomForm ? (
+        <div className="rounded-lg border border-amber-100 bg-white/50 px-3 py-2">
+          {!selfNomOpen ? (
+            <button
+              type="button"
+              disabled={selfNomBusy}
+              className="text-sm font-semibold text-clearstrata-ui-primary hover:underline disabled:opacity-50"
+              onClick={() => {
+                setSelfForm({ name: '', statement: '' });
+                setSelfNomOpen(true);
+              }}
+            >
+              {t('meeting_election_self_nominate')}
+            </button>
+          ) : (
+            <div className="space-y-2 pt-1">
+              <input
+                placeholder={t('meeting_election_candidate_name')}
+                value={selfForm.name}
+                disabled={selfNomBusy}
+                onChange={(e) => setSelfForm((s) => ({ ...s, name: e.target.value }))}
+                className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs"
+              />
+              <label className="block text-[11px] text-gray-600">
+                {t('meeting_election_candidate_unit')}
+                <input
+                  value={eligibleUnitNo ?? ''}
+                  readOnly
+                  className="mt-0.5 w-full rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs"
+                />
+              </label>
+              <textarea
+                placeholder={t('meeting_election_candidate_statement')}
+                value={selfForm.statement}
+                disabled={selfNomBusy}
+                onChange={(e) => setSelfForm((s) => ({ ...s, statement: e.target.value }))}
+                className="min-h-[64px] w-full rounded border border-gray-300 px-2 py-1.5 text-xs"
+              />
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={selfNomBusy || !selfForm.name.trim()}
+                  className="rounded-lg bg-clearstrata-ui-primary px-3 py-1.5 text-xs font-semibold text-white hover:bg-clearstrata-ui-primaryHover disabled:opacity-50"
+                  onClick={() => void submitSelfNomination()}
+                >
+                  {t('meeting_agenda_save')}
+                </button>
+                <button
+                  type="button"
+                  disabled={selfNomBusy}
+                  className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium hover:bg-gray-50"
+                  onClick={() => {
+                    setSelfNomOpen(false);
+                    setSelfForm({ name: '', statement: '' });
+                  }}
+                >
+                  {t('meeting_agenda_cancel')}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : null}
+
+      {showBallotSubmit ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void submit()}
+          className="inline-flex items-center justify-center rounded-lg bg-clearstrata-ui-primary px-4 py-2 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover disabled:opacity-50"
+        >
+          {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden /> : null}
+          {t('meeting_election_submit_ballot')}
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -649,6 +833,9 @@ export function OwnerVotingPage() {
 
             const phase = getVotingPhase(mt.voting_opens_at, mt.voting_closes_at, ms, now);
             const votesEnabled = phase === 'voting_live';
+            const electionNomRibbonPack = pack.electionAgendas.length
+              ? buildElectionNominationRibbon(pack.electionAgendas.map((e) => finalizeElectionMeta(e.meta, now)))
+              : null;
 
             const dateOpts: Intl.DateTimeFormatOptions =
               zh
@@ -695,6 +882,26 @@ export function OwnerVotingPage() {
                       <dt className="text-xs text-gray-500">{zh ? '投票截止' : 'Voting closes'}</dt>
                       <dd className="font-medium text-gray-900">{fmtTs(mt.voting_closes_at)}</dd>
                     </div>
+                    {electionNomRibbonPack ? (
+                      <>
+                        <div className="rounded-lg bg-amber-50/60 px-3 py-2 ring-1 ring-amber-100 sm:col-span-2">
+                          <dt className="text-xs text-gray-600">{t('meeting_election_nomination')}</dt>
+                          <dd className="font-medium text-gray-900">
+                            {electionNomRibbonPack.anyNominationOpen
+                              ? t('meeting_election_nomination_open')
+                              : t('meeting_election_nomination_closed')}
+                          </dd>
+                        </div>
+                        <div className="rounded-lg bg-amber-50/60 px-3 py-2 ring-1 ring-amber-100 sm:col-span-2">
+                          <dt className="text-xs text-gray-600">{t('meeting_election_nomination_closes')}</dt>
+                          <dd className="font-medium text-gray-900">{fmtTs(electionNomRibbonPack.nominationClosesIso)}</dd>
+                        </div>
+                        <div className="rounded-lg bg-amber-50/60 px-3 py-2 ring-1 ring-amber-100 sm:col-span-2">
+                          <dt className="text-xs text-gray-600">{t('meeting_election_candidates')}</dt>
+                          <dd className="font-medium text-gray-900">{electionNomRibbonPack.totalCandidates}</dd>
+                        </div>
+                      </>
+                    ) : null}
                   </dl>
                 </div>
 
@@ -787,7 +994,9 @@ export function OwnerVotingPage() {
                             t={t}
                             meetingId={pack.meetingId}
                             brief={ea}
-                            votesEnabled={votesEnabled}
+                            votePhase={phase}
+                            ownerMeetingStatus={ms}
+                            eligibleUnitNo={pack.unitNo}
                             busy={electionSubmitKey === k}
                             initialSelected={initial}
                             onBusy={(v) => setElectionSubmitKey(v ? k : null)}

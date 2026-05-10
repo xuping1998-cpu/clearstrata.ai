@@ -33,8 +33,11 @@ CREATE INDEX IF NOT EXISTS owner_election_ballots_property_idx
 ALTER TABLE public.owner_election_ballots ENABLE ROW LEVEL SECURITY;
 
 -- Eligible voters read own rows; staff (council/admin/manager/property_admin) read all for their property.
+DROP POLICY IF EXISTS "oeb_select_voter_or_staff" ON public.owner_election_ballots;
 CREATE POLICY "oeb_select_voter_or_staff"
-  ON public.owner_election_ballots FOR SELECT TO authenticated
+  ON public.owner_election_ballots
+  FOR SELECT
+  TO authenticated
   USING (
     property_id IN (SELECT public.user_property_ids())
     AND (
@@ -49,6 +52,86 @@ CREATE POLICY "oeb_select_voter_or_staff"
     )
   );
 
+-- Eligible voters insert their own ballot row (RPC also uses SECURITY DEFINER; this covers direct writes).
+DROP POLICY IF EXISTS "oeb_insert_voter" ON public.owner_election_ballots;
+CREATE POLICY "oeb_insert_voter"
+  ON public.owner_election_ballots
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    property_id IN (SELECT public.user_property_ids())
+    AND voter_user_id = (SELECT auth.uid())
+    AND EXISTS (
+      SELECT 1
+      FROM public.owner_vote_voter_snapshot ovs
+      WHERE ovs.meeting_id = meeting_id
+        AND ovs.user_id = (SELECT auth.uid())
+        AND ovs.property_id = property_id
+        AND ovs.is_eligible IS TRUE
+        AND lower(trim(both FROM coalesce(ovs.unit_no::text, '')))
+          = lower(trim(both FROM coalesce(unit_no, '')))
+    )
+  );
+
+-- Eligible voters update their own ballot for the same meeting/unit snapshot.
+DROP POLICY IF EXISTS "oeb_update_voter" ON public.owner_election_ballots;
+CREATE POLICY "oeb_update_voter"
+  ON public.owner_election_ballots
+  FOR UPDATE
+  TO authenticated
+  USING (
+    property_id IN (SELECT public.user_property_ids())
+    AND voter_user_id = (SELECT auth.uid())
+    AND EXISTS (
+      SELECT 1
+      FROM public.owner_vote_voter_snapshot ovs
+      WHERE ovs.meeting_id = owner_election_ballots.meeting_id
+        AND ovs.user_id = (SELECT auth.uid())
+        AND ovs.property_id = owner_election_ballots.property_id
+        AND ovs.is_eligible IS TRUE
+        AND lower(trim(both FROM coalesce(ovs.unit_no::text, '')))
+          = lower(trim(both FROM coalesce(owner_election_ballots.unit_no, '')))
+    )
+  )
+  WITH CHECK (
+    property_id IN (SELECT public.user_property_ids())
+    AND voter_user_id = (SELECT auth.uid())
+    AND EXISTS (
+      SELECT 1
+      FROM public.owner_vote_voter_snapshot ovs
+      WHERE ovs.meeting_id = meeting_id
+        AND ovs.user_id = (SELECT auth.uid())
+        AND ovs.property_id = property_id
+        AND ovs.is_eligible IS TRUE
+        AND lower(trim(both FROM coalesce(ovs.unit_no::text, '')))
+          = lower(trim(both FROM coalesce(unit_no, '')))
+    )
+  );
+
+-- Staff full access within their property (same role set as SELECT staff branch).
+DROP POLICY IF EXISTS "oeb_staff_all" ON public.owner_election_ballots;
+CREATE POLICY "oeb_staff_all"
+  ON public.owner_election_ballots
+  FOR ALL
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.property_members pm
+      WHERE pm.user_id = (SELECT auth.uid())
+        AND pm.property_id = owner_election_ballots.property_id
+        AND pm.status = 'active'
+        AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.property_members pm
+      WHERE pm.user_id = (SELECT auth.uid())
+        AND pm.property_id = property_id
+        AND pm.status = 'active'
+        AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
+    )
+  );
 -- Extract JSON blob from meeting_agenda_items.description_zh embedded comment block.
 CREATE OR REPLACE FUNCTION public.try_extract_election_agenda_meta(p_desc_zh text)
 RETURNS jsonb

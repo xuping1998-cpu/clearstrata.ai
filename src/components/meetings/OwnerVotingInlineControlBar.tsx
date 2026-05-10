@@ -6,6 +6,7 @@ import {
   isWrittenRemoteUi,
   meetingFormatUiFromRow,
 } from '@/features/meetings/meetingFormatModel';
+import type { ElectionNominationRibbonModel } from '@/features/meetings/electionAgendaModel';
 
 export type OwnerVoteInlineMetaState = {
   loading: boolean;
@@ -29,6 +30,7 @@ export type OwnerVotingInlineControlBarProps = {
   onFreezeSnapshot: () => void | Promise<void>;
   onOpenVoting: () => void | Promise<void>;
   onCloseVoting: () => void | Promise<void>;
+  electionNomRibbon?: ElectionNominationRibbonModel | null;
 };
 
 function fmtTs(iso: string | null | undefined, en: boolean): string {
@@ -52,6 +54,7 @@ export function OwnerVotingInlineControlBar({
   onFreezeSnapshot,
   onOpenVoting,
   onCloseVoting,
+  electionNomRibbon = null,
 }: OwnerVotingInlineControlBarProps) {
   const en = languageEn;
   const uiFormat = meetingFormatUiFromRow(meeting);
@@ -128,6 +131,25 @@ export function OwnerVotingInlineControlBar({
           <dt className="shrink-0 text-gray-500">{t('voting_status')}</dt>
           <dd className="font-medium text-gray-900">{voteStatusLine()}</dd>
         </div>
+
+        {electionNomRibbon ? (
+          <>
+            <div className="flex flex-wrap gap-x-2 gap-y-0.5 sm:col-span-2">
+              <dt className="shrink-0 text-gray-500">{t('meeting_election_nomination')}</dt>
+              <dd className="font-medium text-gray-900">
+                {electionNomRibbon.anyNominationOpen ? t('meeting_election_nomination_open') : t('meeting_election_nomination_closed')}
+              </dd>
+            </div>
+            <div className="flex flex-wrap gap-x-2 gap-y-0.5 sm:col-span-2">
+              <dt className="shrink-0 text-gray-500">{t('meeting_election_nomination_closes')}</dt>
+              <dd className="text-gray-900">{fmtTs(electionNomRibbon.nominationClosesIso ?? null, en)}</dd>
+            </div>
+            <div className="flex flex-wrap gap-x-2 gap-y-0.5 sm:col-span-2">
+              <dt className="shrink-0 text-gray-500">{t('meeting_election_candidates')}</dt>
+              <dd className="font-medium text-gray-900">{electionNomRibbon.totalCandidates}</dd>
+            </div>
+          </>
+        ) : null}
 
         {ov ? (
           <>

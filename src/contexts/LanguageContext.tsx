@@ -251,6 +251,28 @@ const translations: Record<string, Record<Language, string>> = {
   },
   meeting_election_tentative_winner: { en: 'Tentative winner', zh: '暂定当选' },
   meeting_election_winner: { en: 'Elected', zh: '当选' },
+  meeting_election_nomination: { en: 'Candidate nomination', zh: '候选人提名' },
+  meeting_election_nomination_opens: { en: 'Nomination opens', zh: '提名开放时间' },
+  meeting_election_nomination_closes: { en: 'Nomination closes', zh: '提名截止时间' },
+  meeting_election_nomination_open: { en: 'Nomination open', zh: '提名开放中' },
+  meeting_election_nomination_closed: { en: 'Nomination closed', zh: '提名已截止' },
+  meeting_election_self_nominate: { en: 'Nominate myself', zh: '我要报名参选' },
+  meeting_election_self_nomination_closed: {
+    en: 'Nomination period has closed',
+    zh: '提名期已截止',
+  },
+  meeting_election_vote_after_nomination: {
+    en: 'Formal voting will open after the nomination period closes.',
+    zh: '提名期尚未截止，正式投票将在提名截止后开放。',
+  },
+  meeting_election_duplicate_candidate: {
+    en: 'This unit already has a candidate',
+    zh: '该房号已报名候选人',
+  },
+  meeting_election_rules_locked: {
+    en: 'Election rules cannot be changed after ballots are cast',
+    zh: '已有选票后不能修改选举规则',
+  },
   meeting_agenda_cannot_remove_election_has_ballots: {
     en: 'Election ballots exist for this item; convert back only after resetting ballots (requires admin/backend).',
     zh: '该选举议程已有业主选票记录，无法再改回其它议程类型。',

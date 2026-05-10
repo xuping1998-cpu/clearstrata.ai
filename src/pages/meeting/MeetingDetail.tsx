@@ -28,6 +28,7 @@ import {
   type MeetingInvitationRow,
   type MeetingVoteOptionRow,
   type MeetingVoteRow,
+  type MeetingRow,
   type OwnerVoteMeetingLite,
   type OwnerVoteResolutionResultNormalized,
 } from '../../features/meetings/api';
@@ -35,13 +36,21 @@ import { supabase } from '../../lib/supabase';
 import { shouldDeferAutoPropertyRedirects } from '../../lib/authRecovery';
 import { samePropertyId } from '../../lib/propertyIdMatch';
 import { labelFormat, labelMeetingType, labelStatus, labelVoteRule, labelVoteStatus, meetingUiStrings } from '../../features/meetings/labels';
-import { councilMeetingTitleForOwnerVoteBinding, findOwnerVoteResolutionForAgenda, isOwnerVotingMeeting } from '@/features/meetings/ownerVotingCouncil';
 import {
+  addDaysIso,
+  councilMeetingTitleForOwnerVoteBinding,
+  findOwnerVoteResolutionForAgenda,
+  isOwnerVotingMeeting,
+} from '@/features/meetings/ownerVotingCouncil';
+import {
+  buildElectionNominationRibbon,
   defaultElectionMeta,
   displayAgendaZhWithoutElection,
   embedElectionAgendaMeta,
   extractElectionAgendaMeta,
   finalizeElectionMeta,
+  fromDatetimeLocalValue,
+  toDatetimeLocalValue,
 } from '@/features/meetings/electionAgendaModel';
 import {
   CouncilElectionResultsBlock,
@@ -49,6 +58,8 @@ import {
 } from '@/components/meetings/CouncilElectionResultsBlock';
 import { MeetingElectionCandidatesPanel } from '@/components/meetings/MeetingElectionCandidatesPanel';
 import {
+  councilMeetingVotingWindowFallback,
+  councilWrittenRemoteWindows,
   extractGovernanceMeta,
   meetingSgmRequisitionRequiredUnits,
   MEETING_SGM_REQUISITION_PERCENT_DEFAULT,
@@ -78,6 +89,17 @@ function agendaKindFromRow(a: MeetingAgendaRow): AgendaKindUi {
   const meta = extractElectionAgendaMeta(a.description_zh ?? '').meta;
   if (meta?.agenda_type === 'council_election') return 'election';
   return a.requires_vote ? 'resolution' : 'normal';
+}
+
+function defaultElectionNominationIsoPair(meeting: MeetingRow, ov: OwnerVoteMeetingLite | null): { opens: string; closes: string } {
+  const nowIso = new Date().toISOString();
+  const disc = councilWrittenRemoteWindows(meeting);
+  const vf = councilMeetingVotingWindowFallback(meeting);
+  const opens = disc.discussionOpens?.trim() || meeting.scheduled_at?.trim() || nowIso;
+  const voOv = ov?.voting_opens_at?.trim() || '';
+  const voFb = vf.votingOpens?.trim() || '';
+  const closes = voOv || voFb || addDaysIso(nowIso, 7);
+  return { opens, closes };
 }
 
 const initialBundle = (): MeetingDetailBundle => ({
@@ -112,6 +134,8 @@ export function MeetingDetail() {
   const [newElectionSeats, setNewElectionSeats] = useState(3);
   const [newElectionMaxChoices, setNewElectionMaxChoices] = useState(3);
   const [newElectionSelfNom, setNewElectionSelfNom] = useState(true);
+  const [newElectionNomOpensDl, setNewElectionNomOpensDl] = useState('');
+  const [newElectionNomClosesDl, setNewElectionNomClosesDl] = useState('');
   const [newVoteRule, setNewVoteRule] = useState<'simple_majority' | 'three_quarter' | 'unanimous'>('simple_majority');
   const [agendaEdit, setAgendaEdit] = useState<{
     agendaId: string;
@@ -123,6 +147,8 @@ export function MeetingDetail() {
     election_seats: number;
     election_max_choices: number;
     election_allow_self_nomination: boolean;
+    election_nomination_opens_dl: string;
+    election_nomination_closes_dl: string;
   } | null>(null);
   const [inviteProfileById, setInviteProfileById] = useState<
     Record<string, { full_name_en: string | null; full_name_zh: string | null; email: string | null }>
@@ -139,7 +165,9 @@ export function MeetingDetail() {
   }>({ loading: false, meeting: null, resolutions: [], resolutionCount: 0, eligibleCount: 0 });
   const [ovResolutionResults, setOvResolutionResults] = useState<OwnerVoteResolutionResultNormalized[]>([]);
   const [ownerElectionBallots, setOwnerElectionBallots] = useState<OwnerElectionBallotLite[]>([]);
+  const [viewerOvUnitNo, setViewerOvUnitNo] = useState<string | null>(null);
   const openedTrackedRef = useRef<string | null>(null);
+  const prevNewAgendaKindRef = useRef<AgendaKindUi>('normal');
 
   const isStaff =
     roleInProperty === 'council' ||
@@ -222,6 +250,8 @@ export function MeetingDetail() {
 
   const meeting = bundle.meeting;
 
+  const showCouncilOwnerVoteUi = !!(meeting && currentPropertyId && isOwnerVotingMeeting(meeting));
+
   const governanceMeta = useMemo(() => {
     if (!meeting?.description_zh) return null;
     return extractGovernanceMeta(meeting.description_zh).meta;
@@ -245,6 +275,50 @@ export function MeetingDetail() {
     return m;
   }, [ownerElectionBallots]);
 
+  const electionRulesLockedForAgendaEdit = !!(agendaEdit && (electionBallotsByAgenda.get(agendaEdit.agendaId) ?? 0) > 0);
+
+  const electionNomRibbonModel = useMemo(
+    () => buildElectionNominationRibbon(electionBundles.map((e) => e.meta)),
+    [electionBundles],
+  );
+
+  useEffect(() => {
+    const was = prevNewAgendaKindRef.current;
+    prevNewAgendaKindRef.current = newAgendaKind;
+    if (!meeting || newAgendaKind !== 'election') return;
+    if (was === 'election') return;
+    const pair = defaultElectionNominationIsoPair(meeting, ovMeta.meeting);
+    setNewElectionNomOpensDl(toDatetimeLocalValue(pair.opens));
+    setNewElectionNomClosesDl(toDatetimeLocalValue(pair.closes));
+  }, [newAgendaKind, meeting, ovMeta.meeting]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!showCouncilOwnerVoteUi || !user?.id) {
+      setViewerOvUnitNo(null);
+      return undefined;
+    }
+    const mid = ovMeta.meeting?.id?.trim();
+    if (!mid) {
+      setViewerOvUnitNo(null);
+      return undefined;
+    }
+    void (async () => {
+      const { data, error } = await supabase
+        .from('owner_vote_voter_snapshot')
+        .select('unit_no')
+        .eq('user_id', user.id)
+        .eq('meeting_id', mid)
+        .eq('is_eligible', true)
+        .maybeSingle();
+      if (cancelled) return;
+      if (error || !data) setViewerOvUnitNo(null);
+      else setViewerOvUnitNo(data.unit_no != null ? String(data.unit_no).trim() : null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [showCouncilOwnerVoteUi, user?.id, ovMeta.meeting?.id]);
   const refreshOwnerVoteMeta = useCallback(async () => {
     if (!meeting || !currentPropertyId || !isOwnerVotingMeeting(meeting)) {
       setOvMeta({ loading: false, meeting: null, resolutions: [], resolutionCount: 0, eligibleCount: 0 });
@@ -443,12 +517,17 @@ export function MeetingDetail() {
 
     let descriptionZh: string | undefined;
     if (savedKind === 'election') {
+      const pairFallback = defaultElectionNominationIsoPair(meeting, ovMeta.meeting);
+      const nomination_opens_at = fromDatetimeLocalValue(newElectionNomOpensDl) ?? pairFallback.opens;
+      const nomination_closes_at = fromDatetimeLocalValue(newElectionNomClosesDl) ?? pairFallback.closes;
       descriptionZh = embedElectionAgendaMeta(
         '',
         defaultElectionMeta({
           seats: newElectionSeats,
           max_choices_per_unit: newElectionMaxChoices,
           allow_self_nomination: newElectionSelfNom,
+          nomination_opens_at,
+          nomination_closes_at,
         }),
       );
     }
@@ -579,12 +658,26 @@ export function MeetingDetail() {
     if (nextKind === 'election') {
       const previousMeta = extractElectionAgendaMeta(row.description_zh ?? '').meta ?? defaultElectionMeta();
       const base = finalizeElectionMeta(previousMeta);
-      const merged: typeof base = {
+      const ballotsN = electionBallotsByAgenda.get(row.id) ?? 0;
+      let nextSeats = Math.max(1, Math.floor(Number(agendaEdit.election_seats) || 1));
+      let nextMax = Math.max(1, Math.floor(Number(agendaEdit.election_max_choices) || 1));
+
+      if (ballotsN > 0 && (nextSeats !== base.seats || nextMax !== base.max_choices_per_unit)) {
+        setActionErr(t('meeting_election_rules_locked'));
+        return;
+      }
+
+      const nomOpensIso = fromDatetimeLocalValue(agendaEdit.election_nomination_opens_dl);
+      const nomClosesIso = fromDatetimeLocalValue(agendaEdit.election_nomination_closes_dl);
+
+      const merged = {
         ...base,
-        seats: Math.max(1, Math.floor(Number(agendaEdit.election_seats) || 1)),
-        max_choices_per_unit: Math.max(1, Math.floor(Number(agendaEdit.election_max_choices) || 1)),
+        seats: nextSeats,
+        max_choices_per_unit: nextMax,
         allow_self_nomination: agendaEdit.election_allow_self_nomination,
         candidates: [...base.candidates],
+        nomination_opens_at: nomOpensIso ?? base.nomination_opens_at,
+        nomination_closes_at: nomClosesIso ?? base.nomination_closes_at,
       };
       descriptionZh = embedElectionAgendaMeta(peeled || null, merged);
     } else {
@@ -871,8 +964,6 @@ export function MeetingDetail() {
     return en ? 'Abstain' : '弃权';
   }
 
-  const showCouncilOwnerVoteUi = !!(meeting && currentPropertyId && isOwnerVotingMeeting(meeting));
-
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
       <div className="border-b border-white/25 bg-clearstrata-hero text-white shadow-md shadow-clearstrata-ui-primary/25">
@@ -1061,6 +1152,7 @@ export function MeetingDetail() {
                   meta={ovMeta}
                   ovBusy={ovBusy}
                   canEnableBinding={Boolean(councilMeetingTitleForOwnerVoteBinding(meeting).trim())}
+                  electionNomRibbon={electionNomRibbonModel}
                   onEnableElectronicVoting={() => void handleEnableElectronicVoting()}
                   onFreezeSnapshot={() => void handleFreezeOwnerVoteSnapshot()}
                   onOpenVoting={() => void handleOpenOwnerVoteMeeting()}
@@ -1109,6 +1201,10 @@ export function MeetingDetail() {
                               const k = agendaKindFromRow(agenda);
                               const peeledMeta = extractElectionAgendaMeta(agenda.description_zh ?? '').meta;
                               const fin = finalizeElectionMeta(peeledMeta ?? defaultElectionMeta());
+                              const pairDef =
+                                meeting && showCouncilOwnerVoteUi
+                                  ? defaultElectionNominationIsoPair(meeting, ovMeta.meeting)
+                                  : null;
                               setAgendaEdit({
                                 agendaId: agenda.id,
                                 title_zh: agenda.title_zh ?? '',
@@ -1119,6 +1215,12 @@ export function MeetingDetail() {
                                 election_seats: fin.seats,
                                 election_max_choices: fin.max_choices_per_unit,
                                 election_allow_self_nomination: fin.allow_self_nomination,
+                                election_nomination_opens_dl:
+                                  toDatetimeLocalValue(fin.nomination_opens_at) ||
+                                  (pairDef ? toDatetimeLocalValue(pairDef.opens) : ''),
+                                election_nomination_closes_dl:
+                                  toDatetimeLocalValue(fin.nomination_closes_at) ||
+                                  (pairDef ? toDatetimeLocalValue(pairDef.closes) : ''),
                               });
                             }}
                             className="text-sm px-3 py-1.5 rounded-lg border border-gray-300 text-gray-800 hover:bg-white disabled:opacity-50"
@@ -1148,11 +1250,31 @@ export function MeetingDetail() {
                             <select
                               value={agendaEdit.kind}
                               disabled={busy}
-                              onChange={(e) =>
-                                setAgendaEdit((prev) =>
-                                  prev ? { ...prev, kind: e.target.value as AgendaKindUi } : prev,
-                                )
-                              }
+                              onChange={(e) => {
+                                const nk = e.target.value as AgendaKindUi;
+                                setAgendaEdit((prev) => {
+                                  if (!prev) return prev;
+                                  if (!meeting || nk !== 'election') return { ...prev, kind: nk };
+                                  const row = bundle.agendaItems.find((a) => a.id === prev.agendaId);
+                                  const pairDef = defaultElectionNominationIsoPair(meeting, ovMeta.meeting);
+                                  const peeled = extractElectionAgendaMeta(row?.description_zh ?? '').meta;
+                                  const seed = peeled?.agenda_type === 'council_election' ? finalizeElectionMeta(peeled) : null;
+                                  const fin = seed ?? defaultElectionMeta({});
+                                  return {
+                                    ...prev,
+                                    kind: nk,
+                                    election_seats: fin.seats,
+                                    election_max_choices: fin.max_choices_per_unit,
+                                    election_allow_self_nomination: fin.allow_self_nomination,
+                                    election_nomination_opens_dl:
+                                      toDatetimeLocalValue(fin.nomination_opens_at) ||
+                                      toDatetimeLocalValue(pairDef.opens),
+                                    election_nomination_closes_dl:
+                                      toDatetimeLocalValue(fin.nomination_closes_at) ||
+                                      toDatetimeLocalValue(pairDef.closes),
+                                  };
+                                });
+                              }}
                               className="mt-1 w-full max-w-md rounded-lg border border-gray-300 px-3 py-2 text-sm"
                             >
                               <option value="normal">{t('meeting_agenda_type_normal')}</option>
@@ -1180,61 +1302,96 @@ export function MeetingDetail() {
                             </label>
                           ) : null}
                           {agendaEdit.kind === 'election' ? (
-                            <div className="grid gap-3 sm:grid-cols-3">
-                              <label className="block text-sm space-y-1">
-                                <span className="font-medium text-gray-800">{t('meeting_election_seats')}</span>
-                                <input
-                                  type="number"
-                                  min={1}
-                                  disabled={busy}
-                                  value={agendaEdit.election_seats}
-                                  onChange={(e) =>
-                                    setAgendaEdit((prev) =>
-                                      prev
-                                        ? {
-                                            ...prev,
-                                            election_seats: Math.max(1, Number(e.target.value) || 1),
-                                          }
-                                        : prev,
-                                    )
-                                  }
-                                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                                />
-                              </label>
-                              <label className="block text-sm space-y-1">
-                                <span className="font-medium text-gray-800">{t('meeting_election_max_choices')}</span>
-                                <input
-                                  type="number"
-                                  min={1}
-                                  disabled={busy}
-                                  value={agendaEdit.election_max_choices}
-                                  onChange={(e) =>
-                                    setAgendaEdit((prev) =>
-                                      prev
-                                        ? {
-                                            ...prev,
-                                            election_max_choices: Math.max(1, Number(e.target.value) || 1),
-                                          }
-                                        : prev,
-                                    )
-                                  }
-                                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                                />
-                              </label>
-                              <label className="flex items-center gap-2 text-sm sm:items-end pb-2">
-                                <input
-                                  type="checkbox"
-                                  disabled={busy}
-                                  checked={agendaEdit.election_allow_self_nomination}
-                                  onChange={(e) =>
-                                    setAgendaEdit((prev) =>
-                                      prev ? { ...prev, election_allow_self_nomination: e.target.checked } : prev,
-                                    )
-                                  }
-                                />
-                                {t('meeting_election_allow_self_nomination')}
-                              </label>
-                            </div>
+                            <>
+                              <div className="grid gap-3 sm:grid-cols-3">
+                                <label className="block text-sm space-y-1">
+                                  <span className="font-medium text-gray-800">{t('meeting_election_seats')}</span>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    disabled={busy || electionRulesLockedForAgendaEdit}
+                                    value={agendaEdit.election_seats}
+                                    onChange={(e) =>
+                                      setAgendaEdit((prev) =>
+                                        prev
+                                          ? {
+                                              ...prev,
+                                              election_seats: Math.max(1, Number(e.target.value) || 1),
+                                            }
+                                          : prev,
+                                      )
+                                    }
+                                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                  />
+                                </label>
+                                <label className="block text-sm space-y-1">
+                                  <span className="font-medium text-gray-800">{t('meeting_election_max_choices')}</span>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    disabled={busy || electionRulesLockedForAgendaEdit}
+                                    value={agendaEdit.election_max_choices}
+                                    onChange={(e) =>
+                                      setAgendaEdit((prev) =>
+                                        prev
+                                          ? {
+                                              ...prev,
+                                              election_max_choices: Math.max(1, Number(e.target.value) || 1),
+                                            }
+                                          : prev,
+                                      )
+                                    }
+                                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                  />
+                                </label>
+                                <label className="flex items-center gap-2 text-sm sm:items-end pb-2">
+                                  <input
+                                    type="checkbox"
+                                    disabled={busy}
+                                    checked={agendaEdit.election_allow_self_nomination}
+                                    onChange={(e) =>
+                                      setAgendaEdit((prev) =>
+                                        prev ? { ...prev, election_allow_self_nomination: e.target.checked } : prev,
+                                      )
+                                    }
+                                  />
+                                  {t('meeting_election_allow_self_nomination')}
+                                </label>
+                              </div>
+                              {electionRulesLockedForAgendaEdit ? (
+                                <p className="text-xs text-amber-800">{t('meeting_election_rules_locked')}</p>
+                              ) : null}
+                              <div className="grid gap-3 sm:grid-cols-2">
+                                <label className="block text-sm space-y-1">
+                                  <span className="font-medium text-gray-800">{t('meeting_election_nomination_opens')}</span>
+                                  <input
+                                    type="datetime-local"
+                                    disabled={busy}
+                                    value={agendaEdit.election_nomination_opens_dl}
+                                    onChange={(e) =>
+                                      setAgendaEdit((prev) =>
+                                        prev ? { ...prev, election_nomination_opens_dl: e.target.value } : prev,
+                                      )
+                                    }
+                                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                  />
+                                </label>
+                                <label className="block text-sm space-y-1">
+                                  <span className="font-medium text-gray-800">{t('meeting_election_nomination_closes')}</span>
+                                  <input
+                                    type="datetime-local"
+                                    disabled={busy}
+                                    value={agendaEdit.election_nomination_closes_dl}
+                                    onChange={(e) =>
+                                      setAgendaEdit((prev) =>
+                                        prev ? { ...prev, election_nomination_closes_dl: e.target.value } : prev,
+                                      )
+                                    }
+                                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                  />
+                                </label>
+                              </div>
+                            </>
                           ) : null}
                           <div className="flex flex-wrap gap-2">
                             <button
@@ -1357,6 +1514,8 @@ export function MeetingDetail() {
                               agenda={agenda}
                               propertyId={propertyIdForAgenda}
                               meetingId={meeting.id}
+                              ownerVoteMeetingId={showCouncilOwnerVoteUi ? ovMeta.meeting?.id : null}
+                              eligibleUnitNo={viewerOvUnitNo}
                               canEdit={isStaff}
                               electionBallotCount={electionBallotsByAgenda.get(agenda.id) ?? 0}
                               languageEn={en}
@@ -1424,39 +1583,63 @@ export function MeetingDetail() {
                       </label>
                     )}
                     {newAgendaKind === 'election' && (
-                      <div className="grid gap-3 sm:grid-cols-3">
-                        <label className="block text-sm space-y-1">
-                          <span className="font-medium text-gray-800">{t('meeting_election_seats')}</span>
-                          <input
-                            type="number"
-                            min={1}
-                            disabled={busy}
-                            value={newElectionSeats}
-                            onChange={(e) => setNewElectionSeats(Number(e.target.value) || 1)}
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                          />
-                        </label>
-                        <label className="block text-sm space-y-1">
-                          <span className="font-medium text-gray-800">{t('meeting_election_max_choices')}</span>
-                          <input
-                            type="number"
-                            min={1}
-                            disabled={busy}
-                            value={newElectionMaxChoices}
-                            onChange={(e) => setNewElectionMaxChoices(Number(e.target.value) || 1)}
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                          />
-                        </label>
-                        <label className="flex items-center gap-2 text-sm sm:items-end pb-2">
-                          <input
-                            type="checkbox"
-                            checked={newElectionSelfNom}
-                            disabled={busy}
-                            onChange={(e) => setNewElectionSelfNom(e.target.checked)}
-                          />
-                          {t('meeting_election_allow_self_nomination')}
-                        </label>
-                      </div>
+                      <>
+                        <div className="grid gap-3 sm:grid-cols-3">
+                          <label className="block text-sm space-y-1">
+                            <span className="font-medium text-gray-800">{t('meeting_election_seats')}</span>
+                            <input
+                              type="number"
+                              min={1}
+                              disabled={busy}
+                              value={newElectionSeats}
+                              onChange={(e) => setNewElectionSeats(Number(e.target.value) || 1)}
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                            />
+                          </label>
+                          <label className="block text-sm space-y-1">
+                            <span className="font-medium text-gray-800">{t('meeting_election_max_choices')}</span>
+                            <input
+                              type="number"
+                              min={1}
+                              disabled={busy}
+                              value={newElectionMaxChoices}
+                              onChange={(e) => setNewElectionMaxChoices(Number(e.target.value) || 1)}
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                            />
+                          </label>
+                          <label className="flex items-center gap-2 text-sm sm:items-end pb-2">
+                            <input
+                              type="checkbox"
+                              checked={newElectionSelfNom}
+                              disabled={busy}
+                              onChange={(e) => setNewElectionSelfNom(e.target.checked)}
+                            />
+                            {t('meeting_election_allow_self_nomination')}
+                          </label>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <label className="block text-sm space-y-1">
+                            <span className="font-medium text-gray-800">{t('meeting_election_nomination_opens')}</span>
+                            <input
+                              type="datetime-local"
+                              disabled={busy}
+                              value={newElectionNomOpensDl}
+                              onChange={(e) => setNewElectionNomOpensDl(e.target.value)}
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                            />
+                          </label>
+                          <label className="block text-sm space-y-1">
+                            <span className="font-medium text-gray-800">{t('meeting_election_nomination_closes')}</span>
+                            <input
+                              type="datetime-local"
+                              disabled={busy}
+                              value={newElectionNomClosesDl}
+                              onChange={(e) => setNewElectionNomClosesDl(e.target.value)}
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                            />
+                          </label>
+                        </div>
+                      </>
                     )}
                     <button type="submit" disabled={busy} className="text-sm px-4 py-2 rounded-lg bg-gray-900 text-white disabled:opacity-50">
                       {en ? 'Add' : '添加'}
