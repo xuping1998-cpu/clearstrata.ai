@@ -209,7 +209,65 @@ export interface MeetingDetailBundle {
 }
 
 const MEETING_LIST_COLUMNS =
-  'id, property_id, fiscal_year, meeting_type, title_en, title_zh, description_en, description_zh, scheduled_at, meeting_format, status, created_at';
+  'id, property_id, fiscal_year, meeting_type, title_en, title_zh, description_en, description_zh, scheduled_at, meeting_format, status, voting_open_at, voting_close_at, notice_sent_at, created_at';
+
+export type MeetingAgendaItemsListLiteRow = Pick<MeetingAgendaRow, 'meeting_id' | 'requires_vote' | 'description_zh'>;
+
+/** Agenda rows for meeting cards (no RPC; same table SELECT as detail). */
+export async function fetchMeetingAgendaSummariesForMeetingIds(propertyId: string, meetingIds: string[]) {
+  if (!meetingIds.length) return { rows: [] as MeetingAgendaItemsListLiteRow[], error: null as Error | null };
+  const { data, error } = await withProperty(
+    supabase.from('meeting_agenda_items').select('meeting_id, requires_vote, description_zh') as any,
+    propertyId,
+  ).in('meeting_id', meetingIds);
+  if (error) return { rows: [], error: new Error(error.message) };
+  return { rows: (data ?? []) as MeetingAgendaItemsListLiteRow[], error: null };
+}
+
+export type OwnerVoteMeetingCardRow = Pick<OwnerVoteMeetingLite, 'status' | 'voting_opens_at' | 'voting_closes_at'>;
+
+/**
+ * Latest `owner_vote_meetings` row per council title binding (tie-break newest `created_at`).
+ * Read-only SELECT; no inserts.
+ */
+export async function fetchLatestOwnerVoteMeetingCardRowsByCouncilTitles(propertyId: string, titles: string[]) {
+  const uniq = [...new Set(titles.map((x) => String(x ?? '').trim()).filter(Boolean))];
+  if (!uniq.length) return { byTitle: {} as Record<string, OwnerVoteMeetingCardRow>, error: null as Error | null };
+
+  const { data, error } = await supabase
+    .from('owner_vote_meetings')
+    .select('title,status,voting_opens_at,voting_closes_at,created_at')
+    .eq('property_id', propertyId)
+    .in('title', uniq);
+
+  if (error) return { byTitle: {}, error: new Error(error.message) };
+
+  const sorted = [...(data ?? [])].sort((a, b) =>
+    String((b as { created_at?: string }).created_at ?? '').localeCompare(
+      String((a as { created_at?: string }).created_at ?? ''),
+    ),
+  );
+
+  const byTitle: Record<string, OwnerVoteMeetingCardRow> = {};
+  for (const raw of sorted) {
+    const row = raw as {
+      title?: unknown;
+      status?: unknown;
+      voting_opens_at?: unknown;
+      voting_closes_at?: unknown;
+    };
+    const titleKey = typeof row.title === 'string' ? row.title.trim() : '';
+    if (!titleKey || byTitle[titleKey]) continue;
+    const statusVal = typeof row.status === 'string' ? row.status : '';
+    byTitle[titleKey] = {
+      status: statusVal,
+      voting_opens_at: typeof row.voting_opens_at === 'string' ? row.voting_opens_at : null,
+      voting_closes_at: typeof row.voting_closes_at === 'string' ? row.voting_closes_at : null,
+    };
+  }
+
+  return { byTitle, error: null };
+}
 
 const AGENDA_DETAIL_COLUMNS =
   'id, meeting_id, sort_order, title_en, title_zh, description_en, description_zh, requires_vote, vote_rule, created_at';

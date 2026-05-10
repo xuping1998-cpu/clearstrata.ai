@@ -8,10 +8,90 @@ import {
   getMeetingsByPropertyAndYear,
   getMeetingDashboardStats,
   meetingTitleZhFirst,
+  fetchMeetingAgendaSummariesForMeetingIds,
+  fetchLatestOwnerVoteMeetingCardRowsByCouncilTitles,
+  type OwnerVoteMeetingCardRow,
+  type MeetingAgendaItemsListLiteRow,
   type MeetingRow,
 } from './api';
 import { labelFormat, labelMeetingType, labelStatus, meetingUiStrings } from './labels';
-import { stripWrittenRemoteMeta } from './meetingFormatModel';
+import {
+  councilMeetingVotingWindowFallback,
+  councilWrittenRemoteWindows,
+  stripWrittenRemoteMeta,
+  meetingFormatUiFromRow,
+  isWrittenRemoteUi,
+} from './meetingFormatModel';
+import { councilMeetingTitleForOwnerVoteBinding, isOwnerVotingMeeting } from './ownerVotingCouncil';
+import {
+  extractElectionAgendaMeta,
+  finalizeElectionMeta,
+} from './electionAgendaModel';
+
+type MeetingCardExtras = {
+  resolutionAgendaCount: number;
+  electionAgendaCount: number;
+  nominationOpensIso: string | null;
+  nominationClosesIso: string | null;
+};
+
+function emptyExtras(): MeetingCardExtras {
+  return {
+    resolutionAgendaCount: 0,
+    electionAgendaCount: 0,
+    nominationOpensIso: null,
+    nominationClosesIso: null,
+  };
+}
+
+function buildMeetingCardExtras(rows: MeetingAgendaItemsListLiteRow[]): Record<string, MeetingCardExtras> {
+  const byMeetingId: Record<string, MeetingCardExtras> = {};
+  for (const row of rows) {
+    const mid = String(row.meeting_id ?? '').trim();
+    if (!mid) continue;
+    if (!byMeetingId[mid]) byMeetingId[mid] = emptyExtras();
+    const agg = byMeetingId[mid];
+
+    const m = extractElectionAgendaMeta(row.description_zh ?? '').meta;
+    if (m?.agenda_type === 'council_election') {
+      agg.electionAgendaCount += 1;
+      const fin = finalizeElectionMeta(m);
+      const o = fin.nomination_opens_at?.trim();
+      const c = fin.nomination_closes_at?.trim();
+      if (o && (!agg.nominationOpensIso || o < agg.nominationOpensIso)) agg.nominationOpensIso = o;
+      if (c && (!agg.nominationClosesIso || c < agg.nominationClosesIso)) agg.nominationClosesIso = c;
+    } else if (row.requires_vote) {
+      agg.resolutionAgendaCount += 1;
+    }
+  }
+  return byMeetingId;
+}
+
+function fmtListTs(iso: string | null | undefined, languageEn: boolean): string {
+  if (!iso?.trim()) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString(languageEn ? 'en-CA' : 'zh-CN', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+}
+
+function councilVotePhaseLabelFromLite(
+  m: MeetingRow,
+  councilBindingTitle: string,
+  ovLite: OwnerVoteMeetingCardRow | undefined,
+  translate: (k: string) => string,
+): string {
+  if (!isOwnerVotingMeeting(m) || !councilBindingTitle) return '';
+  if (!ovLite) return translate('vote_not_enabled');
+  const raw = ovLite.status?.trim().toLowerCase() ?? '';
+  if (raw === 'draft') return translate('vote_draft');
+  if (raw === 'open') return translate('vote_open');
+  if (raw === 'closed') return translate('vote_closed');
+  if (raw === 'archived') return translate('vote_archived');
+  return ovLite.status?.trim() || '—';
+}
 
 type Variant = 'voting' | 'meetings';
 
@@ -36,6 +116,12 @@ export function MeetingListView({ variant }: Props) {
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [cardExtrasByMeetingId, setCardExtrasByMeetingId] = useState<
+    Record<string, MeetingCardExtras>
+  >({});
+  const [ovCardByCouncilTitle, setOvCardByCouncilTitle] = useState<
+    Record<string, OwnerVoteMeetingCardRow>
+  >({});
 
   const isStaff =
     roleInProperty === 'council' ||
@@ -48,6 +134,8 @@ export function MeetingListView({ variant }: Props) {
     if (!currentPropertyId) {
       setMeetings([]);
       setStats(null);
+      setCardExtrasByMeetingId({});
+      setOvCardByCouncilTitle({});
       setLoading(false);
       return;
     }
@@ -57,9 +145,47 @@ export function MeetingListView({ variant }: Props) {
       getMeetingsByPropertyAndYear(currentPropertyId, fiscalYear),
       getMeetingDashboardStats(currentPropertyId, fiscalYear),
     ]);
-    if (e1) setErr(e1.message);
-    if (e2 && !e1) setErr(e2.message);
+
+    let agendaErrMsg: string | null = null;
     setMeetings(rows);
+
+    if (e1 || rows.length === 0) {
+      setCardExtrasByMeetingId({});
+      setOvCardByCouncilTitle({});
+    } else {
+      const ids = rows.map((r) => String(r.id).trim()).filter(Boolean);
+      const titles = rows
+        .filter((row) => isOwnerVotingMeeting(row))
+        .map((row) => councilMeetingTitleForOwnerVoteBinding(row).trim())
+        .filter(Boolean);
+
+      const [agRes, ovRes] = await Promise.all([
+        ids.length
+          ? fetchMeetingAgendaSummariesForMeetingIds(currentPropertyId, ids)
+          : Promise.resolve({ rows: [], error: null }),
+        titles.length
+          ? fetchLatestOwnerVoteMeetingCardRowsByCouncilTitles(currentPropertyId, titles)
+          : Promise.resolve({ byTitle: {}, error: null }),
+      ]);
+
+      if (agRes.error) {
+        agendaErrMsg = agRes.error.message;
+        setCardExtrasByMeetingId({});
+      } else {
+        setCardExtrasByMeetingId(buildMeetingCardExtras(agRes.rows));
+      }
+
+      if (ovRes.error) {
+        if (!agendaErrMsg) agendaErrMsg = ovRes.error.message;
+        setOvCardByCouncilTitle({});
+      } else {
+        setOvCardByCouncilTitle(ovRes.byTitle);
+      }
+    }
+
+    if (e1) setErr(e1.message);
+    else if (agendaErrMsg) setErr(agendaErrMsg);
+    else if (e2) setErr(e2.message);
     if (dash) {
       setStats({
         used: dash.used_meetings,
@@ -124,14 +250,7 @@ export function MeetingListView({ variant }: Props) {
     ? `/voting?${new URLSearchParams({ propertyId: currentPropertyId }).toString()}`
     : '/voting';
 
-  const primaryCtaLabel =
-    variant === 'voting'
-      ? en
-        ? 'Enter meeting voting'
-        : '进入会议投票'
-      : en
-        ? 'View meeting details'
-        : '查看会议详情';
+  const primaryCtaLabel = en ? 'Enter meeting voting' : '进入会议投票';
 
   return (
     <div className="min-h-screen bg-gray-50 pb-16">
@@ -249,6 +368,54 @@ export function MeetingListView({ variant }: Props) {
                         })()}
                       </p>
                     )}
+                    {(() => {
+                      const extras = rowId ? cardExtrasByMeetingId[rowId] ?? emptyExtras() : emptyExtras();
+                      const councilBind = councilMeetingTitleForOwnerVoteBinding(m).trim();
+                      const ovLite = councilBind ? ovCardByCouncilTitle[councilBind] : undefined;
+                      const showFlow = !!(councilBind && isOwnerVotingMeeting(m));
+
+                      const writtenRm = isWrittenRemoteUi(meetingFormatUiFromRow(m));
+                      const disc = councilWrittenRemoteWindows(m);
+                      const fb = councilMeetingVotingWindowFallback(m);
+                      const vOpenDisp = ovLite?.voting_opens_at?.trim()
+                        ? ovLite.voting_opens_at
+                        : fb.votingOpens ?? null;
+                      const vCloseDisp = ovLite?.voting_closes_at?.trim()
+                        ? ovLite.voting_closes_at
+                        : fb.votingCloses ?? null;
+                      const votePhase = councilVotePhaseLabelFromLite(m, councilBind, ovLite, t);
+                      const countsLine = t('meeting_list_flow_summary_counts')
+                        .replace('{r}', String(extras.resolutionAgendaCount))
+                        .replace('{e}', String(extras.electionAgendaCount));
+
+                      if (!showFlow) return null;
+
+                      return (
+                        <div className="mt-3 border-t border-gray-100 pt-3 text-[11px] sm:text-xs text-gray-600 space-y-1">
+                          {writtenRm && (disc.discussionOpens || disc.discussionCloses) ? (
+                            <p>
+                              <span className="font-medium text-gray-800">{t('meeting_list_flow_summary_discussion')}</span>{' '}
+                              {fmtListTs(disc.discussionOpens, en)} · {fmtListTs(disc.discussionCloses, en)}
+                            </p>
+                          ) : null}
+                          {extras.electionAgendaCount > 0 ? (
+                            <p>
+                              <span className="font-medium text-gray-800">{t('meeting_list_flow_summary_nomination')}</span>{' '}
+                              {fmtListTs(extras.nominationOpensIso, en)} ·{' '}
+                              {fmtListTs(extras.nominationClosesIso, en)}
+                            </p>
+                          ) : null}
+                          <p>
+                            <span className="font-medium text-gray-800">{t('meeting_list_flow_summary_voting_period')}</span>{' '}
+                            {fmtListTs(vOpenDisp, en)} · {fmtListTs(vCloseDisp, en)}
+                          </p>
+                          <p>
+                            <span className="font-medium text-gray-800">{t('voting_status')}</span>：{votePhase}
+                          </p>
+                          <p className="text-gray-700">{countsLine}</p>
+                        </div>
+                      );
+                    })()}
                   </div>
                   <div className="flex flex-col gap-2 shrink-0 sm:items-end sm:justify-between sm:min-w-[200px]">
                     <div className="text-sm text-gray-500 sm:text-right">

@@ -69,7 +69,7 @@ export function MeetingOwnerVoteResolutionResults({
   }
 
   if (!ownerVoteMeeting) {
-    return <p className="text-sm text-gray-600">{t('meeting_vote_not_enabled')}</p>;
+    return <p className="text-sm text-gray-600">{t('meeting_ov_owner_not_open')}</p>;
   }
 
   if (resolutions.length === 0) {

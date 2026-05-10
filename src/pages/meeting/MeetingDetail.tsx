@@ -282,6 +282,23 @@ export function MeetingDetail() {
     [electionBundles],
   );
 
+  const councilFormalResolutionAgendaCount = useMemo(() => {
+    let n = 0;
+    for (const a of bundle.agendaItems) {
+      if (agendaKindFromRow(a) === 'resolution') n++;
+    }
+    return n;
+  }, [bundle.agendaItems]);
+
+  const showVoteWaitingResultsBanner =
+    showCouncilOwnerVoteUi &&
+    !ovMeta.loading &&
+    !!ovMeta.meeting &&
+    (ovMeta.resolutions.length > 0 || electionBundles.length > 0) &&
+    (ovMeta.meeting.status?.trim().toLowerCase() ?? '') === 'open' &&
+    !ovResolutionResults.some((r) => (r.total_cast ?? 0) > 0) &&
+    ownerElectionBallots.length === 0;
+
   useEffect(() => {
     const was = prevNewAgendaKindRef.current;
     prevNewAgendaKindRef.current = newAgendaKind;
@@ -1153,6 +1170,7 @@ export function MeetingDetail() {
                   ovBusy={ovBusy}
                   canEnableBinding={Boolean(councilMeetingTitleForOwnerVoteBinding(meeting).trim())}
                   electionNomRibbon={electionNomRibbonModel}
+                  councilFormalResolutionAgendaCount={councilFormalResolutionAgendaCount}
                   onEnableElectronicVoting={() => void handleEnableElectronicVoting()}
                   onFreezeSnapshot={() => void handleFreezeOwnerVoteSnapshot()}
                   onOpenVoting={() => void handleOpenOwnerVoteMeeting()}
@@ -1425,16 +1443,24 @@ export function MeetingDetail() {
                             </p>
                           )}
 
-                          {agendaKindUi !== 'election' && agenda.requires_vote && !vote && isStaff && (
-                            <button
-                              type="button"
-                              disabled={busy}
-                              onClick={() => handleCreateVote(agenda)}
-                              className="mt-3 text-sm px-3 py-1.5 rounded-lg bg-clearstrata-ui-primary text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:opacity-50"
-                            >
-                              {en ? 'Create vote' : '创建表决'}
-                            </button>
-                          )}
+                          {agendaKindUi !== 'election' && agenda.requires_vote ? (
+                            !vote ? (
+                              isStaff ? (
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => handleCreateVote(agenda)}
+                                  className="mt-3 text-sm px-3 py-1.5 rounded-lg bg-clearstrata-ui-primary text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:opacity-50"
+                                >
+                                  {t('meeting_agenda_generate_formal_vote')}
+                                </button>
+                              ) : null
+                            ) : (
+                              <p className="mt-3 text-sm font-medium text-clearstrata-brand-800">
+                                {t('meeting_agenda_formal_vote_created')}
+                              </p>
+                            )
+                          ) : null}
 
                           {agendaKindUi !== 'election' && vote ? (
                             <div className="mt-4 space-y-3 border-t border-gray-200 pt-3">
@@ -1673,6 +1699,9 @@ export function MeetingDetail() {
               {!ovMeta.loading && !ovMeta.meeting ? (
                 <p className="text-sm text-gray-600">{t('meeting_vote_not_enabled')}</p>
               ) : null}
+              {showVoteWaitingResultsBanner ? (
+                <p className="text-sm text-gray-700 mb-3">{t('meeting_vote_waiting_tallies_open')}</p>
+              ) : null}
               {!ovMeta.loading && ovMeta.meeting && ovMeta.resolutions.length === 0 && electionBundles.length === 0 ? (
                 <p className="text-sm text-gray-600">{t('meeting_vote_no_resolutions')}</p>
               ) : null}
@@ -1834,7 +1863,7 @@ export function MeetingDetail() {
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-clearstrata-ui-primary text-white text-sm hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:opacity-50"
                 >
                   <Users size={16} />
-                  {en ? 'Send / refresh in-app invites' : '发送或刷新站内邀请'}
+                  {t('meeting_vote_send_meeting_vote_invites')}
                 </button>
                 {inv.failed > 0 && (
                   <button

@@ -33,6 +33,7 @@ export type ElectionNominationPhase = 'before_open' | 'collecting' | 'ended' | '
 export type ElectionNominationRibbonModel = {
   hasElection: true;
   anyNominationOpen: boolean;
+  nominationOpensIso: string | null;
   nominationClosesIso: string | null;
   totalCandidates: number;
 };
@@ -79,6 +80,7 @@ export function buildElectionNominationRibbon(metas: ElectionAgendaMetaV1[], ref
   let anyNominationOpen = false;
   let totalCandidates = 0;
   let nominationClosesIso: string | null = null;
+  let nominationOpensIso: string | null = null;
 
   for (const raw of metas) {
     const m = finalizeElectionMeta(raw, now);
@@ -86,12 +88,15 @@ export function buildElectionNominationRibbon(metas: ElectionAgendaMetaV1[], ref
     const ph = electionNominationPhase(now, m);
     const c = m.nomination_closes_at?.trim();
     if (c && (nominationClosesIso === null || c < nominationClosesIso)) nominationClosesIso = c;
+    const o = m.nomination_opens_at?.trim();
+    if (o && (nominationOpensIso === null || o < nominationOpensIso)) nominationOpensIso = o;
     if (ph === 'before_open' || ph === 'collecting') anyNominationOpen = true;
   }
 
   return {
     hasElection: true,
     anyNominationOpen,
+    nominationOpensIso,
     nominationClosesIso,
     totalCandidates,
   };

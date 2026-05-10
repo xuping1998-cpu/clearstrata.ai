@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { MeetingRow, OwnerVoteMeetingLite } from '@/features/meetings/api';
 import { labelFormat } from '@/features/meetings/labels';
 import {
@@ -31,6 +32,7 @@ export type OwnerVotingInlineControlBarProps = {
   onOpenVoting: () => void | Promise<void>;
   onCloseVoting: () => void | Promise<void>;
   electionNomRibbon?: ElectionNominationRibbonModel | null;
+  councilFormalResolutionAgendaCount?: number;
 };
 
 function fmtTs(iso: string | null | undefined, en: boolean): string {
@@ -38,6 +40,15 @@ function fmtTs(iso: string | null | undefined, en: boolean): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
   return d.toLocaleString(en ? 'en-CA' : 'zh-CN', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function sectionCard(label: ReactNode, children: ReactNode) {
+  return (
+    <div className="rounded-md border border-gray-100 bg-white px-3 py-2 shadow-sm space-y-1">
+      <div className="text-xs font-medium text-gray-500">{label}</div>
+      <div>{children}</div>
+    </div>
+  );
 }
 
 export function OwnerVotingInlineControlBar({
@@ -55,6 +66,7 @@ export function OwnerVotingInlineControlBar({
   onOpenVoting,
   onCloseVoting,
   electionNomRibbon = null,
+  councilFormalResolutionAgendaCount = 0,
 }: OwnerVotingInlineControlBarProps) {
   const en = languageEn;
   const uiFormat = meetingFormatUiFromRow(meeting);
@@ -78,7 +90,7 @@ export function OwnerVotingInlineControlBar({
 
   function voteStatusLine(): string {
     if (meta.loading) return '…';
-    if (!ov) return t('meeting_ov_not_enabled');
+    if (!ov) return t('vote_not_enabled');
     switch (ovStatusLower) {
       case 'draft':
         return t('vote_draft');
@@ -93,83 +105,86 @@ export function OwnerVotingInlineControlBar({
     }
   }
 
-  const formatLabel = labelFormat(meeting.meeting_format, en, { descriptionZh: meeting.description_zh });
+  const genericFormatLabel = labelFormat(meeting.meeting_format, en, { descriptionZh: meeting.description_zh });
+  const formatDisplay = written ? t('meeting_format_written_remote_display') : genericFormatLabel;
+
+  const resolutionsShown =
+    ov && !meta.loading ? meta.resolutionCount : Math.max(0, Number(councilFormalResolutionAgendaCount) || 0);
+  const candidatesShown = electionNomRibbon?.totalCandidates ?? 0;
+  const eligibleShown = ov && !meta.loading ? meta.eligibleCount : null;
 
   return (
-    <div className="mb-6 rounded-lg border border-gray-200 bg-gray-50/80 px-4 py-3 text-sm space-y-3">
-      <h3 className="text-sm font-semibold text-gray-900">{t('meeting_ev_status_title')}</h3>
+    <div className="mb-6 rounded-lg border border-gray-200 bg-gray-50/80 px-4 py-3 text-sm space-y-4">
+      <h3 className="text-base font-semibold text-gray-900">{t('meeting_ev_status_title')}</h3>
 
-      <dl className="grid grid-cols-1 gap-x-4 gap-y-2 text-xs sm:grid-cols-2 sm:text-sm">
-        <div className="flex flex-wrap gap-x-2 gap-y-0.5 sm:col-span-2">
-          <dt className="shrink-0 text-gray-500">{t('meeting_ov_meeting_format_row')}</dt>
-          <dd className="font-medium text-gray-900">{formatLabel}</dd>
-        </div>
+      <div className="space-y-3">
+        {sectionCard(
+          t('meeting_ov_meeting_format_row'),
+          <p className="text-gray-900 font-medium">{formatDisplay}</p>,
+        )}
 
-        {written && (disc.discussionOpens || disc.discussionCloses) ? (
-          <>
-            <div className="flex flex-wrap gap-x-2 gap-y-0.5 sm:col-span-2">
-              <dt className="shrink-0 text-gray-500">{t('meeting_ov_discussion_opens')}</dt>
-              <dd className="text-gray-900">{fmtTs(disc.discussionOpens, en)}</dd>
-            </div>
-            <div className="flex flex-wrap gap-x-2 gap-y-0.5 sm:col-span-2">
-              <dt className="shrink-0 text-gray-500">{t('meeting_ov_discussion_closes')}</dt>
-              <dd className="text-gray-900">{fmtTs(disc.discussionCloses, en)}</dd>
-            </div>
-          </>
-        ) : null}
+        {written && (disc.discussionOpens || disc.discussionCloses)
+          ? sectionCard(
+              t('meeting_ov_discussion_period_label'),
+              <p className="text-gray-900">
+                {fmtTs(disc.discussionOpens, en)} <span className="text-gray-400 px-1">–</span> {fmtTs(disc.discussionCloses, en)}
+              </p>,
+            )
+          : null}
 
-        <div className="flex flex-wrap gap-x-2 gap-y-0.5 sm:col-span-2">
-          <dt className="shrink-0 text-gray-500">{t('meeting_ov_vote_opens')}</dt>
-          <dd className="text-gray-900">{fmtTs(displayVotingOpens, en)}</dd>
-        </div>
-        <div className="flex flex-wrap gap-x-2 gap-y-0.5 sm:col-span-2">
-          <dt className="shrink-0 text-gray-500">{t('meeting_ov_vote_closes')}</dt>
-          <dd className="text-gray-900">{fmtTs(displayVotingCloses, en)}</dd>
-        </div>
+        {electionNomRibbon
+          ? sectionCard(
+              t('meeting_flow_nomination_period_label'),
+              <>
+                <p className="text-gray-900">
+                  {electionNomRibbon.nominationOpensIso || electionNomRibbon.nominationClosesIso ? (
+                    <>
+                      {fmtTs(electionNomRibbon.nominationOpensIso ?? null, en)}{' '}
+                      <span className="text-gray-400 px-1">–</span>{' '}
+                      {fmtTs(electionNomRibbon.nominationClosesIso ?? null, en)}
+                    </>
+                  ) : (
+                    <span className="text-gray-500">—</span>
+                  )}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {electionNomRibbon.anyNominationOpen ? t('meeting_election_nomination_open') : t('meeting_election_nomination_closed')}
+                </p>
+              </>,
+            )
+          : null}
 
-        <div className="flex flex-wrap gap-x-2 gap-y-0.5">
-          <dt className="shrink-0 text-gray-500">{t('voting_status')}</dt>
-          <dd className="font-medium text-gray-900">{voteStatusLine()}</dd>
-        </div>
+        {sectionCard(
+          t('meeting_ov_voting_period_combined_label'),
+          <p className="text-gray-900">
+            {fmtTs(displayVotingOpens, en)} <span className="text-gray-400 px-1">–</span> {fmtTs(displayVotingCloses, en)}
+          </p>,
+        )}
 
-        {electionNomRibbon ? (
-          <>
-            <div className="flex flex-wrap gap-x-2 gap-y-0.5 sm:col-span-2">
-              <dt className="shrink-0 text-gray-500">{t('meeting_election_nomination')}</dt>
-              <dd className="font-medium text-gray-900">
-                {electionNomRibbon.anyNominationOpen ? t('meeting_election_nomination_open') : t('meeting_election_nomination_closed')}
-              </dd>
-            </div>
-            <div className="flex flex-wrap gap-x-2 gap-y-0.5 sm:col-span-2">
-              <dt className="shrink-0 text-gray-500">{t('meeting_election_nomination_closes')}</dt>
-              <dd className="text-gray-900">{fmtTs(electionNomRibbon.nominationClosesIso ?? null, en)}</dd>
-            </div>
-            <div className="flex flex-wrap gap-x-2 gap-y-0.5 sm:col-span-2">
-              <dt className="shrink-0 text-gray-500">{t('meeting_election_candidates')}</dt>
-              <dd className="font-medium text-gray-900">{electionNomRibbon.totalCandidates}</dd>
-            </div>
-          </>
-        ) : null}
+        {sectionCard(
+          t('voting_status'),
+          <p className="font-medium text-gray-900">{voteStatusLine()}</p>,
+        )}
 
-        {ov ? (
-          <>
-            <div className="flex flex-wrap gap-x-2 gap-y-0.5">
-              <dt className="shrink-0 text-gray-500">{t('meeting_ev_snapshot_label')}</dt>
-              <dd className="font-medium text-gray-900">
+        <div className="rounded-md border border-clearstrata-brand-100 bg-clearstrata-brand-50/35 px-3 py-2 shadow-inner space-y-1">
+          <div className="text-xs font-medium text-gray-600">
+            {en ? 'Resolutions, candidates & eligible households' : '决议数、候选人数、合资格户数'}
+          </div>
+          <p className="text-gray-900 font-medium">
+            {en
+              ? `Resolutions (formal): ${resolutionsShown} · Candidates: ${candidatesShown} · Eligible households: ${eligibleShown != null ? eligibleShown : '—'}`
+              : `决议数 ${resolutionsShown} · 候选人数 ${candidatesShown} · 合资格户数 ${eligibleShown != null ? eligibleShown : '—'}`}
+          </p>
+          {ov ? (
+            <p className="text-xs text-gray-600">
+              {t('meeting_ev_snapshot_label')}:{' '}
+              <span className="font-medium text-gray-800">
                 {ov.snapshot_frozen_at ? t('meeting_ov_frozen') : t('meeting_ov_not_frozen')}
-              </dd>
-            </div>
-            <div className="flex flex-wrap gap-x-2 gap-y-0.5">
-              <dt className="shrink-0 text-gray-500">{t('meeting_ov_eligible_units')}</dt>
-              <dd className="font-medium text-gray-900">{meta.loading ? '—' : meta.eligibleCount}</dd>
-            </div>
-            <div className="flex flex-wrap gap-x-2 gap-y-0.5">
-              <dt className="shrink-0 text-gray-500">{t('meeting_ov_resolution_count')}</dt>
-              <dd className="font-medium text-gray-900">{meta.loading ? '—' : meta.resolutionCount}</dd>
-            </div>
-          </>
-        ) : null}
-      </dl>
+              </span>
+            </p>
+          ) : null}
+        </div>
+      </div>
 
       {meta.loading ? (
         <p className="text-xs text-gray-500">{t('meeting_ov_loading')}</p>

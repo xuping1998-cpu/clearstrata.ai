@@ -79,8 +79,9 @@ const translations: Record<string, Record<Language, string>> = {
   nav_meetings_records: { en: 'Meetings & Voting', zh: '会议投票' },
 
   meetings_page_subtitle: {
-    en: 'Remote meetings and electronic voting, enabling owners to participate anytime, anywhere, with transparent and fair decisions.',
-    zh: '电子投票与远程会议，业主随时随地参与表决，让每一项决议都公正透明。',
+    en:
+      'Written remote meetings, owner discussion and formal electronic voting in one flow—fair and transparent resolutions.',
+    zh: '远程书面会议、业主讨论与正式电子表决一体化，让每一项决议都公正透明。',
   },
   nav_owner_voting: { en: 'Owner Voting', zh: '业主电子表决' },
   meeting_ov_staff_intro: {
@@ -96,7 +97,7 @@ const translations: Record<string, Record<Language, string>> = {
     zh: '本次会议尚未开放电子表决。',
   },
   meeting_ov_go_vote: { en: 'Go vote', zh: '去投票' },
-  meeting_ov_enable: { en: 'Enable electronic voting', zh: '启用电子表决' },
+  meeting_ov_enable: { en: 'Enable meeting voting', zh: '启用会议投票' },
   meeting_ov_enabled_toast: { en: 'Electronic voting enabled', zh: '电子表决已启用' },
   meeting_ov_not_enabled: { en: 'Not enabled', zh: '未启用' },
   meeting_ov_freeze: { en: 'Freeze voter list', zh: '冻结名单' },
@@ -145,8 +146,8 @@ const translations: Record<string, Record<Language, string>> = {
   meeting_ov_turnout: { en: 'Turnout', zh: '参与率' },
   meeting_ov_outcome_pending: { en: 'Outcome not determined yet', zh: '结果待定' },
 
-  meeting_ev_status_title: { en: 'Electronic voting status', zh: '电子表决状态' },
-  meeting_ev_enable: { en: 'Enable electronic voting', zh: '启用电子表决' },
+  meeting_ev_status_title: { en: 'Meeting voting workflow', zh: '会议投票流程' },
+  meeting_ev_enable: { en: 'Enable meeting voting', zh: '启用会议投票' },
   meeting_ev_freeze_list: { en: 'Freeze voter list', zh: '冻结名单' },
   meeting_ev_open: { en: 'Open voting', zh: '打开投票' },
   meeting_ev_close: { en: 'Close voting', zh: '关闭投票' },
@@ -182,7 +183,33 @@ const translations: Record<string, Record<Language, string>> = {
   meeting_ev_status_open: { en: 'Voting in progress', zh: '投票中' },
   meeting_ev_status_closed: { en: 'Closed', zh: '已关闭' },
   meeting_ev_status_archived: { en: 'Archived', zh: '已归档' },
-  meeting_ev_snapshot_label: { en: 'Voter list', zh: '冻结名单' },
+  meeting_ev_snapshot_label: { en: 'Voter list frozen', zh: '冻结投票名单' },
+
+  meeting_ov_discussion_period_label: { en: 'Discussion period', zh: '讨论期' },
+  meeting_ov_voting_period_combined_label: { en: 'Voting period', zh: '投票期' },
+  meeting_format_written_remote_display: {
+    en: 'Written remote meeting',
+    zh: '远程书面会议',
+  },
+  meeting_flow_nomination_period_label: { en: 'Nomination period', zh: '提名期' },
+
+  meeting_list_flow_summary_discussion: { en: 'Discussion period', zh: '讨论期' },
+  meeting_list_flow_summary_nomination: { en: 'Nomination period', zh: '提名期' },
+  meeting_list_flow_summary_voting_period: { en: 'Voting period', zh: '投票期' },
+  meeting_list_flow_summary_counts: {
+    en: 'Resolutions {r} · Elections {e}',
+    zh: '决议 {r} · 选举 {e}',
+  },
+  meeting_agenda_generate_formal_vote: { en: 'Generate formal ballot', zh: '生成正式表决' },
+  meeting_agenda_formal_vote_created: { en: 'Formal ballot created', zh: '正式表决已创建' },
+  meeting_vote_send_meeting_vote_invites: {
+    en: 'Send meeting voting invitations',
+    zh: '发送会议投票邀请',
+  },
+  meeting_vote_waiting_tallies_open: {
+    en: 'Meeting voting is enabled; results appear after owners cast ballots.',
+    zh: '已启用会议投票，等待业主投票后显示结果。',
+  },
 
   meeting_resolution_results_title: { en: 'Resolution Results', zh: '决议结果' },
   meeting_initiation_type: { en: 'Meeting initiation', zh: '会议发起方式' },
@@ -222,12 +249,16 @@ const translations: Record<string, Record<Language, string>> = {
   },
   meeting_vote_not_started: { en: 'Not started', zh: '尚未开始' },
   meeting_vote_not_enabled: {
-    en: 'Electronic voting is not enabled yet.',
-    zh: '尚未启用电子表决。',
+    en:
+      'Meeting voting has not been enabled yet. Enable meeting voting above, then generate formal ballots for agendas that require a vote.',
+    zh:
+      '本次会议尚未启用会议投票。请先在上方启用会议投票，并为需要表决的议程生成正式表决。',
   },
   meeting_vote_no_resolutions: {
-    en: 'No voting agenda items have been added yet.',
-    zh: '尚未添加需要表决的议程。',
+    en:
+      'Formal resolutions are not configured yet after enabling meeting voting. Add voting or election agendas, create formal ballots, then open voting.',
+    zh:
+      '已启用会议投票，尚未配置可用的正式表决项。请确认已添加表决/选举议程、生成正式表决并打开投票。',
   },
   meeting_agenda_type: { en: 'Agenda type', zh: '议程类型' },
   meeting_agenda_type_normal: { en: 'Agenda item', zh: '普通议程' },
