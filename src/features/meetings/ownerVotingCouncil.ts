@@ -1,6 +1,84 @@
 import type { MeetingRow } from './api';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+const COUNCIL_BINDING_META_START = '<!--clearstrata-council-meeting-binding\n';
+const COUNCIL_BINDING_META_END = '\n-->';
+const COUNCIL_BINDING_MARKER_SUBSTRING = 'clearstrata-council-meeting-binding';
+
+export type CouncilMeetingBindingMetaV1 = { v: 1; council_meeting_id: string };
+
+function isUuidLike(s: string): boolean {
+  const t = s.trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(t);
+}
+
+/**
+ * Appends a hidden HTML comment binding `owner_vote_meetings` → council `meetings.id`.
+ * Preserves existing body; strips any prior binding block first.
+ */
+export function embedCouncilMeetingBinding(description: string | null | undefined, councilMeetingId: string): string {
+  const id = councilMeetingId.trim();
+  const without = stripCouncilMeetingBinding(description ?? '');
+  const payload: CouncilMeetingBindingMetaV1 = { v: 1, council_meeting_id: id };
+  const block = `${COUNCIL_BINDING_META_START}${JSON.stringify(payload)}${COUNCIL_BINDING_META_END}`;
+  return without ? `${without}\n\n${block}` : block;
+}
+
+export function extractCouncilMeetingBinding(description: string | null | undefined): {
+  cleanDescription: string;
+  meta: CouncilMeetingBindingMetaV1 | null;
+} {
+  const s = description ?? '';
+  const i = s.lastIndexOf(COUNCIL_BINDING_META_START);
+  if (i < 0) return { cleanDescription: s, meta: null };
+  const end = s.indexOf(COUNCIL_BINDING_META_END, i + COUNCIL_BINDING_META_START.length);
+  if (end < 0) return { cleanDescription: s, meta: null };
+  const raw = s.slice(i + COUNCIL_BINDING_META_START.length, end).trim();
+  let meta: CouncilMeetingBindingMetaV1 | null = null;
+  try {
+    const o = JSON.parse(raw) as Record<string, unknown>;
+    const cid = o?.council_meeting_id;
+    if (o && o.v === 1 && typeof cid === 'string' && isUuidLike(cid)) {
+      meta = { v: 1, council_meeting_id: cid.trim() };
+    }
+  } catch {
+    /* ignore */
+  }
+  const clean = `${s.slice(0, i)}${s.slice(end + COUNCIL_BINDING_META_END.length)}`.replace(/\s+$/u, '');
+  return { cleanDescription: clean, meta };
+}
+
+export function stripCouncilMeetingBinding(description: string | null | undefined): string {
+  return extractCouncilMeetingBinding(description ?? '').cleanDescription.replace(/\s+$/u, '').trim();
+}
+
+export function ownerVoteMeetingBindsCouncil(
+  ownerVoteDescription: string | null | undefined,
+  councilMeetingId: string,
+): boolean {
+  const m = extractCouncilMeetingBinding(ownerVoteDescription ?? '').meta;
+  return m != null && m.council_meeting_id === councilMeetingId.trim();
+}
+
+/** Substring for `ilike` filters when locating rows that may carry a binding block. */
+export function councilMeetingBindingMarkerSubstring(): string {
+  return COUNCIL_BINDING_MARKER_SUBSTRING;
+}
+
+/**
+ * Prefer binding marker in `owner_vote_meetings.description`; fall back to title match on council `meetings`.
+ */
+export async function resolveCouncilMeetingIdForOwnerVoteDescription(
+  client: SupabaseClient,
+  propertyId: string,
+  ownerVoteTitle: string,
+  ownerVoteDescription: string | null | undefined,
+): Promise<string | null> {
+  const fromBinding = extractCouncilMeetingBinding(ownerVoteDescription ?? '').meta?.council_meeting_id?.trim() ?? '';
+  if (fromBinding && isUuidLike(fromBinding)) return fromBinding;
+  return resolveCouncilMeetingIdForOwnerVoteTitle(client, propertyId, ownerVoteTitle);
+}
+
 function meetingTitleZhFirstPick(m: Pick<MeetingRow, 'title_zh' | 'title_en'>): string {
   const zh = m.title_zh?.trim();
   const en = m.title_en?.trim();
@@ -114,7 +192,8 @@ export function addDaysIso(fromIsoOrNull: string | null | undefined, days: numbe
 }
 
 /**
- * Resolves council `meetings.id` tied to `owner_vote_meetings.title` (same heuristic as Postgres RPC).
+ * Resolves council `meetings.id` tied to `owner_vote_meetings`. Prefer hidden binding marker in
+ * `owner_vote_meetings.description`; otherwise match AGM/SGM title on `meetings`.
  */
 export async function resolveCouncilMeetingIdForOwnerVoteTitle(
   client: SupabaseClient,

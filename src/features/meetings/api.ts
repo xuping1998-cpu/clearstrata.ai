@@ -3,7 +3,11 @@ import { supabase } from '../../lib/supabase';
 import { withProperty } from '../../lib/supabaseTenant';
 import { deriveOwnerVoteMeetingVotingTimes } from './meetingFormatModel';
 import {
+  councilMeetingBindingMarkerSubstring,
   councilMeetingTitleForOwnerVoteBinding,
+  embedCouncilMeetingBinding,
+  extractCouncilMeetingBinding,
+  ownerVoteMeetingBindsCouncil,
   isOwnerVotingMeeting,
   ownerVoteMeetingTypeForInsert,
 } from './ownerVotingCouncil';
@@ -1078,15 +1082,17 @@ export function mapVoteRuleToOwnerVoteThreshold(
 }
 
 /**
- * Ensures an `owner_vote_meetings` row exists for the current AGM/SGM council meeting (by title binding).
- * No-op returns `{ id: null, error: null }` when the meeting type is not owner-votable.
+ * Ensures an `owner_vote_meetings` row exists for the current AGM/SGM council meeting,
+ * keyed by hidden `<!--clearstrata-council-meeting-binding-->` marker when possible (stable across devices).
  */
 export async function ensureOwnerVoteMeetingForCouncilMeeting(params: {
   propertyId: string;
   meeting: MeetingRow;
   userId: string;
+  /** Optional visible body merged before the binding marker (e.g. council-section agenda excerpt). */
+  descriptionBase?: string | null;
 }): Promise<{ id: string | null; error: Error | null }> {
-  const { propertyId, meeting, userId } = params;
+  const { propertyId, meeting, userId, descriptionBase } = params;
 
   if (!isOwnerVotingMeeting(meeting)) {
     return { id: null, error: null };
@@ -1100,12 +1106,24 @@ export async function ensureOwnerVoteMeetingForCouncilMeeting(params: {
     };
   }
 
-  try {
-    const { rows: cands, error: candErr } = await fetchOwnerVoteMeetingCandidatesByTitle(propertyId, title);
-    if (candErr) return { id: null, error: candErr };
+  const councilId = meeting.id.trim();
 
-    const pickedExisting = pickBestOwnerVoteMeetingLiteForCouncil(cands, meeting.scheduled_at);
-    if (pickedExisting) return { id: pickedExisting.id, error: null };
+  try {
+    const { row: existing, error: resErr } = await resolveOwnerVoteMeetingDbRowForCouncil(propertyId, meeting);
+    if (resErr) return { id: null, error: resErr };
+
+    if (existing) {
+      if (!ownerVoteMeetingBindsCouncil(existing.description ?? '', councilId)) {
+        const embedded = embedCouncilMeetingBinding(existing.description ?? null, councilId);
+        const { error: upErr } = await supabase
+          .from('owner_vote_meetings')
+          .update({ description: embedded, updated_at: new Date().toISOString() } as Record<string, unknown>)
+          .eq('id', existing.id)
+          .eq('property_id', propertyId);
+        if (upErr) return { id: null, error: new Error(upErr.message) };
+      }
+      return { id: existing.id, error: null };
+    }
 
     const scheduledIso = meeting.scheduled_at?.trim()
       ? new Date(meeting.scheduled_at).toISOString()
@@ -1114,7 +1132,14 @@ export async function ensureOwnerVoteMeetingForCouncilMeeting(params: {
     const descZh = meeting.description_zh?.trim();
     const descEn = meeting.description_en?.trim();
     const descriptionParts = [descZh, descEn].filter((x): x is string => Boolean(x));
-    const description = descriptionParts.length ? descriptionParts.join('\n\n').slice(0, 24000) : null;
+    const zhEnBody = descriptionParts.length ? descriptionParts.join('\n\n').slice(0, 24000) : null;
+
+    const mergedBaseCandidate =
+      typeof descriptionBase === 'string' && descriptionBase.trim().length > 0
+        ? descriptionBase.trim().slice(0, 24000)
+        : zhEnBody;
+
+    const description = embedCouncilMeetingBinding(mergedBaseCandidate, councilId);
 
     const { voting_opens_at, voting_closes_at } = deriveOwnerVoteMeetingVotingTimes(meeting);
     const row = {
@@ -1162,21 +1187,107 @@ export type OwnerVoteMeetingLite = {
   created_at: string;
 };
 
+/** DB row subset including `description` for council-binding resolution (stripped before returning lite). */
+type OwnerVoteMeetingRowDb = OwnerVoteMeetingLite & { description?: string | null };
+
+function ovDbRowToLite(r: OwnerVoteMeetingRowDb): OwnerVoteMeetingLite {
+  return {
+    id: r.id,
+    status: r.status,
+    voting_opens_at: r.voting_opens_at,
+    voting_closes_at: r.voting_closes_at,
+    snapshot_frozen_at: r.snapshot_frozen_at,
+    scheduled_at: r.scheduled_at,
+    meeting_type: r.meeting_type,
+    created_at: r.created_at,
+  };
+}
+
+function rowEligibleForCouncilTitleFallback(description: string | null | undefined, councilMeetingId: string): boolean {
+  const m = extractCouncilMeetingBinding(description ?? '').meta;
+  if (!m?.council_meeting_id?.trim()) return true;
+  return m.council_meeting_id.trim() === councilMeetingId.trim();
+}
+
+function pickNewestOvDbByCreatedAt(rows: OwnerVoteMeetingRowDb[]): OwnerVoteMeetingRowDb | null {
+  if (!rows.length) return null;
+  return [...rows].sort((a, b) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? '')))[0] ?? null;
+}
+
 function parseCouncilScheduledMs(iso: string | null | undefined): number | null {
   if (!iso?.trim()) return null;
   const t = Date.parse(iso.trim());
   return Number.isNaN(t) ? null : t;
 }
 
-async function fetchOwnerVoteMeetingCandidatesByTitle(propertyId: string, titleTrim: string) {
+async function fetchOwnerVoteMeetingCandidatesByTitle(
+  propertyId: string,
+  titleTrim: string,
+): Promise<{ rows: OwnerVoteMeetingRowDb[]; error: Error | null }> {
   const { data, error } = await supabase
     .from('owner_vote_meetings')
-    .select('id,status,voting_opens_at,voting_closes_at,snapshot_frozen_at,created_at,scheduled_at,meeting_type')
+    .select(
+      'id,status,voting_opens_at,voting_closes_at,snapshot_frozen_at,created_at,scheduled_at,meeting_type,description',
+    )
     .eq('property_id', propertyId)
     .eq('title', titleTrim)
     .order('created_at', { ascending: false })
     .limit(80);
-  return { rows: (data ?? []) as OwnerVoteMeetingLite[], error: error ? new Error(error.message) : null };
+  return {
+    rows: ((data ?? []) as OwnerVoteMeetingRowDb[]) ?? [],
+    error: error ? new Error(error.message) : null,
+  };
+}
+
+async function fetchOwnerVoteMeetingsByBindingMarkerSubstring(propertyId: string): Promise<{
+  rows: OwnerVoteMeetingRowDb[];
+  error: Error | null;
+}> {
+  const needle = `%${councilMeetingBindingMarkerSubstring()}%`;
+  const { data, error } = await supabase
+    .from('owner_vote_meetings')
+    .select(
+      'id,status,voting_opens_at,voting_closes_at,snapshot_frozen_at,created_at,scheduled_at,meeting_type,description',
+    )
+    .eq('property_id', propertyId)
+    .ilike('description', needle);
+  return {
+    rows: ((data ?? []) as OwnerVoteMeetingRowDb[]) ?? [],
+    error: error ? new Error(error.message) : null,
+  };
+}
+
+/**
+ * Resolves `owner_vote_meetings` for a council AGM/SGM row: marker match wins; else title proximity.
+ */
+async function resolveOwnerVoteMeetingDbRowForCouncil(
+  propertyId: string,
+  meeting: MeetingRow,
+): Promise<{ row: OwnerVoteMeetingRowDb | null; error: Error | null }> {
+  const councilId = meeting.id.trim();
+
+  const { rows: markedRows, error: mkErr } = await fetchOwnerVoteMeetingsByBindingMarkerSubstring(propertyId);
+  if (mkErr) return { row: null, error: mkErr };
+
+  const boundToCouncil = markedRows.filter((r) => ownerVoteMeetingBindsCouncil(r.description ?? '', councilId));
+  const markerPick = pickNewestOvDbByCreatedAt(boundToCouncil);
+  if (markerPick) return { row: markerPick, error: null };
+
+  const title = councilMeetingTitleForOwnerVoteBinding(meeting).trim();
+  if (!title) return { row: null, error: null };
+
+  const { rows: titleRows, error: titleErr } = await fetchOwnerVoteMeetingCandidatesByTitle(propertyId, title);
+  if (titleErr) return { row: null, error: titleErr };
+
+  const filtered = titleRows.filter((r) => rowEligibleForCouncilTitleFallback(r.description ?? '', councilId));
+  if (filtered.length === 0) return { row: null, error: null };
+
+  const lites = filtered.map((r) => ovDbRowToLite(r));
+  const pickedLite = pickBestOwnerVoteMeetingLiteForCouncil(lites, meeting.scheduled_at);
+  if (!pickedLite) return { row: null, error: null };
+
+  const full = filtered.find((r) => r.id === pickedLite.id) ?? null;
+  return { row: full, error: null };
 }
 
 /**
@@ -1271,8 +1382,7 @@ export function translationKeyForOwnerVoteOpenGate(
 }
 
 /**
- * Loads the latest `owner_vote_meetings` row for this council meeting (by title binding) plus counts.
- * Does not insert — use `ensureOwnerVoteMeetingForCouncilMeeting` or agenda “需要表决” flow to create.
+ * Loads `owner_vote_meetings` for this council AGM/SGM: binding marker beats title heuristic.
  */
 export async function fetchOwnerVoteMeetingMetaForCouncilMeeting(params: {
   propertyId: string;
@@ -1290,17 +1400,12 @@ export async function fetchOwnerVoteMeetingMetaForCouncilMeeting(params: {
     return { meeting: null, resolutions: [], resolutionCount: 0, eligibleCount: 0, error: null };
   }
 
-  const title = councilMeetingTitleForOwnerVoteBinding(meeting).trim();
-  if (!title) {
-    return { meeting: null, resolutions: [], resolutionCount: 0, eligibleCount: 0, error: null };
+  const { row: resolvedDb, error: resErr } = await resolveOwnerVoteMeetingDbRowForCouncil(propertyId, meeting);
+  if (resErr) {
+    return { meeting: null, resolutions: [], resolutionCount: 0, eligibleCount: 0, error: resErr };
   }
 
-  const { rows: candRows, error: candErr } = await fetchOwnerVoteMeetingCandidatesByTitle(propertyId, title);
-  if (candErr) {
-    return { meeting: null, resolutions: [], resolutionCount: 0, eligibleCount: 0, error: candErr };
-  }
-
-  const picked = pickBestOwnerVoteMeetingLiteForCouncil(candRows, meeting.scheduled_at);
+  const picked = resolvedDb ? ovDbRowToLite(resolvedDb) : null;
   if (!picked) {
     return { meeting: null, resolutions: [], resolutionCount: 0, eligibleCount: 0, error: null };
   }

@@ -6,8 +6,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import {
   evaluateOwnerVoteOpenGate,
+  ensureOwnerVoteMeetingForCouncilMeeting,
   fetchOwnerVoteMeetingMetaForCouncilMeeting,
-  ownerVoteMeetingTypeForInsert,
   translationKeyForOwnerVoteOpenGate,
   type MeetingAgendaRow,
   type MeetingRow,
@@ -16,7 +16,6 @@ import {
 import { councilMeetingTitleForOwnerVoteBinding } from '@/features/meetings/ownerVotingCouncil';
 import {
   councilMeetingVotingWindowFallback,
-  deriveOwnerVoteMeetingVotingTimes,
 } from '@/features/meetings/meetingFormatModel';
 import { extractElectionAgendaMeta } from '@/features/meetings/electionAgendaModel';
 import { StatusBadge } from '@/components/status/StatusBadge';
@@ -333,25 +332,15 @@ export function MeetingOwnerVoteCouncilSection({ meeting, agendaItems, isStaff }
       return;
     }
 
-    const scheduledIso = meeting.scheduled_at ? new Date(meeting.scheduled_at).toISOString() : null;
-    const { voting_opens_at, voting_closes_at } = deriveOwnerVoteMeetingVotingTimes(meeting);
-
-    const row = {
-      property_id: meeting.property_id,
-      meeting_type: ownerVoteMeetingTypeForInsert(meeting),
-      title: tit,
-      description: descriptionForInsert(meeting, agendaItems),
-      scheduled_at: scheduledIso,
-      voting_opens_at,
-      voting_closes_at,
-      status: 'draft',
-      created_by: user.id,
-    };
-
     setBusy(true);
     try {
-      const { error } = await supabase.from('owner_vote_meetings').insert(row as Record<string, unknown>);
-      if (error) throw error;
+      const { id, error } = await ensureOwnerVoteMeetingForCouncilMeeting({
+        propertyId: meeting.property_id,
+        meeting,
+        userId: user.id,
+        descriptionBase: descriptionForInsert(meeting, agendaItems),
+      });
+      if (error || !id) throw error ?? new Error(en ? 'Could not enable.' : '启用失败。');
       setToast({ kind: 'success', text: t('meeting_ov_enabled_toast') });
       await reload();
     } catch (e: unknown) {

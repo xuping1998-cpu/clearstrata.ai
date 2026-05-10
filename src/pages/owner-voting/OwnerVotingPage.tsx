@@ -13,7 +13,7 @@ import {
   isFormalElectionVotingAllowed,
   type ElectionAgendaMetaV1,
 } from '@/features/meetings/electionAgendaModel';
-import { resolveCouncilMeetingIdForOwnerVoteTitle } from '@/features/meetings/ownerVotingCouncil';
+import { resolveCouncilMeetingIdForOwnerVoteDescription, stripCouncilMeetingBinding } from '@/features/meetings/ownerVotingCouncil';
 
 export type VoteChoice = 'yes' | 'no' | 'abstain';
 export type MeetingStatus = 'draft' | 'open' | 'closed' | 'archived';
@@ -29,6 +29,7 @@ interface OwnerVoteMeetingRow {
   scheduled_at: string | null;
   voting_opens_at: string | null;
   voting_closes_at: string | null;
+  snapshot_frozen_at?: string | null;
 }
 
 interface SnapshotRowRaw {
@@ -532,7 +533,8 @@ export function OwnerVotingPage() {
             status,
             scheduled_at,
             voting_opens_at,
-            voting_closes_at
+            voting_closes_at,
+            snapshot_frozen_at
           )
         `,
         )
@@ -671,7 +673,12 @@ export function OwnerVotingPage() {
         packsIncomplete.map(async (p) => {
           let electionAgendas: ElectionAgendaBrief[] = [];
           try {
-            const cid = await resolveCouncilMeetingIdForOwnerVoteTitle(supabase, p.propertyId, p.meeting.title);
+            const cid = await resolveCouncilMeetingIdForOwnerVoteDescription(
+              supabase,
+              p.propertyId,
+              p.meeting.title,
+              p.meeting.description,
+            );
             if (cid) {
               const ag = await supabase
                 .from('meeting_agenda_items')
@@ -858,9 +865,12 @@ export function OwnerVotingPage() {
                         {meetingTypeLabel(mt.meeting_type, zh)}
                       </span>
                       <h2 className="mt-2 text-lg font-bold text-gray-900 sm:text-xl">{mt.title}</h2>
-                      {mt.description ? (
-                        <p className="mt-2 whitespace-pre-wrap text-sm text-gray-600">{mt.description}</p>
-                      ) : null}
+                      {(() => {
+                        const vis = stripCouncilMeetingBinding(mt.description ?? '');
+                        return vis.trim() ? (
+                          <p className="mt-2 whitespace-pre-wrap text-sm text-gray-600">{vis}</p>
+                        ) : null;
+                      })()}
                       <p className="mt-3 text-sm text-gray-700">
                         <span className="font-medium text-gray-900">{zh ? '你的房号：' : 'Your unit:'}</span>{' '}
                         {pack.unitNo?.trim() || (zh ? '—' : '—')}
@@ -881,6 +891,14 @@ export function OwnerVotingPage() {
                     <div className="rounded-lg bg-gray-50 px-3 py-2">
                       <dt className="text-xs text-gray-500">{zh ? '投票截止' : 'Voting closes'}</dt>
                       <dd className="font-medium text-gray-900">{fmtTs(mt.voting_closes_at)}</dd>
+                    </div>
+                    <div className="rounded-lg bg-gray-50 px-3 py-2">
+                      <dt className="text-xs text-gray-500">{zh ? '表决状态' : 'Owner vote status'}</dt>
+                      <dd className="font-medium text-gray-900">{mt.status.trim() || '—'}</dd>
+                    </div>
+                    <div className="rounded-lg bg-gray-50 px-3 py-2">
+                      <dt className="text-xs text-gray-500">{zh ? '名单冻结时间' : 'Snapshot frozen'}</dt>
+                      <dd className="font-medium text-gray-900">{fmtTs(mt.snapshot_frozen_at ?? null)}</dd>
                     </div>
                     {electionNomRibbonPack ? (
                       <>
