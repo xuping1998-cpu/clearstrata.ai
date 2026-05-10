@@ -10,9 +10,11 @@ import {
   createAgendaItem,
   createVote,
   ensureOwnerVoteMeetingForCouncilMeeting,
+  evaluateOwnerVoteOpenGate,
   fetchOwnerVoteMeetingMetaForCouncilMeeting,
   fetchOwnerVoteResolutionResultsForOwnerMeeting,
   fetchMeetingCore,
+  translationKeyForOwnerVoteOpenGate,
   fetchMeetingExtras,
   invitationSummary,
   mapVoteRuleToOwnerVoteThreshold,
@@ -951,22 +953,15 @@ export function MeetingDetail() {
   async function handleOpenOwnerVoteMeeting() {
     const ov = ovMeta.meeting;
     if (!ov?.id) return;
-    if (!ov.snapshot_frozen_at || (ovMeta.resolutionCount <= 0 && electionBundles.length <= 0)) {
-      setEvToast({ kind: 'error', text: t('meeting_ov_need_resolution_and_snapshot') });
+    const gate = evaluateOwnerVoteOpenGate({
+      ov,
+      eligibleCount: ovMeta.eligibleCount,
+      resolutionCount: ovMeta.resolutionCount,
+      electionAgendaCount: electionBundles.length,
+    });
+    if (!gate.ok) {
+      setEvToast({ kind: 'error', text: t(translationKeyForOwnerVoteOpenGate(gate.reason)) });
       return;
-    }
-    const openIso = ov.voting_opens_at?.trim();
-    if (openIso) {
-      const openMs = new Date(openIso).getTime();
-      if (!Number.isNaN(openMs) && Date.now() < openMs) {
-        setEvToast({
-          kind: 'error',
-          text: en
-            ? 'Voting is not open yet; you cannot open before the scheduled time.'
-            : '投票尚未到开放时间，不能提前打开。',
-        });
-        return;
-      }
     }
     setOvBusy(true);
     const { error } = await supabase
@@ -1235,6 +1230,7 @@ export function MeetingDetail() {
                   canEnableBinding={Boolean(councilMeetingTitleForOwnerVoteBinding(meeting).trim())}
                   electionNomRibbon={electionNomRibbonModel}
                   councilFormalResolutionAgendaCount={councilFormalResolutionAgendaCount}
+                  electionAgendaCount={electionBundles.length}
                   onEnableElectronicVoting={() => void handleEnableElectronicVoting()}
                   onFreezeSnapshot={() => void handleFreezeOwnerVoteSnapshot()}
                   onOpenVoting={() => void handleOpenOwnerVoteMeeting()}

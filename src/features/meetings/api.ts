@@ -1101,25 +1101,11 @@ export async function ensureOwnerVoteMeetingForCouncilMeeting(params: {
   }
 
   try {
-    const { data: existing, error: qErr } = await supabase
-      .from('owner_vote_meetings')
-      .select('id')
-      .eq('property_id', propertyId)
-      .eq('title', title)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const { rows: cands, error: candErr } = await fetchOwnerVoteMeetingCandidatesByTitle(propertyId, title);
+    if (candErr) return { id: null, error: candErr };
 
-    if (qErr) return { id: null, error: new Error(qErr.message) };
-    const existingId =
-      existing &&
-      typeof existing === 'object' &&
-      existing !== null &&
-      'id' in existing &&
-      (existing as { id: unknown }).id != null
-        ? String((existing as { id: string }).id)
-        : null;
-    if (existingId) return { id: existingId, error: null };
+    const pickedExisting = pickBestOwnerVoteMeetingLiteForCouncil(cands, meeting.scheduled_at);
+    if (pickedExisting) return { id: pickedExisting.id, error: null };
 
     const scheduledIso = meeting.scheduled_at?.trim()
       ? new Date(meeting.scheduled_at).toISOString()
@@ -1171,8 +1157,118 @@ export type OwnerVoteMeetingLite = {
   voting_opens_at: string | null;
   voting_closes_at: string | null;
   snapshot_frozen_at: string | null;
+  scheduled_at?: string | null;
+  meeting_type?: string | null;
   created_at: string;
 };
+
+function parseCouncilScheduledMs(iso: string | null | undefined): number | null {
+  if (!iso?.trim()) return null;
+  const t = Date.parse(iso.trim());
+  return Number.isNaN(t) ? null : t;
+}
+
+async function fetchOwnerVoteMeetingCandidatesByTitle(propertyId: string, titleTrim: string) {
+  const { data, error } = await supabase
+    .from('owner_vote_meetings')
+    .select('id,status,voting_opens_at,voting_closes_at,snapshot_frozen_at,created_at,scheduled_at,meeting_type')
+    .eq('property_id', propertyId)
+    .eq('title', titleTrim)
+    .order('created_at', { ascending: false })
+    .limit(80);
+  return { rows: (data ?? []) as OwnerVoteMeetingLite[], error: error ? new Error(error.message) : null };
+}
+
+/**
+ * Picks one `owner_vote_meetings` row when multiple share the same title (avoids tying to unrelated past meetings).
+ * Prefers scheduled_at nearest to the council meeting’s scheduled_at, then newer created_at.
+ */
+export function pickBestOwnerVoteMeetingLiteForCouncil(
+  rows: OwnerVoteMeetingLite[],
+  councilMeetingScheduledAt: string | null | undefined,
+): OwnerVoteMeetingLite | null {
+  if (rows.length === 0) return null;
+  if (rows.length === 1) return rows[0] ?? null;
+  const target = parseCouncilScheduledMs(councilMeetingScheduledAt ?? null);
+  const scored = rows.map((r) => {
+    const rs = parseCouncilScheduledMs(r.scheduled_at ?? null);
+    const dist =
+      target != null && rs != null ? Math.abs(rs - target) : target != null && rs == null ? Number.MAX_SAFE_INTEGER - 5000 : 0;
+    const ct = parseCouncilScheduledMs(r.created_at) ?? 0;
+    return { r, dist, ct };
+  });
+  scored.sort((a, b) => {
+    if (a.dist !== b.dist) return a.dist - b.dist;
+    return b.ct - a.ct;
+  });
+  return scored[0]?.r ?? null;
+}
+
+/** Staff “open voting” precondition (no DB schema change); used by Meeting Detail + council voting section UIs. */
+export type OwnerVoteOpenGateReason =
+  | 'no_snapshot'
+  | 'no_eligible'
+  | 'no_agenda'
+  | 'too_early'
+  | 'past_close';
+
+export function evaluateOwnerVoteOpenGate(params: {
+  ov: OwnerVoteMeetingLite | null | undefined;
+  eligibleCount: number;
+  resolutionCount: number;
+  electionAgendaCount: number;
+  nowMs?: number;
+}): { ok: true } | { ok: false; reason: OwnerVoteOpenGateReason } {
+  const nowMs = params.nowMs ?? Date.now();
+  const ov = params.ov;
+  if (!ov?.id) return { ok: false, reason: 'no_snapshot' };
+
+  if (!String(ov.snapshot_frozen_at ?? '').trim()) {
+    return { ok: false, reason: 'no_snapshot' };
+  }
+  if (!(params.eligibleCount > 0)) {
+    return { ok: false, reason: 'no_eligible' };
+  }
+  if (!(params.resolutionCount > 0 || params.electionAgendaCount > 0)) {
+    return { ok: false, reason: 'no_agenda' };
+  }
+
+  const openIso = ov.voting_opens_at?.trim();
+  if (openIso) {
+    const t = Date.parse(openIso);
+    if (!Number.isNaN(t) && nowMs < t) return { ok: false, reason: 'too_early' };
+  }
+
+  const closeIso = ov.voting_closes_at?.trim();
+  if (closeIso) {
+    const t = Date.parse(closeIso);
+    if (!Number.isNaN(t) && nowMs > t) return { ok: false, reason: 'past_close' };
+  }
+
+  return { ok: true };
+}
+
+export function translationKeyForOwnerVoteOpenGate(
+  reason: OwnerVoteOpenGateReason,
+):
+  | 'meeting_ov_open_block_freeze_snap'
+  | 'meeting_ov_open_block_no_eligible'
+  | 'meeting_ov_open_block_no_agenda'
+  | 'meeting_ov_open_block_too_early'
+  | 'meeting_ov_open_block_past_close' {
+  switch (reason) {
+    case 'no_snapshot':
+      return 'meeting_ov_open_block_freeze_snap';
+    case 'no_eligible':
+      return 'meeting_ov_open_block_no_eligible';
+    case 'no_agenda':
+      return 'meeting_ov_open_block_no_agenda';
+    case 'too_early':
+      return 'meeting_ov_open_block_too_early';
+    case 'past_close':
+      return 'meeting_ov_open_block_past_close';
+  }
+}
 
 /**
  * Loads the latest `owner_vote_meetings` row for this council meeting (by title binding) plus counts.
@@ -1199,24 +1295,17 @@ export async function fetchOwnerVoteMeetingMetaForCouncilMeeting(params: {
     return { meeting: null, resolutions: [], resolutionCount: 0, eligibleCount: 0, error: null };
   }
 
-  const { data: row, error: qErr } = await supabase
-    .from('owner_vote_meetings')
-    .select('id,status,voting_opens_at,voting_closes_at,snapshot_frozen_at,created_at')
-    .eq('property_id', propertyId)
-    .eq('title', title)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (qErr) {
-    return { meeting: null, resolutions: [], resolutionCount: 0, eligibleCount: 0, error: new Error(qErr.message) };
+  const { rows: candRows, error: candErr } = await fetchOwnerVoteMeetingCandidatesByTitle(propertyId, title);
+  if (candErr) {
+    return { meeting: null, resolutions: [], resolutionCount: 0, eligibleCount: 0, error: candErr };
   }
 
-  if (!row || typeof row !== 'object' || !('id' in row) || row.id == null) {
+  const picked = pickBestOwnerVoteMeetingLiteForCouncil(candRows, meeting.scheduled_at);
+  if (!picked) {
     return { meeting: null, resolutions: [], resolutionCount: 0, eligibleCount: 0, error: null };
   }
 
-  const mid = String(row.id);
+  const mid = String(picked.id);
 
   const resQ = await supabase
     .from('owner_vote_resolutions')
@@ -1256,7 +1345,7 @@ export async function fetchOwnerVoteMeetingMetaForCouncilMeeting(params: {
   }
 
   return {
-    meeting: row as OwnerVoteMeetingLite,
+    meeting: picked,
     resolutions,
     resolutionCount,
     eligibleCount,

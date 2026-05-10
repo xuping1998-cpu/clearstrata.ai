@@ -1,18 +1,24 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import type { MeetingAgendaRow, MeetingRow } from '@/features/meetings/api';
 import {
-  councilMeetingTitleForOwnerVoteBinding,
+  evaluateOwnerVoteOpenGate,
+  fetchOwnerVoteMeetingMetaForCouncilMeeting,
   ownerVoteMeetingTypeForInsert,
-} from '@/features/meetings/ownerVotingCouncil';
+  translationKeyForOwnerVoteOpenGate,
+  type MeetingAgendaRow,
+  type MeetingRow,
+  type OwnerVoteMeetingLite,
+} from '@/features/meetings/api';
+import { councilMeetingTitleForOwnerVoteBinding } from '@/features/meetings/ownerVotingCouncil';
 import {
   councilMeetingVotingWindowFallback,
   deriveOwnerVoteMeetingVotingTimes,
 } from '@/features/meetings/meetingFormatModel';
+import { extractElectionAgendaMeta } from '@/features/meetings/electionAgendaModel';
 import { StatusBadge } from '@/components/status/StatusBadge';
 
 type OvMeetingRow = {
@@ -26,6 +32,7 @@ type OvMeetingRow = {
   voting_opens_at: string | null;
   voting_closes_at: string | null;
   snapshot_frozen_at: string | null;
+  created_at: string;
 };
 
 type OvResolution = {
@@ -36,6 +43,27 @@ type OvResolution = {
   threshold: string;
   display_order: number | null;
 };
+
+function mapLiteToOvCouncilRow(
+  lite: OwnerVoteMeetingLite,
+  propertyId: string,
+  titleBind: string,
+  meetingFallbackType: string,
+): OvMeetingRow {
+  return {
+    id: lite.id,
+    property_id: propertyId,
+    title: titleBind,
+    description: null,
+    meeting_type: lite.meeting_type ?? meetingFallbackType,
+    status: lite.status,
+    scheduled_at: lite.scheduled_at ?? null,
+    voting_opens_at: lite.voting_opens_at,
+    voting_closes_at: lite.voting_closes_at,
+    snapshot_frozen_at: lite.snapshot_frozen_at,
+    created_at: lite.created_at,
+  };
+}
 
 type OvToast = { kind: 'success' | 'error'; text: string } | null;
 
@@ -149,6 +177,14 @@ export function MeetingOwnerVoteCouncilSection({ meeting, agendaItems, isStaff }
   const bindingTitle = councilMeetingTitleForOwnerVoteBinding(meeting);
   const plannedVotingWindow = councilMeetingVotingWindowFallback(meeting);
 
+  const electionAgendaCount = useMemo(
+    () =>
+      agendaItems.filter(
+        (a) => extractElectionAgendaMeta(a.description_zh ?? '').meta?.agenda_type === 'council_election',
+      ).length,
+    [agendaItems],
+  );
+
   const [loading, setLoading] = useState(true);
   const [ovMeeting, setOvMeeting] = useState<OvMeetingRow | null>(null);
   const [resolutions, setResolutions] = useState<OvResolution[]>([]);
@@ -181,69 +217,61 @@ export function MeetingOwnerVoteCouncilSection({ meeting, agendaItems, isStaff }
 
     setLoading(true);
     try {
-      const { data: om, error: e1 } = await supabase
-        .from('owner_vote_meetings')
-        .select(
-          'id,property_id,title,description,meeting_type,status,scheduled_at,voting_opens_at,voting_closes_at,snapshot_frozen_at',
-        )
-        .eq('property_id', meeting.property_id)
-        .eq('title', titleTrim)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const r = await fetchOwnerVoteMeetingMetaForCouncilMeeting({
+        propertyId: meeting.property_id,
+        meeting,
+      });
+      if (r.error) throw r.error;
 
-      if (e1) throw e1;
-
-      const row = om as OvMeetingRow | null;
-      setOvMeeting(row);
-
-      if (!row?.id) {
+      const lite = r.meeting;
+      if (!lite) {
+        setOvMeeting(null);
         setResolutions([]);
         setEligibleCount(0);
         setResultByResolution({});
         return;
       }
 
-      const mid = row.id;
+      setOvMeeting(
+        mapLiteToOvCouncilRow(lite, meeting.property_id, titleTrim, String(meeting.meeting_type ?? 'sgm')),
+      );
 
-      const [{ data: resRows, error: e2 }, { count }, { data: resultRows, error: e4 }] = await Promise.all([
-        supabase
-          .from('owner_vote_resolutions')
-          .select('id,meeting_id,title,description,threshold,display_order')
-          .eq('meeting_id', mid)
-          .order('display_order', { ascending: true }),
-        supabase
-          .from('owner_vote_voter_snapshot')
-          .select('id', { count: 'exact', head: true })
-          .eq('meeting_id', mid)
-          .eq('is_eligible', true),
-        supabase.from('owner_vote_resolution_results').select('*').eq('property_id', meeting.property_id).eq('meeting_id', mid),
-      ]);
+      const mid = lite.id;
 
-      if (e2) throw e2;
+      const resMapped: OvResolution[] = r.resolutions.map((res) => ({
+        id: res.id,
+        meeting_id: mid,
+        title: res.title,
+        description: null,
+        threshold: res.threshold,
+        display_order: res.display_order,
+      }));
+      setResolutions(resMapped);
+      setEligibleCount(r.eligibleCount);
+
+      const { data: resultRows, error: e4 } = await supabase
+        .from('owner_vote_resolution_results')
+        .select('*')
+        .eq('property_id', meeting.property_id)
+        .eq('meeting_id', mid);
+
       if (e4) {
         console.warn('[ownerVote council] owner_vote_resolution_results', e4.message);
         setResultByResolution({});
-      }
-
-      const resList = (resRows ?? []) as OvResolution[];
-      setResolutions(resList.map((r) => ({ ...r, title: String(r.title ?? '') })));
-      setEligibleCount(typeof count === 'number' ? count : 0);
-
-      const byId: Record<string, ResolutionResultNorm> = {};
-      if (!e4 && resultRows && Array.isArray(resultRows)) {
-        for (const raw of resultRows as Record<string, unknown>[]) {
+      } else {
+        const byId: Record<string, ResolutionResultNorm> = {};
+        for (const raw of (resultRows ?? []) as Record<string, unknown>[]) {
           const n = normResultRow(raw);
           if (n) byId[n.resolution_id] = n;
         }
+        setResultByResolution(byId);
       }
-      setResultByResolution(byId);
 
       const nextOrder =
-        resList.length === 0
+        r.resolutions.length === 0
           ? 1
           : Math.max(
-              ...resList.map((r) => (typeof r.display_order === 'number' ? r.display_order : 0)),
+              ...r.resolutions.map((x) => (typeof x.display_order === 'number' ? x.display_order : 0)),
               0,
             ) + 1;
       setNewResOrder(nextOrder);
@@ -256,7 +284,7 @@ export function MeetingOwnerVoteCouncilSection({ meeting, agendaItems, isStaff }
     } finally {
       setLoading(false);
     }
-  }, [bindingTitle, meeting.id, meeting.property_id, en]);
+  }, [bindingTitle, meeting, en]);
 
   useEffect(() => {
     void reload();
@@ -272,8 +300,27 @@ export function MeetingOwnerVoteCouncilSection({ meeting, agendaItems, isStaff }
     });
   };
 
-  const canOpenVoting =
-    !!(ovMeeting?.snapshot_frozen_at && resolutions.length > 0 && ovMeeting.status?.trim().toLowerCase() === 'draft');
+  const draftOpenVoteGate = useMemo(() => {
+    if (!ovMeeting || ovMeeting.status?.trim().toLowerCase() !== 'draft')
+      return { ok: false as const, reason: 'no_snapshot' as const };
+
+    const ov: OwnerVoteMeetingLite = {
+      id: ovMeeting.id,
+      status: ovMeeting.status,
+      voting_opens_at: ovMeeting.voting_opens_at,
+      voting_closes_at: ovMeeting.voting_closes_at,
+      snapshot_frozen_at: ovMeeting.snapshot_frozen_at,
+      scheduled_at: ovMeeting.scheduled_at ?? undefined,
+      meeting_type: ovMeeting.meeting_type,
+      created_at: ovMeeting.created_at,
+    };
+    return evaluateOwnerVoteOpenGate({
+      ov,
+      eligibleCount,
+      resolutionCount: resolutions.length,
+      electionAgendaCount,
+    });
+  }, [ovMeeting, eligibleCount, resolutions.length, electionAgendaCount]);
 
   const handleEnable = async () => {
     if (!user?.id || !meeting.property_id) return;
@@ -373,23 +420,27 @@ export function MeetingOwnerVoteCouncilSection({ meeting, agendaItems, isStaff }
 
   const handleOpenVoting = async () => {
     if (!ovMeeting?.id) return;
-    if (!canOpenVoting) {
-      setToast({ kind: 'error', text: t('meeting_ov_need_res_and_freeze') });
+    const ov: OwnerVoteMeetingLite = {
+      id: ovMeeting.id,
+      status: ovMeeting.status,
+      voting_opens_at: ovMeeting.voting_opens_at,
+      voting_closes_at: ovMeeting.voting_closes_at,
+      snapshot_frozen_at: ovMeeting.snapshot_frozen_at,
+      scheduled_at: ovMeeting.scheduled_at ?? undefined,
+      meeting_type: ovMeeting.meeting_type,
+      created_at: ovMeeting.created_at,
+    };
+    const gate = evaluateOwnerVoteOpenGate({
+      ov,
+      eligibleCount,
+      resolutionCount: resolutions.length,
+      electionAgendaCount,
+    });
+    if (!gate.ok) {
+      setToast({ kind: 'error', text: t(translationKeyForOwnerVoteOpenGate(gate.reason)) });
       return;
     }
-    const openIso = ovMeeting.voting_opens_at?.trim();
-    if (openIso) {
-      const openMs = new Date(openIso).getTime();
-      if (!Number.isNaN(openMs) && Date.now() < openMs) {
-        setToast({
-          kind: 'error',
-          text: en
-            ? 'Voting is not open yet; you cannot open before the scheduled time.'
-            : '投票尚未到开放时间，不能提前打开。',
-        });
-        return;
-      }
-    }
+
     setBusy(true);
     try {
       const { error } = await supabase
@@ -533,6 +584,13 @@ export function MeetingOwnerVoteCouncilSection({ meeting, agendaItems, isStaff }
             </div>
           </div>
 
+          {ovMeeting.status?.trim().toLowerCase() === 'draft' &&
+          (!String(ovMeeting.snapshot_frozen_at ?? '').trim() || eligibleCount <= 0) ? (
+            <p className="text-sm text-amber-800 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+              {t('meeting_ov_flow_hint_freeze_snap')}
+            </p>
+          ) : null}
+
           <div className="flex flex-wrap gap-2">
             {!ovMeeting.snapshot_frozen_at && ovMeeting.status?.trim().toLowerCase() === 'draft' ? (
               <button
@@ -547,12 +605,12 @@ export function MeetingOwnerVoteCouncilSection({ meeting, agendaItems, isStaff }
 
             <button
               type="button"
-              disabled={
-                busy ||
-                ovMeeting.status?.trim().toLowerCase() !== 'draft' ||
-                !canOpenVoting
+              disabled={busy || ovMeeting.status?.trim().toLowerCase() !== 'draft' || !draftOpenVoteGate.ok}
+              title={
+                ovMeeting.status?.trim().toLowerCase() === 'draft' && !draftOpenVoteGate.ok
+                  ? t(translationKeyForOwnerVoteOpenGate(draftOpenVoteGate.reason))
+                  : undefined
               }
-              title={canOpenVoting ? undefined : t('meeting_ov_need_res_and_freeze')}
               onClick={() => void handleOpenVoting()}
               className="rounded-lg border border-clearstrata-ui-primary bg-clearstrata-ui-soft px-4 py-2 text-sm font-semibold text-clearstrata-brand-900 ring-1 ring-clearstrata-ui-softBorder hover:bg-clearstrata-brand-50 disabled:cursor-not-allowed disabled:opacity-40"
             >

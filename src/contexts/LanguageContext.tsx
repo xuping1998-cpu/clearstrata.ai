@@ -131,6 +131,30 @@ const translations: Record<string, Record<Language, string>> = {
     en: 'Add resolutions and freeze the eligibility list first.',
     zh: '请先添加决议并冻结投票资格名单。',
   },
+  meeting_ov_open_block_freeze_snap: {
+    en: 'Freeze the voting eligibility list before opening.',
+    zh: '请先冻结投票资格名单。',
+  },
+  meeting_ov_open_block_no_eligible: {
+    en: 'There are no eligible voting units; voting cannot be opened.',
+    zh: '当前没有合资格投票户，不能打开投票。',
+  },
+  meeting_ov_open_block_no_agenda: {
+    en: 'Add at least one resolution agenda or council election agenda first.',
+    zh: '请先添加至少一条表决议程或选举议程。',
+  },
+  meeting_ov_open_block_too_early: {
+    en: 'The voting period has not opened yet; you cannot open early.',
+    zh: '投票尚未到开放时间，不能提前打开。',
+  },
+  meeting_ov_open_block_past_close: {
+    en: 'The voting deadline has passed; voting cannot be opened.',
+    zh: '投票截止时间已过，不能打开投票。',
+  },
+  meeting_ov_flow_hint_freeze_snap: {
+    en: 'Please freeze the voting eligibility list.',
+    zh: '请先冻结投票资格名单。',
+  },
   meeting_ov_open_voting: { en: 'Open voting', zh: '打开投票' },
   meeting_ov_close_voting: { en: 'Close voting', zh: '关闭投票' },
   meeting_ov_res_title_placeholder: { en: 'Resolution title', zh: '决议标题' },

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { MeetingRow, OwnerVoteMeetingLite } from '@/features/meetings/api';
+import { evaluateOwnerVoteOpenGate, type MeetingRow, type OwnerVoteMeetingLite } from '@/features/meetings/api';
 import { labelFormat } from '@/features/meetings/labels';
 import {
   councilMeetingVotingWindowFallback,
@@ -33,6 +33,7 @@ export type OwnerVotingInlineControlBarProps = {
   onCloseVoting: () => void | Promise<void>;
   electionNomRibbon?: ElectionNominationRibbonModel | null;
   councilFormalResolutionAgendaCount?: number;
+  electionAgendaCount?: number;
 };
 
 function fmtTs(iso: string | null | undefined, en: boolean): string {
@@ -91,6 +92,7 @@ export function OwnerVotingInlineControlBar({
   onCloseVoting,
   electionNomRibbon = null,
   councilFormalResolutionAgendaCount = 0,
+  electionAgendaCount = 0,
 }: OwnerVotingInlineControlBarProps) {
   const en = languageEn;
   const uiFormat = meetingFormatUiFromRow(meeting);
@@ -113,6 +115,21 @@ export function OwnerVotingInlineControlBar({
   const showFreeze = isStaff && !!ov && !staffOvActionsReadOnly;
   const showOpen = isStaff && ovStatusLower === 'draft';
   const showClose = isStaff && ovStatusLower === 'open';
+
+  const snapshotOk = !!(ov?.snapshot_frozen_at?.trim());
+  const eligibleOk = meta.eligibleCount > 0;
+  const openGateDraft =
+    showOpen && ov
+      ? evaluateOwnerVoteOpenGate({
+          ov,
+          eligibleCount: meta.eligibleCount,
+          resolutionCount: meta.resolutionCount,
+          electionAgendaCount,
+        })
+      : { ok: true as const };
+
+  const showFreezePrereqHint = showOpen && isStaff && !!ov && (!snapshotOk || !eligibleOk);
+  const openVoteButtonDisabledStaff = !!(showOpen && isStaff && (ovBusy || !openGateDraft.ok));
 
   const nominationPhaseLabel =
     hasElectionAgenda && electionNomRibbon
@@ -245,6 +262,12 @@ export function OwnerVotingInlineControlBar({
         <div className="space-y-3 border-t border-gray-200/90 pt-3">
           {!isStaff ? <p className="text-gray-600">{t('meeting_ov_owner_notice')}</p> : null}
 
+          {showFreezePrereqHint ? (
+            <p className="text-sm text-amber-800 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+              {t('meeting_ov_flow_hint_freeze_snap')}
+            </p>
+          ) : null}
+
           <div className="flex flex-wrap gap-2">
             {isStaff ? (
               <>
@@ -261,7 +284,7 @@ export function OwnerVotingInlineControlBar({
                 {showOpen ? (
                   <button
                     type="button"
-                    disabled={ovBusy}
+                    disabled={openVoteButtonDisabledStaff}
                     onClick={() => void onOpenVoting()}
                     className="rounded-lg bg-clearstrata-ui-primary px-3 py-2 text-sm font-medium text-white hover:bg-clearstrata-ui-primaryHover disabled:opacity-50"
                   >
