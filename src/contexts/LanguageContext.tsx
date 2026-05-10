@@ -193,6 +193,23 @@ const translations: Record<string, Record<Language, string>> = {
   },
   meeting_flow_nomination_period_label: { en: 'Nomination period', zh: '提名期' },
 
+  meeting_nomination_status_not_started: { en: 'Nominations not started', zh: '提名未开始' },
+  meeting_nomination_status_open: { en: 'Nominations open', zh: '提名开放中' },
+  meeting_nomination_status_closed: { en: 'Nominations closed', zh: '提名已截止' },
+  meeting_flow_summary_heading_plain: { en: 'Resolutions & eligible households', zh: '决议数、合资格户数' },
+  meeting_flow_summary_heading_full: {
+    en: 'Resolutions, candidates & eligible households',
+    zh: '决议数、候选人数、合资格户数',
+  },
+  meeting_flow_summary_line_plain: {
+    en: 'Resolutions (formal): {res} · Eligible households: {elig}',
+    zh: '决议数 {res} · 合资格户数 {elig}',
+  },
+  meeting_flow_summary_line_full: {
+    en: 'Resolutions (formal): {res} · Candidates: {cand} · Eligible households: {elig}',
+    zh: '决议数 {res} · 候选人数 {cand} · 合资格户数 {elig}',
+  },
+
   meeting_list_flow_summary_discussion: { en: 'Discussion period', zh: '讨论期' },
   meeting_list_flow_summary_nomination: { en: 'Nomination period', zh: '提名期' },
   meeting_list_flow_summary_voting_period: { en: 'Voting period', zh: '投票期' },

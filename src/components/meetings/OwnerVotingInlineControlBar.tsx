@@ -7,7 +7,7 @@ import {
   isWrittenRemoteUi,
   meetingFormatUiFromRow,
 } from '@/features/meetings/meetingFormatModel';
-import type { ElectionNominationRibbonModel } from '@/features/meetings/electionAgendaModel';
+import { parseIsoFlexible, type ElectionNominationRibbonModel } from '@/features/meetings/electionAgendaModel';
 
 export type OwnerVoteInlineMetaState = {
   loading: boolean;
@@ -51,6 +51,30 @@ function sectionCard(label: ReactNode, children: ReactNode) {
   );
 }
 
+/** Per user rules: now vs nomination_opens_at / nomination_closes_at (ribbon aggregates election agendas). */
+function nominationWindowStatusLabel(
+  now: Date,
+  ribbon: ElectionNominationRibbonModel,
+  languageEn: boolean,
+  translate: (k: string) => string,
+): string {
+  const opens = ribbon.nominationOpensIso?.trim() ? parseIsoFlexible(ribbon.nominationOpensIso) : null;
+  const closes = ribbon.nominationClosesIso?.trim() ? parseIsoFlexible(ribbon.nominationClosesIso) : null;
+  const n = now.getTime();
+
+  if (!opens && !closes) {
+    return languageEn ? '—' : '—';
+  }
+
+  if (closes && n >= closes.getTime()) {
+    return translate('meeting_nomination_status_closed');
+  }
+  if (opens && n < opens.getTime()) {
+    return translate('meeting_nomination_status_not_started');
+  }
+  return translate('meeting_nomination_status_open');
+}
+
 export function OwnerVotingInlineControlBar({
   meeting,
   isStaff,
@@ -75,6 +99,8 @@ export function OwnerVotingInlineControlBar({
   const fallbackVoting = councilMeetingVotingWindowFallback(meeting);
   const ov = meta.meeting;
 
+  const hasElectionAgenda = electionNomRibbon != null;
+
   const displayVotingOpens = ov?.voting_opens_at?.trim()
     ? ov.voting_opens_at
     : fallbackVoting.votingOpens ?? null;
@@ -87,6 +113,11 @@ export function OwnerVotingInlineControlBar({
   const showFreeze = isStaff && !!ov && !staffOvActionsReadOnly;
   const showOpen = isStaff && ovStatusLower === 'draft';
   const showClose = isStaff && ovStatusLower === 'open';
+
+  const nominationPhaseLabel =
+    hasElectionAgenda && electionNomRibbon
+      ? nominationWindowStatusLabel(new Date(), electionNomRibbon, en, t)
+      : '';
 
   function voteStatusLine(): string {
     if (meta.loading) return '…';
@@ -110,8 +141,19 @@ export function OwnerVotingInlineControlBar({
 
   const resolutionsShown =
     ov && !meta.loading ? meta.resolutionCount : Math.max(0, Number(councilFormalResolutionAgendaCount) || 0);
-  const candidatesShown = electionNomRibbon?.totalCandidates ?? 0;
+  /** totalCandidates = Σ candidates.length across election agenda metas (buildElectionNominationRibbon). */
+  const candidatesShown = hasElectionAgenda ? (electionNomRibbon?.totalCandidates ?? 0) : 0;
   const eligibleShown = ov && !meta.loading ? meta.eligibleCount : null;
+  const eligDisplay = eligibleShown != null ? String(eligibleShown) : '—';
+
+  const summaryBody = hasElectionAgenda
+    ? t('meeting_flow_summary_line_full')
+        .replace('{res}', String(resolutionsShown))
+        .replace('{cand}', String(candidatesShown))
+        .replace('{elig}', eligDisplay)
+    : t('meeting_flow_summary_line_plain').replace('{res}', String(resolutionsShown)).replace('{elig}', eligDisplay);
+
+  const summaryHeading = hasElectionAgenda ? t('meeting_flow_summary_heading_full') : t('meeting_flow_summary_heading_plain');
 
   return (
     <div className="mb-6 rounded-lg border border-gray-200 bg-gray-50/80 px-4 py-3 text-sm space-y-4">
@@ -132,7 +174,7 @@ export function OwnerVotingInlineControlBar({
             )
           : null}
 
-        {electionNomRibbon
+        {hasElectionAgenda && electionNomRibbon
           ? sectionCard(
               t('meeting_flow_nomination_period_label'),
               <>
@@ -147,9 +189,7 @@ export function OwnerVotingInlineControlBar({
                     <span className="text-gray-500">—</span>
                   )}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  {electionNomRibbon.anyNominationOpen ? t('meeting_election_nomination_open') : t('meeting_election_nomination_closed')}
-                </p>
+                <p className="text-xs text-gray-600 mt-1 font-medium">{nominationPhaseLabel}</p>
               </>,
             )
           : null}
@@ -167,14 +207,8 @@ export function OwnerVotingInlineControlBar({
         )}
 
         <div className="rounded-md border border-clearstrata-brand-100 bg-clearstrata-brand-50/35 px-3 py-2 shadow-inner space-y-1">
-          <div className="text-xs font-medium text-gray-600">
-            {en ? 'Resolutions, candidates & eligible households' : '决议数、候选人数、合资格户数'}
-          </div>
-          <p className="text-gray-900 font-medium">
-            {en
-              ? `Resolutions (formal): ${resolutionsShown} · Candidates: ${candidatesShown} · Eligible households: ${eligibleShown != null ? eligibleShown : '—'}`
-              : `决议数 ${resolutionsShown} · 候选人数 ${candidatesShown} · 合资格户数 ${eligibleShown != null ? eligibleShown : '—'}`}
-          </p>
+          <div className="text-xs font-medium text-gray-600">{summaryHeading}</div>
+          <p className="text-gray-900 font-medium">{summaryBody}</p>
           {ov ? (
             <p className="text-xs text-gray-600">
               {t('meeting_ev_snapshot_label')}:{' '}
