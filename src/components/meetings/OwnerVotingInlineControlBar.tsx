@@ -19,6 +19,8 @@ export type OwnerVoteInlineMetaState = {
 
 export type OwnerVotingInlineControlBarProps = {
   meeting: MeetingRow;
+  /** Council `meetings.status`: closed / ended / archived — disables staff OV actions and enable. */
+  isCouncilMeetingEnded?: boolean;
   isStaff: boolean;
   userId: string | undefined;
   languageEn: boolean;
@@ -78,6 +80,7 @@ function nominationWindowStatusLabel(
 
 export function OwnerVotingInlineControlBar({
   meeting,
+  isCouncilMeetingEnded = false,
   isStaff,
   userId,
   languageEn,
@@ -112,9 +115,10 @@ export function OwnerVotingInlineControlBar({
 
   const ovStatusLower = ov?.status?.trim().toLowerCase() ?? '';
   const staffOvActionsReadOnly = ovStatusLower === 'closed' || ovStatusLower === 'archived';
-  const showFreeze = isStaff && !!ov && !staffOvActionsReadOnly;
-  const showOpen = isStaff && ovStatusLower === 'draft';
-  const showClose = isStaff && ovStatusLower === 'open';
+  const showFreeze =
+    !isCouncilMeetingEnded && isStaff && !!ov && !staffOvActionsReadOnly;
+  const showOpen = !isCouncilMeetingEnded && isStaff && ovStatusLower === 'draft';
+  const showClose = !isCouncilMeetingEnded && isStaff && ovStatusLower === 'open';
 
   const snapshotOk = !!(ov?.snapshot_frozen_at?.trim());
   const eligibleOk = meta.eligibleCount > 0;
@@ -138,6 +142,7 @@ export function OwnerVotingInlineControlBar({
 
   function voteStatusLine(): string {
     if (meta.loading) return '…';
+    if (isCouncilMeetingEnded) return t('meeting_status_closed');
     if (!ov) return t('vote_not_enabled');
     switch (ovStatusLower) {
       case 'draft':
@@ -242,76 +247,101 @@ export function OwnerVotingInlineControlBar({
       ) : !ov ? (
         isStaff ? (
           <div className="space-y-3 border-t border-gray-200/90 pt-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                disabled={ovBusy || !userId || !canEnableBinding}
-                onClick={() => void onEnableElectronicVoting()}
-                className="rounded-lg bg-clearstrata-ui-primary px-4 py-2 text-sm font-medium text-white hover:bg-clearstrata-ui-primaryHover disabled:opacity-50"
-              >
-                {t('meeting_ov_enable')}
-              </button>
-            </div>
+            {isCouncilMeetingEnded ? (
+              <p className="text-sm text-amber-800 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                {en
+                  ? 'This meeting has ended. The voting workflow is closed.'
+                  : '会议已结束，投票流程已关闭。'}
+              </p>
+            ) : (
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  disabled={ovBusy || !userId || !canEnableBinding}
+                  onClick={() => void onEnableElectronicVoting()}
+                  className="rounded-lg bg-clearstrata-ui-primary px-4 py-2 text-sm font-medium text-white hover:bg-clearstrata-ui-primaryHover disabled:opacity-50"
+                >
+                  {t('meeting_ov_enable')}
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <div className="space-y-3 border-t border-gray-200/90 pt-3">
+            {isCouncilMeetingEnded ? (
+              <p className="text-sm text-amber-800 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                {en
+                  ? 'This meeting has ended. The voting workflow is closed.'
+                  : '会议已结束，投票流程已关闭。'}
+              </p>
+            ) : null}
             <p className="text-gray-600">{t('meeting_ov_owner_not_open')}</p>
           </div>
         )
       ) : (
         <div className="space-y-3 border-t border-gray-200/90 pt-3">
-          {!isStaff ? <p className="text-gray-600">{t('meeting_ov_owner_notice')}</p> : null}
-
-          {showFreezePrereqHint ? (
+          {isCouncilMeetingEnded ? (
             <p className="text-sm text-amber-800 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
-              {t('meeting_ov_flow_hint_freeze_snap')}
+              {en
+                ? 'This meeting has ended. The voting workflow is closed.'
+                : '会议已结束，投票流程已关闭。'}
             </p>
-          ) : null}
+          ) : (
+            <>
+              {!isStaff ? <p className="text-gray-600">{t('meeting_ov_owner_notice')}</p> : null}
 
-          <div className="flex flex-wrap gap-2">
-            {isStaff ? (
-              <>
-                {showFreeze ? (
+              {showFreezePrereqHint ? (
+                <p className="text-sm text-amber-800 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                  {t('meeting_ov_flow_hint_freeze_snap')}
+                </p>
+              ) : null}
+
+              <div className="flex flex-wrap gap-2">
+                {isStaff ? (
+                  <>
+                    {showFreeze ? (
+                      <button
+                        type="button"
+                        disabled={ovBusy}
+                        onClick={() => void onFreezeSnapshot()}
+                        className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        {t('meeting_ov_freeze')}
+                      </button>
+                    ) : null}
+                    {showOpen ? (
+                      <button
+                        type="button"
+                        disabled={openVoteButtonDisabledStaff}
+                        onClick={() => void onOpenVoting()}
+                        className="rounded-lg bg-clearstrata-ui-primary px-3 py-2 text-sm font-medium text-white hover:bg-clearstrata-ui-primaryHover disabled:opacity-50"
+                      >
+                        {t('meeting_ov_open')}
+                      </button>
+                    ) : null}
+                    {showClose ? (
+                      <button
+                        type="button"
+                        disabled={ovBusy}
+                        onClick={() => void onCloseVoting()}
+                        className="rounded-lg bg-clearstrata-brand-700 px-3 py-2 text-sm font-medium text-white hover:bg-clearstrata-brand-800 disabled:opacity-50"
+                      >
+                        {t('meeting_ov_close')}
+                      </button>
+                    ) : null}
+                  </>
+                ) : (
                   <button
                     type="button"
-                    disabled={ovBusy}
-                    onClick={() => void onFreezeSnapshot()}
-                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                    onClick={onNavigateOwnerVoting}
+                    className="rounded-lg bg-clearstrata-ui-primary px-4 py-2 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover"
                   >
-                    {t('meeting_ov_freeze')}
+                    {t('meeting_ov_go_vote')}
                   </button>
-                ) : null}
-                {showOpen ? (
-                  <button
-                    type="button"
-                    disabled={openVoteButtonDisabledStaff}
-                    onClick={() => void onOpenVoting()}
-                    className="rounded-lg bg-clearstrata-ui-primary px-3 py-2 text-sm font-medium text-white hover:bg-clearstrata-ui-primaryHover disabled:opacity-50"
-                  >
-                    {t('meeting_ov_open')}
-                  </button>
-                ) : null}
-                {showClose ? (
-                  <button
-                    type="button"
-                    disabled={ovBusy}
-                    onClick={() => void onCloseVoting()}
-                    className="rounded-lg bg-clearstrata-brand-700 px-3 py-2 text-sm font-medium text-white hover:bg-clearstrata-brand-800 disabled:opacity-50"
-                  >
-                    {t('meeting_ov_close')}
-                  </button>
-                ) : null}
-              </>
-            ) : (
-              <button
-                type="button"
-                onClick={onNavigateOwnerVoting}
-                className="rounded-lg bg-clearstrata-ui-primary px-4 py-2 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover"
-              >
-                {t('meeting_ov_go_vote')}
-              </button>
-            )}
-          </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

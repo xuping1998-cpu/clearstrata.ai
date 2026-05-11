@@ -137,30 +137,30 @@ export function Dashboard() {
 
   return (
     <>
-      <div className="mb-3 rounded-xl border border-clearstrata-ui-softBorder bg-clearstrata-ui-soft px-3 py-2 shadow-sm sm:px-4 sm:py-2.5 xl:rounded-2xl">
-        <div className="flex flex-col gap-2 sm:gap-1.5 lg:flex-row lg:flex-wrap lg:items-center lg:gap-x-4 lg:gap-y-2">
-          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5 sm:gap-x-2.5">
+      <div className="mb-2 rounded-lg border border-clearstrata-ui-softBorder bg-clearstrata-ui-soft px-2.5 py-1.5 shadow-sm sm:mb-3 sm:rounded-xl sm:px-4 sm:py-2.5 xl:rounded-2xl">
+        <div className="flex flex-col gap-1 sm:gap-1.5 lg:flex-row lg:flex-wrap lg:items-center lg:gap-x-4 lg:gap-y-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 sm:gap-x-2 sm:gap-y-1.5">
             <p className="text-sm font-semibold leading-snug text-gray-900">你的物业已经创建成功</p>
             <button
               type="button"
               onClick={() => navigate('/property-admin/unit-whitelist')}
-              className="inline-flex min-h-[2.25rem] shrink-0 items-center justify-center rounded-lg border border-clearstrata-ui-softBorder bg-white px-2.5 py-1.5 text-sm font-semibold text-clearstrata-brand-900 hover:bg-clearstrata-brand-50"
+              className="inline-flex min-h-[1.875rem] shrink-0 items-center justify-center rounded-md border border-clearstrata-ui-softBorder bg-white px-2 py-0.5 text-xs font-semibold text-clearstrata-brand-900 hover:bg-clearstrata-brand-50 sm:min-h-[2.25rem] sm:rounded-lg sm:px-2.5 sm:py-1.5 sm:text-sm"
             >
               导入房号
             </button>
             <button
               type="button"
               onClick={() => navigate('/property-admin/invites')}
-              className="inline-flex min-h-[2.25rem] shrink-0 items-center justify-center rounded-lg border border-clearstrata-ui-softBorder bg-white px-2.5 py-1.5 text-sm font-semibold text-clearstrata-brand-900 hover:bg-clearstrata-brand-50"
+              className="inline-flex min-h-[1.875rem] shrink-0 items-center justify-center rounded-md border border-clearstrata-ui-softBorder bg-white px-2 py-0.5 text-xs font-semibold text-clearstrata-brand-900 hover:bg-clearstrata-brand-50 sm:min-h-[2.25rem] sm:rounded-lg sm:px-2.5 sm:py-1.5 sm:text-sm"
             >
               邀请成员
             </button>
           </div>
 
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1.5 sm:justify-between lg:justify-end xl:flex-nowrap xl:gap-x-3">
-            <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 sm:gap-x-2.5">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-1 sm:flex-wrap sm:gap-x-2 sm:gap-y-1.5 sm:justify-between lg:justify-end xl:flex-nowrap xl:gap-x-3">
+            <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0 sm:gap-x-2 sm:gap-y-0.5 sm:gap-x-2.5">
               <p className="text-sm font-semibold leading-snug text-gray-900">你正在免费试用 ClearStrata</p>
-              <p className="text-sm leading-snug text-gray-700">
+              <p className="text-xs leading-snug text-gray-700 sm:text-sm">
                 {(() => {
                   const ends = trialRow?.trial_ends_at ?? null;
                   const daysLeft = getTrialDaysRemaining(ends);
@@ -175,7 +175,7 @@ export function Dashboard() {
             </div>
             <Link
               to="/upgrade"
-              className="inline-flex min-h-[2.25rem] shrink-0 items-center justify-center rounded-lg border border-clearstrata-ui-softBorder bg-white px-3 py-1.5 text-sm font-semibold text-clearstrata-brand-900 hover:bg-clearstrata-brand-50"
+              className="inline-flex min-h-[1.875rem] shrink-0 items-center justify-center rounded-md border border-clearstrata-ui-softBorder bg-white px-2.5 py-0.5 text-xs font-semibold text-clearstrata-brand-900 hover:bg-clearstrata-brand-50 sm:min-h-[2.25rem] sm:rounded-lg sm:px-3 sm:py-1.5 sm:text-sm"
             >
               查看定价
             </Link>

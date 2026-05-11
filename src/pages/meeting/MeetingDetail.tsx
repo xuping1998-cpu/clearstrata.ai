@@ -958,6 +958,7 @@ export function MeetingDetail() {
 
   async function handleEnableElectronicVoting() {
     if (!meeting || !user?.id || !currentPropertyId) return;
+    if (isMeetingClosedForVoting(meeting.status)) return;
     if (!councilMeetingTitleForOwnerVoteBinding(meeting).trim()) {
       setEvToast({
         kind: 'error',
@@ -988,6 +989,7 @@ export function MeetingDetail() {
   }
 
   async function handleFreezeOwnerVoteSnapshot() {
+    if (!meeting || isMeetingClosedForVoting(meeting.status)) return;
     const ov = ovMeta.meeting;
     if (!ov?.id) return;
     const st = ov.status?.trim().toLowerCase() ?? '';
@@ -1005,6 +1007,7 @@ export function MeetingDetail() {
   }
 
   async function handleOpenOwnerVoteMeeting() {
+    if (!meeting || isMeetingClosedForVoting(meeting.status)) return;
     const ov = ovMeta.meeting;
     if (!ov?.id) return;
     const gate = evaluateOwnerVoteOpenGate({
@@ -1033,6 +1036,7 @@ export function MeetingDetail() {
   }
 
   async function handleCloseOwnerVoteMeeting() {
+    if (!meeting || isMeetingClosedForVoting(meeting.status)) return;
     const ov = ovMeta.meeting;
     if (!ov?.id || ov.status?.trim().toLowerCase() !== 'open') return;
     setOvBusy(true);
@@ -1274,6 +1278,7 @@ export function MeetingDetail() {
               {showCouncilOwnerVoteUi ? (
                 <OwnerVotingInlineControlBar
                   meeting={meeting}
+                  isCouncilMeetingEnded={isMeetingClosedForVoting(meeting.status)}
                   isStaff={canManageCouncilMeetings}
                   userId={user?.id}
                   languageEn={en}

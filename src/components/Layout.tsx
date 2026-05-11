@@ -303,11 +303,10 @@ export function Layout({ children }: LayoutProps) {
                 }}
                 className="flex items-center transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clearstrata-ui-primary/35 focus-visible:ring-offset-2"
               >
-                <span className="text-2xl font-bold text-clearstrata-ui-primary lg:hidden">{language === 'en' ? 'clearstrata.ai' : '清涟.ai'}</span>
                 <img
                   src="/clearstrata-hero-logo.png"
                   alt="ClearStrata"
-                  className="hidden h-9 w-auto max-h-9 max-w-[11rem] object-contain object-left lg:block"
+                  className="h-8 w-auto max-h-8 max-w-[10rem] object-contain object-left lg:h-9 lg:max-h-9 lg:max-w-[11rem]"
                 />
               </button>
             </div>
