@@ -187,10 +187,17 @@ export interface MeetingResolutionRow {
   id: string;
   meeting_id: string;
   agenda_item_id: string | null;
+  /** Canonical display body (compat: maps from legacy `resolution_text`, `content`, `title`). */
   resolution_text: string;
-  outcome: 'passed' | 'failed' | 'deferred';
+  /** Canonical outcome string; compat from legacy `outcome` or boolean `passed`. */
+  outcome: string | null;
   followup_required: boolean;
   created_at: string | null;
+  property_id?: string | null;
+  /** DB / alternate column names when present on the payload */
+  title?: string;
+  content?: string;
+  passed?: boolean;
 }
 
 export interface MeetingDashboardStats {
@@ -284,7 +291,42 @@ const VOTE_OPTION_COLUMNS = 'id, vote_id, option_key, label_en, label_zh, sort_o
 const BALLOT_DETAIL_COLUMNS = 'id, vote_id, property_id, voter_user_id, selected_option_key, unit_weight, created_at';
 
 const RESOLUTION_DETAIL_COLUMNS =
-  'id, meeting_id, agenda_item_id, resolution_text, outcome, followup_required, created_at';
+  'id, meeting_id, agenda_item_id, title, content, passed, created_at, property_id';
+
+type MeetingResolutionApiRow = {
+  id: string;
+  meeting_id: string;
+  agenda_item_id: string | null;
+  title?: string | null;
+  content?: string | null;
+  passed?: boolean | null;
+  resolution_text?: string | null;
+  outcome?: string | null;
+  followup_required?: boolean | null;
+  created_at: string | null;
+  property_id?: string | null;
+};
+
+export function normalizeMeetingResolutionRow(raw: MeetingResolutionApiRow): MeetingResolutionRow {
+  const resolution_text = raw.resolution_text ?? raw.content ?? raw.title ?? '';
+  const outcome =
+    raw.outcome ?? (raw.passed === true ? 'passed' : raw.passed === false ? 'failed' : null);
+  const followup_required = raw.followup_required ?? false;
+  const row: MeetingResolutionRow = {
+    id: raw.id,
+    meeting_id: raw.meeting_id,
+    agenda_item_id: raw.agenda_item_id,
+    resolution_text,
+    outcome,
+    followup_required,
+    created_at: raw.created_at,
+    property_id: raw.property_id,
+  };
+  if (typeof raw.title === 'string') row.title = raw.title;
+  if (typeof raw.content === 'string') row.content = raw.content;
+  if (raw.passed === true || raw.passed === false) row.passed = raw.passed;
+  return row;
+}
 
 export function meetingTitleZhFirst(m: Pick<MeetingRow, 'title_zh' | 'title_en'>) {
   const zh = m.title_zh?.trim();
@@ -483,7 +525,9 @@ export async function fetchMeetingExtras(meetingId: string, propertyId: string):
       supabase.from('meeting_resolutions').select(RESOLUTION_DETAIL_COLUMNS) as any,
       propertyId,
     ).eq('meeting_id', meetingId);
-    if (!resRes.error && resRes.data) resolutions = resRes.data as MeetingResolutionRow[];
+    if (!resRes.error && resRes.data) {
+      resolutions = (resRes.data as MeetingResolutionApiRow[]).map(normalizeMeetingResolutionRow);
+    }
 
     return {
       agendaItems,
@@ -587,7 +631,9 @@ export async function getMeetingDetail(meetingId: string, propertyId: string): P
   ).eq('meeting_id', meetingId);
   const resolutionsError = resRes.error;
   const resolutions: MeetingResolutionRow[] =
-    !resolutionsError && resRes.data ? (resRes.data as MeetingResolutionRow[]) : [];
+    !resolutionsError && resRes.data
+      ? (resRes.data as MeetingResolutionApiRow[]).map(normalizeMeetingResolutionRow)
+      : [];
 
   return {
     meeting: m,
