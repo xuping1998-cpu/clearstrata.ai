@@ -13,7 +13,7 @@ import {
   isFormalElectionVotingAllowed,
   type ElectionAgendaMetaV1,
 } from '@/features/meetings/electionAgendaModel';
-import { resolveCouncilMeetingIdForOwnerVoteDescription, stripCouncilMeetingBinding } from '@/features/meetings/ownerVotingCouncil';
+import { stripCouncilMeetingBinding, resolveCouncilMeetingIdForOwnerVoteDescription } from '@/features/meetings/ownerVotingCouncil';
 
 export type VoteChoice = 'yes' | 'no' | 'abstain';
 export type MeetingStatus = 'draft' | 'open' | 'closed' | 'archived';
@@ -146,6 +146,27 @@ export function getVotingPhase(
   return 'closed';
 }
 
+export function isCouncilMeetingEndedStatus(status: string | null | undefined): boolean {
+  const s = String(status ?? '').trim().toLowerCase();
+  return s === 'closed' || s === 'ended' || s === 'archived';
+}
+
+/** Council `meetings.status` overrides owner_vote window when bound; otherwise preserves getVotingPhase. */
+export function getEffectiveVotingPhase(
+  councilMeetingStatus: string | null | undefined,
+  votingOpensIso: string | null,
+  votingClosesIso: string | null,
+  ownerVoteStatusRaw: string,
+  now: Date,
+): VotingPhaseUi {
+  const cs = String(councilMeetingStatus ?? '').trim().toLowerCase();
+  if (cs) {
+    if (isCouncilMeetingEndedStatus(cs)) return 'closed';
+    if (cs === 'draft') return 'not_started';
+  }
+  return getVotingPhase(votingOpensIso, votingClosesIso, ownerVoteStatusRaw, now);
+}
+
 function normalizeChoice(raw: unknown): VoteChoice | null {
   const s = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
   if (s === 'yes' || s === 'no' || s === 'abstain') return s;
@@ -169,7 +190,19 @@ interface MeetingPack {
   ballotsByResolution: Map<string, BallotRow>;
   electionAgendas: ElectionAgendaBrief[];
   electionSelections: Map<string, string[]>;
+  /** Resolved council `meetings.id` (for/detail / election agendas); voting UI keys off council status below */
+  councilMeetingId: string | null;
+  councilMeetingStatus: string | null;
+  councilMeetingScheduledAt: string | null;
+  councilMeetingCreatedAt: string | null;
 }
+
+type CouncilMeetingBatchRow = {
+  id: string;
+  status: string;
+  created_at: string | null;
+  scheduled_at: string | null;
+};
 
 /** Parse ISO-ish timestamp → ms since epoch; invalid / empty → null */
 function parseTimestampMs(raw: string | null | undefined): number | null {
@@ -180,78 +213,60 @@ function parseTimestampMs(raw: string | null | undefined): number | null {
   return Number.isNaN(ms) ? null : ms;
 }
 
-/**
- * 列表排序档位：有效期内可投 → 未开始(upcoming) → 已过期/不可用
- * 同档内：coalesce(voting_closes_at, …) desc, created_at desc
- */
-function meetingOwnerVoteListTier(mt: OwnerVoteMeetingRow, nowMs: number): number {
-  const st = mt.status.trim().toLowerCase();
-  const o = parseTimestampMs(mt.voting_opens_at);
-  const c = parseTimestampMs(mt.voting_closes_at);
-  const hasWindow = o != null && c != null;
-
-  if (hasWindow && st === 'open' && nowMs >= o && nowMs <= c) return 0;
-
-  if (hasWindow && nowMs < o && (st === 'open' || st === 'draft' || st === 'scheduled' || st === 'active'))
-    return 1;
-
+function sortTierEffective(effectivePhase: VotingPhaseUi): number {
+  if (effectivePhase === 'voting_live') return 0;
+  if (effectivePhase === 'not_started') return 1;
   return 2;
 }
 
-/** coalesce(voting_closes_at, voting_opens_at, scheduled_at, created_at) for secondary sort */
-function ownerMeetingPackSortInstantMs(mt: OwnerVoteMeetingRow): number {
-  return (
-    parseTimestampMs(mt.voting_closes_at) ??
-    parseTimestampMs(mt.voting_opens_at) ??
-    parseTimestampMs(mt.scheduled_at) ??
-    parseTimestampMs(mt.created_at) ??
-    0
-  );
+function newestFirstForTieBreak(p: MeetingPack): [number, number] {
+  return [parseTimestampMs(p.councilMeetingCreatedAt) ?? 0, parseTimestampMs(p.meeting.created_at) ?? 0];
 }
 
+/** Tier: voting_live → not_started → closed; tie-break: council created_at DESC, OV created_at DESC */
 function compareOwnerMeetingPacksBySchedule(a: MeetingPack, b: MeetingPack): number {
-  const getTitle = (p: MeetingPack): string =>
-    String(
-      (p.meeting as { title_zh?: string }).title_zh ||
-        (p as { ownerVoteMeeting?: { title?: string } }).ownerVoteMeeting?.title ||
-        p.meeting.title ||
-        '',
-    ).trim();
-
-  const nowMs = Date.now();
-  const ta = meetingOwnerVoteListTier(a.meeting, nowMs);
-  const tb = meetingOwnerVoteListTier(b.meeting, nowMs);
-  let result: number;
-  if (ta !== tb) {
-    result = ta - tb;
-  } else {
-    const ka = ownerMeetingPackSortInstantMs(a.meeting);
-    const kb = ownerMeetingPackSortInstantMs(b.meeting);
-    if (ka !== kb) {
-      result = kb - ka;
-    } else {
-      const ca = parseTimestampMs(a.meeting.created_at) ?? 0;
-      const cb = parseTimestampMs(b.meeting.created_at) ?? 0;
-      result = cb - ca;
-    }
-  }
-
-  console.log('[OWNER_VOTING_SORT]', {
-    a: getTitle(a),
-    b: getTitle(b),
-    aRank: ta,
-    bRank: tb,
-    result,
-  });
-
-  return result;
+  const now = new Date();
+  const pa = getEffectiveVotingPhase(
+    a.councilMeetingStatus,
+    a.meeting.voting_opens_at,
+    a.meeting.voting_closes_at,
+    a.meeting.status,
+    now,
+  );
+  const pb = getEffectiveVotingPhase(
+    b.councilMeetingStatus,
+    b.meeting.voting_opens_at,
+    b.meeting.voting_closes_at,
+    b.meeting.status,
+    now,
+  );
+  const ta = sortTierEffective(pa);
+  const tb = sortTierEffective(pb);
+  if (ta !== tb) return ta - tb;
+  const ka = newestFirstForTieBreak(a);
+  const kb = newestFirstForTieBreak(b);
+  if (ka[0] !== kb[0]) return kb[0] - ka[0];
+  if (ka[1] !== kb[1]) return kb[1] - ka[1];
+  return 0;
 }
 
-/** 列表次要操作：结束态显示「查看结果」 */
-function ownerVoteMeetingShowsViewResults(mt: OwnerVoteMeetingRow, votePhase: VotingPhaseUi): boolean {
+/** Badge / headline：业委会已结束或未开放时使用固定文案 */
+function phaseStatusHeadlineLabel(
+  effectivePhase: VotingPhaseUi,
+  councilMeetingStatus: string | null | undefined,
+  zh: boolean,
+): string {
+  const cs = String(councilMeetingStatus ?? '').trim().toLowerCase();
+  if (isCouncilMeetingEndedStatus(cs)) return zh ? '已结束' : 'Ended';
+  if (cs === 'draft') return zh ? '尚未开放' : 'Not open';
+  return phaseLabelText(effectivePhase, zh);
+}
+
+function ownerVoteMeetingShowsViewResults(mt: OwnerVoteMeetingRow, effectivePhase: VotingPhaseUi): boolean {
+  if (effectivePhase === 'closed') return true;
   const st = mt.status.trim().toLowerCase();
   if (st === 'closed' || st === 'archived' || st === 'ended') return true;
-  return votePhase === 'closed';
+  return false;
 }
 
 function votingPhaseTone(phase: VotingPhaseUi): 'neutral' | 'success' | 'warning' {
@@ -311,10 +326,12 @@ function OwnerCouncilElectionBlock({
   const nominationComplete = isFormalElectionVotingAllowed(now, meta);
   const ovSt = ownerMeetingStatus.trim().toLowerCase();
   const ovDbEnded = ovSt === 'closed' || ovSt === 'archived' || ovSt === 'ended';
-  const showBallotSubmit = nominationComplete && votePhase === 'voting_live' && !ovDbEnded;
+  /** Council-ended effective phase closes election voting even if OV row stale */
+  const councilOrOvEnded = ovDbEnded || votePhase === 'closed';
+  const showBallotSubmit = nominationComplete && votePhase === 'voting_live' && !councilOrOvEnded;
 
-  /** Time window ended (or DB archived): show ended banner; keep nomination UX unless DB archived */
-  const votingPeriodEndedBanner = ovDbEnded || votePhase === 'closed';
+  /** Time window ended (or DB archived / council binding ended): banner */
+  const votingPeriodEndedBanner = councilOrOvEnded;
 
   const sortedAll = [...meta.candidates].sort((a, b) => a.name.localeCompare(b.name, zh ? 'zh' : 'en'));
   const sortedAccepted = meta.candidates
@@ -392,7 +409,7 @@ function OwnerCouncilElectionBlock({
   }
 
   const canSelfNomForm =
-    meta.allow_self_nomination && !ovDbEnded && nomPhase === 'collecting' && !!eligibleUnitNo?.trim() && !dupUnit;
+    meta.allow_self_nomination && !councilOrOvEnded && nomPhase === 'collecting' && !!eligibleUnitNo?.trim() && !dupUnit;
 
   return (
     <div className="rounded-xl border border-amber-200/80 bg-amber-50/20 p-4 space-y-3">
@@ -416,7 +433,7 @@ function OwnerCouncilElectionBlock({
           {t('meeting_election_vote_after_nomination')}
         </p>
       ) : null}
-      {!nominationBlocking && votePhase === 'not_started' && !ovDbEnded ? (
+      {!nominationBlocking && votePhase === 'not_started' && !councilOrOvEnded ? (
         <p className="text-xs text-gray-600">{zh ? '表决尚未处于可投票时间段。' : 'Voting is not open in this period.'}</p>
       ) : null}
       {votingPeriodEndedBanner ? (
@@ -492,11 +509,11 @@ function OwnerCouncilElectionBlock({
         )}
       </ul>
 
-      {meta.allow_self_nomination && !ovDbEnded && nomPhase === 'before_open' ? (
+      {meta.allow_self_nomination && !councilOrOvEnded && nomPhase === 'before_open' ? (
         <p className="text-xs text-gray-600">{zh ? '提名尚未开放。' : 'Nomination has not opened yet.'}</p>
       ) : null}
 
-      {meta.allow_self_nomination && !ovDbEnded && nomPhase === 'ended' ? (
+      {meta.allow_self_nomination && !councilOrOvEnded && nomPhase === 'ended' ? (
         <p className="text-xs text-gray-600">{t('meeting_election_self_nomination_closed')}</p>
       ) : null}
 
@@ -584,8 +601,6 @@ function OwnerCouncilElectionBlock({
 }
 
 export function OwnerVotingPage() {
-  console.log('[OWNER_VOTING_RUNTIME_MARKER]', 'v4-effective-status-check', new Date().toISOString());
-
   const { user, loading: authLoading } = useAuth();
   const { language, t } = useLanguage();
   const zh = language !== 'en';
@@ -645,8 +660,8 @@ export function OwnerVotingPage() {
       const rawSnapshots = ((snapRows ?? []) as SnapshotRowRaw[]).filter((r) => {
         const mt = unwrapMeeting(r.owner_vote_meetings);
         if (!mt) return false;
-        const st = mt.status.trim();
-        return ['open', 'closed', 'archived'].includes(st);
+        const st = mt.status.trim().toLowerCase();
+        return ['open', 'closed', 'archived', 'ended'].includes(st);
       });
 
       const meetingIds = [...new Set(rawSnapshots.map((r) => r.meeting_id).filter(Boolean))];
@@ -736,6 +751,44 @@ export function OwnerVotingPage() {
         byMeetingRes.get(res.meeting_id)!.push(res);
       }
 
+      const councilIdBySnapshotId = new Map<string, string | null>();
+      const snapshotsWithMeeting = rawSnapshots.flatMap((s) => {
+        const mt = unwrapMeeting(s.owner_vote_meetings);
+        return mt ? [{ s, mt }] : [];
+      });
+      await Promise.all(
+        snapshotsWithMeeting.map(async ({ s, mt }) => {
+          const cid = await resolveCouncilMeetingIdForOwnerVoteDescription(
+            supabase,
+            String(s.property_id ?? '').trim(),
+            mt.title,
+            mt.description,
+          );
+          councilIdBySnapshotId.set(String(s.id), cid?.trim() || null);
+        }),
+      );
+
+      const distinctCouncilIds = [
+        ...new Set(
+          [...councilIdBySnapshotId.values()].filter((x): x is string => typeof x === 'string' && x.trim() !== ''),
+        ),
+      ].map((x) => x.trim());
+
+      const councilRowByCouncilId = new Map<string, CouncilMeetingBatchRow>();
+      if (distinctCouncilIds.length > 0) {
+        const { data: councilBatch, error: councilBatchErr } = await supabase
+          .from('meetings')
+          .select('id,status,created_at,scheduled_at')
+          .in('id', distinctCouncilIds);
+        if (councilBatchErr) {
+          console.warn('[owner-voting] council meetings batch', councilBatchErr.message);
+        } else {
+          for (const row of (councilBatch ?? []) as CouncilMeetingBatchRow[]) {
+            councilRowByCouncilId.set(String(row.id).trim(), row);
+          }
+        }
+      }
+
       const packsIncomplete: MeetingPack[] = rawSnapshots.flatMap((s) => {
         const mt = unwrapMeeting(s.owner_vote_meetings);
         if (!mt) return [];
@@ -747,6 +800,10 @@ export function OwnerVotingPage() {
           return a.title.localeCompare(b.title, zh ? 'zh' : 'en');
         });
         const sel = electionBallotsByMeeting.get(s.meeting_id);
+        const cidResolved = councilIdBySnapshotId.get(String(s.id)) ?? null;
+        const key = cidResolved?.trim() ?? '';
+        const crow = key ? councilRowByCouncilId.get(key) ?? null : null;
+
         return [
           {
             snapshotId: s.id,
@@ -758,6 +815,10 @@ export function OwnerVotingPage() {
             ballotsByResolution: new Map(ballotsByMeetingRes.get(s.meeting_id) ?? []),
             electionAgendas: [],
             electionSelections: sel ? new Map(sel) : new Map<string, string[]>(),
+            councilMeetingId: cidResolved,
+            councilMeetingStatus: crow?.status != null && String(crow.status).trim() !== '' ? String(crow.status).trim() : null,
+            councilMeetingScheduledAt: crow?.scheduled_at ?? null,
+            councilMeetingCreatedAt: crow?.created_at ?? null,
           },
         ];
       });
@@ -768,12 +829,7 @@ export function OwnerVotingPage() {
         packsIncomplete.map(async (p) => {
           let electionAgendas: ElectionAgendaBrief[] = [];
           try {
-            const cid = await resolveCouncilMeetingIdForOwnerVoteDescription(
-              supabase,
-              p.propertyId,
-              p.meeting.title,
-              p.meeting.description,
-            );
+            const cid = p.councilMeetingId?.trim() ?? '';
             if (cid) {
               const ag = await supabase
                 .from('meeting_agenda_items')
@@ -808,21 +864,6 @@ export function OwnerVotingPage() {
             console.warn('[owner-voting] election agenda resolve', e);
           }
           return { ...p, electionAgendas };
-        }),
-      );
-
-      console.table(
-        packs.map((pack) => {
-          const p = pack as MeetingPack & { ownerVoteMeeting?: OwnerVoteMeetingRow };
-          return {
-            title: (p.meeting as { title_zh?: string }).title_zh || p.ownerVoteMeeting?.title,
-            councilStatus: p.meeting.status,
-            ovStatus: p.ownerVoteMeeting?.status,
-            votingOpens: p.ownerVoteMeeting?.voting_opens_at,
-            votingCloses: p.ownerVoteMeeting?.voting_closes_at,
-            scheduledAt: p.ownerVoteMeeting?.scheduled_at,
-            createdAt: p.ownerVoteMeeting?.created_at,
-          };
         }),
       );
 
@@ -968,8 +1009,17 @@ export function OwnerVotingPage() {
             const mt = pack.meeting;
             const ms = mt.status.trim();
 
-            const phase = getVotingPhase(mt.voting_opens_at, mt.voting_closes_at, ms, now);
-            const votesEnabled = phase === 'voting_live';
+            const effectivePhase = getEffectiveVotingPhase(
+              pack.councilMeetingStatus,
+              mt.voting_opens_at,
+              mt.voting_closes_at,
+              ms,
+              now,
+            );
+            const votesEnabled = effectivePhase === 'voting_live';
+            const councilStNorm = String(pack.councilMeetingStatus ?? '').trim().toLowerCase();
+            const isCouncilDraft = councilStNorm === 'draft';
+
             const electionNomRibbonPack = pack.electionAgendas.length
               ? buildElectionNominationRibbon(pack.electionAgendas.map((e) => finalizeElectionMeta(e.meta, now)))
               : null;
@@ -1008,8 +1058,8 @@ export function OwnerVotingPage() {
                       <p className="mt-1 text-xs text-gray-500">{zh ? '每户一票 · 以系统记录为准' : 'One vote per unit · as recorded system-side'}</p>
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-2">
-                      <StatusBadge tone={votingPhaseTone(phase)} size="sm">
-                        {phaseLabelText(phase, zh)}
+                      <StatusBadge tone={votingPhaseTone(effectivePhase)} size="sm">
+                        {phaseStatusHeadlineLabel(effectivePhase, pack.councilMeetingStatus, zh)}
                       </StatusBadge>
                     </div>
                   </div>
@@ -1051,9 +1101,15 @@ export function OwnerVotingPage() {
                       </>
                     ) : null}
                   </dl>
-                  {phase === 'not_started' ? (
+                  {effectivePhase === 'not_started' ? (
                     <p className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-gray-800">
-                      {zh ? (
+                      {isCouncilDraft ? (
+                        zh ? (
+                          '业委会大会尚未放行业主表决。'
+                        ) : (
+                          'The council meeting has not opened owner voting yet.'
+                        )
+                      ) : zh ? (
                         <>
                           投票尚未开放，将于 <span className="font-semibold">{fmtTs(mt.voting_opens_at)}</span> 开放。
                         </>
@@ -1158,7 +1214,7 @@ export function OwnerVotingPage() {
                             t={t}
                             meetingId={pack.meetingId}
                             brief={ea}
-                            votePhase={phase}
+                            votePhase={effectivePhase}
                             ownerMeetingStatus={ms}
                             eligibleUnitNo={pack.unitNo}
                             busy={electionSubmitKey === k}
@@ -1174,34 +1230,18 @@ export function OwnerVotingPage() {
                 </div>
                 <div className="border-t border-gray-100 px-5 py-4 sm:px-6">
                   <Link
-                    to={`/voting/${encodeURIComponent(pack.meetingId)}?${new URLSearchParams({
+                    to={`/voting/${encodeURIComponent((pack.councilMeetingId ?? pack.meetingId).trim())}?${new URLSearchParams({
                       propertyId: String(pack.propertyId),
                     }).toString()}`}
                     className="inline-flex w-full items-center justify-center rounded-xl bg-clearstrata-ui-primary px-4 py-2.5 text-center text-sm font-semibold text-white shadow-sm hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive sm:w-auto sm:min-w-[11rem]"
                   >
-                    {(() => {
-                      const title = mt.title;
-                      const councilStatus = pack.meeting.status;
-                      const ovStatus = (
-                        pack as MeetingPack & { ownerVoteMeeting?: OwnerVoteMeetingRow }
-                      ).ownerVoteMeeting?.status;
-                      const votePhase = phase;
-                      const label = ownerVoteMeetingShowsViewResults(mt, phase)
-                        ? zh
-                          ? '查看结果'
-                          : 'View results'
-                        : zh
-                          ? '进入会议投票'
-                          : 'Enter meeting voting';
-                      console.log('[OWNER_VOTING_BUTTON]', {
-                        title,
-                        councilStatus,
-                        ovStatus,
-                        votePhase,
-                        label,
-                      });
-                      return label;
-                    })()}
+                    {ownerVoteMeetingShowsViewResults(mt, effectivePhase)
+                      ? zh
+                        ? '查看结果'
+                        : 'View results'
+                      : zh
+                        ? '进入会议投票'
+                        : 'Enter meeting voting'}
                   </Link>
                 </div>
               </article>

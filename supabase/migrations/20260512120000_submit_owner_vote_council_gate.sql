@@ -1,5 +1,4 @@
--- Server-side voting window enforcement for yes/no/abstain owner resolution ballots.
--- Aligns with UI: only when owner_vote_meetings.status = 'open' and now() in [voting_opens_at, voting_closes_at].
+-- When owner_vote_meetings binds a council meeting, reject ballots if council is ended or still draft.
 
 BEGIN;
 
@@ -17,42 +16,60 @@ BEGIN
 END
 $$;
 
-CREATE OR REPLACE FUNCTION public.submit_owner_vote(
+DROP FUNCTION IF EXISTS public.submit_owner_vote(uuid, text);
+
+CREATE FUNCTION public.submit_owner_vote(
   p_resolution_id uuid,
   p_choice text
 )
-RETURNS void
+RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
   uid uuid := auth.uid();
-  v_choice text := lower(trim(both from coalesce(p_choice, '')));
+  v_vote public.owner_vote_choice;
+  v_choice_lower text;
   v_meeting_id uuid;
   v_property_id uuid;
   ov_status text;
   vo timestamptz;
   vc timestamptz;
+  v_desc text;
   v_unit_raw text;
   v_unit text;
   v_row_count int;
+  needle constant text := '<!--clearstrata-council-meeting-binding' || chr(10);
+  end_needle constant text := chr(10) || '-->';
+  p_start int;
+  tail text;
+  p_end int;
+  json_fragment text;
+  cid_text text;
+  council_uid uuid;
+  cm_status text;
 BEGIN
   IF uid IS NULL THEN
     RAISE EXCEPTION 'not_authenticated';
   END IF;
 
-  IF v_choice NOT IN ('yes', 'no', 'abstain') THEN
+  v_choice_lower := trim(both from lower(coalesce(p_choice, '')));
+
+  IF v_choice_lower NOT IN ('yes', 'no', 'abstain') THEN
     RAISE EXCEPTION 'invalid_choice';
   END IF;
+
+  v_vote := v_choice_lower::public.owner_vote_choice;
 
   SELECT
     r.meeting_id,
     m.property_id,
     lower(trim(both from coalesce(m.status, ''))),
     m.voting_opens_at,
-    m.voting_closes_at
-  INTO v_meeting_id, v_property_id, ov_status, vo, vc
+    m.voting_closes_at,
+    m.description
+  INTO v_meeting_id, v_property_id, ov_status, vo, vc, v_desc
   FROM public.owner_vote_resolutions r
   INNER JOIN public.owner_vote_meetings m ON m.id = r.meeting_id
   WHERE r.id = p_resolution_id
@@ -60,6 +77,40 @@ BEGIN
 
   IF NOT FOUND OR v_meeting_id IS NULL THEN
     RAISE EXCEPTION 'resolution_not_found';
+  END IF;
+
+  -- Optional: council meeting gate from <!--clearstrata-council-meeting-binding\n{json}\n--> (failure → skip gate)
+  IF v_desc IS NOT NULL AND length(v_desc) > 0 THEN
+    p_start := strpos(v_desc, needle);
+    IF p_start > 0 THEN
+      tail := substr(v_desc, p_start + length(needle));
+      p_end := strpos(tail, end_needle);
+      IF p_end > 0 THEN
+        json_fragment := trim(both from substr(tail, 1, p_end - 1));
+        BEGIN
+          cid_text := (json_fragment::jsonb) ->> 'council_meeting_id';
+          IF cid_text IS NOT NULL AND cid_text <> '' THEN
+            council_uid := cid_text::uuid;
+            SELECT lower(trim(both from coalesce(status, '')))
+            INTO cm_status
+            FROM public.meetings
+            WHERE id = council_uid
+            LIMIT 1;
+            IF FOUND THEN
+              IF cm_status IN ('closed', 'ended', 'archived') THEN
+                RAISE EXCEPTION 'voting_closed';
+              END IF;
+              IF cm_status = 'draft' THEN
+                RAISE EXCEPTION 'voting_not_open';
+              END IF;
+            END IF;
+          END IF;
+        EXCEPTION
+          WHEN OTHERS THEN
+            NULL;
+        END;
+      END IF;
+    END IF;
   END IF;
 
   SELECT ovs.unit_no
@@ -103,7 +154,7 @@ BEGIN
 
   UPDATE public.owner_vote_ballots b
   SET
-    choice = v_choice,
+    choice = v_vote,
     updated_at = now()
   WHERE b.meeting_id = v_meeting_id
     AND b.resolution_id = p_resolution_id
@@ -112,7 +163,7 @@ BEGIN
   GET DIAGNOSTICS v_row_count = ROW_COUNT;
 
   IF v_row_count > 0 THEN
-    RETURN;
+    RETURN jsonb_build_object('ok', true);
   END IF;
 
   INSERT INTO public.owner_vote_ballots (
@@ -130,14 +181,16 @@ BEGIN
     p_resolution_id,
     v_unit,
     uid,
-    v_choice,
+    v_vote,
     now()
   );
+
+  RETURN jsonb_build_object('ok', true);
 END;
 $$;
 
 COMMENT ON FUNCTION public.submit_owner_vote(uuid, text) IS
-  'Upserts one owner resolution ballot per voter; enforces status=open and voting window on server.';
+  'Returns {"ok": true} on success. Validates p_choice as owner_vote_choice; upserts ballots with enum choice. If description binds a council meeting, rejects when meetings.status is draft (voting_not_open) or closed/ended/archived (voting_closed); else enforces OV open status and voting window.';
 
 REVOKE ALL ON FUNCTION public.submit_owner_vote(uuid, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.submit_owner_vote(uuid, text) TO authenticated;

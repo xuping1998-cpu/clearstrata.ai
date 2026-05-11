@@ -14,6 +14,8 @@ type QuickTile = {
   labelZh: string;
   labelEn: string;
   Icon: LucideIcon;
+  /** 与 Layout 左侧模块卡片 icon 容器同色（仅快捷入口图标区，不累染整卡） */
+  iconWrapClass: string;
 };
 
 /** 物业经理任务页「业主诉求」tab：`ManagerTasks` 中 NAV_TABS key `owner_request` + searchParams `task_type` */
@@ -30,6 +32,8 @@ const TILES: readonly QuickTile[] = [
     labelZh: '会议投票',
     labelEn: 'Meetings & Voting',
     Icon: CalendarDays,
+    iconWrapClass:
+      'bg-violet-600 ring-1 ring-violet-500/30 transition-colors duration-150 group-hover:bg-violet-700 group-hover:ring-violet-400/40',
   },
   {
     id: 'owner-requests',
@@ -37,6 +41,8 @@ const TILES: readonly QuickTile[] = [
     labelZh: '业主诉求',
     labelEn: 'Owner Requests',
     Icon: ClipboardList,
+    iconWrapClass:
+      'bg-clearstrata-brand-700 ring-1 ring-clearstrata-brand-800/25 transition-colors duration-150 group-hover:bg-clearstrata-brand-800 group-hover:ring-clearstrata-brand-700/35',
   },
   {
     id: 'invoice-search',
@@ -44,6 +50,8 @@ const TILES: readonly QuickTile[] = [
     labelZh: '发票查询',
     labelEn: 'Invoice Search',
     Icon: FileSearch,
+    iconWrapClass:
+      'bg-clearstrata-brand-600 ring-1 ring-clearstrata-brand-700/25 transition-colors duration-150 group-hover:bg-clearstrata-brand-700 group-hover:ring-clearstrata-brand-600/35',
   },
   {
     id: 'procurement',
@@ -51,6 +59,8 @@ const TILES: readonly QuickTile[] = [
     labelZh: '采购询价',
     labelEn: 'Procurement Quotes',
     Icon: ShoppingCart,
+    iconWrapClass:
+      'bg-blue-500 ring-1 ring-blue-400/35 transition-colors duration-150 group-hover:bg-blue-600 group-hover:ring-blue-300/45',
   },
 ] as const;
 
@@ -71,7 +81,7 @@ export function QuickAccessDashboardCard({ langEn, meetingsHref }: QuickAccessDa
       </h2>
 
       <div className="mt-3 grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
-        {TILES.map(({ id, to, labelZh, labelEn, Icon }) => {
+        {TILES.map(({ id, to, labelZh, labelEn, Icon, iconWrapClass }) => {
           const toProp =
             to === '__MEETINGS__'
               ? meetingsHref
@@ -91,8 +101,10 @@ export function QuickAccessDashboardCard({ langEn, meetingsHref }: QuickAccessDa
                 'active:scale-[0.99]',
               ].join(' ')}
             >
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-clearstrata-ui-soft ring-1 ring-clearstrata-ui-softBorder">
-                <Icon className="h-5 w-5 text-clearstrata-brand-800" aria-hidden />
+              <span
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${iconWrapClass}`}
+              >
+                <Icon className="h-5 w-5 text-white" strokeWidth={2} aria-hidden />
               </span>
               <span className="min-w-0 text-left text-[13px] font-semibold leading-snug text-gray-900 group-hover:text-clearstrata-brand-900">
                 {label}
