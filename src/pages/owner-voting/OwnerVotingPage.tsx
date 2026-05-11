@@ -210,18 +210,41 @@ function ownerMeetingPackSortInstantMs(mt: OwnerVoteMeetingRow): number {
 }
 
 function compareOwnerMeetingPacksBySchedule(a: MeetingPack, b: MeetingPack): number {
+  const getTitle = (p: MeetingPack): string =>
+    String(
+      (p.meeting as { title_zh?: string }).title_zh ||
+        (p as { ownerVoteMeeting?: { title?: string } }).ownerVoteMeeting?.title ||
+        p.meeting.title ||
+        '',
+    ).trim();
+
   const nowMs = Date.now();
   const ta = meetingOwnerVoteListTier(a.meeting, nowMs);
   const tb = meetingOwnerVoteListTier(b.meeting, nowMs);
-  if (ta !== tb) return ta - tb;
+  let result: number;
+  if (ta !== tb) {
+    result = ta - tb;
+  } else {
+    const ka = ownerMeetingPackSortInstantMs(a.meeting);
+    const kb = ownerMeetingPackSortInstantMs(b.meeting);
+    if (ka !== kb) {
+      result = kb - ka;
+    } else {
+      const ca = parseTimestampMs(a.meeting.created_at) ?? 0;
+      const cb = parseTimestampMs(b.meeting.created_at) ?? 0;
+      result = cb - ca;
+    }
+  }
 
-  const ka = ownerMeetingPackSortInstantMs(a.meeting);
-  const kb = ownerMeetingPackSortInstantMs(b.meeting);
-  if (ka !== kb) return kb - ka;
+  console.log('[OWNER_VOTING_SORT]', {
+    a: getTitle(a),
+    b: getTitle(b),
+    aRank: ta,
+    bRank: tb,
+    result,
+  });
 
-  const ca = parseTimestampMs(a.meeting.created_at) ?? 0;
-  const cb = parseTimestampMs(b.meeting.created_at) ?? 0;
-  return cb - ca;
+  return result;
 }
 
 /** 列表次要操作：结束态显示「查看结果」 */
@@ -561,6 +584,8 @@ function OwnerCouncilElectionBlock({
 }
 
 export function OwnerVotingPage() {
+  console.log('[OWNER_VOTING_RUNTIME_MARKER]', 'v4-effective-status-check', new Date().toISOString());
+
   const { user, loading: authLoading } = useAuth();
   const { language, t } = useLanguage();
   const zh = language !== 'en';
@@ -783,6 +808,21 @@ export function OwnerVotingPage() {
             console.warn('[owner-voting] election agenda resolve', e);
           }
           return { ...p, electionAgendas };
+        }),
+      );
+
+      console.table(
+        packs.map((pack) => {
+          const p = pack as MeetingPack & { ownerVoteMeeting?: OwnerVoteMeetingRow };
+          return {
+            title: (p.meeting as { title_zh?: string }).title_zh || p.ownerVoteMeeting?.title,
+            councilStatus: p.meeting.status,
+            ovStatus: p.ownerVoteMeeting?.status,
+            votingOpens: p.ownerVoteMeeting?.voting_opens_at,
+            votingCloses: p.ownerVoteMeeting?.voting_closes_at,
+            scheduledAt: p.ownerVoteMeeting?.scheduled_at,
+            createdAt: p.ownerVoteMeeting?.created_at,
+          };
         }),
       );
 
@@ -1139,13 +1179,29 @@ export function OwnerVotingPage() {
                     }).toString()}`}
                     className="inline-flex w-full items-center justify-center rounded-xl bg-clearstrata-ui-primary px-4 py-2.5 text-center text-sm font-semibold text-white shadow-sm hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive sm:w-auto sm:min-w-[11rem]"
                   >
-                    {ownerVoteMeetingShowsViewResults(mt, phase)
-                      ? zh
-                        ? '查看结果'
-                        : 'View results'
-                      : zh
-                        ? '进入会议投票'
-                        : 'Enter meeting voting'}
+                    {(() => {
+                      const title = mt.title;
+                      const councilStatus = pack.meeting.status;
+                      const ovStatus = (
+                        pack as MeetingPack & { ownerVoteMeeting?: OwnerVoteMeetingRow }
+                      ).ownerVoteMeeting?.status;
+                      const votePhase = phase;
+                      const label = ownerVoteMeetingShowsViewResults(mt, phase)
+                        ? zh
+                          ? '查看结果'
+                          : 'View results'
+                        : zh
+                          ? '进入会议投票'
+                          : 'Enter meeting voting';
+                      console.log('[OWNER_VOTING_BUTTON]', {
+                        title,
+                        councilStatus,
+                        ovStatus,
+                        votePhase,
+                        label,
+                      });
+                      return label;
+                    })()}
                   </Link>
                 </div>
               </article>
