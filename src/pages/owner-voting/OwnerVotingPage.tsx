@@ -13,6 +13,8 @@ import {
   isFormalElectionVotingAllowed,
   type ElectionAgendaMetaV1,
 } from '@/features/meetings/electionAgendaModel';
+import type { MeetingRow } from '@/features/meetings/api';
+import { councilMeetingVotingWindowFallback } from '@/features/meetings/meetingFormatModel';
 import { stripCouncilMeetingBinding, resolveCouncilMeetingIdForOwnerVoteDescription } from '@/features/meetings/ownerVotingCouncil';
 
 export type VoteChoice = 'yes' | 'no' | 'abstain';
@@ -146,25 +148,67 @@ export function getVotingPhase(
   return 'closed';
 }
 
+/** Voting window phase only — ignores `owner_vote_meetings.status` (use when council row governs the meeting). */
+export function getVotingPhaseFromTimeWindowOnly(
+  votingOpensIso: string | null,
+  votingClosesIso: string | null,
+  now: Date,
+): VotingPhaseUi {
+  const opens = votingOpensIso ? new Date(votingOpensIso) : null;
+  const closes = votingClosesIso ? new Date(votingClosesIso) : null;
+  const oOk = opens != null && !Number.isNaN(opens.getTime());
+  const cOk = closes != null && !Number.isNaN(closes.getTime());
+  if (!oOk || !cOk) return 'closed';
+
+  const n = now.getTime();
+  if (n < opens.getTime()) return 'not_started';
+  if (n > closes.getTime()) return 'closed';
+  return 'voting_live';
+}
+
 export function isCouncilMeetingEndedStatus(status: string | null | undefined): boolean {
   const s = String(status ?? '').trim().toLowerCase();
   return s === 'closed' || s === 'ended' || s === 'archived';
 }
 
-/** Council `meetings.status` overrides owner_vote window when bound; otherwise preserves getVotingPhase. */
-export function getEffectiveVotingPhase(
-  councilMeetingStatus: string | null | undefined,
-  votingOpensIso: string | null,
-  votingClosesIso: string | null,
-  ownerVoteStatusRaw: string,
-  now: Date,
-): VotingPhaseUi {
+export type EffectiveVotingPhaseInput = {
+  /** True when this owner vote is bound to a council `meetings.id` (resolved id present). */
+  councilBound: boolean;
+  councilMeetingStatus: string | null | undefined;
+  /** From `councilMeetingVotingWindowFallback` on the bound council row; ignored when not `councilBound`. */
+  councilVotingOpensIso: string | null;
+  councilVotingClosesIso: string | null;
+  ovVotingOpensIso: string | null;
+  ovVotingClosesIso: string | null;
+  ovStatusRaw: string;
+  now: Date;
+};
+
+/**
+ * When bound to a council meeting: `meetings.status` is highest priority (closed/ended/archived → closed; draft → not_started);
+ * otherwise phase comes from the council voting window only — not from `owner_vote_meetings.status`.
+ * Unbound: same as `getVotingPhase` on the owner vote row.
+ */
+export function getEffectiveVotingPhase(input: EffectiveVotingPhaseInput): VotingPhaseUi {
+  const {
+    councilBound,
+    councilMeetingStatus,
+    councilVotingOpensIso,
+    councilVotingClosesIso,
+    ovVotingOpensIso,
+    ovVotingClosesIso,
+    ovStatusRaw,
+    now,
+  } = input;
   const cs = String(councilMeetingStatus ?? '').trim().toLowerCase();
-  if (cs) {
+
+  if (councilBound) {
     if (isCouncilMeetingEndedStatus(cs)) return 'closed';
     if (cs === 'draft') return 'not_started';
+    return getVotingPhaseFromTimeWindowOnly(councilVotingOpensIso, councilVotingClosesIso, now);
   }
-  return getVotingPhase(votingOpensIso, votingClosesIso, ownerVoteStatusRaw, now);
+
+  return getVotingPhase(ovVotingOpensIso, ovVotingClosesIso, ovStatusRaw, now);
 }
 
 function normalizeChoice(raw: unknown): VoteChoice | null {
@@ -195,14 +239,22 @@ interface MeetingPack {
   councilMeetingStatus: string | null;
   councilMeetingScheduledAt: string | null;
   councilMeetingCreatedAt: string | null;
+  /** Council-side voting window (`councilMeetingVotingWindowFallback`); used when `councilMeetingId` is set */
+  councilMeetingVotingOpensIso: string | null;
+  councilMeetingVotingClosesIso: string | null;
 }
 
-type CouncilMeetingBatchRow = {
-  id: string;
-  status: string;
-  created_at: string | null;
-  scheduled_at: string | null;
-};
+type CouncilMeetingBatchRow = Pick<
+  MeetingRow,
+  | 'id'
+  | 'status'
+  | 'created_at'
+  | 'scheduled_at'
+  | 'voting_open_at'
+  | 'voting_close_at'
+  | 'description_zh'
+  | 'meeting_format'
+>;
 
 /** Parse ISO-ish timestamp → ms since epoch; invalid / empty → null */
 function parseTimestampMs(raw: string | null | undefined): number | null {
@@ -223,23 +275,25 @@ function newestFirstForTieBreak(p: MeetingPack): [number, number] {
   return [parseTimestampMs(p.councilMeetingCreatedAt) ?? 0, parseTimestampMs(p.meeting.created_at) ?? 0];
 }
 
-/** Tier: voting_live → not_started → closed; tie-break: council created_at DESC, OV created_at DESC */
+function effectivePhaseInputForPack(p: MeetingPack, now: Date): EffectiveVotingPhaseInput {
+  const councilBound = Boolean(p.councilMeetingId?.trim());
+  return {
+    councilBound,
+    councilMeetingStatus: p.councilMeetingStatus,
+    councilVotingOpensIso: p.councilMeetingVotingOpensIso ?? null,
+    councilVotingClosesIso: p.councilMeetingVotingClosesIso ?? null,
+    ovVotingOpensIso: p.meeting.voting_opens_at,
+    ovVotingClosesIso: p.meeting.voting_closes_at,
+    ovStatusRaw: p.meeting.status,
+    now,
+  };
+}
+
+/** Tier: voting_live → not_started (incl. council draft) → closed; tie-break: council created_at DESC, OV created_at DESC */
 function compareOwnerMeetingPacksBySchedule(a: MeetingPack, b: MeetingPack): number {
   const now = new Date();
-  const pa = getEffectiveVotingPhase(
-    a.councilMeetingStatus,
-    a.meeting.voting_opens_at,
-    a.meeting.voting_closes_at,
-    a.meeting.status,
-    now,
-  );
-  const pb = getEffectiveVotingPhase(
-    b.councilMeetingStatus,
-    b.meeting.voting_opens_at,
-    b.meeting.voting_closes_at,
-    b.meeting.status,
-    now,
-  );
+  const pa = getEffectiveVotingPhase(effectivePhaseInputForPack(a, now));
+  const pb = getEffectiveVotingPhase(effectivePhaseInputForPack(b, now));
   const ta = sortTierEffective(pa);
   const tb = sortTierEffective(pb);
   if (ta !== tb) return ta - tb;
@@ -248,18 +302,6 @@ function compareOwnerMeetingPacksBySchedule(a: MeetingPack, b: MeetingPack): num
   if (ka[0] !== kb[0]) return kb[0] - ka[0];
   if (ka[1] !== kb[1]) return kb[1] - ka[1];
   return 0;
-}
-
-/** Badge / headline：业委会已结束或未开放时使用固定文案 */
-function phaseStatusHeadlineLabel(
-  effectivePhase: VotingPhaseUi,
-  councilMeetingStatus: string | null | undefined,
-  zh: boolean,
-): string {
-  const cs = String(councilMeetingStatus ?? '').trim().toLowerCase();
-  if (isCouncilMeetingEndedStatus(cs)) return zh ? '已结束' : 'Ended';
-  if (cs === 'draft') return zh ? '尚未开放' : 'Not open';
-  return phaseLabelText(effectivePhase, zh);
 }
 
 function ownerVoteMeetingShowsViewResults(mt: OwnerVoteMeetingRow, effectivePhase: VotingPhaseUi): boolean {
@@ -273,6 +315,12 @@ function votingPhaseTone(phase: VotingPhaseUi): 'neutral' | 'success' | 'warning
   if (phase === 'not_started') return 'neutral';
   if (phase === 'voting_live') return 'success';
   return 'warning';
+}
+
+function resolutionChoiceLabelForResult(c: VoteChoice, t: (key: string) => string): string {
+  if (c === 'yes') return t('meeting_vote_yes');
+  if (c === 'no') return t('meeting_vote_no');
+  return t('meeting_vote_abstain');
 }
 
 function parseStoredCandidateIds(raw: unknown): string[] {
@@ -778,7 +826,9 @@ export function OwnerVotingPage() {
       if (distinctCouncilIds.length > 0) {
         const { data: councilBatch, error: councilBatchErr } = await supabase
           .from('meetings')
-          .select('id,status,created_at,scheduled_at')
+          .select(
+            'id,status,created_at,scheduled_at,voting_open_at,voting_close_at,description_zh,meeting_format',
+          )
           .in('id', distinctCouncilIds);
         if (councilBatchErr) {
           console.warn('[owner-voting] council meetings batch', councilBatchErr.message);
@@ -804,6 +854,14 @@ export function OwnerVotingPage() {
         const key = cidResolved?.trim() ?? '';
         const crow = key ? councilRowByCouncilId.get(key) ?? null : null;
 
+        let councilOvIso: string | null = null;
+        let councilVcIso: string | null = null;
+        if (crow) {
+          const fb = councilMeetingVotingWindowFallback(crow as MeetingRow);
+          councilOvIso = fb.votingOpens ?? null;
+          councilVcIso = fb.votingCloses ?? null;
+        }
+
         return [
           {
             snapshotId: s.id,
@@ -819,6 +877,8 @@ export function OwnerVotingPage() {
             councilMeetingStatus: crow?.status != null && String(crow.status).trim() !== '' ? String(crow.status).trim() : null,
             councilMeetingScheduledAt: crow?.scheduled_at ?? null,
             councilMeetingCreatedAt: crow?.created_at ?? null,
+            councilMeetingVotingOpensIso: councilOvIso,
+            councilMeetingVotingClosesIso: councilVcIso,
           },
         ];
       });
@@ -1009,13 +1069,11 @@ export function OwnerVotingPage() {
             const mt = pack.meeting;
             const ms = mt.status.trim();
 
-            const effectivePhase = getEffectiveVotingPhase(
-              pack.councilMeetingStatus,
-              mt.voting_opens_at,
-              mt.voting_closes_at,
-              ms,
-              now,
-            );
+            const councilBound = Boolean(pack.councilMeetingId?.trim());
+            const displayVotingOpens = councilBound ? pack.councilMeetingVotingOpensIso : mt.voting_opens_at;
+            const displayVotingCloses = councilBound ? pack.councilMeetingVotingClosesIso : mt.voting_closes_at;
+
+            const effectivePhase = getEffectiveVotingPhase(effectivePhaseInputForPack(pack, now));
             const votesEnabled = effectivePhase === 'voting_live';
             const councilStNorm = String(pack.councilMeetingStatus ?? '').trim().toLowerCase();
             const isCouncilDraft = councilStNorm === 'draft';
@@ -1059,22 +1117,22 @@ export function OwnerVotingPage() {
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-2">
                       <StatusBadge tone={votingPhaseTone(effectivePhase)} size="sm">
-                        {phaseStatusHeadlineLabel(effectivePhase, pack.councilMeetingStatus, zh)}
+                        {phaseLabelText(effectivePhase, zh)}
                       </StatusBadge>
                     </div>
                   </div>
                   <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
                     <div className="rounded-lg bg-gray-50 px-3 py-2">
                       <dt className="text-xs text-gray-500">{zh ? '投票开放' : 'Voting opens'}</dt>
-                      <dd className="font-medium text-gray-900">{fmtTs(mt.voting_opens_at)}</dd>
+                      <dd className="font-medium text-gray-900">{fmtTs(displayVotingOpens ?? null)}</dd>
                     </div>
                     <div className="rounded-lg bg-gray-50 px-3 py-2">
                       <dt className="text-xs text-gray-500">{zh ? '投票截止' : 'Voting closes'}</dt>
-                      <dd className="font-medium text-gray-900">{fmtTs(mt.voting_closes_at)}</dd>
+                      <dd className="font-medium text-gray-900">{fmtTs(displayVotingCloses ?? null)}</dd>
                     </div>
                     <div className="rounded-lg bg-gray-50 px-3 py-2">
                       <dt className="text-xs text-gray-500">{zh ? '表决状态' : 'Owner vote status'}</dt>
-                      <dd className="font-medium text-gray-900">{mt.status.trim() || '—'}</dd>
+                      <dd className="font-medium text-gray-900">{phaseLabelText(effectivePhase, zh)}</dd>
                     </div>
                     <div className="rounded-lg bg-gray-50 px-3 py-2">
                       <dt className="text-xs text-gray-500">{zh ? '名单冻结时间' : 'Snapshot frozen'}</dt>
@@ -1111,12 +1169,12 @@ export function OwnerVotingPage() {
                         )
                       ) : zh ? (
                         <>
-                          投票尚未开放，将于 <span className="font-semibold">{fmtTs(mt.voting_opens_at)}</span> 开放。
+                          投票尚未开放，将于 <span className="font-semibold">{fmtTs(displayVotingOpens ?? null)}</span> 开放。
                         </>
                       ) : (
                         <>
                           Voting is not open yet. Opens at{' '}
-                          <span className="font-semibold">{fmtTs(mt.voting_opens_at)}</span>.
+                          <span className="font-semibold">{fmtTs(displayVotingOpens ?? null)}</span>.
                         </>
                       )}
                     </p>
@@ -1191,7 +1249,35 @@ export function OwnerVotingPage() {
                             </button>
                           </div>
                           ) : null}
-                          {ballot?.updated_at ? (
+                          {effectivePhase === 'closed' ? (
+                            ballot?.choice ? (
+                              <div className="mt-3 space-y-1">
+                                <p className="text-sm text-gray-900">
+                                  {zh ? (
+                                    <>
+                                      <span className="font-medium">你的表决：</span>
+                                      {resolutionChoiceLabelForResult(ballot.choice, t)}
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span className="font-medium">Your vote:</span>{' '}
+                                      {resolutionChoiceLabelForResult(ballot.choice, t)}
+                                    </>
+                                  )}
+                                </p>
+                                {ballot.updated_at ? (
+                                  <p className="text-[11px] text-gray-500">
+                                    {zh ? '提交时间：' : 'Recorded: '}
+                                    {new Date(ballot.updated_at).toLocaleString(zh ? 'zh-CN' : 'en-CA', dateOpts)}
+                                  </p>
+                                ) : null}
+                              </div>
+                            ) : (
+                              <p className="mt-3 text-sm text-gray-600">
+                                {zh ? '你未在本次决议中投过票。' : 'You did not cast a vote on this resolution.'}
+                              </p>
+                            )
+                          ) : ballot?.updated_at ? (
                             <p className="mt-2 text-[11px] text-gray-500">
                               {zh ? '最近一次提交：' : 'Last submitted: '}
                               {new Date(ballot.updated_at).toLocaleString(zh ? 'zh-CN' : 'en-CA', dateOpts)}
