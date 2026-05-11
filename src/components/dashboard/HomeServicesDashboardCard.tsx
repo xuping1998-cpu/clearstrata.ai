@@ -208,7 +208,7 @@ export function HomeServicesDashboardCard({ langEn }: HomeServicesDashboardCardP
   return (
     <>
       <section
-        className="mb-4 rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-sm sm:px-4 sm:py-3"
+        className="mb-4 rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-sm sm:px-5 sm:py-4"
         aria-labelledby="home-services-heading"
         data-widget="home-services"
       >
@@ -219,24 +219,24 @@ export function HomeServicesDashboardCard({ langEn }: HomeServicesDashboardCardP
           <p className="mt-px text-[13px] text-gray-600 sm:text-sm">{subtitle}</p>
         </div>
 
-        <div className="mt-2.5 grid grid-cols-2 gap-2 sm:gap-2.5 lg:grid-cols-4">
+        <div className="mt-3 grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
           {SERVICES.map(({ id, labelZh, labelEn, Icon }) => (
             <button
               key={id}
               type="button"
               onClick={() => setOpenId(id)}
               className={[
-                'group flex min-h-0 flex-row items-center gap-2.5 rounded-xl border border-gray-200 bg-white px-2.5 py-2 text-left shadow-sm',
+                'group flex min-h-[4.5rem] flex-col items-stretch justify-between gap-2 rounded-xl border border-gray-200 bg-white px-3 py-3 text-left shadow-sm sm:min-h-[5rem] lg:min-h-[5.25rem]',
                 'outline-none ring-clearstrata-ui-primary/35 transition-colors',
                 'hover:border-clearstrata-ui-softBorder hover:bg-clearstrata-ui-soft/50 hover:shadow-md',
                 'focus-visible:ring-2 focus-visible:ring-offset-2',
                 'active:scale-[0.99]',
               ].join(' ')}
             >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-clearstrata-ui-soft ring-1 ring-clearstrata-ui-softBorder">
-                <Icon className="h-[18px] w-[18px] text-clearstrata-brand-800" aria-hidden />
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-clearstrata-ui-soft ring-1 ring-clearstrata-ui-softBorder">
+                <Icon className="h-5 w-5 text-clearstrata-brand-800" aria-hidden />
               </span>
-              <span className="min-w-0 flex-1 text-left text-[13px] font-semibold leading-snug text-gray-900 group-hover:text-clearstrata-brand-900">
+              <span className="min-w-0 text-left text-[13px] font-semibold leading-snug text-gray-900 group-hover:text-clearstrata-brand-900">
                 {langEn ? labelEn : labelZh}
               </span>
             </button>

@@ -42,7 +42,7 @@ export function ImportantUpdatesDashboardCard({ langEn, bullets }: ImportantUpda
 
   return (
     <section
-      className="mb-4 rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-sm sm:px-4 sm:py-3"
+      className="mb-4 rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-sm sm:px-5 sm:py-4"
       aria-labelledby="home-important-updates-heading"
       data-widget="important-updates"
     >

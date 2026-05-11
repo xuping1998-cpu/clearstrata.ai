@@ -301,9 +301,14 @@ export function Layout({ children }: LayoutProps) {
                     navigate('/');
                   }
                 }}
-                className="text-2xl font-bold text-clearstrata-ui-primary transition-opacity hover:opacity-90"
+                className="flex items-center transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clearstrata-ui-primary/35 focus-visible:ring-offset-2"
               >
-                {language === 'en' ? 'clearstrata.ai' : '清涟.ai'}
+                <span className="text-2xl font-bold text-clearstrata-ui-primary lg:hidden">{language === 'en' ? 'clearstrata.ai' : '清涟.ai'}</span>
+                <img
+                  src="/clearstrata-hero-logo.png"
+                  alt="ClearStrata"
+                  className="hidden h-9 w-auto max-h-9 max-w-[11rem] object-contain object-left lg:block"
+                />
               </button>
             </div>
 
@@ -468,22 +473,6 @@ export function Layout({ children }: LayoutProps) {
           <div className="flex h-full min-h-0 flex-col">
             {!isDemoMode && !isDemoPropertyMock ? (
               <>
-                <div className="hidden shrink-0 border-b border-gray-100 px-3 py-2 lg:block">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigate('/');
-                      setMobileMenuOpen(false);
-                    }}
-                    className="flex w-full items-center justify-center rounded-lg outline-none ring-clearstrata-ui-primary/30 focus-visible:ring-2 focus-visible:ring-offset-2"
-                  >
-                    <img
-                      src="/clearstrata-hero-logo.png"
-                      alt="ClearStrata"
-                      className="h-9 w-auto max-w-[11rem] object-contain"
-                    />
-                  </button>
-                </div>
                 <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain [scrollbar-width:thin]">
                   <div className="px-3 pt-2 pb-2">
                     <button
