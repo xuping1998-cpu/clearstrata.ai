@@ -137,30 +137,30 @@ export function Dashboard() {
 
   return (
     <>
-      <div className="mb-4 rounded-2xl border border-clearstrata-ui-softBorder bg-clearstrata-ui-soft px-4 py-3 shadow-sm">
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-3 flex-wrap">
-            <p className="text-sm font-semibold text-gray-900">你的物业已经创建成功</p>
+      <div className="mb-3 rounded-xl border border-clearstrata-ui-softBorder bg-clearstrata-ui-soft px-3 py-2 shadow-sm sm:px-4 sm:py-2.5 xl:rounded-2xl">
+        <div className="flex flex-col gap-2 sm:gap-1.5 lg:flex-row lg:flex-wrap lg:items-center lg:gap-x-4 lg:gap-y-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5 sm:gap-x-2.5">
+            <p className="text-sm font-semibold leading-snug text-gray-900">你的物业已经创建成功</p>
             <button
               type="button"
               onClick={() => navigate('/property-admin/unit-whitelist')}
-              className="inline-flex items-center justify-center rounded-xl border border-clearstrata-ui-softBorder bg-white px-3 py-2 text-sm font-semibold text-clearstrata-brand-900 hover:bg-clearstrata-brand-50"
+              className="inline-flex min-h-[2.25rem] shrink-0 items-center justify-center rounded-lg border border-clearstrata-ui-softBorder bg-white px-2.5 py-1.5 text-sm font-semibold text-clearstrata-brand-900 hover:bg-clearstrata-brand-50"
             >
               导入房号
             </button>
             <button
               type="button"
               onClick={() => navigate('/property-admin/invites')}
-              className="inline-flex items-center justify-center rounded-xl border border-clearstrata-ui-softBorder bg-white px-3 py-2 text-sm font-semibold text-clearstrata-brand-900 hover:bg-clearstrata-brand-50"
+              className="inline-flex min-h-[2.25rem] shrink-0 items-center justify-center rounded-lg border border-clearstrata-ui-softBorder bg-white px-2.5 py-1.5 text-sm font-semibold text-clearstrata-brand-900 hover:bg-clearstrata-brand-50"
             >
               邀请成员
             </button>
           </div>
 
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-3 flex-wrap">
-              <p className="text-sm font-semibold text-gray-900">你正在免费试用 ClearStrata</p>
-              <p className="text-sm text-gray-700">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1.5 sm:justify-between lg:justify-end xl:flex-nowrap xl:gap-x-3">
+            <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 sm:gap-x-2.5">
+              <p className="text-sm font-semibold leading-snug text-gray-900">你正在免费试用 ClearStrata</p>
+              <p className="text-sm leading-snug text-gray-700">
                 {(() => {
                   const ends = trialRow?.trial_ends_at ?? null;
                   const daysLeft = getTrialDaysRemaining(ends);
@@ -175,7 +175,7 @@ export function Dashboard() {
             </div>
             <Link
               to="/upgrade"
-              className="inline-flex items-center justify-center rounded-xl border border-clearstrata-ui-softBorder bg-white px-4 py-2 text-sm font-semibold text-clearstrata-brand-900 hover:bg-clearstrata-brand-50"
+              className="inline-flex min-h-[2.25rem] shrink-0 items-center justify-center rounded-lg border border-clearstrata-ui-softBorder bg-white px-3 py-1.5 text-sm font-semibold text-clearstrata-brand-900 hover:bg-clearstrata-brand-50"
             >
               查看定价
             </Link>
