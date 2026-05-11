@@ -263,6 +263,10 @@ export function MeetingDetail() {
 
   const meeting = bundle.meeting;
 
+  useEffect(() => {
+    if (meeting && isMeetingClosedForVoting(meeting.status)) setAgendaEdit(null);
+  }, [meeting?.id, meeting?.status]);
+
   const showCouncilOwnerVoteUi = !!(meeting && currentPropertyId && isOwnerVotingMeeting(meeting));
 
   const governanceMeta = useMemo(() => {
@@ -512,6 +516,10 @@ export function MeetingDetail() {
 
   async function handleCreateVote(agenda: MeetingAgendaRow) {
     if (!meeting || !user) return;
+    if (isMeetingClosedForVoting(meeting.status)) {
+      setActionErr(en ? 'This meeting has ended. The agenda is locked.' : '会议已结束，议程已锁定。');
+      return;
+    }
     setBusy(true);
     setActionErr(null);
     const { voteId, error } = await createVote({
@@ -532,6 +540,10 @@ export function MeetingDetail() {
 
   async function handleOpenVote(voteId: string) {
     if (!meeting) return;
+    if (isMeetingClosedForVoting(meeting.status)) {
+      setActionErr(en ? 'This meeting has ended. The agenda is locked.' : '会议已结束，议程已锁定。');
+      return;
+    }
     setBusy(true);
     setActionErr(null);
     const { error } = await updateVote(voteId, meeting.property_id, {
@@ -545,6 +557,10 @@ export function MeetingDetail() {
 
   async function handleCloseVote(voteId: string) {
     if (!meeting) return;
+    if (isMeetingClosedForVoting(meeting.status)) {
+      setActionErr(en ? 'This meeting has ended. The agenda is locked.' : '会议已结束，议程已锁定。');
+      return;
+    }
     setBusy(true);
     setActionErr(null);
     const { error } = await updateVote(voteId, meeting.property_id, {
@@ -575,6 +591,10 @@ export function MeetingDetail() {
   async function handleAddAgenda(e: React.FormEvent) {
     e.preventDefault();
     if (!meeting || !propertyIdForAgenda) return;
+    if (isMeetingClosedForVoting(meeting.status)) {
+      setActionErr(en ? 'This meeting has ended. The agenda is locked.' : '会议已结束，议程已锁定。');
+      return;
+    }
     if (!newAgendaZh.trim() && !newAgendaEn.trim()) {
       setActionErr(en ? 'Enter an agenda title.' : '请填写议程标题。');
       return;
@@ -667,6 +687,10 @@ export function MeetingDetail() {
 
   async function handlePersistAgendaEdit() {
     if (!meeting || !propertyIdForAgenda || !user?.id || !agendaEdit) return;
+    if (isMeetingClosedForVoting(meeting.status)) {
+      setActionErr(en ? 'This meeting has ended. The agenda is locked.' : '会议已结束，议程已锁定。');
+      return;
+    }
     const row = bundle.agendaItems.find((x) => x.id === agendaEdit.agendaId);
     if (!row) return;
 
@@ -1082,6 +1106,7 @@ export function MeetingDetail() {
   }
 
   const inv = invitationSummary(bundle.invitations);
+  const meetingAgendaLocked = isMeetingClosedForVoting(meeting.status);
   const openRatePct = inv.total ? Math.min(100, Math.round((inv.openedCount / inv.total) * 100)) : 0;
   const voteRatePct = inv.total ? Math.min(100, Math.round((inv.voted / inv.total) * 100)) : 0;
 
@@ -1275,6 +1300,11 @@ export function MeetingDetail() {
               <h2 className="text-lg font-semibold text-gray-900 mb-4 border-b pb-2">
                 {en ? meetingUiStrings.sectionAgenda.en : meetingUiStrings.sectionAgenda.zh}
               </h2>
+              {meetingAgendaLocked ? (
+                <p className="mb-4 text-sm text-amber-800 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                  {en ? 'This meeting has ended. The agenda is locked.' : '会议已结束，议程已锁定。'}
+                </p>
+              ) : null}
               {showCouncilOwnerVoteUi ? (
                 <OwnerVotingInlineControlBar
                   meeting={meeting}
@@ -1335,7 +1365,7 @@ export function MeetingDetail() {
                             </StatusBadge>
                           ) : null}
                         </div>
-                        {canManageCouncilMeetings && agendaEdit?.agendaId !== agenda.id ? (
+                        {canManageCouncilMeetings && !meetingAgendaLocked && agendaEdit?.agendaId !== agenda.id ? (
                           <button
                             type="button"
                             disabled={busy}
@@ -1371,7 +1401,7 @@ export function MeetingDetail() {
                           </button>
                         ) : null}
                       </div>
-                      {agendaEdit?.agendaId === agenda.id ? (
+                      {agendaEdit?.agendaId === agenda.id && !meetingAgendaLocked ? (
                         <div className="space-y-3 mt-1">
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             <input
@@ -1570,7 +1600,7 @@ export function MeetingDetail() {
 
                           {agendaKindUi !== 'election' && agenda.requires_vote ? (
                             !vote ? (
-                              canManageCouncilMeetings ? (
+                              canManageCouncilMeetings && !meetingAgendaLocked ? (
                                 <button
                                   type="button"
                                   disabled={busy}
@@ -1599,7 +1629,7 @@ export function MeetingDetail() {
                                 </span>
                               </div>
 
-                              {canManageCouncilMeetings && vote!.status === 'draft' && (
+                              {canManageCouncilMeetings && !meetingAgendaLocked && vote!.status === 'draft' && (
                                 <button
                                   type="button"
                                   disabled={busy}
@@ -1609,7 +1639,7 @@ export function MeetingDetail() {
                                   {en ? 'Open voting' : '开放投票'}
                                 </button>
                               )}
-                              {canManageCouncilMeetings && vote!.status === 'open' && (
+                              {canManageCouncilMeetings && !meetingAgendaLocked && vote!.status === 'open' && (
                                 <button
                                   type="button"
                                   disabled={busy}
@@ -1673,7 +1703,7 @@ export function MeetingDetail() {
                               meetingId={meeting.id}
                               ownerVoteMeetingId={showCouncilOwnerVoteUi ? ovMeta.meeting?.id : null}
                               eligibleUnitNo={viewerOvUnitNo}
-                              canEdit={canManageCouncilMeetings}
+                              canEdit={canManageCouncilMeetings && !meetingAgendaLocked}
                               electionBallotCount={electionBallotsByAgenda.get(agenda.id) ?? 0}
                               languageEn={en}
                               t={t}
@@ -1694,7 +1724,7 @@ export function MeetingDetail() {
                   </p>
                 )}
 
-                {canManageCouncilMeetings && propertyIdForAgenda && (
+                {canManageCouncilMeetings && propertyIdForAgenda && !meetingAgendaLocked && (
                   <form onSubmit={handleAddAgenda} className="mt-6 border border-dashed border-gray-300 rounded-lg p-4 space-y-3 bg-white">
                     <p className="text-sm font-medium text-gray-800">{en ? 'Add agenda item' : '添加议程'}</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">

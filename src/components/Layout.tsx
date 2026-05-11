@@ -280,11 +280,11 @@ export function Layout({ children }: LayoutProps) {
       ) : null}
       <header className="sticky top-0 z-40 border-b border-gray-200 bg-white">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex h-16 items-center justify-between">
-            <div className="flex items-center gap-4">
+          <div className="flex h-16 items-center gap-2 sm:gap-3 lg:gap-4">
+            <div className="flex min-w-0 shrink-0 grow-0 items-center gap-2 lg:gap-4">
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="rounded-lg p-2 hover:bg-gray-100 lg:hidden"
+                className="shrink-0 rounded-lg p-2 hover:bg-gray-100 lg:hidden"
               >
                 {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
               </button>
@@ -301,17 +301,17 @@ export function Layout({ children }: LayoutProps) {
                     navigate('/');
                   }
                 }}
-                className="flex items-center transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clearstrata-ui-primary/35 focus-visible:ring-offset-2"
+                className="flex shrink-0 items-center overflow-hidden rounded transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clearstrata-ui-primary/35 focus-visible:ring-offset-2 max-lg:max-w-[min(7.25rem,42vw)] lg:max-w-none"
               >
                 <img
                   src="/clearstrata-hero-logo.png"
                   alt="ClearStrata"
-                  className="h-8 w-auto max-h-8 max-w-[10rem] object-contain object-left lg:h-9 lg:max-h-9 lg:max-w-[11rem]"
+                  className="h-7 w-auto max-h-7 max-w-full object-contain object-left sm:h-8 sm:max-h-8 lg:h-9 lg:max-h-9 lg:max-w-[11rem]"
                 />
               </button>
             </div>
 
-            <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:gap-3">
+            <div className="ml-auto flex min-w-0 shrink items-center justify-end gap-2 overflow-hidden sm:gap-3 lg:min-w-0 lg:flex-1">
               <PWAInstallButton />
               {(isDemoMode || isDemoPropertyMock) && (
                 <div className="hidden shrink-0 sm:block">
