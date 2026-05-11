@@ -75,6 +75,11 @@ import { OwnerVotingInlineControlBar } from '@/components/meetings/OwnerVotingIn
 import { MeetingOwnerVoteResolutionResults } from '@/components/meetings/MeetingOwnerVoteResolutionResults';
 import { StatusAlert, StatusBadge } from '@/components/status';
 
+function isMeetingClosedForVoting(status: string | null | undefined): boolean {
+  const s = String(status ?? '').trim().toLowerCase();
+  return s === 'closed' || s === 'ended' || s === 'archived';
+}
+
 function initiationTypeLabel(type: MeetingInitiationType, t: (key: string) => string): string {
   switch (type) {
     case 'council_initiated':
@@ -553,6 +558,12 @@ export function MeetingDetail() {
 
   async function handleBallot(voteId: string, optionKey: string) {
     if (!user || !meeting) return;
+    if (isMeetingClosedForVoting(meeting.status)) {
+      setActionErr(
+        en ? 'This meeting has ended. Voting is closed.' : '会议已结束，投票已关闭。',
+      );
+      return;
+    }
     setBusy(true);
     setActionErr(null);
     const { error } = await castBallot(voteId, optionKey, meeting.property_id);
@@ -1604,7 +1615,7 @@ export function MeetingDetail() {
                                 </button>
                               )}
 
-                              {vote!.status === 'open' && (
+                              {vote!.status === 'open' && !isMeetingClosedForVoting(meeting.status) ? (
                                 <div className="space-y-2">
                                   <p className="text-sm text-gray-700">{en ? 'Cast your ballot' : '投票'}</p>
                                   <div className="flex flex-wrap gap-2">
@@ -1625,7 +1636,13 @@ export function MeetingDetail() {
                                     ))}
                                   </div>
                                 </div>
-                              )}
+                              ) : vote!.status === 'open' && isMeetingClosedForVoting(meeting.status) ? (
+                                <p className="text-sm text-amber-800 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                                  {en
+                                    ? 'This meeting has ended. Voting is closed.'
+                                    : '会议已结束，投票已关闭。'}
+                                </p>
+                              ) : null}
 
                               {(vote!.status === 'closed' ||
                                 vote!.status === 'passed' ||

@@ -3,6 +3,20 @@
 
 BEGIN;
 
+-- Remove legacy overload submit_owner_vote(uuid, owner_vote_choice); keep (uuid, text).
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_type t
+    JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+    WHERE n.nspname = 'public' AND t.typname = 'owner_vote_choice'
+  ) THEN
+    EXECUTE 'DROP FUNCTION IF EXISTS public.submit_owner_vote(uuid, public.owner_vote_choice)';
+  END IF;
+END
+$$;
+
 CREATE OR REPLACE FUNCTION public.submit_owner_vote(
   p_resolution_id uuid,
   p_choice text
