@@ -85,11 +85,14 @@ function thresholdLabel(threshold: string, zh: boolean): string {
 function phaseLabelText(phase: VotingPhaseUi, zh: boolean): string {
   if (phase === 'not_started') return zh ? '未开始' : 'Not started';
   if (phase === 'voting_live') return zh ? '投票中' : 'Open for voting';
-  return zh ? '已截止' : 'Closed';
+  return zh ? '已结束' : 'Ended';
 }
 
 function parseRpcError(msg: string, zh: boolean): string | null {
   const m = msg.toLowerCase();
+  if (m.includes('voting_closed') || m.includes('voting closed')) {
+    return zh ? '投票已截止，无法提交表决。' : 'Voting has closed; your vote cannot be recorded.';
+  }
   if (m.includes('voting_not_open') || m.includes('voting not open')) {
     return zh ? '投票尚未开放或已经截止' : 'Voting has not opened or has ended.';
   }
@@ -120,7 +123,7 @@ function parseRpcError(msg: string, zh: boolean): string | null {
   return null;
 }
 
-/** Product rules: voting only when opens ≤ now ≤ closes AND DB status === 'open'; else closed / not_started per spec */
+/** Voting window vs DB row: stale `status=open` after close time is still `closed` for UI and RPC */
 export function getVotingPhase(
   votingOpensIso: string | null,
   votingClosesIso: string | null,
@@ -129,12 +132,17 @@ export function getVotingPhase(
 ): VotingPhaseUi {
   const opens = votingOpensIso ? new Date(votingOpensIso) : null;
   const closes = votingClosesIso ? new Date(votingClosesIso) : null;
-  const oOk = opens != null && !Number.isNaN(opens!.getTime());
-  const cOk = closes != null && !Number.isNaN(closes!.getTime());
-  const status = statusRaw.trim();
+  const oOk = opens != null && !Number.isNaN(opens.getTime());
+  const cOk = closes != null && !Number.isNaN(closes.getTime());
+  const status = statusRaw.trim().toLowerCase();
 
-  if (oOk && now < opens!) return 'not_started';
-  if (oOk && cOk && now >= opens! && now <= closes! && status === 'open') return 'voting_live';
+  if (!oOk || !cOk) return 'closed';
+
+  const n = now.getTime();
+  if (n < opens.getTime()) return 'not_started';
+  if (n > closes.getTime()) return 'closed';
+
+  if (status === 'open') return 'voting_live';
   return 'closed';
 }
 
@@ -163,22 +171,57 @@ interface MeetingPack {
   electionSelections: Map<string, string[]>;
 }
 
-/** scheduled_at DESC nulls last, then created_at DESC */
+/** Parse ISO-ish timestamp → ms since epoch; invalid / empty → null */
+function parseTimestampMs(raw: string | null | undefined): number | null {
+  if (raw == null) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+  const ms = new Date(s).getTime();
+  return Number.isNaN(ms) ? null : ms;
+}
+
+/**
+ * 列表排序档位：有效期内可投 → 未开始(upcoming) → 已过期/不可用
+ * 同档内：coalesce(voting_closes_at, …) desc, created_at desc
+ */
+function meetingOwnerVoteListTier(mt: OwnerVoteMeetingRow, nowMs: number): number {
+  const st = mt.status.trim().toLowerCase();
+  const o = parseTimestampMs(mt.voting_opens_at);
+  const c = parseTimestampMs(mt.voting_closes_at);
+  const hasWindow = o != null && c != null;
+
+  if (hasWindow && st === 'open' && nowMs >= o && nowMs <= c) return 0;
+
+  if (hasWindow && nowMs < o && (st === 'open' || st === 'draft' || st === 'scheduled' || st === 'active'))
+    return 1;
+
+  return 2;
+}
+
+/** coalesce(voting_closes_at, voting_opens_at, scheduled_at, created_at) for secondary sort */
+function ownerMeetingPackSortInstantMs(mt: OwnerVoteMeetingRow): number {
+  return (
+    parseTimestampMs(mt.voting_closes_at) ??
+    parseTimestampMs(mt.voting_opens_at) ??
+    parseTimestampMs(mt.scheduled_at) ??
+    parseTimestampMs(mt.created_at) ??
+    0
+  );
+}
+
 function compareOwnerMeetingPacksBySchedule(a: MeetingPack, b: MeetingPack): number {
-  const sa = (a.meeting.scheduled_at ?? '').trim();
-  const sb = (b.meeting.scheduled_at ?? '').trim();
-  const aMissing = !sa;
-  const bMissing = !sb;
-  if (aMissing !== bMissing) return aMissing ? 1 : -1;
+  const nowMs = Date.now();
+  const ta = meetingOwnerVoteListTier(a.meeting, nowMs);
+  const tb = meetingOwnerVoteListTier(b.meeting, nowMs);
+  if (ta !== tb) return ta - tb;
 
-  if (!aMissing && !bMissing) {
-    const diffMs = new Date(sb).getTime() - new Date(sa).getTime();
-    if (diffMs !== 0) return diffMs;
-  }
+  const ka = ownerMeetingPackSortInstantMs(a.meeting);
+  const kb = ownerMeetingPackSortInstantMs(b.meeting);
+  if (ka !== kb) return kb - ka;
 
-  const ca = (a.meeting.created_at ?? '').trim();
-  const cb = (b.meeting.created_at ?? '').trim();
-  return cb.localeCompare(ca);
+  const ca = parseTimestampMs(a.meeting.created_at) ?? 0;
+  const cb = parseTimestampMs(b.meeting.created_at) ?? 0;
+  return cb - ca;
 }
 
 /** 列表次要操作：结束态显示「查看结果」 */
@@ -244,8 +287,11 @@ function OwnerCouncilElectionBlock({
   const nominationBlocking = nomPhase === 'before_open' || nomPhase === 'collecting';
   const nominationComplete = isFormalElectionVotingAllowed(now, meta);
   const ovSt = ownerMeetingStatus.trim().toLowerCase();
-  const ovClosed = ovSt === 'closed' || ovSt === 'archived';
-  const showBallotSubmit = nominationComplete && votePhase === 'voting_live' && !ovClosed;
+  const ovDbEnded = ovSt === 'closed' || ovSt === 'archived' || ovSt === 'ended';
+  const showBallotSubmit = nominationComplete && votePhase === 'voting_live' && !ovDbEnded;
+
+  /** Time window ended (or DB archived): show ended banner; keep nomination UX unless DB archived */
+  const votingPeriodEndedBanner = ovDbEnded || votePhase === 'closed';
 
   const sortedAll = [...meta.candidates].sort((a, b) => a.name.localeCompare(b.name, zh ? 'zh' : 'en'));
   const sortedAccepted = meta.candidates
@@ -323,7 +369,7 @@ function OwnerCouncilElectionBlock({
   }
 
   const canSelfNomForm =
-    meta.allow_self_nomination && !ovClosed && nomPhase === 'collecting' && !!eligibleUnitNo?.trim() && !dupUnit;
+    meta.allow_self_nomination && !ovDbEnded && nomPhase === 'collecting' && !!eligibleUnitNo?.trim() && !dupUnit;
 
   return (
     <div className="rounded-xl border border-amber-200/80 bg-amber-50/20 p-4 space-y-3">
@@ -347,10 +393,10 @@ function OwnerCouncilElectionBlock({
           {t('meeting_election_vote_after_nomination')}
         </p>
       ) : null}
-      {!nominationBlocking && votePhase !== 'voting_live' && !ovClosed ? (
+      {!nominationBlocking && votePhase === 'not_started' && !ovDbEnded ? (
         <p className="text-xs text-gray-600">{zh ? '表决尚未处于可投票时间段。' : 'Voting is not open in this period.'}</p>
       ) : null}
-      {ovClosed ? (
+      {votingPeriodEndedBanner ? (
         <p className="text-xs font-medium text-gray-800">{zh ? '业主表决已结束。' : 'Owner voting has ended.'}</p>
       ) : null}
 
@@ -423,11 +469,11 @@ function OwnerCouncilElectionBlock({
         )}
       </ul>
 
-      {meta.allow_self_nomination && !ovClosed && nomPhase === 'before_open' ? (
+      {meta.allow_self_nomination && !ovDbEnded && nomPhase === 'before_open' ? (
         <p className="text-xs text-gray-600">{zh ? '提名尚未开放。' : 'Nomination has not opened yet.'}</p>
       ) : null}
 
-      {meta.allow_self_nomination && !ovClosed && nomPhase === 'ended' ? (
+      {meta.allow_self_nomination && !ovDbEnded && nomPhase === 'ended' ? (
         <p className="text-xs text-gray-600">{t('meeting_election_self_nomination_closed')}</p>
       ) : null}
 
@@ -965,6 +1011,20 @@ export function OwnerVotingPage() {
                       </>
                     ) : null}
                   </dl>
+                  {phase === 'not_started' ? (
+                    <p className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-gray-800">
+                      {zh ? (
+                        <>
+                          投票尚未开放，将于 <span className="font-semibold">{fmtTs(mt.voting_opens_at)}</span> 开放。
+                        </>
+                      ) : (
+                        <>
+                          Voting is not open yet. Opens at{' '}
+                          <span className="font-semibold">{fmtTs(mt.voting_opens_at)}</span>.
+                        </>
+                      )}
+                    </p>
+                  ) : null}
                 </div>
 
                 <div className="px-5 pb-5 sm:px-6">
@@ -992,10 +1052,11 @@ export function OwnerVotingPage() {
                           {res.description ? (
                             <p className="mt-2 whitespace-pre-wrap text-sm text-gray-600">{res.description}</p>
                           ) : null}
+                          {votesEnabled ? (
                           <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                             <button
                               type="button"
-                              disabled={!votesEnabled || submitting}
+                              disabled={submitting}
                               onClick={() => void submitVote(res.id, 'yes')}
                               className={`${choiceBtn} border-clearstrata-ui-primary bg-clearstrata-ui-soft text-clearstrata-brand-900 ring-1 ring-clearstrata-ui-softBorder ${
                                 ballot?.choice === 'yes'
@@ -1008,7 +1069,7 @@ export function OwnerVotingPage() {
                             </button>
                             <button
                               type="button"
-                              disabled={!votesEnabled || submitting}
+                              disabled={submitting}
                               onClick={() => void submitVote(res.id, 'no')}
                               className={`${choiceBtn} border-red-300 text-red-800 hover:bg-red-50 ${
                                 ballot?.choice === 'no'
@@ -1021,7 +1082,7 @@ export function OwnerVotingPage() {
                             </button>
                             <button
                               type="button"
-                              disabled={!votesEnabled || submitting}
+                              disabled={submitting}
                               onClick={() => void submitVote(res.id, 'abstain')}
                               className={`${choiceBtn} border-gray-300 text-gray-800 hover:bg-gray-50 ${
                                 ballot?.choice === 'abstain'
@@ -1033,6 +1094,7 @@ export function OwnerVotingPage() {
                               {t('meeting_vote_abstain')}
                             </button>
                           </div>
+                          ) : null}
                           {ballot?.updated_at ? (
                             <p className="mt-2 text-[11px] text-gray-500">
                               {zh ? '最近一次提交：' : 'Last submitted: '}

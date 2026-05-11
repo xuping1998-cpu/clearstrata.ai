@@ -151,6 +151,14 @@ const translations: Record<string, Record<Language, string>> = {
     en: 'The voting deadline has passed; voting cannot be opened.',
     zh: '投票截止时间已过，不能打开投票。',
   },
+  meeting_owner_vote_nav_status_not_open: {
+    en: 'Owner electronic voting for this meeting is not open yet.',
+    zh: '本次会议业主表决尚未开放。',
+  },
+  meeting_owner_vote_nav_no_meeting: {
+    en: 'Owner voting is not set up for this meeting yet.',
+    zh: '本次会议尚未启用业主表决。',
+  },
   meeting_ov_flow_hint_freeze_snap: {
     en: 'Please freeze the voting eligibility list.',
     zh: '请先冻结投票资格名单。',

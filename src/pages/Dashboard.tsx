@@ -137,9 +137,6 @@ export function Dashboard() {
 
   return (
     <>
-      <ImportantUpdatesDashboardCard langEn={en} />
-      <QuickAccessDashboardCard langEn={en} meetingsHref={meetingsNavHref(roleInProperty)} />
-      <HomeServicesDashboardCard langEn={en} />
       <div className="mb-4 rounded-2xl border border-clearstrata-ui-softBorder bg-clearstrata-ui-soft px-4 py-3 shadow-sm">
         <div className="flex flex-col gap-3">
           <div className="flex items-center gap-3 flex-wrap">
@@ -185,6 +182,9 @@ export function Dashboard() {
           </div>
         </div>
       </div>
+      <ImportantUpdatesDashboardCard langEn={en} />
+      <QuickAccessDashboardCard langEn={en} meetingsHref={meetingsNavHref(roleInProperty)} />
+      <HomeServicesDashboardCard langEn={en} />
       {(() => {
         const st = trialRow?.subscription_status ?? null;
         const ends = trialRow?.trial_ends_at ?? null;

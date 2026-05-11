@@ -1359,6 +1359,34 @@ export function evaluateOwnerVoteOpenGate(params: {
   return { ok: true };
 }
 
+/** Owner navigation to `/owner-voting`: DB `status = open`, valid vote window, frozen snapshot, agenda, and eligible units. */
+export type OwnerVoteOwnerNavigationGateReason = OwnerVoteOpenGateReason | 'status_not_open' | 'no_meeting';
+
+export function evaluateOwnerVoteOwnerNavigationGate(params: {
+  ov: OwnerVoteMeetingLite | null | undefined;
+  eligibleCount: number;
+  resolutionCount: number;
+  electionAgendaCount: number;
+  nowMs?: number;
+}): { ok: true } | { ok: false; reason: OwnerVoteOwnerNavigationGateReason } {
+  const ov = params.ov;
+  if (!ov?.id) return { ok: false, reason: 'no_meeting' };
+  const st = String(ov.status ?? '').trim().toLowerCase();
+  if (st !== 'open') return { ok: false, reason: 'status_not_open' };
+
+  const nowMs = params.nowMs ?? Date.now();
+  const openIso = ov.voting_opens_at?.trim();
+  const closeIso = ov.voting_closes_at?.trim();
+  const openMs = openIso ? Date.parse(openIso) : NaN;
+  const closeMs = closeIso ? Date.parse(closeIso) : NaN;
+  if (!openIso || Number.isNaN(openMs)) return { ok: false, reason: 'too_early' };
+  if (!closeIso || Number.isNaN(closeMs)) return { ok: false, reason: 'past_close' };
+  if (nowMs < openMs) return { ok: false, reason: 'too_early' };
+  if (nowMs > closeMs) return { ok: false, reason: 'past_close' };
+
+  return evaluateOwnerVoteOpenGate({ ...params, nowMs });
+}
+
 export function translationKeyForOwnerVoteOpenGate(
   reason: OwnerVoteOpenGateReason,
 ):
@@ -1379,6 +1407,17 @@ export function translationKeyForOwnerVoteOpenGate(
     case 'past_close':
       return 'meeting_ov_open_block_past_close';
   }
+}
+
+export function translationKeyForOwnerVoteOwnerNavigationGate(
+  reason: OwnerVoteOwnerNavigationGateReason,
+):
+  | ReturnType<typeof translationKeyForOwnerVoteOpenGate>
+  | 'meeting_owner_vote_nav_status_not_open'
+  | 'meeting_owner_vote_nav_no_meeting' {
+  if (reason === 'status_not_open') return 'meeting_owner_vote_nav_status_not_open';
+  if (reason === 'no_meeting') return 'meeting_owner_vote_nav_no_meeting';
+  return translationKeyForOwnerVoteOpenGate(reason);
 }
 
 /**

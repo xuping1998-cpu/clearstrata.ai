@@ -11,10 +11,12 @@ import {
   createVote,
   ensureOwnerVoteMeetingForCouncilMeeting,
   evaluateOwnerVoteOpenGate,
+  evaluateOwnerVoteOwnerNavigationGate,
   fetchOwnerVoteMeetingMetaForCouncilMeeting,
   fetchOwnerVoteResolutionResultsForOwnerMeeting,
   fetchMeetingCore,
   translationKeyForOwnerVoteOpenGate,
+  translationKeyForOwnerVoteOwnerNavigationGate,
   fetchMeetingExtras,
   invitationSummary,
   mapVoteRuleToOwnerVoteThreshold,
@@ -295,6 +297,43 @@ export function MeetingDetail() {
     }
     return n;
   }, [bundle.agendaItems]);
+
+  const handleNavigateOwnerVotingForOwner = useCallback(() => {
+    const gate = evaluateOwnerVoteOwnerNavigationGate({
+      ov: ovMeta.meeting,
+      eligibleCount: ovMeta.eligibleCount,
+      resolutionCount: ovMeta.resolutionCount,
+      electionAgendaCount: electionBundles.length,
+    });
+    if (!gate.ok) {
+      if (gate.reason === 'too_early') {
+        const iso = ovMeta.meeting?.voting_opens_at?.trim();
+        let timeLabel = '—';
+        if (iso) {
+          const d = new Date(iso);
+          if (!Number.isNaN(d.getTime())) {
+            timeLabel = d.toLocaleString(en ? 'en-CA' : 'zh-CN', {
+              dateStyle: 'medium',
+              timeStyle: 'short',
+            });
+          }
+        }
+        setEvToast({
+          kind: 'error',
+          text: en
+            ? `Voting is not open yet. It opens at ${timeLabel}.`
+            : `投票尚未开放，将于 ${timeLabel} 开放。`,
+        });
+        return;
+      }
+      setEvToast({
+        kind: 'error',
+        text: t(translationKeyForOwnerVoteOwnerNavigationGate(gate.reason)),
+      });
+      return;
+    }
+    navigate('/owner-voting');
+  }, [ovMeta.meeting, ovMeta.eligibleCount, ovMeta.resolutionCount, electionBundles.length, en, t, navigate]);
 
   const showVoteWaitingResultsBanner =
     showCouncilOwnerVoteUi &&
@@ -1228,7 +1267,7 @@ export function MeetingDetail() {
                   userId={user?.id}
                   languageEn={en}
                   t={t}
-                  onNavigateOwnerVoting={() => navigate('/owner-voting')}
+                  onNavigateOwnerVoting={() => handleNavigateOwnerVotingForOwner()}
                   meta={ovMeta}
                   ovBusy={ovBusy}
                   canEnableBinding={Boolean(councilMeetingTitleForOwnerVoteBinding(meeting).trim())}
