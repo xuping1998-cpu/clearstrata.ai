@@ -45,6 +45,50 @@ function emptyExtras(): MeetingCardExtras {
   };
 }
 
+function parseListIsoMs(iso: string | null | undefined): number | null {
+  if (iso == null || !String(iso).trim()) return null;
+  const ms = new Date(iso).getTime();
+  return Number.isNaN(ms) ? null : ms;
+}
+
+/** Council meeting ended for list tier / CTA (not delegated to owner_vote row alone). */
+function councilMeetingEndedByStatus(m: MeetingRow): boolean {
+  const st = String(m.status ?? '').trim().toLowerCase();
+  return st === 'closed' || st === 'ended' || st === 'archived';
+}
+
+/** 0 = active bucket (draft/open/scheduled/… not ended); 1 = ended bucket */
+function meetingListSortTier(m: MeetingRow): 0 | 1 {
+  return councilMeetingEndedByStatus(m) ? 1 : 0;
+}
+
+/** coalesce(voting_close_at, voting_open_at, scheduled_at, created_at) ms */
+function meetingListSortInstantMs(m: MeetingRow): number {
+  return (
+    parseListIsoMs(m.voting_close_at) ??
+    parseListIsoMs(m.voting_open_at) ??
+    parseListIsoMs(m.scheduled_at) ??
+    parseListIsoMs(m.created_at) ??
+    0
+  );
+}
+
+function compareMeetingsForPropertyList(a: MeetingRow, b: MeetingRow): number {
+  const ta = meetingListSortTier(a);
+  const tb = meetingListSortTier(b);
+  if (ta !== tb) return ta - tb;
+  const ia = meetingListSortInstantMs(a);
+  const ib = meetingListSortInstantMs(b);
+  if (ia !== ib) return ib - ia;
+  const ca = parseListIsoMs(a.created_at) ?? 0;
+  const cb = parseListIsoMs(b.created_at) ?? 0;
+  return cb - ca;
+}
+
+function sortMeetingsForPropertyList(rows: MeetingRow[]): MeetingRow[] {
+  return [...rows].sort(compareMeetingsForPropertyList);
+}
+
 function buildMeetingCardExtras(rows: MeetingAgendaItemsListLiteRow[]): Record<string, MeetingCardExtras> {
   const byMeetingId: Record<string, MeetingCardExtras> = {};
   for (const row of rows) {
@@ -85,6 +129,16 @@ function councilVotePhaseLabelFromLite(
   translate: (k: string) => string,
 ): string {
   if (!isOwnerVotingMeeting(m) || !councilBindingTitle) return '';
+
+  const mst = String(m.status ?? '').trim().toLowerCase();
+  if (mst === 'closed' || mst === 'ended' || mst === 'archived') return translate('meeting_status_closed');
+
+  if (mst === 'draft') return `${translate('meeting_status_draft')} · ${translate('vote_draft')}`;
+
+  const ovCloseIso = ovLite?.voting_closes_at?.trim() ?? '';
+  const closesMs = ovCloseIso ? new Date(ovCloseIso).getTime() : NaN;
+  if (Number.isFinite(closesMs) && Date.now() > closesMs) return translate('meeting_status_closed');
+
   if (!ovLite) return translate('vote_not_enabled');
   const raw = ovLite.status?.trim().toLowerCase() ?? '';
   if (raw === 'draft') return translate('vote_draft');
@@ -144,7 +198,7 @@ export function MeetingListView({ variant }: Props) {
     ]);
 
     let agendaErrMsg: string | null = null;
-    setMeetings(rows);
+    setMeetings(sortMeetingsForPropertyList(rows));
 
     if (e1 || rows.length === 0) {
       setCardExtrasByMeetingId({});
@@ -349,8 +403,11 @@ export function MeetingListView({ variant }: Props) {
               const ovLite = councilBind ? ovCardByCouncilTitle[councilBind] : undefined;
               const showOwnerVoteFlow = !!(councilBind && isOwnerVotingMeeting(m));
 
+              const councilEnded = councilMeetingEndedByStatus(m);
               let rowCta = primaryCtaLabel;
-              if (cardInteractive && showOwnerVoteFlow && ovLite) {
+              if (councilEnded) {
+                rowCta = rowViewResultsLabel;
+              } else if (cardInteractive && showOwnerVoteFlow && ovLite) {
                 const ovSt = ovLite.status?.trim().toLowerCase() ?? '';
                 const rawClose = ovLite.voting_closes_at?.trim() ?? '';
                 const closesMs = rawClose ? new Date(rawClose).getTime() : NaN;

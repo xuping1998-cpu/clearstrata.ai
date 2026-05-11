@@ -366,6 +366,7 @@ export function noticeReadiness(
   };
 }
 
+/** Rows are ordered in SQL for stability; `/meetings` list re-sorts client-side by status + voting window (see MeetingListView). */
 export async function getMeetingsByPropertyAndYear(propertyId: string, fiscalYear: number) {
   const { data, error } = await withProperty(
     supabase.from('meetings').select(MEETING_LIST_COLUMNS) as any,
