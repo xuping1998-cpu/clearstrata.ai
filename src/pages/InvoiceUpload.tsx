@@ -1,24 +1,12 @@
 import { useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ChevronLeft, FileUp, Loader2 } from 'lucide-react';
+import { ChevronLeft, Loader2, PenLine, Upload } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useProperty } from '../contexts/PropertyContext';
 import { useLanguage } from '../contexts/LanguageContext';
-import { supabase } from '../lib/supabase';
-import { scheduleInvoiceAiAuditAfterInsert } from '../lib/invoiceAudit';
+import { uploadInvoiceDocumentDirect, isAllowedInvoiceUploadFile } from '../lib/invoiceDirectUpload';
 import { currentAccountingDefaults } from '../lib/invoiceAccountingPeriod';
-
-function readFileAsBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      resolve(result.split(',')[1] ?? '');
-    };
-    reader.onerror = () => reject(new Error('read failed'));
-    reader.readAsDataURL(file);
-  });
-}
+import { getPdfPageCountFromFile, processPayablePdfPackage } from '../lib/invoicePdfPackage';
 
 export function InvoiceUpload() {
   const { profile } = useAuth();
@@ -26,170 +14,99 @@ export function InvoiceUpload() {
   const { language } = useLanguage();
   const en = language === 'en';
   const navigate = useNavigate();
-  const inputRef = useRef<HTMLInputElement>(null);
+  const packagePdfInputRef = useRef<HTMLInputElement>(null);
+  const supplementInputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
   const [accountingYear, setAccountingYear] = useState(() => currentAccountingDefaults().year);
   const [accountingMonth, setAccountingMonth] = useState(() => currentAccountingDefaults().month);
 
-  async function handleFile(file: File) {
+  async function handlePackageFile(file: File) {
+    if (!profile || !currentPropertyId) {
+      window.alert(en ? 'Missing profile or property.' : '未登录或未选择物业。');
+      return;
+    }
+    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+    if (!isPdf) {
+      window.alert(en ? 'Please choose a PDF payable package.' : '请选择 PDF 发票包。');
+      return;
+    }
+
+    setBusy(true);
+    setHint(en ? 'Reading PDF…' : '正在读取 PDF…');
+
+    try {
+      const pageCount = await getPdfPageCountFromFile(file);
+      if (pageCount <= 1) {
+        window.alert(
+          en
+            ? 'Only one page found. Use “Single-file supplement” for one-page PDFs, or merge pages into a package.'
+            : '仅检测到 1 页。请使用「单张补录」上传单页 PDF，或将多页合并为发票包后再用主入口。',
+        );
+        return;
+      }
+      setHint(en ? `Processing ${pageCount}-page package…` : `正在处理 ${pageCount} 页发票包…`);
+      const summary = await processPayablePdfPackage({
+        file,
+        profileId: profile.id,
+        propertyId: currentPropertyId,
+        accountingYear,
+        accountingMonth,
+        langEn: en,
+        onProgress: (p) => setHint(en ? p.messageEn : p.messageZh),
+      });
+      window.alert(
+        en
+          ? `PDF upload complete.\nTotal pages: ${summary.totalPages}\nInvoices recognized: ${summary.recognizedInvoices}\nSkipped: ${summary.skippedPages}`
+          : `PDF 上传完成\n总页数：${summary.totalPages}\n识别发票：${summary.recognizedInvoices}\n跳过：${summary.skippedPages}`,
+      );
+      setHint(en ? 'Done. Opening invoice list…' : '完成，正在打开发票列表…');
+      navigate('/finance?tab=invoices');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      window.alert((en ? 'Package upload failed: ' : '发票包上传失败：') + msg);
+      setHint(null);
+    } finally {
+      setBusy(false);
+      if (packagePdfInputRef.current) packagePdfInputRef.current.value = '';
+    }
+  }
+
+  async function handleSupplementFile(file: File) {
     if (!profile || !currentPropertyId) {
       window.alert(en ? 'Missing profile or property.' : '未登录或未选择物业。');
       return;
     }
 
+    if (!isAllowedInvoiceUploadFile(file)) {
+      window.alert(en ? 'Please upload a PDF, JPG, or PNG file.' : '请上传 PDF、JPG 或 PNG 格式的文件。');
+      return;
+    }
+
+    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+    if (isPdf) {
+      const pageCount = await getPdfPageCountFromFile(file);
+      if (pageCount > 1) {
+        window.alert(en ? 'Multi-page PDFs belong under “Upload PDF payable package”.' : '多页 PDF 请使用「上传 PDF 发票包」主入口。');
+        if (supplementInputRef.current) supplementInputRef.current.value = '';
+        return;
+      }
+    }
+
     setBusy(true);
-    setHint(en ? 'Reading file…' : '正在读取文件…');
+    setHint(en ? 'Uploading supplement…' : '正在上传补录…');
 
     try {
-      const fileBase64 = await readFileAsBase64(file);
-      setHint(en ? 'Running invoice OCR…' : '正在调用发票识别…');
-
-      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/invoice-ocr`;
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          fileBase64,
-          mimeType: file.type || 'application/pdf',
-        }),
+      const { invoiceId } = await uploadInvoiceDocumentDirect({
+        file,
+        profileId: profile.id,
+        propertyId: currentPropertyId,
+        accountingYear,
+        accountingMonth,
+        langEn: en,
       });
 
-      const data = await response.json();
-      if (!data.success || !data.extracted) {
-        const err = data as { message?: string; message_zh?: string; error?: string };
-        const msg =
-          (en ? err.message : err.message_zh) ||
-          err.message ||
-          err.message_zh ||
-          (en ? 'OCR failed.' : '识别失败');
-        throw new Error(String(msg));
-      }
-
-      const ex = data.extracted as {
-        vendor?: string;
-        invoice_number?: string;
-        invoice_date?: string;
-        total_amount?: string;
-        tax_amount?: string;
-        currency?: string;
-        summary?: string;
-        raw_text?: string;
-        items?: Array<{ description?: string; amount?: string }>;
-      };
-
-      const structured = data.structured as
-        | { vendor?: string; amount?: string; date?: string; items?: Array<{ description?: string; amount?: string }> }
-        | undefined;
-
-      const parseAmount = (s: unknown): number => {
-        if (typeof s === 'number' && Number.isFinite(s)) return s;
-        if (typeof s !== 'string') return 0;
-        const cleaned = s.replace(/[^\d.-]/g, '');
-        const n = parseFloat(cleaned);
-        return Number.isFinite(n) ? n : 0;
-      };
-
-      const total = parseAmount(ex.total_amount);
-      const tax = parseAmount(ex.tax_amount);
-      const subtotal = Math.max(0, total - tax);
-
-      const line_items: { description: string; amount: number }[] = Array.isArray(ex.items)
-        ? ex.items.map((it) => ({
-            description: String(it?.description ?? ''),
-            amount: parseAmount(it?.amount),
-          }))
-        : [];
-
-      const extracted = {
-        vendor_name: ex.vendor || (en ? 'Unknown vendor' : '未知供应商'),
-        invoice_number: ex.invoice_number || null,
-        invoice_date: ex.invoice_date || new Date().toISOString().split('T')[0],
-        due_date: null as string | null,
-        subtotal,
-        tax_amount: tax,
-        total_amount: total,
-        hst_number: null as string | null,
-        currency: ex.currency || 'CAD',
-        category: 'general',
-        description: ex.summary || null,
-        line_items,
-        has_anomalies: false,
-        anomaly_notes: '',
-        raw_text: ex.raw_text || '',
-      };
-
-      const invDateStr = extracted.invoice_date || new Date().toISOString().split('T')[0];
-      const fiscalYear = parseInt(String(invDateStr).slice(0, 4), 10) || new Date().getFullYear();
-
-      setHint(en ? 'Uploading to storage…' : '正在上传至存储…');
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-      const filePath = `invoices/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage.from('documents').upload(filePath, file);
-      if (uploadError) throw uploadError;
-
-      const { data: pub } = supabase.storage.from('documents').getPublicUrl(filePath);
-
-      setHint(en ? 'Saving invoice…' : '正在保存发票…');
-
-      const { data: insertedInvoice, error: dbError } = await supabase
-        .from('invoices')
-        .insert({
-          property_id: currentPropertyId,
-          file_name: file.name,
-          document_url: pub.publicUrl,
-          vendor_name: extracted.vendor_name,
-          invoice_number: extracted.invoice_number,
-          invoice_date: extracted.invoice_date,
-          due_date: extracted.due_date,
-          subtotal: extracted.subtotal,
-          tax_amount: extracted.tax_amount,
-          total_amount: extracted.total_amount,
-          hst_number: extracted.hst_number,
-          currency: extracted.currency || 'CAD',
-          category: extracted.category || 'general',
-          notes: extracted.description,
-          has_anomalies: Boolean(extracted.has_anomalies),
-          ai_extracted_data: extracted,
-          ai_confidence_score: 0.85,
-          uploaded_by: profile.id,
-          status: 'pending_review',
-          fiscal_year: fiscalYear,
-          accounting_year: accountingYear,
-          accounting_month: accountingMonth,
-        })
-        .select('id')
-        .single();
-
-      if (dbError) throw dbError;
-      const invoiceId = (insertedInvoice as { id: string } | null)?.id;
-      if (!invoiceId) throw new Error(en ? 'Missing invoice id' : '保存后缺少发票 ID');
-
-      try {
-        const structuredPayload = structured ?? {
-          vendor: extracted.vendor_name,
-          amount: extracted.total_amount,
-          date: extracted.invoice_date,
-          items: line_items.map((x) => ({ description: x.description, amount: x.amount })),
-        };
-        await supabase.from('invoice_ocr_raw').insert({
-          invoice_id: invoiceId,
-          property_id: currentPropertyId,
-          structured_json: structuredPayload,
-          raw_text: typeof ex.raw_text === 'string' ? ex.raw_text : null,
-          ocr_model: 'claude-sonnet-4-20250514',
-        });
-      } catch (e) {
-        console.error('invoice_ocr_raw', e);
-      }
-
-      scheduleInvoiceAiAuditAfterInsert(invoiceId, currentPropertyId);
-      setHint(en ? 'Done. Redirecting…' : '完成，正在跳转…');
+      setHint(en ? 'Saved. Redirecting…' : '补录已保存，正在跳转…');
       navigate(`/finance?tab=invoices&invoice=${encodeURIComponent(invoiceId)}`);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -197,7 +114,7 @@ export function InvoiceUpload() {
       setHint(null);
     } finally {
       setBusy(false);
-      if (inputRef.current) inputRef.current.value = '';
+      if (supplementInputRef.current) supplementInputRef.current.value = '';
     }
   }
 
@@ -219,11 +136,16 @@ export function InvoiceUpload() {
         {en ? 'Home' : '首页'}
       </Link>
 
-      <h1 className="text-2xl font-bold text-gray-900">{en ? 'Upload invoice' : '上传发票'}</h1>
-      <p className="mt-2 text-sm text-gray-600">
+      <h1 className="text-2xl font-bold text-gray-900">{en ? 'Expense Review uploads' : '支出审核 · 上传'}</h1>
+      <p className="mt-2 text-sm font-semibold text-gray-900">{en ? 'Main: monthly payable PDF package' : '主流程：整月 PDF 发票包'}</p>
+      <p className="mt-1 text-sm text-gray-600">
         {en
-          ? 'PDF or image. We run OCR, then save the invoice under Expense Review.'
-          : '支持 PDF 或图片。系统将识别并保存到支出审核模块。'}
+          ? 'Typical strata workflow—upload the full manager export (many pages). No AI required to upload.'
+          : '常规做法是上传物业管理公司整包导出（多页）。上传本身不依赖 AI。'}
+      </p>
+      <p className="mt-3 text-xs font-semibold text-gray-800">{en ? 'Supplement: one-off receipt' : '补录：零散单张'}</p>
+      <p className="mt-1 text-xs text-gray-600">
+        {en ? 'Single-page PDF or photo only. Multi-page PDFs must use the main package button.' : '仅单页 PDF 或照片；多页 PDF 必须使用主入口。'}
       </p>
 
       <div className="mt-6 space-y-3 rounded-xl border border-gray-200 bg-gray-50/80 px-4 py-4 text-sm">
@@ -272,26 +194,47 @@ export function InvoiceUpload() {
         </p>
       </div>
 
-      <div className="mt-8">
-        <input
-          ref={inputRef}
-          type="file"
-          accept="application/pdf,image/jpeg,image/png,image/webp"
-          className="hidden"
-          disabled={busy || !profile}
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) void handleFile(f);
-          }}
-        />
+      <input
+        ref={packagePdfInputRef}
+        type="file"
+        accept="application/pdf,.pdf"
+        className="hidden"
+        disabled={busy || !profile}
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) void handlePackageFile(f);
+        }}
+      />
+      <input
+        ref={supplementInputRef}
+        type="file"
+        accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png"
+        className="hidden"
+        disabled={busy || !profile}
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) void handleSupplementFile(f);
+        }}
+      />
+
+      <div className="mt-8 flex flex-col gap-2">
         <button
           type="button"
-          className="btn-primary w-full gap-2 sm:w-auto"
+          className="btn-primary inline-flex w-full items-center justify-center gap-2"
           disabled={busy || !profile}
-          onClick={() => inputRef.current?.click()}
+          onClick={() => packagePdfInputRef.current?.click()}
         >
-          {busy ? <Loader2 className="size-4 animate-spin" /> : <FileUp className="size-4" />}
-          {en ? 'Choose file' : '选择文件'}
+          {busy ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+          {en ? 'Upload PDF payable package' : '上传 PDF 发票包（主流程）'}
+        </button>
+        <button
+          type="button"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+          disabled={busy || !profile}
+          onClick={() => supplementInputRef.current?.click()}
+        >
+          <PenLine className="size-4 shrink-0" />
+          {en ? 'Single-file supplement (1-page PDF / image)' : '单张补录（单页 PDF / 图片）'}
         </button>
       </div>
 

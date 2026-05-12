@@ -77,6 +77,7 @@ import {
   canManageUnitWhitelist,
   canReviewJoinRequests,
 } from './lib/propertyPermissions';
+import { isPlatformAdmin } from './lib/permissions';
 import type { UserRole } from './lib/supabase';
 import { supabase } from './lib/supabase';
 import { useHasActivePropertyMembership } from './hooks/useHasActivePropertyMembership';
@@ -387,6 +388,13 @@ function PropertyAdminIndexRoute() {
   return <Navigate to="/" replace />;
 }
 
+/** Property staff or platform operators (`profiles.app_role`) may open People management (external contacts tab is platform-only inside the page). */
+function PlatformOrStaffPeopleGate({ children }: { children: ReactNode }) {
+  const { profile } = useAuth();
+  if (isPlatformAdmin(profile as { app_role?: string | null } | null)) return <>{children}</>;
+  return <AdminStaffRoute canAccess={canAccessPropertyPeoplePage}>{children}</AdminStaffRoute>;
+}
+
 function PropertyAdminPeopleLayoutRoute() {
   const { session } = useAuth();
   const { memberships, currentPropertyId } = useProperty();
@@ -394,9 +402,9 @@ function PropertyAdminPeopleLayoutRoute() {
   if (!memberships.length || !currentPropertyId) return <Navigate to="/" replace />;
   return (
     <Layout>
-      <AdminStaffRoute canAccess={canAccessPropertyPeoplePage}>
+      <PlatformOrStaffPeopleGate>
         <PropertyPeoplePage />
-      </AdminStaffRoute>
+      </PlatformOrStaffPeopleGate>
     </Layout>
   );
 }

@@ -23,7 +23,7 @@ interface TabConfig {
 const allTabs: TabConfig[] = [
   { key: 'invoices', labelEn: 'Invoice Management', labelZh: '发票管理', icon: <FileText size={18} /> },
   { key: 'budget', labelEn: 'Budget', labelZh: '年度预算', icon: <PieChart size={18} /> },
-  { key: 'interpreter', labelEn: 'AI Interpreter', labelZh: 'AI发票解读', icon: <Bot size={18} /> },
+  { key: 'interpreter', labelEn: 'AI Review', labelZh: 'AI审核', icon: <Bot size={18} /> },
   { key: 'revenue', labelEn: 'Revenue Dashboard', labelZh: '收入看板', icon: <TrendingUp size={18} /> },
 ];
 
@@ -148,6 +148,19 @@ export function Finance() {
             <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 pb-3">
               <button
                 type="button"
+                disabled={invoiceToolbarUploading}
+                onClick={() => invoiceLedgerRef.current?.openUploadModal()}
+                className={`inline-flex items-center gap-1.5 rounded-lg bg-clearstrata-ui-primary px-2.5 py-1.5 text-xs font-medium text-white transition-colors sm:gap-2 sm:px-3 sm:py-2 sm:text-sm ${
+                  invoiceToolbarUploading
+                    ? 'pointer-events-none opacity-50'
+                    : 'hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive'
+                }`}
+              >
+                <Upload size={16} className="sm:h-[18px] sm:w-[18px]" />
+                {invoiceToolbarUploading ? (l ? 'Working…' : '处理中…') : l ? 'Upload package' : '上传发票包'}
+              </button>
+              <button
+                type="button"
                 onClick={() => invoiceLedgerRef.current?.exportCsv()}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 sm:gap-2 sm:px-3 sm:py-2 sm:text-sm"
               >
@@ -161,19 +174,6 @@ export function Finance() {
               >
                 <FileSpreadsheet size={14} />
                 Excel
-              </button>
-              <button
-                type="button"
-                disabled={invoiceToolbarUploading}
-                onClick={() => invoiceLedgerRef.current?.openUploadModal()}
-                className={`inline-flex items-center gap-1.5 rounded-lg bg-clearstrata-ui-primary px-2.5 py-1.5 text-xs font-medium text-white transition-colors sm:gap-2 sm:px-3 sm:py-2 sm:text-sm ${
-                  invoiceToolbarUploading
-                    ? 'pointer-events-none opacity-50'
-                    : 'hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive'
-                }`}
-              >
-                <Upload size={16} className="sm:h-[18px] sm:w-[18px]" />
-                {invoiceToolbarUploading ? (l ? 'Working…' : '处理中…') : l ? 'Upload' : '上传发票'}
               </button>
             </div>
           )}

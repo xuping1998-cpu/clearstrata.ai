@@ -61,7 +61,7 @@ export function ImportantUpdatesDashboardCard({ langEn, bullets }: ImportantUpda
           </div>
         </div>
         <Link
-          to="/meetings"
+          to="/owner-info?tab=announcements#owner-announcements"
           className="inline-flex shrink-0 items-center justify-center rounded-lg border border-clearstrata-ui-softBorder bg-white px-3 py-1.5 text-xs font-semibold text-clearstrata-brand-900 shadow-sm hover:bg-clearstrata-brand-50 active:bg-clearstrata-brand-100/80 sm:text-[13px]"
         >
           {cta}
