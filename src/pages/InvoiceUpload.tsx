@@ -94,10 +94,10 @@ export function InvoiceUpload() {
     }
 
     setBusy(true);
-    setHint(en ? 'Uploading supplement…' : '正在上传补录…');
+    setHint(en ? 'Upload & scan…' : '上传并识别中…');
 
     try {
-      const { invoiceId } = await uploadInvoiceDocumentDirect({
+      const { invoiceId, status } = await uploadInvoiceDocumentDirect({
         file,
         profileId: profile.id,
         propertyId: currentPropertyId,
@@ -106,7 +106,15 @@ export function InvoiceUpload() {
         langEn: en,
       });
 
-      setHint(en ? 'Saved. Redirecting…' : '补录已保存，正在跳转…');
+      if (status === 'draft_manual') {
+        window.alert(
+          en
+            ? 'Saved as draft (needs details)—not in the review queue yet. Open the invoice, complete fields, then submit for review.'
+            : '已保存为「待补充信息」。请打开发票补齐后提交「待审核」。',
+        );
+      }
+
+      setHint(en ? 'Saved. Redirecting…' : '已保存，正在跳转…');
       navigate(`/finance?tab=invoices&invoice=${encodeURIComponent(invoiceId)}`);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);

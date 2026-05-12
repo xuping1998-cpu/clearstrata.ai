@@ -38,6 +38,7 @@ import { computeQuoteInvoiceVariance, isRedAlertVariance, type QuoteVarianceResu
 import { exportInvoiceApprovalPdf } from '../../lib/pdf/exportInvoiceApprovalPdf';
 import { QuoteVariancePanel } from '../../components/finance/QuoteVariancePanel';
 import { uploadInvoiceDocumentDirect, isAllowedInvoiceUploadFile } from '../../lib/invoiceDirectUpload';
+import { ocrPrefillCredibility } from '../../lib/invoiceSingleUploadCredibility';
 import {
   getPdfPageCountFromFile,
   processPayablePdfPackage,
@@ -172,6 +173,11 @@ function statusStyle(status: string): { labelZh: string; labelEn: string; classN
     pending_upload: { labelZh: '上传中', labelEn: 'Uploading', className: 'bg-gray-100 text-gray-700' },
     ai_processing: { labelZh: 'AI识别中', labelEn: 'AI processing', className: 'bg-slate-100 text-slate-700' },
     pending_review: { labelZh: '待审核', labelEn: 'Pending review', className: 'bg-blue-100 text-blue-800' },
+    draft_manual: {
+      labelZh: '待补充信息',
+      labelEn: 'Needs details',
+      className: 'bg-amber-100 text-amber-900 ring-1 ring-amber-200',
+    },
     approved: { labelZh: '已批准', labelEn: 'Approved', className: 'bg-clearstrata-brand-100 text-clearstrata-brand-800' },
     paid: { labelZh: '已付款', labelEn: 'Paid', className: 'bg-cyan-100 text-cyan-800' },
     rejected: { labelZh: '已拒绝', labelEn: 'Rejected', className: 'bg-red-100 text-red-800' },
@@ -835,9 +841,9 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
     setPayablePackageSummary(null);
 
     try {
-      setUploadProgress(l ? 'Uploading file…' : '正在上传文件…');
+      setUploadProgress(l ? 'Uploading & scanning…' : '上传并识别中…');
 
-      const { invoiceId } = await uploadInvoiceDocumentDirect({
+      const { invoiceId, status } = await uploadInvoiceDocumentDirect({
         file,
         profileId: profile.id,
         propertyId: currentPropertyId,
@@ -847,9 +853,13 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
       });
 
       setUploadFollowUpHint(
-        l
-          ? 'Supplement upload saved as pending review. Edit in the list or use AI Review if needed.'
-          : '补录已保存为「待审核」。请在列表中核对字段，必要时使用「AI审核」。',
+        status === 'pending_review'
+          ? l
+            ? 'OCR prefilled fields. Review in the list; use AI Review only for anomalies, duplicates, budgets, etc.'
+            : '已从 OCR 预填。「AI审核」仅用于异常/重复/预算等辅助分析，不负责基础 OCR 预填。'
+          : l
+            ? 'Saved as draft (needs details)—not in the review queue yet. Open it, fill in fields, then submit for review.'
+            : '已保存为「待补充信息」草稿，暂不进入待审核。请点开补齐后提交待审核。',
       );
       window.setTimeout(() => setUploadFollowUpHint(''), 12000);
 
@@ -2191,6 +2201,15 @@ function InvoiceDetailModal({
   const [devJsonOpen, setDevJsonOpen] = useState(false);
   const [auditBanner, setAuditBanner] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
 
+  /** draft_manual — minimal ledger fields before moving to council queue */
+  const [draftVendor, setDraftVendor] = useState('');
+  const [draftInvoiceNumber, setDraftInvoiceNumber] = useState('');
+  const [draftInvoiceDate, setDraftInvoiceDate] = useState('');
+  const [draftSubtotal, setDraftSubtotal] = useState('');
+  const [draftTax, setDraftTax] = useState('');
+  const [draftTotal, setDraftTotal] = useState('');
+  const [draftSubmitSaving, setDraftSubmitSaving] = useState(false);
+
   const st = statusStyle(invoice.status);
   const aiData = invoice.ai_extracted_data as Record<string, unknown> | null;
 
@@ -2236,6 +2255,25 @@ function InvoiceDetailModal({
     setEditAccountingMonth(effectiveAccountingMonth(invoice));
     setApprovalNote('');
   }, [invoice]);
+
+  useEffect(() => {
+    if (invoice.status !== 'draft_manual') return;
+    setDraftVendor(invoice.vendor_name ?? '');
+    setDraftInvoiceNumber(invoice.invoice_number ?? '');
+    setDraftInvoiceDate((invoice.invoice_date ?? '').slice(0, 10));
+    setDraftSubtotal(String(Number(invoice.subtotal ?? 0)));
+    setDraftTax(String(Number(invoice.tax_amount ?? 0)));
+    setDraftTotal(String(Number(invoice.total_amount ?? 0)));
+  }, [
+    invoice.id,
+    invoice.status,
+    invoice.vendor_name,
+    invoice.invoice_number,
+    invoice.invoice_date,
+    invoice.subtotal,
+    invoice.tax_amount,
+    invoice.total_amount,
+  ]);
 
   const accountingYearModalOptions = useMemo(() => {
     const cy = new Date().getFullYear();
@@ -2418,6 +2456,88 @@ function InvoiceDetailModal({
       ? linkedTasks.find((t) => t.taskId === invoice.related_task_id)?.title ?? relatedTaskTitleFallback
       : null;
 
+  const submitDraftManualForReview = async () => {
+    if (!profile || !canAudit || !currentPropertyId) return;
+    const invoiceDateTrim = draftInvoiceDate.trim();
+    if (!invoiceDateTrim) {
+      alert(l ? 'Invoice date is required.' : '请填写开票日期。');
+      return;
+    }
+
+    let hintBlob = '';
+    const aid = invoice.ai_extracted_data;
+    if (aid && typeof aid === 'object') {
+      const oc = aid as Record<string, unknown>;
+      const att = oc.ocr_attempt as { raw_text?: string } | undefined;
+      hintBlob += typeof att?.raw_text === 'string' ? `${att.raw_text}\n` : '';
+    }
+    if (invoice.notes?.trim()) hintBlob += `${invoice.notes}\n`;
+
+    const totalNum = Number(draftTotal);
+    const subNum = Number(draftSubtotal);
+    const taxNum = Number(draftTax);
+
+    const cred = ocrPrefillCredibility({
+      vendorName: draftVendor,
+      invoiceNumber: draftInvoiceNumber,
+      totalAmount: totalNum,
+      langEn: l,
+      combinedTextHint: hintBlob,
+    });
+
+    if (!cred) {
+      alert(
+        l
+          ? 'Need a plausible amount: supplier + non‑zero total, or invoice # + non‑zero total, or credit memo wording with negative total.'
+          : '金额需可信：供应商+非零总额，或发票号+非零总额，或为贷项且总额为负。',
+      );
+      return;
+    }
+
+    setDraftSubmitSaving(true);
+    try {
+      const aiBase =
+        aid && typeof aid === 'object' ? ({ ...(aid as Record<string, unknown>) } as Record<string, unknown>) : {};
+      aiBase.draft_submitted_for_review_at = new Date().toISOString();
+
+      const { error } = await supabase
+        .from('invoices')
+        .update({
+          property_id: currentPropertyId,
+          vendor_name: draftVendor.trim() || invoice.vendor_name,
+          invoice_number: draftInvoiceNumber.trim() || null,
+          invoice_date: invoiceDateTrim,
+          subtotal: subNum,
+          tax_amount: taxNum,
+          total_amount: totalNum,
+          status: 'pending_review',
+          ai_extracted_data: aiBase,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('property_id', currentPropertyId)
+        .eq('id', invoice.id);
+
+      if (error) {
+        alert(error.message);
+        return;
+      }
+
+      await supabase.from('invoice_audit_log').insert({
+        property_id: currentPropertyId,
+        invoice_id: invoice.id,
+        actor_id: profile.id,
+        action: 'draft_submit_review',
+        notes: l ? 'Submitted manual draft for council review.' : '手工草稿提交待审核。',
+        old_status: invoice.status,
+        new_status: 'pending_review',
+      });
+
+      await onRefresh();
+    } finally {
+      setDraftSubmitSaving(false);
+    }
+  };
+
   const saveEdits = async () => {
     if (!profile || !canAudit || !currentPropertyId) return;
     setSaving(true);
@@ -2504,6 +2624,7 @@ function InvoiceDetailModal({
       reject: { en: 'Rejected', zh: '驳回' },
       mark_paid: { en: 'Marked paid', zh: '标记已付款' },
       edit_details: { en: 'Edited details', zh: '编辑信息' },
+      draft_submit_review: { en: 'Draft → pending review', zh: '草稿提交待审核' },
     };
     return l ? m[a]?.en || a : m[a]?.zh || a;
   };
@@ -2549,6 +2670,90 @@ function InvoiceDetailModal({
             role="status"
           >
             {auditBanner.msg}
+          </div>
+        ) : null}
+
+        {invoice.status === 'draft_manual' && canAudit ? (
+          <div
+            className="mx-4 mt-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-4 shadow-sm sm:mx-6"
+            aria-labelledby="draft-manual-heading"
+          >
+            <h3 id="draft-manual-heading" className="text-sm font-semibold text-amber-950">
+              {l ? 'Complete details — not yet in council review queue' : '待补充信息（尚未进入待审核队列）'}
+            </h3>
+            <p className="mt-1 text-xs text-amber-900/85 leading-relaxed">
+              {l
+                ? 'OCR could not pre-fill confidently. Fill key fields below, then submit—AI Review stays optional for anomalies, duplicates, and budgets.'
+                : '系统自动识别未达到可信预填阈值。补齐下方字段后可提交「待审核」；「AI审核」仍为可选辅助，用于异常/重复/预算等。'}
+            </p>
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="block text-xs font-medium text-amber-950">
+                {l ? 'Supplier' : '供应商'}
+                <input
+                  value={draftVendor}
+                  onChange={(e) => setDraftVendor(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm text-gray-900"
+                />
+              </label>
+              <label className="block text-xs font-medium text-amber-950">
+                {l ? 'Invoice #' : '发票号'}
+                <input
+                  value={draftInvoiceNumber}
+                  onChange={(e) => setDraftInvoiceNumber(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm text-gray-900"
+                />
+              </label>
+              <label className="block text-xs font-medium text-amber-950">
+                {l ? 'Invoice date' : '开票日期'}
+                <input
+                  type="date"
+                  value={draftInvoiceDate}
+                  onChange={(e) => setDraftInvoiceDate(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm text-gray-900"
+                />
+              </label>
+              <label className="block text-xs font-medium text-amber-950">
+                {l ? 'Subtotal (pre-tax)' : '税前'}
+                <input
+                  inputMode="decimal"
+                  value={draftSubtotal}
+                  onChange={(e) => setDraftSubtotal(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm text-gray-900"
+                />
+              </label>
+              <label className="block text-xs font-medium text-amber-950">
+                {l ? 'GST / PST (tax)' : 'GST / PST 等税额'}
+                <input
+                  inputMode="decimal"
+                  value={draftTax}
+                  onChange={(e) => setDraftTax(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm text-gray-900"
+                />
+              </label>
+              <label className="block text-xs font-medium text-amber-950">
+                {l ? 'Total (incl. tax)' : '总额（含税）'}
+                <input
+                  inputMode="decimal"
+                  value={draftTotal}
+                  onChange={(e) => setDraftTotal(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm text-gray-900"
+                />
+              </label>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={draftSubmitSaving}
+                onClick={() => void submitDraftManualForReview()}
+                className="rounded-lg bg-clearstrata-ui-primary px-4 py-2 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:opacity-50"
+              >
+                {draftSubmitSaving
+                  ? '…'
+                  : l
+                    ? 'Submit for review (pending)'
+                    : '保存并提交待审核'}
+              </button>
+            </div>
           </div>
         ) : null}
 

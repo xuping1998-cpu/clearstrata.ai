@@ -10,9 +10,10 @@ const LONG_TEXT_LAYER_MIN_CHARS = 72;
 
 /** When pdf.js yields enough text, require an invoice-like cue before spending OCR budget. */
 export const INVOICE_DOC_KEYWORD_RE =
-  /\b(invoice|tax\s*invoice|statement|bill|credit\s*note|payable\s*summary)\b/i;
+  /\b(invoice|tax\s*invoice|statement|bill|credit\s*note|credit\s*memo|payable\s*summary)\b/i;
 
-export const CREDIT_NOTE_RE = /\bcredit\s*note\b/i;
+/** Credit adjustments: match page text or OCR raw_text for labeling + relaxed insert gate. */
+export const CREDIT_NOTE_OR_MEMO_RE = /\b(credit\s*note|credit\s*memo)\b/i;
 
 let pdfWorkerConfigured = false;
 
@@ -94,15 +95,65 @@ export async function getPdfPageCountFromFile(file: File): Promise<number> {
   return countPdfPagesPdfLib(buf);
 }
 
-function isPlausibleOcrRow(extracted: {
-  vendor_name?: string;
-  invoice_number?: string | null;
-  total_amount?: number;
+function normalizeVendorDedupKey(vendor: string): string {
+  return vendor.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function normalizeInvoiceNumberDedupKey(inv: string): string {
+  return inv.trim().toLowerCase().replace(/[\s-]+/g, '');
+}
+
+/** Stable cents key for batch duplicate detection. */
+function totalAmountDedupKey(totalAmount: number): string {
+  if (!Number.isFinite(totalAmount)) return 'nan';
+  const cents = Math.round(totalAmount * 100);
+  return String(cents);
+}
+
+function creditNoteOrMemoDetected(collapsedPageText: string, ocrRawText?: string): boolean {
+  const blob = `${collapsedPageText}\n${typeof ocrRawText === 'string' ? ocrRawText : ''}`;
+  return CREDIT_NOTE_OR_MEMO_RE.test(blob);
+}
+
+/**
+ * Replaces the former loose `isPlausibleOcrRow` (vendor OR inv OR tiny total).
+ * Tight insert gate: cannot rely on total alone.
+ * (vendor ∧ |total|>0) ∨ (invoice_number ∧ |total|>0) ∨ (credit memo/note detected ∧ total<0)
+ */
+function passesTightInvoiceInsertGate(opts: {
+  vendorTrim: string;
+  invoiceNumberTrim: string;
+  totalAmount: number;
+  creditNoteOrMemo: boolean;
 }): boolean {
-  const v = (extracted.vendor_name ?? '').trim();
-  const inv = (extracted.invoice_number ?? '').trim();
-  const amt = Number(extracted.total_amount);
-  return Boolean(v) || Boolean(inv) || (Number.isFinite(amt) && Math.abs(amt) >= 0.01);
+  const { vendorTrim, invoiceNumberTrim, totalAmount: raw, creditNoteOrMemo } = opts;
+  const amt = Number(raw);
+  const finite = Number.isFinite(amt);
+  const nonZero = finite && Math.abs(amt) > 0;
+  const negative = finite && amt < 0;
+
+  return (
+    (Boolean(vendorTrim) && nonZero) ||
+    (Boolean(invoiceNumberTrim) && nonZero) ||
+    (creditNoteOrMemo && negative)
+  );
+}
+
+/** Likely summary / continuation: invoice-ish keywords in text layer but OCR found no vendor or invoice # (unless credit memo + negative total). */
+function shouldSkipLikelyContinuationPage(opts: {
+  invoiceKeywordHitInPageText: boolean;
+  vendorTrim: string;
+  invoiceNumberTrim: string;
+  creditNoteOrMemo: boolean;
+  totalAmount: number;
+}): boolean {
+  const { invoiceKeywordHitInPageText, vendorTrim, invoiceNumberTrim, creditNoteOrMemo, totalAmount } =
+    opts;
+  const amt = Number(totalAmount);
+  if (!invoiceKeywordHitInPageText) return false;
+  if (vendorTrim || invoiceNumberTrim) return false;
+  if (creditNoteOrMemo && amt < 0) return false;
+  return true;
 }
 
 /**
@@ -150,6 +201,11 @@ export async function processPayablePdfPackage(opts: {
   let skippedPages = 0;
   const createdInvoiceIds: string[] = [];
 
+  /** Same vendor + invoice # already imported in this package run (multi-page bills). */
+  const seenVendorInvoicePair = new Set<string>();
+  /** vendor + invoice # + amount — skip exact duplicates in one batch */
+  const seenVendorInvoiceAmountTriple = new Set<string>();
+
   const base = sanitizeBaseName(file.name.replace(/\.pdf$/i, ''));
   const today = new Date().toISOString().split('T')[0];
 
@@ -189,22 +245,63 @@ export async function processPayablePdfPackage(opts: {
     }
 
     const ex = ocr.extracted;
-    if (!isPlausibleOcrRow(ex)) {
+
+    const vendorTrim = (ex.vendor_name ?? '').trim();
+    const invoiceNumberTrim = (ex.invoice_number ?? '').trim();
+    const totalAmt = Number(ex.total_amount);
+    const creditNoteOrMemo = creditNoteOrMemoDetected(collapsed, ex.raw_text);
+    const invoiceKeywordHitInPageText = INVOICE_DOC_KEYWORD_RE.test(collapsed);
+
+    if (
+      shouldSkipLikelyContinuationPage({
+        invoiceKeywordHitInPageText,
+        vendorTrim,
+        invoiceNumberTrim,
+        creditNoteOrMemo,
+        totalAmount: totalAmt,
+      })
+    ) {
       skippedPages++;
       continue;
     }
 
-    const creditFromText = CREDIT_NOTE_RE.test(collapsed);
-    const creditFromAmount = Number(ex.total_amount) < -0.009;
-    const isCreditNote = creditFromText || creditFromAmount;
+    if (
+      !passesTightInvoiceInsertGate({
+        vendorTrim,
+        invoiceNumberTrim,
+        totalAmount: totalAmt,
+        creditNoteOrMemo,
+      })
+    ) {
+      skippedPages++;
+      continue;
+    }
 
-    const vendor = ex.vendor_name?.trim() || '';
-    const invoiceNumber = ex.invoice_number ?? null;
+    const vk = normalizeVendorDedupKey(vendorTrim);
+    const ik = normalizeInvoiceNumberDedupKey(invoiceNumberTrim);
+    if (vk && ik) {
+      const pairKey = `${vk}\x00${ik}`;
+      if (seenVendorInvoicePair.has(pairKey)) {
+        skippedPages++;
+        continue;
+      }
+    }
+
+    const tripleKey = `${vk}\x00${ik}\x00${totalAmountDedupKey(totalAmt)}`;
+    if (seenVendorInvoiceAmountTriple.has(tripleKey)) {
+      skippedPages++;
+      continue;
+    }
+
+    const isCreditNote = creditNoteOrMemo || totalAmt < 0;
+
+    const vendor = vendorTrim;
+    const invoiceNumber = invoiceNumberTrim.length > 0 ? invoiceNumberTrim : null;
     const invoiceDate = ex.invoice_date || today;
     const dueDate = ex.due_date ?? null;
     const subtotal = ex.subtotal ?? 0;
     const taxAmount = ex.tax_amount ?? 0;
-    const totalAmount = ex.total_amount ?? 0;
+    const totalAmount = totalAmt;
     const category = ex.category || 'general';
     const notes = ex.description ?? null;
     const fiscalYear =
@@ -260,6 +357,11 @@ export async function processPayablePdfPackage(opts: {
     if (!id) throw new Error(langEn ? 'Insert returned no id' : '保存失败（无 ID）');
     createdInvoiceIds.push(id);
     recognizedInvoices++;
+
+    if (vk && ik) {
+      seenVendorInvoicePair.add(`${vk}\x00${ik}`);
+    }
+    seenVendorInvoiceAmountTriple.add(tripleKey);
 
     try {
       await supabase.from('invoice_ocr_raw').insert({
