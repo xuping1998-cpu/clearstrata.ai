@@ -17,7 +17,7 @@ type InvoiceAssistRow = {
   status: string;
 };
 
-/** AI Review tab: optional OCR extraction + audit trigger for invoices already uploaded under Expense Review. */
+/** AI audit assistant (removed from main finance nav; will embed under monthly reports). */
 export default function InvoiceInterpreter() {
   const { profile } = useAuth();
   const { currentPropertyId } = useProperty();
@@ -147,7 +147,7 @@ export default function InvoiceInterpreter() {
           <Bot className="h-5 w-5 text-clearstrata-brand-800" aria-hidden />
         </span>
         <div className="min-w-0 flex-1">
-          <h2 className="text-lg font-bold text-gray-900">{l ? 'AI Review (assistant)' : 'AI审核（辅助）'}</h2>
+          <h2 className="text-lg font-bold text-gray-900">{l ? 'AI audit (assistant)' : 'AI 审计（辅助）'}</h2>
           <p className="mt-2 text-sm leading-relaxed text-gray-600">
             {l
               ? 'AI can help extract invoice fields, surface anomalies, and suggest categorization. Upload and final approval always rely on human confirmation.'
@@ -159,7 +159,9 @@ export default function InvoiceInterpreter() {
       <div className="rounded-xl border border-gray-200 bg-gray-50/80 px-4 py-3 text-xs text-gray-700">
         <p className="flex flex-wrap items-center gap-2 font-medium text-gray-800">
           <Sparkles className="size-3.5 shrink-0 text-clearstrata-brand-700" aria-hidden />
-          {l ? 'Flow: Upload invoice → optional AI Review → manual verify → approve → archive → budget tracking.' : '流程：上传发票 → 可选 AI审核 → 手工确认/修改 → 审核 → 归档 → 预算追踪。'}
+          {l
+            ? 'Flow: upload in Invoice details → optional AI assist → verify → approve → archive → budget.'
+            : '流程：在「发票明细」上传 → 可选 AI 辅助 → 手工确认 → 审核 → 归档 → 联动预算。'}
         </p>
       </div>
 
@@ -186,7 +188,7 @@ export default function InvoiceInterpreter() {
           </div>
         ) : rows.length === 0 ? (
           <div className="px-4 py-12 text-center text-sm text-gray-500">
-            {l ? 'No invoices available for AI assist yet. Upload under Invoice Management first.' : '暂无可辅助的发票。请先在「发票管理」上传文件。'}
+            {l ? 'No invoices available for AI assist yet. Upload under Invoice details first.' : '暂无可辅助的发票。请先在「发票明细」上传文件。'}
           </div>
         ) : (
           <div className="overflow-x-auto">

@@ -19,11 +19,11 @@ export function DemoPropertyMockFinancePanel() {
 
       <div>
         <p className="text-xs font-medium text-gray-500">{d.buildingLabel}</p>
-        <h1 className="mt-1 text-3xl font-bold text-gray-900">{en ? 'Expense Review' : '支出审核'}</h1>
+        <h1 className="mt-1 text-3xl font-bold text-gray-900">{en ? 'Financial reporting' : '月度财报'}</h1>
         <p className="mt-2 text-gray-600">
           {en
-            ? 'Review, file, and track property expenses so every expense is clear and transparent.'
-            : '审核、归档和追踪物业费用，让每一笔支出干净透明。'}
+            ? 'A monthly picture of spend, anomalies, and AGM-approved budget utilization (demo build).'
+            : '演示楼栋的月度支出、异常金额与 AGM 批准预算占用示意。'}
         </p>
       </div>
 
@@ -44,7 +44,7 @@ export function DemoPropertyMockFinancePanel() {
 
       <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
         <div className="border-b border-gray-100 bg-gray-50 px-4 py-3">
-          <h2 className="text-lg font-semibold text-gray-900">{en ? 'Invoices' : '发票列表'}</h2>
+          <h2 className="text-lg font-semibold text-gray-900">{en ? 'Invoice details' : '发票明细'}</h2>
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">

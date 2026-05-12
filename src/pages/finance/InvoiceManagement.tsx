@@ -1292,6 +1292,12 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
           </Link>
         </div>
       )}
+      {hideToolbar ? (
+        <div className="mb-1">
+          <h2 className="text-xl font-semibold tracking-tight text-gray-900">{l ? 'Invoice Details' : '发票明细'}</h2>
+        </div>
+      ) : null}
+
       {uploadProgress && (
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center gap-3">
           {uploadProgress.includes('!') || uploadProgress.includes('Done') || uploadProgress.includes('完成') ? (

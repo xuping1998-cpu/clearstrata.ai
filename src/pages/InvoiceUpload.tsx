@@ -144,12 +144,12 @@ export function InvoiceUpload() {
         {en ? 'Home' : '首页'}
       </Link>
 
-      <h1 className="text-2xl font-bold text-gray-900">{en ? 'Expense Review uploads' : '支出审核 · 上传'}</h1>
+      <h1 className="text-2xl font-bold text-gray-900">{en ? 'Financial reporting · uploads' : '月度财报 · 上传发票'}</h1>
       <p className="mt-2 text-sm font-semibold text-gray-900">{en ? 'Main: monthly payable PDF package' : '主流程：整月 PDF 发票包'}</p>
       <p className="mt-1 text-sm text-gray-600">
         {en
-          ? 'Typical strata workflow—upload the full manager export (many pages). No AI required to upload.'
-          : '常规做法是上传物业管理公司整包导出（多页）。上传本身不依赖 AI。'}
+          ? 'Adds rows to Invoice details—no standalone AI audit tab needed to upload.'
+          : '导入后记录在「发票明细」；上传不依赖单独的「AI审核」导航。'}
       </p>
       <p className="mt-3 text-xs font-semibold text-gray-800">{en ? 'Supplement: one-off receipt' : '补录：零散单张'}</p>
       <p className="mt-1 text-xs text-gray-600">

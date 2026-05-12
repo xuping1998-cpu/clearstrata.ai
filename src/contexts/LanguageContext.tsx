@@ -58,7 +58,7 @@ const translations: Record<string, Record<Language, string>> = {
   nav_procurement: { en: 'Procurement Inquiry', zh: '采购询价' },
   nav_voting: { en: 'Meetings & Voting', zh: '会议投票' },
   nav_maintenance: { en: 'Maintenance', zh: '维修申请' },
-  nav_finance: { en: 'Expense Review', zh: '支出审核' },
+  nav_finance: { en: 'Financial reporting', zh: '月度财报' },
   nav_owner_info: { en: 'Owner Information', zh: '业主信息' },
   nav_review_applications: { en: 'Join requests', zh: '加入申请审核' },
   nav_communication: { en: 'Dispute Resolution', zh: '纠纷调解' },
@@ -576,7 +576,7 @@ const translations: Record<string, Record<Language, string>> = {
   maintenance_approve_cost: { en: 'Approve Cost', zh: '批准费用' },
   maintenance_confirm: { en: 'Confirm Completion', zh: '确认完成' },
 
-  finance_title: { en: 'Expense Review', zh: '支出审核' },
+  finance_title: { en: 'Financial reporting', zh: '月度财报' },
   finance_generate_bills: { en: 'Generate Bills', zh: '生成账单' },
   finance_month: { en: 'Month', zh: '月份' },
   finance_unit_size: { en: 'Unit Size', zh: '单元面积' },

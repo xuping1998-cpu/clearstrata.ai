@@ -60,7 +60,7 @@ export function FinanceBudgetTab() {
   if (!currentPropertyId) {
     return (
       <p className="text-sm text-gray-500">
-        {en ? 'Select a property to view budget.' : '请先选择物业以查看预算。'}
+        {en ? 'Select a property to view AGM-approved budget.' : '请先选择物业以查看 AGM 批准预算。'}
       </p>
     );
   }
@@ -69,7 +69,7 @@ export function FinanceBudgetTab() {
     return (
       <div className="flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white py-16 text-gray-500 shadow-sm">
         <Loader2 className="size-6 animate-spin" aria-hidden />
-        <span>{en ? 'Loading budget…' : '正在加载预算…'}</span>
+        <span>{en ? 'Loading AGM-approved budget…' : '正在加载 AGM 批准预算…'}</span>
       </div>
     );
   }
@@ -77,7 +77,7 @@ export function FinanceBudgetTab() {
   if (!summary) {
     return (
       <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-950 shadow-sm">
-        {en ? 'Budget summary is unavailable for this year.' : '暂无法加载该财年的预算摘要。'}
+        {en ? 'AGM-approved budget summary is unavailable for this year.' : '暂无法加载该财年的 AGM 批准预算摘要。'}
       </div>
     );
   }
@@ -91,10 +91,12 @@ export function FinanceBudgetTab() {
           </div>
           <div>
             <h2 className="text-lg font-semibold text-gray-900">
-              {en ? 'Annual budget overview' : '年度预算概览'}
+              {en ? 'AGM Approved Budget overview' : 'AGM 批准预算概览'}
             </h2>
             <p className="mt-1 text-sm text-gray-500">
-              {en ? 'Fiscal year totals and utilization for the selected property.' : '当前物业所选财年的预算与执行概况。'}
+              {en
+                ? 'Fiscal-year totals approved at AGM for the selected property.'
+                : '当前物业所选财年由 AGM 批准的预算额度与执行情况。'}
             </p>
           </div>
         </div>
@@ -121,7 +123,7 @@ export function FinanceBudgetTab() {
           to="/finance?tab=invoices"
           className="font-medium text-clearstrata-brand-700 hover:text-clearstrata-brand-900 hover:underline"
         >
-          {en ? 'Open invoice management' : '前往发票管理'}
+          {en ? 'Open invoice details' : '前往发票明细'}
         </Link>
         <span className="text-gray-300" aria-hidden>
           |

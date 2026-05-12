@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { FileText, Bot, TrendingUp, PieChart, FileSpreadsheet, Upload } from 'lucide-react';
+import { FileText, TrendingUp, PieChart, FileSpreadsheet, Upload } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useProperty } from '../contexts/PropertyContext';
 import { BackButton } from '../components/BackButton';
@@ -20,10 +20,10 @@ interface TabConfig {
   icon: React.ReactNode;
 }
 
-const allTabs: TabConfig[] = [
-  { key: 'invoices', labelEn: 'Invoice Management', labelZh: '发票管理', icon: <FileText size={18} /> },
-  { key: 'budget', labelEn: 'Budget', labelZh: '年度预算', icon: <PieChart size={18} /> },
-  { key: 'interpreter', labelEn: 'AI Review', labelZh: 'AI审核', icon: <Bot size={18} /> },
+/** Main finance tabs (monthly-reporting IA). `/finance?tab=interpreter` still mounts `InvoiceInterpreter` without a nav entry. */
+const mainNavTabs: TabConfig[] = [
+  { key: 'invoices', labelEn: 'Invoice Details', labelZh: '发票明细', icon: <FileText size={18} /> },
+  { key: 'budget', labelEn: 'AGM Approved Budget', labelZh: 'AGM批准预算', icon: <PieChart size={18} /> },
   { key: 'revenue', labelEn: 'Revenue Dashboard', labelZh: '收入看板', icon: <TrendingUp size={18} /> },
 ];
 
@@ -51,7 +51,7 @@ export function Finance() {
     currentRole === 'property_admin' ||
     currentRole === 'manager';
 
-  const visibleTabs = useMemo(() => (financeFullAccess ? allTabs : []), [financeFullAccess]);
+  const visibleTabs = useMemo(() => (financeFullAccess ? mainNavTabs : []), [financeFullAccess]);
 
   const [activeTab, setActiveTab] = useState<FinanceTab>('invoices');
   const invoiceLedgerRef = useRef<InvoiceManagementHandle>(null);
@@ -96,8 +96,8 @@ export function Finance() {
       <div className="mx-auto max-w-3xl space-y-4">
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
           {l
-            ? 'Demo mode: detailed ledgers and invoice tools are available after you register and join the property.'
-            : '演示模式：完整账本与发票功能请在注册并加入物业后使用。'}
+            ? 'Demo mode: full financial reporting and invoice tools unlock after you register and join the property.'
+            : '演示模式：完整月度财报与发票工具请在注册并加入物业后使用。'}
         </div>
         <DemoCreatePropertyCtaCard />
         <p className="text-sm text-gray-600">
@@ -111,15 +111,15 @@ export function Finance() {
     <div className="mx-0 min-w-0 w-full max-w-none">
       <BackButton />
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900">{l ? 'Expense Review' : '支出审核'}</h1>
+        <h1 className="text-3xl font-bold text-gray-900">{l ? 'Financial reporting' : '月度财报'}</h1>
         <p className="text-gray-600 mt-2">
           {financeFullAccess
             ? l
-              ? 'Review, file, and track property expenses so every expense is clear and transparent.'
-              : '审核、归档和追踪物业费用，让每一笔支出干净透明。'
+              ? 'A monthly ledger view: AGM-approved budget, invoice line items, and revenue. Uploads and OCR live under Invoice details.'
+              : '围绕月度账本呈现：AGM 批准预算、发票明细与收入看板并列；上传与 OCR 请在「发票明细」完成。'
             : l
-              ? 'Published monthly financial summaries for owners'
-              : '业主可查看已发布的月度财务摘要'}
+              ? 'Published monthly financial summaries for owners.'
+              : '业主可查阅已发布的月度财务摘要。'}
         </p>
       </div>
 
@@ -183,8 +183,8 @@ export function Finance() {
       {!financeFullAccess && (
         <div className="mb-6 rounded-xl border border-gray-200 bg-gray-50/90 px-4 py-12 text-center text-sm text-gray-600">
           {l
-            ? 'Invoice and budget tools require council or property manager access.'
-            : '发票与预算相关功能需要业委会或管理处权限。'}
+            ? 'Full financial reporting tools require council or property manager access.'
+            : '完整月度财报工具需要业委会或管理处权限。'}
         </div>
       )}
 
