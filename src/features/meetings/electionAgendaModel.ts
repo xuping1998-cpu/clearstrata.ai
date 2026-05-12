@@ -1,5 +1,19 @@
 /** Hidden HTML comment blob in `meeting_agenda_items.description_zh`. Must match Postgres `try_extract_election_agenda_meta`. */
 
+import type { MeetingRow } from './api';
+import {
+  councilMeetingVotingWindowFallback,
+  councilWrittenRemoteWindows,
+  extractWrittenRemoteMeta,
+  isWrittenRemoteUi,
+  meetingFormatUiFromRow,
+} from './meetingFormatModel';
+import {
+  councilElectionLifecyclePhase,
+  deriveCouncilElectionCanonFromScheduledAt,
+  electionTimestampsCanonEqual,
+} from './electionTimelineMath';
+
 export const ELECTION_AGENDA_MARKER = '<!--clearstrata-election-agenda';
 
 /** Stored + derived; coerce accepts legacy string values without throwing. */
@@ -30,9 +44,26 @@ export type ElectionAgendaMetaV1 = {
 
 export type ElectionNominationPhase = 'before_open' | 'collecting' | 'ended' | 'legacy_no_deadline';
 
+/** Canonical nomination UX phase (election agenda + council meeting timeline). */
+export type ElectionNominationUiStatus =
+  | 'before_open'
+  | 'open'
+  | 'closed'
+  | 'invalid'
+  | 'legacy_no_deadline';
+
+/** Fields required to validate/auto-derive council election triple-phase from `meetings.scheduled_at`. */
+export type CouncilElectionCanonMeetingInput = Pick<
+  MeetingRow,
+  'scheduled_at' | 'voting_open_at' | 'voting_close_at' | 'description_zh' | 'meeting_format'
+>;
+
 export type ElectionNominationRibbonModel = {
   hasElection: true;
+  /** True only while collecting nominations (`open`), not during `before_open`. */
   anyNominationOpen: boolean;
+  /** Merged UX status across agendas (see mergeElectionNominationUiStatuses). */
+  nominationUiStatus: ElectionNominationUiStatus;
   nominationOpensIso: string | null;
   nominationClosesIso: string | null;
   totalCandidates: number;
@@ -45,19 +76,181 @@ export function parseIsoFlexible(s?: string | null): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+export type ElectionCouncilTimelineContext = {
+  /** `meetings.scheduled_at` (= public notice opens). */
+  publicNoticeOpensIso: string | null;
+  publicNoticeClosesIso: string | null;
+  votingOpensIso: string | null;
+  votingClosesIso: string | null;
+};
+
+/** Storage for council-election agendas must match auto 7–7–7 phases from scheduled start (written-remote meta + row votes + agenda nomin dates). */
+export function councilElectionStoredMatchesCanon(
+  meeting: CouncilElectionCanonMeetingInput,
+  meta: ElectionAgendaMetaV1,
+): boolean {
+  const canon = deriveCouncilElectionCanonFromScheduledAt(meeting.scheduled_at);
+  if (!canon) return false;
+
+  if (!electionTimestampsCanonEqual(meta.nomination_opens_at, canon.nominationOpenIso)) return false;
+  if (!electionTimestampsCanonEqual(meta.nomination_closes_at, canon.nominationCloseIso)) return false;
+
+  if (!electionTimestampsCanonEqual(meeting.voting_open_at, canon.votingOpenIso)) return false;
+  if (!electionTimestampsCanonEqual(meeting.voting_close_at, canon.votingCloseIso)) return false;
+
+  const ui = meetingFormatUiFromRow(meeting);
+  if (!isWrittenRemoteUi(ui)) {
+    /** In-person AGMs/SGMs still carry nomin + row dates only; hybrid written-remote markers optional. */
+    return true;
+  }
+
+  const { meta: wr } = extractWrittenRemoteMeta(meeting.description_zh);
+  const noticeCloseStored =
+    wr?.public_notice_close_at?.trim() || wr?.discussion_closes_at?.trim() || '';
+
+  /** Written-remote expects embedded notice close (= end of publicity window). */
+  if (!electionTimestampsCanonEqual(noticeCloseStored, canon.publicNoticeCloseIso)) return false;
+
+  const mvo = wr?.voting_open_at?.trim();
+  const mvc = wr?.voting_close_at?.trim();
+  if (mvo && !electionTimestampsCanonEqual(mvo, canon.votingOpenIso)) return false;
+  if (mvc && !electionTimestampsCanonEqual(mvc, canon.votingCloseIso)) return false;
+
+  return true;
+}
+
+export function buildElectionCouncilTimelineContext(meeting: MeetingRow): ElectionCouncilTimelineContext {
+  const wr = councilWrittenRemoteWindows(meeting);
+  const vw = councilMeetingVotingWindowFallback(meeting);
+  return {
+    publicNoticeOpensIso: wr.publicNoticeOpens?.trim() ? wr.publicNoticeOpens : null,
+    publicNoticeClosesIso: wr.publicNoticeCloses?.trim() ? wr.publicNoticeCloses : null,
+    votingOpensIso: vw.votingOpens?.trim() ? vw.votingOpens : null,
+    votingClosesIso: vw.votingCloses?.trim() ? vw.votingCloses : null,
+  };
+}
+
+export type ElectionTimelineAnalysis = {
+  invalid_election_timeline: boolean;
+  /** Specifically `voting_open_at <= nomination_close_at`. */
+  votingOpenVsNominationCloseBroken: boolean;
+};
+
+function msIsoUtc(iso?: string | null): number | null {
+  const d = parseIsoFlexible(iso);
+  return d === null ? null : d.getTime();
+}
+
+/** Validates election storage vs auto 7+7+7 timeline from scheduled start plus internal ordering rules. */
+export function analyzeCouncilElectionTimeline(
+  meta: ElectionAgendaMetaV1 | null | undefined,
+  meeting: CouncilElectionCanonMeetingInput,
+): ElectionTimelineAnalysis {
+  if (!meta || meta.agenda_type !== 'council_election') {
+    return { invalid_election_timeline: false, votingOpenVsNominationCloseBroken: false };
+  }
+
+  const canon = deriveCouncilElectionCanonFromScheduledAt(meeting.scheduled_at);
+  if (!canon || !councilElectionStoredMatchesCanon(meeting, meta)) {
+    return { invalid_election_timeline: true, votingOpenVsNominationCloseBroken: true };
+  }
+
+  return { invalid_election_timeline: false, votingOpenVsNominationCloseBroken: false };
+}
+
 export function electionNominationPhase(now: Date, m: ElectionAgendaMetaV1): ElectionNominationPhase {
-  const closesAt = parseIsoFlexible(m.nomination_closes_at);
-  const opensAt = parseIsoFlexible(m.nomination_opens_at);
-  if (!closesAt) return 'legacy_no_deadline';
-  if (now.getTime() >= closesAt.getTime()) return 'ended';
-  if (opensAt && now.getTime() < opensAt.getTime()) return 'before_open';
+  const s = getElectionNominationStatus(now, m, undefined);
+  if (s === 'legacy_no_deadline') return 'legacy_no_deadline';
+  if (s === 'before_open') return 'before_open';
+  if (s === 'closed') return 'ended';
+  if (s === 'open') return 'collecting';
+  /** `invalid`: treat like pre-formal nomination (mirror prior blocking behaviour). */
   return 'collecting';
 }
 
-/** True only when ballots may proceed (legacy agendas or nomination window has ended). */
-export function isFormalElectionVotingAllowed(now: Date, m: ElectionAgendaMetaV1): boolean {
-  const ph = electionNominationPhase(now, m);
-  return ph === 'ended' || ph === 'legacy_no_deadline';
+/**
+ * Canonical nomination UX state for UI + ribbons.
+ * Pass `meeting` for `council_election` agendas so phases follow auto 7+7+7 from `meetings.scheduled_at`.
+ */
+export function getElectionNominationStatus(
+  now: Date,
+  meta: ElectionAgendaMetaV1,
+  meeting?: CouncilElectionCanonMeetingInput | null,
+): ElectionNominationUiStatus {
+  if (meeting != null && meta.agenda_type === 'council_election') {
+    const a = analyzeCouncilElectionTimeline(meta, meeting);
+    if (a.invalid_election_timeline || a.votingOpenVsNominationCloseBroken) {
+      return 'invalid';
+    }
+
+    const canon = deriveCouncilElectionCanonFromScheduledAt(meeting.scheduled_at);
+    if (!canon) return 'invalid';
+
+    const n = now.getTime();
+    const nomOpenMs = msIsoUtc(canon.nominationOpenIso);
+    const nomCloseMs = msIsoUtc(canon.nominationCloseIso);
+    if (nomOpenMs === null || nomCloseMs === null) return 'invalid';
+    if (n < nomOpenMs) return 'before_open';
+    if (n >= nomCloseMs) return 'closed';
+    return 'open';
+  }
+
+  const closesAt = parseIsoFlexible(meta.nomination_closes_at);
+  if (!closesAt) return 'legacy_no_deadline';
+
+  const opensAt = parseIsoFlexible(meta.nomination_opens_at);
+  const n = now.getTime();
+
+  if (opensAt !== null && n < opensAt.getTime()) return 'before_open';
+  if (n >= closesAt.getTime()) return 'closed';
+  return 'open';
+}
+
+export function mergeElectionNominationUiStatuses(statuses: ElectionNominationUiStatus[]): ElectionNominationUiStatus {
+  if (statuses.length === 0) return 'legacy_no_deadline';
+  if (statuses.some((s) => s === 'invalid')) return 'invalid';
+  if (statuses.some((s) => s === 'before_open')) return 'before_open';
+  if (statuses.some((s) => s === 'open')) return 'open';
+  if (statuses.some((s) => s === 'legacy_no_deadline')) return 'legacy_no_deadline';
+  return 'closed';
+}
+
+/** Localized line for ribbons / headings (legacy uses inline fallbacks — no single i18n key). */
+export function formatElectionNominationUiStatus(
+  status: ElectionNominationUiStatus,
+  opts: { t: (key: string) => string; languageEn: boolean },
+): string {
+  const { t, languageEn } = opts;
+  switch (status) {
+    case 'invalid':
+      return t('meeting_election_time_overlap_admin_warn');
+    case 'before_open':
+      return t('meeting_election_nomination_not_open_owner');
+    case 'open':
+      return t('meeting_election_nomination_open');
+    case 'closed':
+      return t('meeting_election_nomination_ended_label');
+    case 'legacy_no_deadline':
+      return languageEn ? 'No nomination deadline (legacy agenda).' : '未设置提名截止日（兼容旧议程）';
+    default:
+      return '—';
+  }
+}
+
+/** Formal ranked-choice ballots: only within the canon voting phase `[nomination_close, +7d)`. */
+export function isFormalElectionVotingAllowed(
+  now: Date,
+  m: ElectionAgendaMetaV1,
+  meeting?: CouncilElectionCanonMeetingInput | null,
+): boolean {
+  if (m.agenda_type === 'council_election' && meeting) {
+    if (analyzeCouncilElectionTimeline(m, meeting).invalid_election_timeline) return false;
+    const canon = deriveCouncilElectionCanonFromScheduledAt(meeting.scheduled_at);
+    if (!canon) return false;
+    return councilElectionLifecyclePhase(now, canon) === 'voting';
+  }
+  const s = getElectionNominationStatus(now, m, undefined);
+  return s === 'closed' || s === 'legacy_no_deadline';
 }
 
 export function defaultElectionMeta(overrides?: Partial<Omit<ElectionAgendaMetaV1, 'v' | 'agenda_type' | 'candidates'>>): ElectionAgendaMetaV1 {
@@ -74,28 +267,35 @@ export function defaultElectionMeta(overrides?: Partial<Omit<ElectionAgendaMetaV
   };
 }
 
-export function buildElectionNominationRibbon(metas: ElectionAgendaMetaV1[], refNow?: Date): ElectionNominationRibbonModel | null {
+export function buildElectionNominationRibbon(
+  metas: ElectionAgendaMetaV1[],
+  refNow?: Date,
+  councilMeeting?: CouncilElectionCanonMeetingInput | null,
+): ElectionNominationRibbonModel | null {
   if (!metas.length) return null;
   const now = refNow ?? new Date();
-  let anyNominationOpen = false;
   let totalCandidates = 0;
   let nominationClosesIso: string | null = null;
   let nominationOpensIso: string | null = null;
+  const statuses: ElectionNominationUiStatus[] = [];
 
   for (const raw of metas) {
     const m = finalizeElectionMeta(raw, now);
     totalCandidates += m.candidates.length;
-    const ph = electionNominationPhase(now, m);
     const c = m.nomination_closes_at?.trim();
     if (c && (nominationClosesIso === null || c < nominationClosesIso)) nominationClosesIso = c;
     const o = m.nomination_opens_at?.trim();
     if (o && (nominationOpensIso === null || o < nominationOpensIso)) nominationOpensIso = o;
-    if (ph === 'before_open' || ph === 'collecting') anyNominationOpen = true;
+    statuses.push(getElectionNominationStatus(now, m, councilMeeting ?? null));
   }
+
+  const nominationUiStatus = mergeElectionNominationUiStatuses(statuses);
+  const anyNominationOpen = nominationUiStatus === 'open';
 
   return {
     hasElection: true,
     anyNominationOpen,
+    nominationUiStatus,
     nominationOpensIso,
     nominationClosesIso,
     totalCandidates,
@@ -168,8 +368,9 @@ export function finalizeElectionMeta(m: ElectionAgendaMetaV1, refNow?: Date): El
       candidates: Array.isArray(m?.candidates) ? m.candidates : [],
     });
 
-  const ph = electionNominationPhase(now, base);
-  const nomination_status: ElectionNominationStatus = ph === 'ended' ? 'closed' : 'open';
+  const s = getElectionNominationStatus(now, base, undefined);
+  const nomination_status: ElectionNominationStatus =
+    s === 'closed' || s === 'invalid' ? 'closed' : 'open';
 
   return { ...base, nomination_status };
 }

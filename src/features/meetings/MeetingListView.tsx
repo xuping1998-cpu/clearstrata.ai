@@ -470,10 +470,10 @@ export function MeetingListView({ variant }: Props) {
 
                       return (
                         <div className="mt-3 border-t border-gray-100 pt-3 text-[11px] sm:text-xs text-gray-600 space-y-1">
-                          {writtenRm && (disc.discussionOpens || disc.discussionCloses) ? (
+                          {writtenRm && (disc.publicNoticeOpens || disc.publicNoticeCloses) ? (
                             <p>
-                              <span className="font-medium text-gray-800">{t('meeting_list_flow_summary_discussion')}</span>{' '}
-                              {fmtListTs(disc.discussionOpens, en)} · {fmtListTs(disc.discussionCloses, en)}
+                              <span className="font-medium text-gray-800">{t('meeting_list_flow_summary_public_notice')}</span>{' '}
+                              {fmtListTs(disc.publicNoticeOpens, en)} · {fmtListTs(disc.publicNoticeCloses, en)}
                             </p>
                           ) : null}
                           {extras.electionAgendaCount > 0 ? (

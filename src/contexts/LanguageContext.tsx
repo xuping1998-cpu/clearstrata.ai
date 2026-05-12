@@ -80,8 +80,8 @@ const translations: Record<string, Record<Language, string>> = {
 
   meetings_page_subtitle: {
     en:
-      'Written remote meetings, owner discussion and formal electronic voting in one flow—fair and transparent resolutions.',
-    zh: '远程书面会议、业主讨论与正式电子表决一体化，让每一项决议都公正透明。',
+      'Written remote meetings: a fixed public-notice phase, nominations, then formal electronic voting—fair and transparent.',
+    zh: '远程书面会议按固定公示、提名与正式电子表决三阶段流转，保障公开透明。',
   },
   nav_owner_voting: { en: 'Owner Voting', zh: '业主电子表决' },
   meeting_ov_staff_intro: {
@@ -117,8 +117,8 @@ const translations: Record<string, Record<Language, string>> = {
       'Voting is already open. Re-freezing the list may affect eligibility snapshots. Continue?',
     zh: '投票已经打开，重新冻结名单可能影响资格快照。确定继续吗？',
   },
-  meeting_ov_discussion_opens: { en: 'Discussion opens', zh: '讨论开放时间' },
-  meeting_ov_discussion_closes: { en: 'Discussion closes', zh: '讨论截止时间' },
+  meeting_ov_discussion_opens: { en: 'Public notice opens', zh: '公示开放时间' },
+  meeting_ov_discussion_closes: { en: 'Public notice closes', zh: '公示截止时间' },
   meeting_ov_meeting_format_row: { en: 'Meeting format', zh: '会议形式' },
   meeting_ov_loading: { en: 'Loading owner voting…', zh: '正在加载业主表决…' },
   meeting_ov_status_label: { en: 'Status', zh: '状态' },
@@ -217,7 +217,9 @@ const translations: Record<string, Record<Language, string>> = {
   meeting_ev_status_archived: { en: 'Archived', zh: '已归档' },
   meeting_ev_snapshot_label: { en: 'Voter list frozen', zh: '冻结投票名单' },
 
-  meeting_ov_discussion_period_label: { en: 'Discussion period', zh: '讨论期' },
+  meeting_ov_public_notice_period_label: { en: 'Public Notice Period', zh: '公示期' },
+
+  meeting_ov_discussion_period_label: { en: 'Public Notice Period', zh: '公示期' },
   meeting_ov_voting_period_combined_label: { en: 'Voting period', zh: '投票期' },
   meeting_format_written_remote_display: {
     en: 'Written remote meeting',
@@ -242,7 +244,8 @@ const translations: Record<string, Record<Language, string>> = {
     zh: '决议数 {res} · 候选人数 {cand} · 合资格户数 {elig}',
   },
 
-  meeting_list_flow_summary_discussion: { en: 'Discussion period', zh: '讨论期' },
+  meeting_list_flow_summary_discussion: { en: 'Public Notice Period', zh: '公示期' },
+  meeting_list_flow_summary_public_notice: { en: 'Public Notice Period', zh: '公示期' },
   meeting_list_flow_summary_nomination: { en: 'Nomination period', zh: '提名期' },
   meeting_list_flow_summary_voting_period: { en: 'Voting period', zh: '投票期' },
   meeting_list_flow_summary_counts: {
@@ -335,6 +338,10 @@ const translations: Record<string, Record<Language, string>> = {
   meeting_election_nomination_opens: { en: 'Nomination opens', zh: '提名开放时间' },
   meeting_election_nomination_closes: { en: 'Nomination closes', zh: '提名截止时间' },
   meeting_election_nomination_open: { en: 'Nomination open', zh: '提名开放中' },
+  meeting_election_nomination_ended_label: {
+    en: 'Nomination period has ended',
+    zh: '提名已结束',
+  },
   meeting_election_nomination_closed: { en: 'Nomination closed', zh: '提名已截止' },
   meeting_election_self_nominate: { en: 'Nominate myself', zh: '我要报名参选' },
   meeting_election_self_nomination_closed: {
@@ -353,6 +360,35 @@ const translations: Record<string, Record<Language, string>> = {
     en: 'Election rules cannot be changed after ballots are cast',
     zh: '已有选票后不能修改选举规则',
   },
+  meeting_election_invalid_timeline: {
+    en:
+      'This election schedule no longer matches the required automatic phases (public notice, nomination, and voting are each seven days from the meeting start). Please ask an administrator to fix meeting time and synced fields.',
+    zh: '该选举时间安排与系统自动阶段不一致（公示、提名、投票各 7 天，自会议召开时间起）。请管理员修正会议时间及相关同步字段。',
+  },
+  meeting_election_time_overlap_admin_warn: {
+    en: 'Meeting schedule is misconfigured (voting must start strictly after nominations close). Please ask an administrator to fix the times.',
+    zh: '当前会议时间配置错误，请管理员修正',
+  },
+  meeting_election_staff_nomination_before_open: {
+    en: 'Nomination has not opened yet. Adding and editing candidates is disabled until nomination opens.',
+    zh: '提名尚未开放：在提名开放时间之前不能添加、编辑或删除候选人。',
+  },
+  meeting_election_staff_nomination_closed_readonly: {
+    en: 'Nomination has closed. The candidate list is read-only.',
+    zh: '提名已结束：候选人列表为只读，无法添加、编辑或删除。',
+  },
+  meeting_election_nomination_not_open_owner: {
+    en: 'Nomination has not opened yet.',
+    zh: '提名尚未开放。',
+  },
+  meeting_election_persist_nomination_not_open: {
+    en: 'Cannot save: nomination is not open yet.',
+    zh: '无法保存：提名尚未开放。',
+  },
+  meeting_election_persist_nomination_closed: {
+    en: 'Cannot save: nomination has closed.',
+    zh: '无法保存：提名已结束。',
+  },
   meeting_agenda_cannot_remove_election_has_ballots: {
     en: 'Election ballots exist for this item; convert back only after resetting ballots (requires admin/backend).',
     zh: '该选举议程已有业主选票记录，无法再改回其它议程类型。',
@@ -368,8 +404,9 @@ const translations: Record<string, Record<Language, string>> = {
   meeting_format_written_remote: { en: 'Written Remote', zh: '远程书面会议' },
 
   meeting_time_local: { en: 'Meeting time', zh: '会议时间（本地）' },
-  discussion_opens: { en: 'Discussion opens', zh: '讨论开放时间' },
-  discussion_closes: { en: 'Discussion closes', zh: '讨论截止时间' },
+  discussion_opens: { en: 'Public notice opens', zh: '公示开放时间' },
+  discussion_closes: { en: 'Public notice closes', zh: '公示截止时间' },
+  public_notice_opens: { en: 'Public notice opens', zh: '公示开放时间' },
   voting_opens: { en: 'Voting opens', zh: '投票开放时间' },
   voting_closes: { en: 'Voting closes', zh: '投票截止时间' },
 
@@ -389,8 +426,25 @@ const translations: Record<string, Record<Language, string>> = {
   vote_archived: { en: 'Archived', zh: '已归档' },
 
   meeting_written_remote_intro: {
-    en: 'Owners may review materials, participate in discussion, and complete formal electronic voting during the open period.',
-    zh: '业主可在开放期间随时阅读资料、参与讨论并完成正式电子表决。',
+    en:
+      'The schedule is automatic from the meeting start: 7-day public notice, 7-day nominations, then 7 days of voting. Owners can review materials and cast votes in the voting window.',
+    zh:
+      '时间表由「会议召开时间」自动生成：公示 7 天、提名 7 天、投票 7 天。业主可于公示期内查阅资料，并于投票期内完成表决。',
+  },
+  meeting_written_remote_auto_phases_hint: {
+    en: 'Three fixed phases apply: Public Notice Period (7 days) → Nomination Period (7 days) → Voting Period (7 days), each starting immediately after the previous phase ends.',
+    zh: '系统固定为三阶段衔接：公示期（7天）→ 提名期（7天）→ 投票期（7天）；每阶段自上一阶段结束时刻起算。',
+  },
+  meeting_election_phase_public_notice: { en: 'Public Notice Period', zh: '公示期' },
+  meeting_election_phase_nomination: { en: 'Nomination period', zh: '提名期' },
+  meeting_election_phase_voting: { en: 'Voting period', zh: '投票期' },
+  meeting_election_auto_nomination_schedule_title: {
+    en: 'Automatic nomination schedule (from meeting start)',
+    zh: '提名时间（由会议召开时间自动生成）',
+  },
+  meeting_election_need_valid_scheduled: {
+    en: 'Set a valid meeting start time.',
+    zh: '请先设置有效的会议召开时间。',
   },
   meeting_editor_schedule_guard_note: {
     en:
@@ -403,8 +457,8 @@ const translations: Record<string, Record<Language, string>> = {
   },
   meeting_create_notice_ready_written_missing: {
     en:
-      'Written remote meetings require a discussion period, a voting period, and at least one agenda item. Mark agenda items that require formal voting.',
-    zh: '远程书面会议需要设置讨论期、投票期，并至少添加一条议程；需要正式表决的议程请勾选“需要表决”。',
+      'Written remote meetings need a meeting start time and at least one agenda item after saving. Voting windows are computed automatically.',
+    zh: '远程书面会议需填写会议召开时间并在保存后至少添加一条议程；投票起止将由系统自动计算。',
   },
   meeting_create_save_then_agenda_hint: {
     en: 'After saving, add agenda items on the meeting detail page. At least one agenda item is required before sending notices.',

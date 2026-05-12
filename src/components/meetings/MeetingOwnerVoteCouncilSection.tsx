@@ -7,6 +7,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import {
   evaluateOwnerVoteOpenGate,
   ensureOwnerVoteMeetingForCouncilMeeting,
+  ensureOwnerVoteResolutionForMeeting,
   fetchOwnerVoteMeetingMetaForCouncilMeeting,
   translationKeyForOwnerVoteOpenGate,
   type MeetingAgendaRow,
@@ -17,7 +18,11 @@ import { councilMeetingTitleForOwnerVoteBinding } from '@/features/meetings/owne
 import {
   councilMeetingVotingWindowFallback,
 } from '@/features/meetings/meetingFormatModel';
-import { extractElectionAgendaMeta } from '@/features/meetings/electionAgendaModel';
+import {
+  buildElectionNominationRibbon,
+  extractElectionAgendaMeta,
+  finalizeElectionMeta,
+} from '@/features/meetings/electionAgendaModel';
 import { StatusBadge } from '@/components/status/StatusBadge';
 
 type OvMeetingRow = {
@@ -184,6 +189,18 @@ export function MeetingOwnerVoteCouncilSection({ meeting, agendaItems, isStaff }
     [agendaItems],
   );
 
+  const electionNomRibbonForCouncil = useMemo(() => {
+    const metas = agendaItems.flatMap((a) => {
+      const m = extractElectionAgendaMeta(a.description_zh ?? '').meta;
+      if (m?.agenda_type !== 'council_election') return [];
+      return [finalizeElectionMeta(m)];
+    });
+    if (!metas.length) return null;
+    return buildElectionNominationRibbon(metas, new Date(), meeting);
+  }, [agendaItems, meeting]);
+
+  const electionTimelineBlocksVoting = electionNomRibbonForCouncil?.nominationUiStatus === 'invalid';
+
   const [loading, setLoading] = useState(true);
   const [ovMeeting, setOvMeeting] = useState<OvMeetingRow | null>(null);
   const [resolutions, setResolutions] = useState<OvResolution[]>([]);
@@ -318,11 +335,19 @@ export function MeetingOwnerVoteCouncilSection({ meeting, agendaItems, isStaff }
       eligibleCount,
       resolutionCount: resolutions.length,
       electionAgendaCount,
+      electionTimelineBlocksVoting,
     });
-  }, [ovMeeting, eligibleCount, resolutions.length, electionAgendaCount]);
+  }, [ovMeeting, eligibleCount, resolutions.length, electionAgendaCount, electionTimelineBlocksVoting]);
 
   const handleEnable = async () => {
     if (!user?.id || !meeting.property_id) return;
+    if (electionTimelineBlocksVoting) {
+      setToast({
+        kind: 'error',
+        text: t('meeting_election_time_overlap_admin_warn'),
+      });
+      return;
+    }
     const tit = bindingTitle.trim() || (meeting.title_zh || meeting.title_en || '').trim();
     if (!tit) {
       setToast({
@@ -384,15 +409,14 @@ export function MeetingOwnerVoteCouncilSection({ meeting, agendaItems, isStaff }
     }
     setBusy(true);
     try {
-      const ins = {
-        meeting_id: ovMeeting.id,
+      const { id: resId, error: resErr } = await ensureOwnerVoteResolutionForMeeting({
+        meetingId: ovMeeting.id,
         title,
-        description: newResDesc.trim() || null,
         threshold: newResThreshold,
+        description: newResDesc.trim() || null,
         display_order: newResOrder > 0 ? newResOrder : 1,
-      };
-      const { error } = await supabase.from('owner_vote_resolutions').insert(ins);
-      if (error) throw error;
+      });
+      if (resErr || !resId) throw resErr ?? new Error(en ? 'Failed to add resolution' : '添加失败');
       setToast({ kind: 'success', text: t('meeting_ov_resolution_added') });
       setNewResTitle('');
       setNewResDesc('');
@@ -424,6 +448,7 @@ export function MeetingOwnerVoteCouncilSection({ meeting, agendaItems, isStaff }
       eligibleCount,
       resolutionCount: resolutions.length,
       electionAgendaCount,
+      electionTimelineBlocksVoting,
     });
     if (!gate.ok) {
       setToast({ kind: 'error', text: t(translationKeyForOwnerVoteOpenGate(gate.reason)) });
@@ -501,6 +526,12 @@ export function MeetingOwnerVoteCouncilSection({ meeting, agendaItems, isStaff }
       <h2 className="mb-3 text-lg font-semibold text-gray-900 border-b border-gray-100 pb-2">{t('nav_owner_voting')}</h2>
       <p className="text-sm leading-relaxed text-gray-700 mb-4">{t('meeting_ov_staff_intro')}</p>
 
+      {!loading && electionTimelineBlocksVoting ? (
+        <p className="mb-4 text-sm rounded-md border border-red-300 bg-red-50 px-3 py-2 font-semibold text-red-800">
+          {t('meeting_election_time_overlap_admin_warn')}
+        </p>
+      ) : null}
+
       {loading ? (
         <div className="flex items-center gap-2 py-8 text-gray-600">
           <Loader2 className="h-8 w-8 animate-spin text-clearstrata-brand-700" aria-hidden />
@@ -529,7 +560,7 @@ export function MeetingOwnerVoteCouncilSection({ meeting, agendaItems, isStaff }
               </div>
               <button
                 type="button"
-                disabled={busy || !user?.id}
+                disabled={busy || !user?.id || electionTimelineBlocksVoting}
                 onClick={() => void handleEnable()}
                 className="rounded-xl bg-clearstrata-ui-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover disabled:opacity-50"
               >

@@ -7,7 +7,7 @@ import {
   isWrittenRemoteUi,
   meetingFormatUiFromRow,
 } from '@/features/meetings/meetingFormatModel';
-import { parseIsoFlexible, type ElectionNominationRibbonModel } from '@/features/meetings/electionAgendaModel';
+import { formatElectionNominationUiStatus, type ElectionNominationRibbonModel } from '@/features/meetings/electionAgendaModel';
 
 export type OwnerVoteInlineMetaState = {
   loading: boolean;
@@ -54,30 +54,6 @@ function sectionCard(label: ReactNode, children: ReactNode) {
   );
 }
 
-/** Per user rules: now vs nomination_opens_at / nomination_closes_at (ribbon aggregates election agendas). */
-function nominationWindowStatusLabel(
-  now: Date,
-  ribbon: ElectionNominationRibbonModel,
-  languageEn: boolean,
-  translate: (k: string) => string,
-): string {
-  const opens = ribbon.nominationOpensIso?.trim() ? parseIsoFlexible(ribbon.nominationOpensIso) : null;
-  const closes = ribbon.nominationClosesIso?.trim() ? parseIsoFlexible(ribbon.nominationClosesIso) : null;
-  const n = now.getTime();
-
-  if (!opens && !closes) {
-    return languageEn ? '—' : '—';
-  }
-
-  if (closes && n >= closes.getTime()) {
-    return translate('meeting_nomination_status_closed');
-  }
-  if (opens && n < opens.getTime()) {
-    return translate('meeting_nomination_status_not_started');
-  }
-  return translate('meeting_nomination_status_open');
-}
-
 export function OwnerVotingInlineControlBar({
   meeting,
   isCouncilMeetingEnded = false,
@@ -122,6 +98,11 @@ export function OwnerVotingInlineControlBar({
 
   const snapshotOk = !!(ov?.snapshot_frozen_at?.trim());
   const eligibleOk = meta.eligibleCount > 0;
+
+  const electionTimelineBlocksVoting = Boolean(
+    electionNomRibbon?.nominationUiStatus === 'invalid',
+  );
+
   const openGateDraft =
     showOpen && ov
       ? evaluateOwnerVoteOpenGate({
@@ -129,6 +110,7 @@ export function OwnerVotingInlineControlBar({
           eligibleCount: meta.eligibleCount,
           resolutionCount: meta.resolutionCount,
           electionAgendaCount,
+          electionTimelineBlocksVoting,
         })
       : { ok: true as const };
 
@@ -137,7 +119,7 @@ export function OwnerVotingInlineControlBar({
 
   const nominationPhaseLabel =
     hasElectionAgenda && electionNomRibbon
-      ? nominationWindowStatusLabel(new Date(), electionNomRibbon, en, t)
+      ? formatElectionNominationUiStatus(electionNomRibbon.nominationUiStatus, { t, languageEn: en })
       : '';
 
   function voteStatusLine(): string {
@@ -187,11 +169,12 @@ export function OwnerVotingInlineControlBar({
           <p className="text-gray-900 font-medium">{formatDisplay}</p>,
         )}
 
-        {written && (disc.discussionOpens || disc.discussionCloses)
+        {written && (disc.publicNoticeOpens || disc.publicNoticeCloses)
           ? sectionCard(
-              t('meeting_ov_discussion_period_label'),
+              t('meeting_ov_public_notice_period_label'),
               <p className="text-gray-900">
-                {fmtTs(disc.discussionOpens, en)} <span className="text-gray-400 px-1">–</span> {fmtTs(disc.discussionCloses, en)}
+                {fmtTs(disc.publicNoticeOpens, en)} <span className="text-gray-400 px-1">–</span>{' '}
+                {fmtTs(disc.publicNoticeCloses, en)}
               </p>,
             )
           : null}
@@ -254,15 +237,22 @@ export function OwnerVotingInlineControlBar({
                   : '会议已结束，投票流程已关闭。'}
               </p>
             ) : (
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  disabled={ovBusy || !userId || !canEnableBinding}
-                  onClick={() => void onEnableElectronicVoting()}
-                  className="rounded-lg bg-clearstrata-ui-primary px-4 py-2 text-sm font-medium text-white hover:bg-clearstrata-ui-primaryHover disabled:opacity-50"
-                >
-                  {t('meeting_ov_enable')}
-                </button>
+              <div className="space-y-3">
+                {electionTimelineBlocksVoting ? (
+                  <p className="text-sm rounded-md border border-red-300 bg-red-50 px-3 py-2 font-semibold text-red-800">
+                    {t('meeting_election_time_overlap_admin_warn')}
+                  </p>
+                ) : null}
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    disabled={ovBusy || !userId || !canEnableBinding || electionTimelineBlocksVoting}
+                    onClick={() => void onEnableElectronicVoting()}
+                    className="rounded-lg bg-clearstrata-ui-primary px-4 py-2 text-sm font-medium text-white hover:bg-clearstrata-ui-primaryHover disabled:opacity-50"
+                  >
+                    {t('meeting_ov_enable')}
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -293,6 +283,12 @@ export function OwnerVotingInlineControlBar({
               {showFreezePrereqHint ? (
                 <p className="text-sm text-amber-800 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
                   {t('meeting_ov_flow_hint_freeze_snap')}
+                </p>
+              ) : null}
+
+              {electionTimelineBlocksVoting ? (
+                <p className="text-sm rounded-md border border-red-300 bg-red-50 px-3 py-2 font-semibold text-red-800">
+                  {t('meeting_election_time_overlap_admin_warn')}
                 </p>
               ) : null}
 

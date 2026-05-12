@@ -351,10 +351,7 @@ export function noticeReadiness(
   const written = !!opts?.writtenRemote;
   const requireAgenda = opts?.requireAgenda !== false;
   const hasScheduleBlock = written
-    ? !!meeting.scheduled_at &&
-      !!meeting.voting_open_at &&
-      !!meeting.voting_close_at &&
-      !!(opts?.discussionClosesIso && String(opts.discussionClosesIso).trim())
+    ? !!(meeting.scheduled_at && meeting.voting_open_at && meeting.voting_close_at)
     : !!meeting.scheduled_at;
   const agendaOk = !requireAgenda || agendaCount >= 1;
   return {
@@ -1129,6 +1126,62 @@ export function mapVoteRuleToOwnerVoteThreshold(
 }
 
 /**
+ * Ensures one `owner_vote_resolutions` row per (meeting_id, title, threshold).
+ * If a row already exists, returns its `id` without inserting (no backfill / no updates).
+ */
+export async function ensureOwnerVoteResolutionForMeeting(params: {
+  meetingId: string;
+  title: string;
+  threshold: string;
+  description: string | null;
+  display_order: number | null;
+}): Promise<{ id: string | null; reused: boolean; error: Error | null }> {
+  const { meetingId, title, threshold, description, display_order } = params;
+  const th = String(threshold ?? '').trim();
+
+  const { data: existingRows, error: selErr } = await supabase
+    .from('owner_vote_resolutions')
+    .select('id')
+    .eq('meeting_id', meetingId)
+    .eq('title', title)
+    .eq('threshold', th)
+    .order('id', { ascending: true })
+    .limit(1);
+
+  if (selErr) {
+    return { id: null, reused: false, error: new Error(selErr.message) };
+  }
+
+  const hit = (existingRows ?? [])[0] as { id?: unknown } | undefined;
+  const existingId = hit?.id != null ? String(hit.id) : '';
+  if (existingId) {
+    return { id: existingId, reused: true, error: null };
+  }
+
+  const { data: inserted, error: insErr } = await supabase
+    .from('owner_vote_resolutions')
+    .insert({
+      meeting_id: meetingId,
+      title,
+      description,
+      threshold: th,
+      display_order,
+    })
+    .select('id')
+    .maybeSingle();
+
+  if (insErr) {
+    return { id: null, reused: false, error: new Error(insErr.message) };
+  }
+
+  const nid = inserted && typeof inserted === 'object' && 'id' in inserted ? String((inserted as { id: string }).id) : '';
+  if (!nid) {
+    return { id: null, reused: false, error: new Error('owner_vote_resolutions insert returned no id') };
+  }
+  return { id: nid, reused: false, error: null };
+}
+
+/**
  * Ensures an `owner_vote_meetings` row exists for the current AGM/SGM council meeting,
  * keyed by hidden `<!--clearstrata-council-meeting-binding-->` marker when possible (stable across devices).
  */
@@ -1368,7 +1421,8 @@ export type OwnerVoteOpenGateReason =
   | 'no_eligible'
   | 'no_agenda'
   | 'too_early'
-  | 'past_close';
+  | 'past_close'
+  | 'election_timeline_invalid';
 
 export function evaluateOwnerVoteOpenGate(params: {
   ov: OwnerVoteMeetingLite | null | undefined;
@@ -1376,7 +1430,15 @@ export function evaluateOwnerVoteOpenGate(params: {
   resolutionCount: number;
   electionAgendaCount: number;
   nowMs?: number;
+  /**
+   * When true, council voting window overlaps or precedes nomination close on an election agenda
+   * (or broader invalid_election_timeline against council row).
+   */
+  electionTimelineBlocksVoting?: boolean;
 }): { ok: true } | { ok: false; reason: OwnerVoteOpenGateReason } {
+  if (params.electionTimelineBlocksVoting) {
+    return { ok: false, reason: 'election_timeline_invalid' };
+  }
   const nowMs = params.nowMs ?? Date.now();
   const ov = params.ov;
   if (!ov?.id) return { ok: false, reason: 'no_snapshot' };
@@ -1415,9 +1477,11 @@ export function evaluateOwnerVoteOwnerNavigationGate(params: {
   resolutionCount: number;
   electionAgendaCount: number;
   nowMs?: number;
+  electionTimelineBlocksVoting?: boolean;
 }): { ok: true } | { ok: false; reason: OwnerVoteOwnerNavigationGateReason } {
   const ov = params.ov;
   if (!ov?.id) return { ok: false, reason: 'no_meeting' };
+  if (params.electionTimelineBlocksVoting) return { ok: false, reason: 'election_timeline_invalid' };
   const st = String(ov.status ?? '').trim().toLowerCase();
   if (st !== 'open') return { ok: false, reason: 'status_not_open' };
 
@@ -1431,7 +1495,14 @@ export function evaluateOwnerVoteOwnerNavigationGate(params: {
   if (nowMs < openMs) return { ok: false, reason: 'too_early' };
   if (nowMs > closeMs) return { ok: false, reason: 'past_close' };
 
-  return evaluateOwnerVoteOpenGate({ ...params, nowMs });
+  return evaluateOwnerVoteOpenGate({
+    ov: params.ov,
+    eligibleCount: params.eligibleCount,
+    resolutionCount: params.resolutionCount,
+    electionAgendaCount: params.electionAgendaCount,
+    nowMs,
+    electionTimelineBlocksVoting: params.electionTimelineBlocksVoting,
+  });
 }
 
 export function translationKeyForOwnerVoteOpenGate(
@@ -1441,8 +1512,11 @@ export function translationKeyForOwnerVoteOpenGate(
   | 'meeting_ov_open_block_no_eligible'
   | 'meeting_ov_open_block_no_agenda'
   | 'meeting_ov_open_block_too_early'
-  | 'meeting_ov_open_block_past_close' {
+  | 'meeting_ov_open_block_past_close'
+  | 'meeting_election_time_overlap_admin_warn' {
   switch (reason) {
+    case 'election_timeline_invalid':
+      return 'meeting_election_time_overlap_admin_warn';
     case 'no_snapshot':
       return 'meeting_ov_open_block_freeze_snap';
     case 'no_eligible':
@@ -1464,6 +1538,7 @@ export function translationKeyForOwnerVoteOwnerNavigationGate(
   | 'meeting_owner_vote_nav_no_meeting' {
   if (reason === 'status_not_open') return 'meeting_owner_vote_nav_status_not_open';
   if (reason === 'no_meeting') return 'meeting_owner_vote_nav_no_meeting';
+  if (reason === 'election_timeline_invalid') return 'meeting_election_time_overlap_admin_warn';
   return translationKeyForOwnerVoteOpenGate(reason);
 }
 

@@ -1,4 +1,8 @@
 import type { MeetingFormat, MeetingRow } from './api';
+import {
+  deriveCouncilElectionCanonFromScheduledAt,
+  type DerivedCouncilElectionCanon,
+} from './electionTimelineMath';
 import { addDaysIso } from './ownerVotingCouncil';
 
 export type MeetingFormatUi = 'in_person' | 'live_remote' | 'hybrid' | 'written_remote';
@@ -14,6 +18,9 @@ const GOVERNANCE_HTML_COMMENT_RE = /<!--\s*clearstrata-meeting-governance\b[\s\S
 
 export type WrittenRemoteMetaV1 = {
   v: 1;
+  /** New name; election public notice closes T0+7d. */
+  public_notice_close_at?: string;
+  /** Legacy key — treated as `public_notice_close_at` when present. */
   discussion_closes_at?: string;
   voting_open_at?: string;
   voting_close_at?: string;
@@ -128,12 +135,16 @@ export function extractWrittenRemoteMeta(descriptionZh: string | null | undefine
   try {
     const o = JSON.parse(raw) as Record<string, unknown>;
     if (o && o.v === 1) {
+      const pnc =
+        typeof o.public_notice_close_at === 'string' ? o.public_notice_close_at.trim() : '';
       const dc = typeof o.discussion_closes_at === 'string' ? o.discussion_closes_at.trim() : '';
       const vo = typeof o.voting_open_at === 'string' ? o.voting_open_at.trim() : '';
       const vc = typeof o.voting_close_at === 'string' ? o.voting_close_at.trim() : '';
-      if (dc || vo || vc) {
+      const noticeClose = pnc || dc;
+      if (noticeClose || vo || vc) {
         meta = {
           v: 1,
+          ...(pnc ? { public_notice_close_at: pnc } : {}),
           ...(dc ? { discussion_closes_at: dc } : {}),
           ...(vo ? { voting_open_at: vo } : {}),
           ...(vc ? { voting_close_at: vc } : {}),
@@ -147,9 +158,28 @@ export function extractWrittenRemoteMeta(descriptionZh: string | null | undefine
   return { cleanDescriptionZh: clean, meta };
 }
 
+/** Auto triple-phase embed from meeting start (`scheduled_at` ISO). Prefer over manual fields. */
+export function embedWrittenRemoteCanonFromMeetingStart(
+  cleanDescriptionZh: string | null | undefined,
+  scheduledIso: string,
+): string | null {
+  const canon = deriveCouncilElectionCanonFromScheduledAt(scheduledIso);
+  if (!canon) return null;
+  const base = (cleanDescriptionZh ?? '').replace(/\s+$/u, '');
+  const payload: WrittenRemoteMetaV1 = {
+    v: 1,
+    public_notice_close_at: canon.publicNoticeCloseIso,
+    voting_open_at: canon.votingOpenIso,
+    voting_close_at: canon.votingCloseIso,
+  };
+  const block = `${META_START}${JSON.stringify(payload)}${META_END}`;
+  return base ? `${base}\n\n${block}` : block;
+}
+
+/** @deprecated Prefer `embedWrittenRemoteCanonFromMeetingStart` — kept for tooling/tests. */
 export function embedWrittenRemoteMeta(cleanDescriptionZh: string | null | undefined, discussionClosesIso: string): string {
   const base = (cleanDescriptionZh ?? '').replace(/\s+$/u, '');
-  const payload: WrittenRemoteMetaV1 = { v: 1, discussion_closes_at: discussionClosesIso };
+  const payload: WrittenRemoteMetaV1 = { v: 1, public_notice_close_at: discussionClosesIso };
   const block = `${META_START}${JSON.stringify(payload)}${META_END}`;
   return base ? `${base}\n\n${block}` : block;
 }
@@ -176,19 +206,45 @@ export function isWrittenRemoteUi(ui: MeetingFormatUi): boolean {
   return ui === 'written_remote';
 }
 
-/** Discussion window for written-remote council meetings (Model Refactor). */
+/** Public-notice window for written-remote meetings (election semantics: equals first 7 days from scheduled start). */
 export function councilWrittenRemoteWindows(m: MeetingRow): {
+  publicNoticeOpens: string | null;
+  publicNoticeCloses: string | null;
+  /** @deprecated Alias of `publicNoticeOpens` — “discussion period” wording removed from product. */
   discussionOpens: string | null;
+  /** @deprecated Alias of `publicNoticeCloses`. */
   discussionCloses: string | null;
 } {
   const ui = meetingFormatUiFromRow(m);
-  if (!isWrittenRemoteUi(ui)) {
-    return { discussionOpens: null, discussionCloses: null };
+  const empty = (): ReturnType<typeof councilWrittenRemoteWindows> => ({
+    publicNoticeOpens: null,
+    publicNoticeCloses: null,
+    discussionOpens: null,
+    discussionCloses: null,
+  });
+  if (!isWrittenRemoteUi(ui)) return empty();
+
+  const canon = deriveCouncilElectionCanonFromScheduledAt(m.scheduled_at);
+  if (canon) {
+    const o = canon.publicNoticeOpenIso;
+    const c = canon.publicNoticeCloseIso;
+    return {
+      publicNoticeOpens: o,
+      publicNoticeCloses: c,
+      discussionOpens: o,
+      discussionCloses: c,
+    };
   }
   const { meta } = extractWrittenRemoteMeta(m.description_zh);
+  const open = m.scheduled_at?.trim() ? m.scheduled_at : null;
+  const pnc = meta?.public_notice_close_at?.trim();
+  const dc = meta?.discussion_closes_at?.trim();
+  const closeRaw = (pnc || dc || null)?.trim() || null;
   return {
-    discussionOpens: m.scheduled_at?.trim() ? m.scheduled_at : null,
-    discussionCloses: meta?.discussion_closes_at?.trim() ? meta.discussion_closes_at : null,
+    publicNoticeOpens: open,
+    publicNoticeCloses: closeRaw,
+    discussionOpens: open,
+    discussionCloses: closeRaw,
   };
 }
 
@@ -197,6 +253,16 @@ export function councilMeetingVotingWindowFallback(m: MeetingRow): {
   votingOpens: string | null;
   votingCloses: string | null;
 } {
+  const ui = meetingFormatUiFromRow(m);
+  if (isWrittenRemoteUi(ui)) {
+    const canon = deriveCouncilElectionCanonFromScheduledAt(m.scheduled_at);
+    if (canon) {
+      return {
+        votingOpens: canon.votingOpenIso,
+        votingCloses: canon.votingCloseIso,
+      };
+    }
+  }
   const vo = m.voting_open_at?.trim() ? m.voting_open_at : null;
   const vc = m.voting_close_at?.trim() ? m.voting_close_at : null;
   if (vo || vc) return { votingOpens: vo, votingCloses: vc };
@@ -215,23 +281,44 @@ export function councilMeetingVotingWindowFallback(m: MeetingRow): {
 }
 
 /**
- * Insert-time voting window for `owner_vote_meetings` — never prefer “now” over scheduled council fields.
- * Open priority: `meetings.voting_open_at` → written-remote meta `voting_open_at` → meta `discussion_closes_at` → now.
- * Close priority: `meetings.voting_close_at` → meta `voting_close_at` → opens + 7 days.
+ * Insert-time voting window for `owner_vote_meetings`.
+ * Written-remote: fixed third phase `[T0+14d, T0+21d)` from `meetings.scheduled_at` when parseable.
+ * Otherwise falls back to row/meta fields.
  */
 export function deriveOwnerVoteMeetingVotingTimes(m: MeetingRow): {
   voting_opens_at: string;
   voting_closes_at: string;
 } {
+  const ui = meetingFormatUiFromRow(m);
+  if (isWrittenRemoteUi(ui)) {
+    const canon = deriveCouncilElectionCanonFromScheduledAt(m.scheduled_at);
+    if (canon) {
+      return {
+        voting_opens_at: canon.votingOpenIso,
+        voting_closes_at: canon.votingCloseIso,
+      };
+    }
+  }
   const rowOpen = m.voting_open_at?.trim() ?? '';
   const rowClose = m.voting_close_at?.trim() ?? '';
   const { meta } = extractWrittenRemoteMeta(m.description_zh);
   const metaOpen = meta?.voting_open_at?.trim() ?? '';
   const metaClose = meta?.voting_close_at?.trim() ?? '';
-  const discClose = meta?.discussion_closes_at?.trim() ?? '';
+  const discClose = meta?.discussion_closes_at?.trim() ?? meta?.public_notice_close_at?.trim() ?? '';
 
   const voting_opens_at = rowOpen || metaOpen || discClose || new Date().toISOString();
   const voting_closes_at = rowClose || metaClose || addDaysIso(voting_opens_at, 7);
 
   return { voting_opens_at, voting_closes_at };
+}
+
+/** Persisted triple-phase timestamps for council `meetings` (written-remote from meeting start). */
+export function persistedCouncilCanonVotingSlice(m: Partial<MeetingRow>): {
+  canon: DerivedCouncilElectionCanon | null;
+  votingOpenIso: string | null;
+  votingCloseIso: string | null;
+} {
+  const canon = deriveCouncilElectionCanonFromScheduledAt(m.scheduled_at ?? null);
+  if (!canon) return { canon: null, votingOpenIso: null, votingCloseIso: null };
+  return { canon, votingOpenIso: canon.votingOpenIso, votingCloseIso: canon.votingCloseIso };
 }

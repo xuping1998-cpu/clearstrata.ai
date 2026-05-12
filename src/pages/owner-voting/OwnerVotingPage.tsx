@@ -5,13 +5,17 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { StatusBadge } from '@/components/status/StatusBadge';
+import type {
+  CouncilElectionCanonMeetingInput,
+  ElectionAgendaMetaV1,
+} from '@/features/meetings/electionAgendaModel';
 import {
   buildElectionNominationRibbon,
-  electionNominationPhase,
+  formatElectionNominationUiStatus,
+  getElectionNominationStatus,
+  isFormalElectionVotingAllowed,
   extractElectionAgendaMeta,
   finalizeElectionMeta,
-  isFormalElectionVotingAllowed,
-  type ElectionAgendaMetaV1,
 } from '@/features/meetings/electionAgendaModel';
 import type { MeetingRow } from '@/features/meetings/api';
 import { councilMeetingVotingWindowFallback } from '@/features/meetings/meetingFormatModel';
@@ -112,6 +116,9 @@ function parseRpcError(msg: string, zh: boolean): string | null {
   }
   if (m.includes('nomination_still_open')) {
     return zh ? '提名期尚未截止，正式投票将在提名截止后开放。' : 'Formal voting will open after the nomination period closes.';
+  }
+  if (m.includes('nomination_not_open')) {
+    return zh ? '提名尚未开放。' : 'Nomination has not opened yet.';
   }
   if (m.includes('nomination_not_started')) {
     return zh ? '提名尚未开始。' : 'Nomination has not started.';
@@ -242,11 +249,14 @@ interface MeetingPack {
   /** Council-side voting window (`councilMeetingVotingWindowFallback`); used when `councilMeetingId` is set */
   councilMeetingVotingOpensIso: string | null;
   councilMeetingVotingClosesIso: string | null;
+  /** Council row for election nomination / formal voting phase (subset of `MeetingRow`). */
+  councilMeetingElectionRow: CouncilMeetingBatchRow | null;
 }
 
 type CouncilMeetingBatchRow = Pick<
   MeetingRow,
   | 'id'
+  | 'property_id'
   | 'status'
   | 'created_at'
   | 'scheduled_at'
@@ -345,6 +355,8 @@ type CouncilElectionBlockProps = {
   onBusy: (v: boolean) => void;
   onToast: (toast: { kind: 'success' | 'error' | 'info'; text: string }) => void;
   onReload: () => Promise<void>;
+  /** Bound council AGM/SGM row (election phases derive from scheduled start). */
+  councilElectionMeeting: CouncilElectionCanonMeetingInput | null;
 };
 
 function OwnerCouncilElectionBlock({
@@ -360,6 +372,7 @@ function OwnerCouncilElectionBlock({
   onBusy,
   onToast,
   onReload,
+  councilElectionMeeting,
 }: CouncilElectionBlockProps) {
   const now = new Date();
   const [picked, setPicked] = useState<Set<string>>(() => new Set(initialSelected));
@@ -369,14 +382,15 @@ function OwnerCouncilElectionBlock({
 
   const meta = finalizeElectionMeta(brief.meta, now);
   const maxPick = Math.min(Math.max(1, meta.max_choices_per_unit), Math.max(1, meta.seats));
-  const nomPhase = electionNominationPhase(now, meta);
-  const nominationBlocking = nomPhase === 'before_open' || nomPhase === 'collecting';
-  const nominationComplete = isFormalElectionVotingAllowed(now, meta);
+  const nomStatus = getElectionNominationStatus(now, meta, councilElectionMeeting ?? undefined);
+  const nominationBlocking =
+    nomStatus === 'before_open' || nomStatus === 'open' || nomStatus === 'invalid';
+  const formalVotingGate = isFormalElectionVotingAllowed(now, meta, councilElectionMeeting ?? undefined);
   const ovSt = ownerMeetingStatus.trim().toLowerCase();
   const ovDbEnded = ovSt === 'closed' || ovSt === 'archived' || ovSt === 'ended';
   /** Council-ended effective phase closes election voting even if OV row stale */
   const councilOrOvEnded = ovDbEnded || votePhase === 'closed';
-  const showBallotSubmit = nominationComplete && votePhase === 'voting_live' && !councilOrOvEnded;
+  const showBallotSubmit = formalVotingGate && votePhase === 'voting_live' && !councilOrOvEnded;
 
   /** Time window ended (or DB archived / council binding ended): banner */
   const votingPeriodEndedBanner = councilOrOvEnded;
@@ -457,7 +471,7 @@ function OwnerCouncilElectionBlock({
   }
 
   const canSelfNomForm =
-    meta.allow_self_nomination && !councilOrOvEnded && nomPhase === 'collecting' && !!eligibleUnitNo?.trim() && !dupUnit;
+    meta.allow_self_nomination && !councilOrOvEnded && nomStatus === 'open' && !!eligibleUnitNo?.trim() && !dupUnit;
 
   return (
     <div className="rounded-xl border border-amber-200/80 bg-amber-50/20 p-4 space-y-3">
@@ -557,11 +571,11 @@ function OwnerCouncilElectionBlock({
         )}
       </ul>
 
-      {meta.allow_self_nomination && !councilOrOvEnded && nomPhase === 'before_open' ? (
-        <p className="text-xs text-gray-600">{zh ? '提名尚未开放。' : 'Nomination has not opened yet.'}</p>
+      {meta.allow_self_nomination && !councilOrOvEnded && nomStatus === 'before_open' ? (
+        <p className="text-xs text-gray-600">{t('meeting_election_nomination_not_open_owner')}</p>
       ) : null}
 
-      {meta.allow_self_nomination && !councilOrOvEnded && nomPhase === 'ended' ? (
+      {meta.allow_self_nomination && !councilOrOvEnded && nomStatus === 'closed' ? (
         <p className="text-xs text-gray-600">{t('meeting_election_self_nomination_closed')}</p>
       ) : null}
 
@@ -827,7 +841,7 @@ export function OwnerVotingPage() {
         const { data: councilBatch, error: councilBatchErr } = await supabase
           .from('meetings')
           .select(
-            'id,status,created_at,scheduled_at,voting_open_at,voting_close_at,description_zh,meeting_format',
+            'id,property_id,status,created_at,scheduled_at,voting_open_at,voting_close_at,description_zh,meeting_format',
           )
           .in('id', distinctCouncilIds);
         if (councilBatchErr) {
@@ -879,6 +893,7 @@ export function OwnerVotingPage() {
             councilMeetingCreatedAt: crow?.created_at ?? null,
             councilMeetingVotingOpensIso: councilOvIso,
             councilMeetingVotingClosesIso: councilVcIso,
+            councilMeetingElectionRow: crow,
           },
         ];
       });
@@ -1079,7 +1094,11 @@ export function OwnerVotingPage() {
             const isCouncilDraft = councilStNorm === 'draft';
 
             const electionNomRibbonPack = pack.electionAgendas.length
-              ? buildElectionNominationRibbon(pack.electionAgendas.map((e) => finalizeElectionMeta(e.meta, now)))
+              ? buildElectionNominationRibbon(
+                  pack.electionAgendas.map((e) => finalizeElectionMeta(e.meta, now)),
+                  now,
+                  pack.councilMeetingElectionRow,
+                )
               : null;
 
             const dateOpts: Intl.DateTimeFormatOptions =
@@ -1143,9 +1162,10 @@ export function OwnerVotingPage() {
                         <div className="rounded-lg bg-amber-50/60 px-3 py-2 ring-1 ring-amber-100 sm:col-span-2">
                           <dt className="text-xs text-gray-600">{t('meeting_election_nomination')}</dt>
                           <dd className="font-medium text-gray-900">
-                            {electionNomRibbonPack.anyNominationOpen
-                              ? t('meeting_election_nomination_open')
-                              : t('meeting_election_nomination_closed')}
+                            {formatElectionNominationUiStatus(electionNomRibbonPack.nominationUiStatus, {
+                              t,
+                              languageEn: !zh,
+                            })}
                           </dd>
                         </div>
                         <div className="rounded-lg bg-amber-50/60 px-3 py-2 ring-1 ring-amber-100 sm:col-span-2">
@@ -1307,6 +1327,7 @@ export function OwnerVotingPage() {
                             initialSelected={initial}
                             onBusy={(v) => setElectionSubmitKey(v ? k : null)}
                             onToast={setToast}
+                            councilElectionMeeting={pack.councilMeetingElectionRow}
                             onReload={reload}
                           />
                         );

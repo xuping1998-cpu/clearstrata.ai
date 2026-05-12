@@ -10,6 +10,7 @@ import {
   createAgendaItem,
   createVote,
   ensureOwnerVoteMeetingForCouncilMeeting,
+  ensureOwnerVoteResolutionForMeeting,
   evaluateOwnerVoteOpenGate,
   evaluateOwnerVoteOwnerNavigationGate,
   fetchOwnerVoteMeetingMetaForCouncilMeeting,
@@ -42,13 +43,7 @@ import { samePropertyId } from '../../lib/propertyIdMatch';
 import { canManagePropertyMeetings } from '@/lib/meetingPermissions';
 import { labelFormat, labelMeetingType, labelStatus, labelVoteRule, labelVoteStatus, meetingUiStrings } from '../../features/meetings/labels';
 import {
-  addDaysIso,
-  councilMeetingTitleForOwnerVoteBinding,
-  findOwnerVoteResolutionForAgenda,
-  isOwnerVotingMeeting,
-} from '@/features/meetings/ownerVotingCouncil';
-import {
-  buildElectionNominationRibbon,
+  analyzeCouncilElectionTimeline,
   defaultElectionMeta,
   displayAgendaZhWithoutElection,
   embedElectionAgendaMeta,
@@ -56,7 +51,9 @@ import {
   finalizeElectionMeta,
   fromDatetimeLocalValue,
   toDatetimeLocalValue,
+  type ElectionAgendaMetaV1,
 } from '@/features/meetings/electionAgendaModel';
+import { deriveCouncilElectionCanonFromScheduledAt } from '@/features/meetings/electionTimelineMath';
 import {
   CouncilElectionResultsBlock,
   type OwnerElectionBallotLite,
@@ -64,7 +61,6 @@ import {
 import { MeetingElectionCandidatesPanel } from '@/components/meetings/MeetingElectionCandidatesPanel';
 import {
   councilMeetingVotingWindowFallback,
-  councilWrittenRemoteWindows,
   extractGovernanceMeta,
   meetingSgmRequisitionRequiredUnits,
   MEETING_SGM_REQUISITION_PERCENT_DEFAULT,
@@ -101,15 +97,25 @@ function agendaKindFromRow(a: MeetingAgendaRow): AgendaKindUi {
   return a.requires_vote ? 'resolution' : 'normal';
 }
 
-function defaultElectionNominationIsoPair(meeting: MeetingRow, ov: OwnerVoteMeetingLite | null): { opens: string; closes: string } {
-  const nowIso = new Date().toISOString();
-  const disc = councilWrittenRemoteWindows(meeting);
-  const vf = councilMeetingVotingWindowFallback(meeting);
-  const opens = disc.discussionOpens?.trim() || meeting.scheduled_at?.trim() || nowIso;
-  const voOv = ov?.voting_opens_at?.trim() || '';
-  const voFb = vf.votingOpens?.trim() || '';
-  const closes = voOv || voFb || addDaysIso(nowIso, 7);
-  return { opens, closes };
+function canonElectionNominationPairOrNull(meeting: MeetingRow): { opens: string; closes: string } | null {
+  const canon = deriveCouncilElectionCanonFromScheduledAt(meeting.scheduled_at);
+  if (!canon) return null;
+  return { opens: canon.nominationOpenIso, closes: canon.nominationCloseIso };
+}
+
+function canonNominationFmt(
+  meeting: MeetingRow | null | undefined,
+  en: boolean,
+): { opens: string; closes: string } | null {
+  if (!meeting) return null;
+  const pair = canonElectionNominationPairOrNull(meeting);
+  if (!pair) return null;
+  const loc = en ? 'en-CA' : 'zh-CN';
+  const opts: Intl.DateTimeFormatOptions = { dateStyle: 'medium', timeStyle: 'short' };
+  return {
+    opens: new Date(pair.opens).toLocaleString(loc, opts),
+    closes: new Date(pair.closes).toLocaleString(loc, opts),
+  };
 }
 
 const initialBundle = (): MeetingDetailBundle => ({
@@ -144,8 +150,6 @@ export function MeetingDetail() {
   const [newElectionSeats, setNewElectionSeats] = useState(3);
   const [newElectionMaxChoices, setNewElectionMaxChoices] = useState(3);
   const [newElectionSelfNom, setNewElectionSelfNom] = useState(true);
-  const [newElectionNomOpensDl, setNewElectionNomOpensDl] = useState('');
-  const [newElectionNomClosesDl, setNewElectionNomClosesDl] = useState('');
   const [newVoteRule, setNewVoteRule] = useState<'simple_majority' | 'three_quarter' | 'unanimous'>('simple_majority');
   const [agendaEdit, setAgendaEdit] = useState<{
     agendaId: string;
@@ -177,7 +181,6 @@ export function MeetingDetail() {
   const [ownerElectionBallots, setOwnerElectionBallots] = useState<OwnerElectionBallotLite[]>([]);
   const [viewerOvUnitNo, setViewerOvUnitNo] = useState<string | null>(null);
   const openedTrackedRef = useRef<string | null>(null);
-  const prevNewAgendaKindRef = useRef<AgendaKindUi>('normal');
 
   const canManageCouncilMeetings = canManagePropertyMeetings(roleInProperty);
 
@@ -263,6 +266,7 @@ export function MeetingDetail() {
 
   const meeting = bundle.meeting;
 
+
   useEffect(() => {
     if (meeting && isMeetingClosedForVoting(meeting.status)) setAgendaEdit(null);
   }, [meeting?.id, meeting?.status]);
@@ -294,10 +298,13 @@ export function MeetingDetail() {
 
   const electionRulesLockedForAgendaEdit = !!(agendaEdit && (electionBallotsByAgenda.get(agendaEdit.agendaId) ?? 0) > 0);
 
-  const electionNomRibbonModel = useMemo(
-    () => buildElectionNominationRibbon(electionBundles.map((e) => e.meta)),
-    [electionBundles],
-  );
+  const electionNomRibbonModel =
+    electionBundles.length > 0 && meeting
+      ? buildElectionNominationRibbon(electionBundles.map((e) => e.meta), new Date(), meeting)
+      : null;
+
+  const electionTimelineBlocksOwnerVote =
+    electionNomRibbonModel?.nominationUiStatus === 'invalid';
 
   const councilFormalResolutionAgendaCount = useMemo(() => {
     let n = 0;
@@ -313,6 +320,7 @@ export function MeetingDetail() {
       eligibleCount: ovMeta.eligibleCount,
       resolutionCount: ovMeta.resolutionCount,
       electionAgendaCount: electionBundles.length,
+      electionTimelineBlocksVoting: electionTimelineBlocksOwnerVote,
     });
     if (!gate.ok) {
       if (gate.reason === 'too_early') {
@@ -342,7 +350,7 @@ export function MeetingDetail() {
       return;
     }
     navigate('/owner-voting');
-  }, [ovMeta.meeting, ovMeta.eligibleCount, ovMeta.resolutionCount, electionBundles.length, en, t, navigate]);
+  }, [ovMeta.meeting, ovMeta.eligibleCount, ovMeta.resolutionCount, electionBundles.length, en, t, navigate, electionTimelineBlocksOwnerVote]);
 
   const showVoteWaitingResultsBanner =
     showCouncilOwnerVoteUi &&
@@ -352,16 +360,6 @@ export function MeetingDetail() {
     (ovMeta.meeting.status?.trim().toLowerCase() ?? '') === 'open' &&
     !ovResolutionResults.some((r) => (r.total_cast ?? 0) > 0) &&
     ownerElectionBallots.length === 0;
-
-  useEffect(() => {
-    const was = prevNewAgendaKindRef.current;
-    prevNewAgendaKindRef.current = newAgendaKind;
-    if (!meeting || newAgendaKind !== 'election') return;
-    if (was === 'election') return;
-    const pair = defaultElectionNominationIsoPair(meeting, ovMeta.meeting);
-    setNewElectionNomOpensDl(toDatetimeLocalValue(pair.opens));
-    setNewElectionNomClosesDl(toDatetimeLocalValue(pair.closes));
-  }, [newAgendaKind, meeting, ovMeta.meeting]);
 
   useEffect(() => {
     let cancelled = false;
@@ -610,9 +608,18 @@ export function MeetingDetail() {
 
     let descriptionZh: string | undefined;
     if (savedKind === 'election') {
-      const pairFallback = defaultElectionNominationIsoPair(meeting, ovMeta.meeting);
-      const nomination_opens_at = fromDatetimeLocalValue(newElectionNomOpensDl) ?? pairFallback.opens;
-      const nomination_closes_at = fromDatetimeLocalValue(newElectionNomClosesDl) ?? pairFallback.closes;
+      const pairCanon = canonElectionNominationPairOrNull(meeting);
+      if (!pairCanon) {
+        setActionErr(
+          en
+            ? 'Set a valid AGM/SGM scheduled start before adding an election agenda (phases derive from meeting start).'
+            : '请先设置有效的 AGM/SGM 召开时间后再添加业委会选举议程（阶段由会议开始自动生成）。',
+        );
+        setBusy(false);
+        return;
+      }
+      const nomination_opens_at = pairCanon.opens;
+      const nomination_closes_at = pairCanon.closes;
       descriptionZh = embedElectionAgendaMeta(
         '',
         defaultElectionMeta({
@@ -623,6 +630,18 @@ export function MeetingDetail() {
           nomination_closes_at,
         }),
       );
+    }
+
+    if (savedKind === 'election' && meeting && descriptionZh) {
+      const em = extractElectionAgendaMeta(descriptionZh).meta;
+      if (
+        em &&
+        analyzeCouncilElectionTimeline(em, meeting).invalid_election_timeline
+      ) {
+        setActionErr(t('meeting_election_invalid_timeline'));
+        setBusy(false);
+        return;
+      }
     }
 
     const { error } = await createAgendaItem({
@@ -663,15 +682,16 @@ export function MeetingDetail() {
         );
       } else {
         const resTitle = savedTitleZh || savedTitleEn || (en ? 'Untitled resolution' : '未命名决议');
-        const { error: resErr } = await supabase.from('owner_vote_resolutions').insert({
-          meeting_id: ensured.id,
+        const th = mapVoteRuleToOwnerVoteThreshold(savedVoteRule);
+        const { id: resId, error: resErr } = await ensureOwnerVoteResolutionForMeeting({
+          meetingId: ensured.id,
           title: resTitle,
+          threshold: th,
           description: null,
-          threshold: mapVoteRuleToOwnerVoteThreshold(savedVoteRule),
           display_order: nextOrder,
         });
-        if (resErr) {
-          console.error('[MeetingDetail] owner_vote_resolutions insert', resErr);
+        if (resErr || !resId) {
+          console.error('[MeetingDetail] owner_vote_resolutions ensure', resErr);
           setActionErr(
             en
               ? 'Agenda added, but the formal owner vote resolution could not be created. You can add it later.'
@@ -769,26 +789,31 @@ export function MeetingDetail() {
     const nextRequiresVote = nextKind === 'resolution';
     const nextVoteRule: VoteRule | null = nextRequiresVote ? agendaEdit.vote_rule : null;
 
+    let electionMetaTimelineProbe: ElectionAgendaMetaV1 | null = null;
     let descriptionZh: string | null | undefined = row.description_zh;
+
+    const pairCanon = canonElectionNominationPairOrNull(meeting);
+    if (nextKind === 'election' && !pairCanon) {
+      setActionErr(
+        en
+          ? 'Set a valid AGM/SGM scheduled start; election timelines are derived automatically from meeting start.'
+          : '请设置有效的 AGM/SGM 召开时间；业委会选举时间由会议开始自动生成。',
+      );
+      return;
+    }
+
     if (nextKind === 'election') {
       const upgradingToElectionFromNonElection = startedKind !== 'election';
 
       if (upgradingToElectionFromNonElection) {
-        const pairFallback = defaultElectionNominationIsoPair(meeting, ovMeta.meeting);
-        const nomination_opens_at =
-          fromDatetimeLocalValue(agendaEdit.election_nomination_opens_dl) ?? pairFallback.opens;
-        const nomination_closes_at =
-          fromDatetimeLocalValue(agendaEdit.election_nomination_closes_dl) ?? pairFallback.closes;
-        descriptionZh = embedElectionAgendaMeta(
-          peeled || null,
-          defaultElectionMeta({
-            seats: 7,
-            max_choices_per_unit: 7,
-            allow_self_nomination: true,
-            nomination_opens_at,
-            nomination_closes_at,
-          }),
-        );
+        electionMetaTimelineProbe = defaultElectionMeta({
+          seats: 7,
+          max_choices_per_unit: 7,
+          allow_self_nomination: true,
+          nomination_opens_at: pairCanon!.opens,
+          nomination_closes_at: pairCanon!.closes,
+        });
+        descriptionZh = embedElectionAgendaMeta(peeled || null, electionMetaTimelineProbe);
       } else {
         const previousMeta = extractElectionAgendaMeta(row.description_zh ?? '').meta ?? defaultElectionMeta();
         const base = finalizeElectionMeta(previousMeta);
@@ -801,22 +826,31 @@ export function MeetingDetail() {
           return;
         }
 
-        const nomOpensIso = fromDatetimeLocalValue(agendaEdit.election_nomination_opens_dl);
-        const nomClosesIso = fromDatetimeLocalValue(agendaEdit.election_nomination_closes_dl);
-
-        const merged = {
+        const merged: ElectionAgendaMetaV1 = {
           ...base,
           seats: nextSeats,
           max_choices_per_unit: nextMax,
           allow_self_nomination: agendaEdit.election_allow_self_nomination,
           candidates: [...base.candidates],
-          nomination_opens_at: nomOpensIso ?? base.nomination_opens_at,
-          nomination_closes_at: nomClosesIso ?? base.nomination_closes_at,
+          nomination_opens_at: pairCanon!.opens,
+          nomination_closes_at: pairCanon!.closes,
         };
+        electionMetaTimelineProbe = merged;
         descriptionZh = embedElectionAgendaMeta(peeled || null, merged);
       }
     } else {
       descriptionZh = peeled.trim() ? peeled : null;
+    }
+
+    if (electionMetaTimelineProbe && meeting) {
+      const { invalid_election_timeline } = analyzeCouncilElectionTimeline(
+        electionMetaTimelineProbe,
+        meeting,
+      );
+      if (invalid_election_timeline) {
+        setActionErr(t('meeting_election_invalid_timeline'));
+        return;
+      }
     }
 
     setBusy(true);
@@ -890,14 +924,17 @@ export function MeetingDetail() {
             .eq('meeting_id', ensured.id);
           if (rErr) console.error('[MeetingDetail] owner_vote_resolutions update', rErr);
         } else {
-          const { error: insErr } = await supabase.from('owner_vote_resolutions').insert({
-            meeting_id: ensured.id,
+          const th = mapVoteRuleToOwnerVoteThreshold(agendaEdit.vote_rule);
+          const { id: newResId, error: insErr } = await ensureOwnerVoteResolutionForMeeting({
+            meetingId: ensured.id,
             title: titleForRes,
+            threshold: th,
             description: null,
-            threshold: mapVoteRuleToOwnerVoteThreshold(agendaEdit.vote_rule),
             display_order: row.sort_order,
           });
-          if (insErr) console.error('[MeetingDetail] owner_vote_resolutions insert (edit)', insErr);
+          if (insErr || !newResId) {
+            console.error('[MeetingDetail] owner_vote_resolutions ensure (edit)', insErr);
+          }
         }
       }
     }
@@ -983,6 +1020,13 @@ export function MeetingDetail() {
   async function handleEnableElectronicVoting() {
     if (!meeting || !user?.id || !currentPropertyId) return;
     if (isMeetingClosedForVoting(meeting.status)) return;
+    if (electionTimelineBlocksOwnerVote) {
+      setEvToast({
+        kind: 'error',
+        text: t('meeting_election_time_overlap_admin_warn'),
+      });
+      return;
+    }
     if (!councilMeetingTitleForOwnerVoteBinding(meeting).trim()) {
       setEvToast({
         kind: 'error',
@@ -1039,6 +1083,7 @@ export function MeetingDetail() {
       eligibleCount: ovMeta.eligibleCount,
       resolutionCount: ovMeta.resolutionCount,
       electionAgendaCount: electionBundles.length,
+      electionTimelineBlocksVoting: electionTimelineBlocksOwnerVote,
     });
     if (!gate.ok) {
       setEvToast({ kind: 'error', text: t(translationKeyForOwnerVoteOpenGate(gate.reason)) });
@@ -1316,7 +1361,10 @@ export function MeetingDetail() {
                   onNavigateOwnerVoting={() => handleNavigateOwnerVotingForOwner()}
                   meta={ovMeta}
                   ovBusy={ovBusy}
-                  canEnableBinding={Boolean(councilMeetingTitleForOwnerVoteBinding(meeting).trim())}
+                  canEnableBinding={
+                    Boolean(councilMeetingTitleForOwnerVoteBinding(meeting).trim()) &&
+                    !electionTimelineBlocksOwnerVote
+                  }
                   electionNomRibbon={electionNomRibbonModel}
                   councilFormalResolutionAgendaCount={councilFormalResolutionAgendaCount}
                   electionAgendaCount={electionBundles.length}
@@ -1374,9 +1422,7 @@ export function MeetingDetail() {
                               const peeledMeta = extractElectionAgendaMeta(agenda.description_zh ?? '').meta;
                               const fin = finalizeElectionMeta(peeledMeta ?? defaultElectionMeta());
                               const pairDef =
-                                meeting && showCouncilOwnerVoteUi
-                                  ? defaultElectionNominationIsoPair(meeting, ovMeta.meeting)
-                                  : null;
+                                meeting && showCouncilOwnerVoteUi ? canonElectionNominationPairOrNull(meeting) : null;
                               setAgendaEdit({
                                 agendaId: agenda.id,
                                 title_zh: agenda.title_zh ?? '',
@@ -1428,7 +1474,7 @@ export function MeetingDetail() {
                                   if (!prev) return prev;
                                   if (!meeting || nk !== 'election') return { ...prev, kind: nk };
                                   const row = bundle.agendaItems.find((a) => a.id === prev.agendaId);
-                                  const pairDef = defaultElectionNominationIsoPair(meeting, ovMeta.meeting);
+                                  const pairDef = canonElectionNominationPairOrNull(meeting);
                                   const peeled = extractElectionAgendaMeta(row?.description_zh ?? '').meta;
                                   const seed = peeled?.agenda_type === 'council_election' ? finalizeElectionMeta(peeled) : null;
                                   const fin = seed ?? defaultElectionMeta({});
@@ -1439,11 +1485,13 @@ export function MeetingDetail() {
                                     election_max_choices: fin.max_choices_per_unit,
                                     election_allow_self_nomination: fin.allow_self_nomination,
                                     election_nomination_opens_dl:
+                                      (pairDef && toDatetimeLocalValue(pairDef.opens)) ||
                                       toDatetimeLocalValue(fin.nomination_opens_at) ||
-                                      toDatetimeLocalValue(pairDef.opens),
+                                      '',
                                     election_nomination_closes_dl:
+                                      (pairDef && toDatetimeLocalValue(pairDef.closes)) ||
                                       toDatetimeLocalValue(fin.nomination_closes_at) ||
-                                      toDatetimeLocalValue(pairDef.closes),
+                                      '',
                                   };
                                 });
                               }}
@@ -1533,35 +1581,22 @@ export function MeetingDetail() {
                               {electionRulesLockedForAgendaEdit ? (
                                 <p className="text-xs text-amber-800">{t('meeting_election_rules_locked')}</p>
                               ) : null}
-                              <div className="grid gap-3 sm:grid-cols-2">
-                                <label className="block text-sm space-y-1">
-                                  <span className="font-medium text-gray-800">{t('meeting_election_nomination_opens')}</span>
-                                  <input
-                                    type="datetime-local"
-                                    disabled={busy}
-                                    value={agendaEdit.election_nomination_opens_dl}
-                                    onChange={(e) =>
-                                      setAgendaEdit((prev) =>
-                                        prev ? { ...prev, election_nomination_opens_dl: e.target.value } : prev,
-                                      )
-                                    }
-                                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                                  />
-                                </label>
-                                <label className="block text-sm space-y-1">
-                                  <span className="font-medium text-gray-800">{t('meeting_election_nomination_closes')}</span>
-                                  <input
-                                    type="datetime-local"
-                                    disabled={busy}
-                                    value={agendaEdit.election_nomination_closes_dl}
-                                    onChange={(e) =>
-                                      setAgendaEdit((prev) =>
-                                        prev ? { ...prev, election_nomination_closes_dl: e.target.value } : prev,
-                                      )
-                                    }
-                                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                                  />
-                                </label>
+                              <div className="rounded-lg border border-gray-100 bg-gray-50/90 px-3 py-3 text-xs text-gray-800 space-y-1">
+                                <p className="font-medium text-gray-900">{t('meeting_election_auto_nomination_schedule_title')}</p>
+                                <p>
+                                  <span className="text-gray-600">{t('meeting_election_nomination_opens')}</span>:{' '}
+                                  {(() => {
+                                    const f = canonNominationFmt(meeting, en);
+                                    return f?.opens ?? t('meeting_election_need_valid_scheduled');
+                                  })()}
+                                </p>
+                                <p>
+                                  <span className="text-gray-600">{t('meeting_election_nomination_closes')}</span>:{' '}
+                                  {(() => {
+                                    const f = canonNominationFmt(meeting, en);
+                                    return f?.closes ?? t('meeting_election_need_valid_scheduled');
+                                  })()}
+                                </p>
                               </div>
                             </>
                           ) : null}
@@ -1707,6 +1742,7 @@ export function MeetingDetail() {
                               electionBallotCount={electionBallotsByAgenda.get(agenda.id) ?? 0}
                               languageEn={en}
                               t={t}
+                              councilElectionMeeting={meeting}
                               onUpdated={async () => {
                                 await load();
                                 await refreshOwnerVoteMeta();
@@ -1804,27 +1840,16 @@ export function MeetingDetail() {
                             {t('meeting_election_allow_self_nomination')}
                           </label>
                         </div>
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <label className="block text-sm space-y-1">
-                            <span className="font-medium text-gray-800">{t('meeting_election_nomination_opens')}</span>
-                            <input
-                              type="datetime-local"
-                              disabled={busy}
-                              value={newElectionNomOpensDl}
-                              onChange={(e) => setNewElectionNomOpensDl(e.target.value)}
-                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                            />
-                          </label>
-                          <label className="block text-sm space-y-1">
-                            <span className="font-medium text-gray-800">{t('meeting_election_nomination_closes')}</span>
-                            <input
-                              type="datetime-local"
-                              disabled={busy}
-                              value={newElectionNomClosesDl}
-                              onChange={(e) => setNewElectionNomClosesDl(e.target.value)}
-                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                            />
-                          </label>
+                        <div className="rounded-lg border border-gray-100 bg-gray-50/90 px-3 py-3 text-xs text-gray-800 space-y-1">
+                          <p className="font-medium text-gray-900">{t('meeting_election_auto_nomination_schedule_title')}</p>
+                          <p>
+                            <span className="text-gray-600">{t('meeting_election_nomination_opens')}</span>:{' '}
+                            {canonNominationFmt(meeting, en)?.opens ?? t('meeting_election_need_valid_scheduled')}
+                          </p>
+                          <p>
+                            <span className="text-gray-600">{t('meeting_election_nomination_closes')}</span>:{' '}
+                            {canonNominationFmt(meeting, en)?.closes ?? t('meeting_election_need_valid_scheduled')}
+                          </p>
                         </div>
                       </>
                     )}

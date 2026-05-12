@@ -16,7 +16,7 @@ import {
 } from '../features/meetings/api';
 import {
   embedGovernanceMeta,
-  embedWrittenRemoteMeta,
+  embedWrittenRemoteCanonFromMeetingStart,
   meetingFormatUiFromRow,
   dbFormatFromUi,
   isWrittenRemoteUi,
@@ -28,6 +28,7 @@ import {
   type MeetingGovernanceMetaV1,
   type MeetingInitiationType,
 } from '../features/meetings/meetingFormatModel';
+import { deriveCouncilElectionCanonFromScheduledAt } from '@/features/meetings/electionTimelineMath';
 import { isOwnerVotingMeeting } from '../features/meetings/ownerVotingCouncil';
 import { canManagePropertyMeetings } from '@/lib/meetingPermissions';
 
@@ -72,9 +73,6 @@ const defaultForm = {
   scheduled_at: '',
   meeting_format_ui: 'hybrid' as MeetingFormatUi,
   status: 'draft' as MeetingStatus,
-  discussion_closes_at: '',
-  voting_opens_at: '',
-  voting_closes_at: '',
   initiation_type: 'council_initiated' as MeetingInitiationType,
   total_voting_units: '',
   signed_units: '',
@@ -136,26 +134,7 @@ export function MeetingEditor() {
       setDetailMeeting(m);
       const uiFmt = meetingFormatUiFromRow(m);
       const layers = peelMeetingDescriptionZhForEditor(m.description_zh);
-      const meta = layers.writtenRemoteMeta;
       const gov = layers.governanceMeta;
-      let discClose = '';
-      let vOpen = '';
-      let vClose = '';
-      if (meta?.discussion_closes_at) {
-        discClose = sliceDatetimeLocal(meta.discussion_closes_at);
-      } else if (isWrittenRemoteUi(uiFmt)) {
-        discClose = addDaysDatetimeLocal(sliceDatetimeLocal(m.scheduled_at || new Date().toISOString()), 7);
-      }
-      if (m.voting_open_at) {
-        vOpen = sliceDatetimeLocal(m.voting_open_at);
-      } else if (isWrittenRemoteUi(uiFmt)) {
-        vOpen = sliceDatetimeLocal(m.scheduled_at ?? new Date().toISOString());
-      }
-      if (m.voting_close_at) {
-        vClose = sliceDatetimeLocal(m.voting_close_at);
-      } else if (isWrittenRemoteUi(uiFmt)) {
-        vClose = discClose || addDaysDatetimeLocal(sliceDatetimeLocal(m.scheduled_at || new Date().toISOString()), 7);
-      }
       let statusMapped: MeetingStatus = m.status === 'scheduled' ? 'open' : m.status;
       if (!(statusMapped === 'draft' || statusMapped === 'open' || statusMapped === 'closed' || statusMapped === 'archived')) {
         statusMapped = 'draft';
@@ -169,9 +148,6 @@ export function MeetingEditor() {
         scheduled_at: sliceDatetimeLocal(m.scheduled_at),
         meeting_format_ui: uiFmt,
         status: statusMapped,
-        discussion_closes_at: discClose,
-        voting_opens_at: vOpen,
-        voting_closes_at: vClose,
         initiation_type: gov?.initiation_type ?? 'council_initiated',
         total_voting_units:
           gov?.total_voting_units != null && Number.isFinite(gov.total_voting_units)
@@ -233,18 +209,16 @@ export function MeetingEditor() {
     }
 
     const written = isWrittenRemoteUi(form.meeting_format_ui);
-    let discOpenLocal = form.scheduled_at.trim() ? form.scheduled_at : '';
-    let discCloseLocal = form.discussion_closes_at.trim() ? form.discussion_closes_at : '';
-    let vOpenLoc = form.voting_opens_at.trim() ? form.voting_opens_at : '';
-    let vCloseLoc = form.voting_closes_at.trim() ? form.voting_closes_at : '';
-    if (written && form.status === 'draft') {
-      if (!discOpenLocal) discOpenLocal = nowDatetimeLocalSlice();
-      if (!discCloseLocal) discCloseLocal = addDaysDatetimeLocal(discOpenLocal, 7);
-      if (!vOpenLoc) vOpenLoc = discOpenLocal;
-      if (!vCloseLoc) vCloseLoc = discCloseLocal;
-    }
 
-    const scheduledIso = written ? isoFromDatetimeLocal(discOpenLocal) : isoFromDatetimeLocal(form.scheduled_at?.trim() ? form.scheduled_at : '');
+    const scheduledIso = isoFromDatetimeLocal(
+      written
+        ? form.scheduled_at.trim()
+          ? form.scheduled_at
+          : ''
+        : form.scheduled_at?.trim()
+          ? form.scheduled_at
+          : '',
+    );
     let descriptionZhFinal = form.description_zh;
     let votingOpenIso: string | null = null;
     let votingCloseIso: string | null = null;
@@ -252,16 +226,23 @@ export function MeetingEditor() {
     const dbFormat = dbFormatFromUi(form.meeting_format_ui);
 
     if (written) {
-      const dcIso = isoFromDatetimeLocal(discCloseLocal);
-      votingOpenIso = isoFromDatetimeLocal(vOpenLoc);
-      votingCloseIso = isoFromDatetimeLocal(vCloseLoc);
-      if (!scheduledIso || !dcIso || !votingOpenIso || !votingCloseIso) {
-        setErr(
-          en ? 'Written remote meetings require all four scheduling fields.' : '远程书面会议需填写四项开放/截止时间。',
-        );
+      if (!scheduledIso) {
+        setErr(en ? 'Set the meeting start (public notice opens).' : '请设置会议开始时间（公示开始）。');
         return;
       }
-      descriptionZhFinal = embedWrittenRemoteMeta(form.description_zh || '', dcIso);
+      const canon = deriveCouncilElectionCanonFromScheduledAt(scheduledIso);
+      if (!canon) {
+        setErr(en ? 'Meeting start date is invalid.' : '会议开始时间无效。');
+        return;
+      }
+      votingOpenIso = canon.votingOpenIso;
+      votingCloseIso = canon.votingCloseIso;
+      const embedded = embedWrittenRemoteCanonFromMeetingStart(form.description_zh || '', scheduledIso);
+      if (!embedded) {
+        setErr(en ? 'Could not build written-remote schedule from meeting start.' : '无法根据会议开始生成书面远程时间安排。');
+        return;
+      }
+      descriptionZhFinal = embedded;
     } else {
       descriptionZhFinal = stripWrittenRemoteMeta(form.description_zh);
       votingOpenIso = null;
@@ -284,7 +265,7 @@ export function MeetingEditor() {
     if (form.status !== 'draft') {
       const readiness = noticeReadiness(readinessMeeting, agendaCount, {
         writtenRemote: written,
-        discussionClosesIso: written ? isoFromDatetimeLocal(discCloseLocal) : null,
+        discussionClosesIso: written && scheduledIso ? deriveCouncilElectionCanonFromScheduledAt(scheduledIso)?.publicNoticeCloseIso ?? null : null,
       });
       if (!readiness.ok) {
         const key = written ? 'meeting_create_notice_ready_written_missing' : 'meeting_create_notice_ready_sync_missing';
@@ -521,14 +502,10 @@ export function MeetingEditor() {
               setForm((f) => {
                 if (!isWrittenRemoteUi(f.meeting_format_ui) && isWrittenRemoteUi(v)) {
                   const discOpen = f.scheduled_at.trim() ? f.scheduled_at : nowDatetimeLocalSlice();
-                  const discClose = addDaysDatetimeLocal(discOpen, 7);
                   return {
                     ...f,
                     meeting_format_ui: v,
                     scheduled_at: discOpen,
-                    discussion_closes_at: discClose,
-                    voting_opens_at: discOpen,
-                    voting_closes_at: discClose,
                   };
                 }
                 if (isWrittenRemoteUi(f.meeting_format_ui) && !isWrittenRemoteUi(v)) {
@@ -557,51 +534,47 @@ export function MeetingEditor() {
             />
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4">
+          <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700">{t('discussion_opens')}</label>
+              <label className="block text-sm font-medium text-gray-700">{t('public_notice_opens')}</label>
               <input
                 type="datetime-local"
                 value={form.scheduled_at}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, scheduled_at: e.target.value }))
-                }
+                onChange={(e) => setForm((f) => ({ ...f, scheduled_at: e.target.value }))}
                 className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-900"
               />
+              <p className="mt-2 text-xs text-gray-600 leading-relaxed">{t('meeting_written_remote_auto_phases_hint')}</p>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">{t('discussion_closes')}</label>
-              <input
-                type="datetime-local"
-                value={form.discussion_closes_at}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, discussion_closes_at: e.target.value }))
-                }
-                className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-900"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">{t('voting_opens')}</label>
-              <input
-                type="datetime-local"
-                value={form.voting_opens_at}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, voting_opens_at: e.target.value }))
-                }
-                className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-900"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">{t('voting_closes')}</label>
-              <input
-                type="datetime-local"
-                value={form.voting_closes_at}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, voting_closes_at: e.target.value }))
-                }
-                className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-900"
-              />
-            </div>
+            {form.scheduled_at.trim() &&
+            deriveCouncilElectionCanonFromScheduledAt(isoFromDatetimeLocal(form.scheduled_at) ?? '') ? (
+              <div className="rounded-lg border border-gray-100 bg-gray-50/90 px-3 py-3 text-xs text-gray-800 space-y-2">
+                {(() => {
+                  const canon = deriveCouncilElectionCanonFromScheduledAt(isoFromDatetimeLocal(form.scheduled_at)!);
+                  if (!canon) return null;
+                  const fmt = (iso: string) =>
+                    new Date(iso).toLocaleString(en ? 'en-CA' : 'zh-CN', {
+                      dateStyle: 'medium',
+                      timeStyle: 'short',
+                    });
+                  return (
+                    <>
+                      <p>
+                        <span className="font-semibold">{t('meeting_election_phase_public_notice')}</span>{' '}
+                        {fmt(canon.publicNoticeOpenIso)} – {fmt(canon.publicNoticeCloseIso)}
+                      </p>
+                      <p>
+                        <span className="font-semibold">{t('meeting_election_phase_nomination')}</span>{' '}
+                        {fmt(canon.nominationOpenIso)} – {fmt(canon.nominationCloseIso)}
+                      </p>
+                      <p>
+                        <span className="font-semibold">{t('meeting_election_phase_voting')}</span>{' '}
+                        {fmt(canon.votingOpenIso)} – {fmt(canon.votingCloseIso)}
+                      </p>
+                    </>
+                  );
+                })()}
+              </div>
+            ) : null}
           </div>
         )}
 

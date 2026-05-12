@@ -1,14 +1,17 @@
 import { useMemo, useState } from 'react';
 import type { MeetingAgendaRow } from '@/features/meetings/api';
 import { updateMeetingAgendaItem } from '@/features/meetings/api';
+import type { MeetingRow } from '@/features/meetings/api';
 import {
   embedElectionAgendaMeta,
   extractElectionAgendaMeta,
   finalizeElectionMeta,
   displayAgendaZhWithoutElection,
-  electionNominationPhase,
+  formatElectionNominationUiStatus,
+  getElectionNominationStatus,
   type ElectionAgendaMetaV1,
   type ElectionCandidateDraft,
+  type ElectionNominationUiStatus,
 } from '@/features/meetings/electionAgendaModel';
 import { supabase } from '@/lib/supabase';
 
@@ -25,6 +28,8 @@ export type MeetingElectionCandidatesPanelProps = {
   electionBallotCount: number;
   languageEn: boolean;
   t: (key: string) => string;
+  /** Council meeting row (AGM/SGM) — drives nomination phase from auto 7+7+7 schedule. */
+  councilElectionMeeting?: MeetingRow | null;
   onUpdated: () => void | Promise<void>;
 };
 
@@ -54,6 +59,7 @@ export function MeetingElectionCandidatesPanel({
   electionBallotCount,
   languageEn,
   t,
+  councilElectionMeeting = null,
   onUpdated,
 }: MeetingElectionCandidatesPanelProps) {
   const parsed = extractElectionAgendaMeta(agenda.description_zh ?? '');
@@ -77,7 +83,8 @@ export function MeetingElectionCandidatesPanel({
   /** Recomputed each render so open/closed flips correctly when nomination deadlines pass. */
   const now = new Date();
   const metaFinal = meta ? finalizeElectionMeta(meta, now) : null;
-  const nomPhase = metaFinal ? electionNominationPhase(now, metaFinal) : null;
+  const nomStatus: ElectionNominationUiStatus | null =
+    metaFinal !== null ? getElectionNominationStatus(now, metaFinal, councilElectionMeeting ?? null) : null;
 
   const unitAlreadyCandidate = useMemo(() => {
     const u = eligibleUnitNo?.trim().toLowerCase();
@@ -85,18 +92,20 @@ export function MeetingElectionCandidatesPanel({
     return metaFinal.candidates.some((c) => String(c.unit_no ?? '').trim().toLowerCase() === u);
   }, [eligibleUnitNo, metaFinal]);
 
-  const nominationOpenPhase = nomPhase === 'collecting';
+  const nominationOpenPhase = nomStatus === 'open';
+  const staffNominationWritesEnabled = !!canEdit && nominationOpenPhase;
+
   const canOwnerSelfNom =
     !!ownerVoteMeetingId?.trim() &&
     !!eligibleUnitNo?.trim() &&
-    metaFinal?.allow_self_nomination === true &&
+    !!metaFinal &&
+    metaFinal.allow_self_nomination === true &&
     nominationOpenPhase &&
     !unitAlreadyCandidate &&
     !canEdit;
 
-  if (!meta) return null;
-
   async function persist(next: ElectionAgendaMetaV1) {
+    if (!meta || !staffNominationWritesEnabled) return;
     const visible = displayAgendaZhWithoutElection(agenda.description_zh);
     const merged = finalizeElectionMeta(next);
     const descZh = embedElectionAgendaMeta(visible, merged);
@@ -113,7 +122,14 @@ export function MeetingElectionCandidatesPanel({
         requiresVote: false,
         voteRule: null,
       });
-      if (error) console.error('[MeetingElectionCandidatesPanel]', error.message);
+      if (error) {
+        const lc = error.message.toLowerCase();
+        if (lc.includes('invalid_election_timeline')) alert(t('meeting_election_invalid_timeline'));
+        else if (lc.includes('nomination_not_open')) alert(t('meeting_election_persist_nomination_not_open'));
+        else if (lc.includes('nomination_closed')) alert(t('meeting_election_persist_nomination_closed'));
+        console.error('[MeetingElectionCandidatesPanel]', error.message);
+        return;
+      }
       await onUpdated();
     } finally {
       setBusy(false);
@@ -121,6 +137,7 @@ export function MeetingElectionCandidatesPanel({
   }
 
   async function updateCandidate(patch: ElectionCandidateDraft) {
+    if (!meta || !staffNominationWritesEnabled) return;
     await persist({
       ...finalizeElectionMeta(meta),
       candidates: meta.candidates.map((c) => (c.id === patch.id ? { ...patch } : c)),
@@ -128,7 +145,7 @@ export function MeetingElectionCandidatesPanel({
   }
 
   async function removeCandidate(id: string) {
-    if (electionBallotCount > 0) return;
+    if (!meta || !staffNominationWritesEnabled || electionBallotCount > 0) return;
     await persist({
       ...finalizeElectionMeta(meta),
       candidates: meta.candidates.filter((c) => c.id !== id),
@@ -136,6 +153,7 @@ export function MeetingElectionCandidatesPanel({
   }
 
   async function upsertCandidate() {
+    if (!staffNominationWritesEnabled || !meta) return;
     const name = form.name.trim();
     const unit_no = form.unit.trim();
     if (!name) return;
@@ -178,6 +196,14 @@ export function MeetingElectionCandidatesPanel({
           alert(t('meeting_election_duplicate_candidate'));
           return;
         }
+        if (code === 'nomination_not_open' || code === 'nomination_not_started') {
+          alert(t('meeting_election_nomination_not_open_owner'));
+          return;
+        }
+        if (code === 'nomination_closed') {
+          alert(t('meeting_election_self_nomination_closed'));
+          return;
+        }
         alert(en ? String(payload.error) : code || '自荐失败');
         return;
       }
@@ -188,18 +214,21 @@ export function MeetingElectionCandidatesPanel({
       const raw = e instanceof Error ? e.message : String(e);
       const lc = raw.toLowerCase();
       if (lc.includes('duplicate_candidate')) alert(t('meeting_election_duplicate_candidate'));
+      else if (lc.includes('nomination_not_open') || lc.includes('nomination_not_started'))
+        alert(t('meeting_election_nomination_not_open_owner'));
+      else if (lc.includes('nomination_closed')) alert(t('meeting_election_self_nomination_closed'));
       else console.error('[MeetingElectionCandidatesPanel] submit_owner_election_nomination', raw);
     } finally {
       setSelfBusy(false);
     }
   }
 
-  let nominationStatusLabel = '—';
-  if (nomPhase === 'before_open') nominationStatusLabel = en ? 'Nomination has not opened yet.' : '提名尚未开放';
-  else if (nomPhase === 'collecting') nominationStatusLabel = t('meeting_election_nomination_open');
-  else if (nomPhase === 'ended') nominationStatusLabel = t('meeting_election_nomination_closed');
-  else if (nomPhase === 'legacy_no_deadline')
-    nominationStatusLabel = en ? 'No nomination deadline (legacy agenda).' : '未设置提名截止日（兼容旧议程）';
+  const nominationStatusLabel =
+    nomStatus !== null ? formatElectionNominationUiStatus(nomStatus, { t, languageEn: en }) : '—';
+
+  if (!metaFinal || nomStatus === null) {
+    return null;
+  }
 
   return (
     <div className="mt-4 space-y-4 border-t border-amber-200/80 pt-4">
@@ -207,6 +236,19 @@ export function MeetingElectionCandidatesPanel({
         <h4 className="text-sm font-semibold text-gray-900">{t('meeting_election_nomination')}</h4>
       </div>
 
+      {nomStatus === 'invalid' ? (
+        <p className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-800">
+          {t('meeting_election_time_overlap_admin_warn')}
+        </p>
+      ) : null}
+
+      {canEdit && nomStatus === 'before_open' ? (
+        <p className="text-sm text-gray-700">{t('meeting_election_staff_nomination_before_open')}</p>
+      ) : null}
+
+      {canEdit && nomStatus === 'closed' ? (
+        <p className="text-sm text-gray-700">{t('meeting_election_staff_nomination_closed_readonly')}</p>
+      ) : null}
       <dl className="grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-3">
         <div className="rounded-lg bg-white/70 px-2 py-1.5 ring-1 ring-gray-200 sm:col-span-2 lg:col-span-3">
           <dt className="text-gray-500">{en ? 'Nomination status' : '提名状态'}</dt>
@@ -263,7 +305,7 @@ export function MeetingElectionCandidatesPanel({
                       <span className="font-semibold">{c.accepted ? (en ? 'Yes' : '是') : en ? 'No' : '否'}</span>
                     </p>
                   </div>
-                  {canEdit ? (
+                  {staffNominationWritesEnabled ? (
                     <div className="flex shrink-0 flex-col gap-1 sm:flex-row">
                       <label className="flex items-center gap-1 text-xs text-gray-800">
                         <input
@@ -380,11 +422,11 @@ export function MeetingElectionCandidatesPanel({
         </div>
       ) : null}
 
-      {!canEdit && meta.allow_self_nomination && nomPhase === 'before_open' ? (
-        <p className="text-xs text-gray-600">{en ? 'Nomination has not opened yet.' : '提名尚未开放。'}</p>
+      {!canEdit && meta.allow_self_nomination && nomStatus === 'before_open' ? (
+        <p className="text-xs text-gray-600">{t('meeting_election_nomination_not_open_owner')}</p>
       ) : null}
 
-      {!canEdit && meta.allow_self_nomination && nomPhase === 'ended' ? (
+      {!canEdit && meta.allow_self_nomination && nomStatus === 'closed' ? (
         <p className="text-xs text-gray-600">{t('meeting_election_self_nomination_closed')}</p>
       ) : null}
 
@@ -392,7 +434,7 @@ export function MeetingElectionCandidatesPanel({
         <p className="text-xs text-gray-600">{t('meeting_election_duplicate_candidate')}</p>
       ) : null}
 
-      {canEdit ? (
+      {staffNominationWritesEnabled ? (
         <div className="rounded-lg bg-amber-50/40 px-3 py-3 ring-1 ring-amber-200/60 space-y-2">
           <p className="text-xs font-medium text-gray-800">{t('meeting_election_add_candidate')}</p>
           <div className="grid gap-2 sm:grid-cols-2">
