@@ -37,6 +37,7 @@ import {
   type OwnerVoteMeetingLite,
   type OwnerVoteResolutionResultNormalized,
 } from '../../features/meetings/api';
+import { isOwnerVotingMeeting } from '../../features/meetings/ownerVotingCouncil';
 import { supabase } from '../../lib/supabase';
 import { shouldDeferAutoPropertyRedirects } from '../../lib/authRecovery';
 import { samePropertyId } from '../../lib/propertyIdMatch';

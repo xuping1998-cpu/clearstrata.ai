@@ -49,6 +49,8 @@ import {
   effectiveAccountingMonth,
   effectiveAccountingYear,
 } from '../../lib/invoiceAccountingPeriod';
+import { runInvoiceAudit } from '../../lib/invoiceAudit';
+import { INVOICE_AUDIT_RULE_CODES, type InvoiceAuditSummary } from '../../lib/audit/invoiceAuditRules';
 
 interface Invoice {
   id: string;
@@ -293,6 +295,340 @@ function AiListRiskBadge({ level, l }: { level: string; l: boolean }) {
       <Sparkles className="size-2.5 shrink-0 opacity-80 sm:size-3" aria-hidden />
       {aiRiskShortLabel(level, l)}
     </span>
+  );
+}
+
+type InvoiceAnomalyLite = {
+  invoice_id?: string;
+  rule_code: string;
+  message_zh: string;
+  message_en: string;
+  severity: string;
+};
+
+function auditSummaryCodesForInv(inv: Invoice): string[] {
+  const raw = inv.audit_summary as InvoiceAuditSummary | null | undefined;
+  if (!raw || typeof raw !== 'object') return [];
+  const rc = raw.rule_codes;
+  return Array.isArray(rc) ? rc.filter((x): x is string => typeof x === 'string') : [];
+}
+
+function aiExtractDuplicateHeuristic(inv: Invoice): boolean {
+  try {
+    const blob = JSON.stringify(inv.ai_extracted_data ?? {}).toLowerCase();
+    return blob.includes('duplicate');
+  } catch {
+    return false;
+  }
+}
+
+/** Council-facing monthly aggregates (best-effort on partial schema). */
+function monthlyRiskSignals(
+  inv: Invoice,
+  extras: {
+    hybrid?: { over_budget: boolean; bypass_approval: boolean; ai_high: boolean };
+    qv?: QuoteVarianceResult | null | undefined;
+    anomalies: InvoiceAnomalyLite[];
+    ai?: { risk_level: string; risk_score: number };
+  },
+): {
+  procurementScope: boolean;
+  overBudget: boolean;
+  duplicate: boolean;
+  noProcurement: boolean;
+  anyAlert: boolean;
+} {
+  const codes = [...(extras.anomalies ?? []).map((r) => r.rule_code), ...auditSummaryCodesForInv(inv)];
+  const set = new Set(codes);
+
+  const duplicate = set.has(INVOICE_AUDIT_RULE_CODES.DUPLICATE_INVOICE) || aiExtractDuplicateHeuristic(inv);
+  const noProcurement =
+    set.has(INVOICE_AUDIT_RULE_CODES.NO_QUOTE) ||
+    (!inv.quote_id &&
+      (inv.status === 'pending_review' || inv.status === 'approved') &&
+      Number(inv.total_amount) >= 50);
+
+  const procurementScope =
+    extras.hybrid?.bypass_approval === true ||
+    (extras.qv != null && isRedAlertVariance(extras.qv)) ||
+    set.has(INVOICE_AUDIT_RULE_CODES.AMOUNT_GT_QUOTE_110) ||
+    set.has(INVOICE_AUDIT_RULE_CODES.VENDOR_PRICE_SPIKE);
+
+  const overBudget =
+    extras.hybrid?.over_budget === true || Boolean(inv.budget_anomaly_flag && String(inv.budget_anomaly_flag).trim());
+
+  const rs = extras.ai?.risk_score;
+  const level = String(extras.ai?.risk_level || '').toLowerCase();
+  const aiRisky =
+    extras.hybrid?.ai_high === true ||
+    inv.is_abnormal === true ||
+    inv.has_anomalies === true ||
+    (typeof rs === 'number' &&
+      rs >= 40 &&
+      (level === '' || ['medium', 'high', 'critical'].includes(level)));
+
+  const anyAlert = procurementScope || overBudget || duplicate || noProcurement || aiRisky;
+
+  return { procurementScope, overBudget, duplicate, noProcurement, anyAlert };
+}
+
+function formatMonthlyRiskExplanation(
+  l: boolean,
+  inv: Invoice,
+  sx: ReturnType<typeof monthlyRiskSignals>,
+  anomalies: InvoiceAnomalyLite[],
+): string {
+  const parts: string[] = [];
+  if (sx.procurementScope)
+    parts.push(l ? 'Outside approved procurement / quote tolerance' : '超出采购批复或报价容差');
+  if (sx.overBudget) parts.push(l ? 'Over AGM budget envelope' : '超出 AGM 批准预算口径');
+  if (sx.duplicate) parts.push(l ? 'Suspected duplicate' : '疑似重复');
+  if (sx.noProcurement) parts.push(l ? 'Missing procurement linkage' : '缺少采购关联');
+  if (inv.has_anomalies) parts.push(l ? 'OCR anomalies flag' : 'OCR 异常标记');
+  if (inv.is_abnormal === true) parts.push(l ? 'Rule audit flagged' : '审计规则标记异常');
+
+  const fromRows = anomalies
+    .slice(0, 2)
+    .map((row) => (l ? row.message_en || row.rule_code : row.message_zh || row.rule_code));
+
+  const detail = [...fromRows, parts.join(l ? '; ' : '；')]
+    .filter(Boolean)
+    .join(l ? ' · ' : ' · ');
+  return detail || (l ? 'Review recommended' : '建议复核');
+}
+
+function MonthlyAutoAuditPanel(props: {
+  monthKey: string;
+  accountingYear: number;
+  accountingMonth: number;
+  monthList: Invoice[];
+  l: boolean;
+  canAudit: boolean;
+  busyMonthKey: string | null;
+  onRunForMonth: (mk: string, list: Invoice[]) => void;
+  onPickInvoice: (inv: Invoice) => void;
+  hybridAuditByInvoiceId: Record<string, { over_budget: boolean; bypass_approval: boolean; ai_high: boolean }>;
+  quoteVarianceByInvoiceId: Record<string, QuoteVarianceResult>;
+  aiAuditListMap: Record<string, { risk_level: string; risk_score: number }>;
+  anomaliesByInvoiceId: Record<string, InvoiceAnomalyLite[]>;
+}) {
+  const {
+    monthKey,
+    accountingYear,
+    accountingMonth,
+    monthList,
+    l,
+    canAudit,
+    busyMonthKey,
+    onRunForMonth,
+    onPickInvoice,
+    hybridAuditByInvoiceId,
+    quoteVarianceByInvoiceId,
+    aiAuditListMap,
+    anomaliesByInvoiceId,
+  } = props;
+
+  const { stats, rows } = useMemo(() => {
+    let procurement = 0;
+    let budget = 0;
+    let dup = 0;
+    let missingProcurement = 0;
+    let anyCount = 0;
+    type Row = {
+      inv: Invoice;
+      typeLabelZh: string;
+      typeLabelEn: string;
+      detail: string;
+    };
+    const outRows: Row[] = [];
+
+    for (const inv of monthList) {
+      const anomalies = anomaliesByInvoiceId[inv.id] ?? [];
+      const sx = monthlyRiskSignals(inv, {
+        hybrid: hybridAuditByInvoiceId[inv.id],
+        qv: quoteVarianceByInvoiceId[inv.id],
+        anomalies,
+        ai: aiAuditListMap[inv.id],
+      });
+      if (!sx.anyAlert) continue;
+      anyCount += 1;
+      if (sx.procurementScope) procurement += 1;
+      if (sx.overBudget) budget += 1;
+      if (sx.duplicate) dup += 1;
+      if (sx.noProcurement) missingProcurement += 1;
+
+      const typeBitsZh: string[] = [];
+      const typeBitsEn: string[] = [];
+      if (sx.procurementScope) {
+        typeBitsZh.push('超采购范围');
+        typeBitsEn.push('Procurement');
+      }
+      if (sx.overBudget) {
+        typeBitsZh.push('超预算');
+        typeBitsEn.push('Budget');
+      }
+      if (sx.duplicate) {
+        typeBitsZh.push('疑似重复');
+        typeBitsEn.push('Duplicate');
+      }
+      if (sx.noProcurement) {
+        typeBitsZh.push('无采购记录');
+        typeBitsEn.push('No quote');
+      }
+      if (typeBitsZh.length === 0) {
+        typeBitsZh.push('综合风险');
+        typeBitsEn.push('Risk signal');
+      }
+
+      outRows.push({
+        inv,
+        typeLabelZh: typeBitsZh.slice(0, 4).join('、'),
+        typeLabelEn: typeBitsEn.slice(0, 4).join(' · '),
+        detail: formatMonthlyRiskExplanation(l, inv, sx, anomalies),
+      });
+    }
+
+    const statsOut = {
+      total: anyCount,
+      procurement,
+      budget,
+      duplicate: dup,
+      noProcurement: missingProcurement,
+    };
+    outRows.sort((a, b) => a.inv.vendor_name.localeCompare(b.inv.vendor_name));
+    return { stats: statsOut, rows: outRows };
+  }, [
+    monthKey,
+    monthList,
+    l,
+    hybridAuditByInvoiceId,
+    quoteVarianceByInvoiceId,
+    aiAuditListMap,
+    anomaliesByInvoiceId,
+  ]);
+
+  const bust = busyMonthKey === monthKey;
+
+  return (
+    <section
+      className="mx-4 mb-3 rounded-xl border border-indigo-200 bg-indigo-50/75 px-4 py-4 shadow-sm sm:mx-8"
+      aria-labelledby={`month-ai-audit-heading-${monthKey.replace(/[^a-zA-Z0-9_-]/g, '-')}`}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3
+            className="text-sm font-semibold text-indigo-950"
+            id={`month-ai-audit-heading-${monthKey.replace(/[^a-zA-Z0-9_-]/g, '-')}`}
+          >
+            {l ? 'Monthly Auto Audit' : 'AI月度自动审计'}
+          </h3>
+          <p className="mt-1 text-xs leading-relaxed text-indigo-900/80">
+            {l
+              ? 'Each month compares approved procurement envelopes, AGM budget lines, and posted invoices—surfacing actionable alerts automatically.'
+              : '系统按月比对采购批准范围、AGM批准预算与发票记录，自动生成需要业委会处理的报警名单。'}
+          </p>
+        </div>
+        <button
+          type="button"
+          disabled={!canAudit || bust}
+          onClick={() => onRunForMonth(monthKey, monthList)}
+          className="shrink-0 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {bust ? (l ? 'Running audits…' : '正在批量审计…') : l ? 'Run monthly audit' : '运行本月自动审计'}
+        </button>
+      </div>
+
+      <dl className="mt-4 grid grid-cols-2 gap-2 text-xs text-indigo-950 sm:grid-cols-5">
+        <div className="rounded-lg bg-white/80 px-2 py-2 ring-1 ring-indigo-100">
+          <dt className="text-[10px] font-medium uppercase text-indigo-600">{l ? 'Total alerts' : '风险总数'}</dt>
+          <dd className="text-lg font-bold tabular-nums">{stats.total}</dd>
+        </div>
+        <div className="rounded-lg bg-white/80 px-2 py-2 ring-1 ring-indigo-100">
+          <dt className="text-[10px] font-medium uppercase text-indigo-600">{l ? 'Procurement scope' : '超采购范围'}</dt>
+          <dd className="text-lg font-bold tabular-nums">{stats.procurement}</dd>
+        </div>
+        <div className="rounded-lg bg-white/80 px-2 py-2 ring-1 ring-indigo-100">
+          <dt className="text-[10px] font-medium uppercase text-indigo-600">{l ? 'Over budget' : '超预算'}</dt>
+          <dd className="text-lg font-bold tabular-nums">{stats.budget}</dd>
+        </div>
+        <div className="rounded-lg bg-white/80 px-2 py-2 ring-1 ring-indigo-100">
+          <dt className="text-[10px] font-medium uppercase text-indigo-600">{l ? 'Duplicates' : '疑似重复'}</dt>
+          <dd className="text-lg font-bold tabular-nums">{stats.duplicate}</dd>
+        </div>
+        <div className="col-span-2 rounded-lg bg-white/80 px-2 py-2 ring-1 ring-indigo-100 sm:col-span-1">
+          <dt className="text-[10px] font-medium uppercase text-indigo-600">{l ? 'No procurement' : '无采购记录'}</dt>
+          <dd className="text-lg font-bold tabular-nums">{stats.noProcurement}</dd>
+        </div>
+      </dl>
+
+      <div className="mt-4 overflow-hidden rounded-lg border border-indigo-100 bg-white shadow-sm">
+        <div className="border-b border-indigo-100 bg-indigo-50/70 px-3 py-2 text-xs font-semibold text-indigo-950">
+          {l
+            ? `Ledger ${accountingYear}-${String(accountingMonth).padStart(2, '0')} · alert inbox`
+            : `账本 ${accountingYear}年${accountingMonth}月 · 报警名单`}
+        </div>
+        {rows.length === 0 ? (
+          <div className="px-4 py-8 text-center text-xs text-indigo-800/75">
+            {l ? 'No automated alerts matched for this accounting month.' : '该月份暂无匹配的自动报警条目。'}
+          </div>
+        ) : (
+          <div className="max-h-72 overflow-y-auto overscroll-contain">
+            <table className="w-full min-w-0 border-collapse text-left text-xs">
+              <thead className="sticky top-0 z-[1] border-b border-indigo-100 bg-white text-[10px] font-semibold uppercase tracking-wide text-indigo-900/80">
+                <tr>
+                  <th className="whitespace-nowrap px-3 py-2">{l ? 'Vendor' : '供应商'}</th>
+                  <th className="whitespace-nowrap px-2 py-2">{l ? 'Invoice #' : '发票号'}</th>
+                  <th className="whitespace-nowrap px-2 py-2">{l ? 'Amount' : '金额'}</th>
+                  <th className="min-w-0 px-2 py-2">{l ? 'Risk' : '风险类型'}</th>
+                  <th className="min-w-[160px] px-2 py-2">{l ? 'Details' : '风险说明'}</th>
+                  <th className="whitespace-nowrap px-3 py-2 text-right">{l ? 'Actions' : '操作'}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-indigo-50">
+                {rows.map((row) => (
+                  <tr key={row.inv.id} className="bg-white hover:bg-indigo-50/50">
+                    <td
+                      className="max-w-[130px] truncate px-3 py-2 font-medium text-gray-900"
+                      title={row.inv.vendor_name}
+                    >
+                      {row.inv.vendor_name}
+                    </td>
+                    <td className="whitespace-nowrap px-2 py-2 text-gray-700">{row.inv.invoice_number || '—'}</td>
+                    <td className="whitespace-nowrap px-2 py-2 font-semibold tabular-nums text-gray-900">
+                      ${Number(row.inv.total_amount).toFixed(2)}
+                    </td>
+                    <td
+                      className="max-w-[120px] truncate px-2 py-2 text-[11px] text-indigo-950"
+                      title={l ? row.typeLabelEn : row.typeLabelZh}
+                    >
+                      {l ? row.typeLabelEn : row.typeLabelZh}
+                    </td>
+                    <td className="max-w-[220px] px-2 py-2 align-top text-[11px] text-gray-700">
+                      <span className="line-clamp-3">{row.detail}</span>
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right">
+                      <button
+                        type="button"
+                        onClick={() => onPickInvoice(row.inv)}
+                        className="rounded-md px-2 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100"
+                      >
+                        {l ? 'View invoice' : '查看发票'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {!canAudit ? (
+        <p className="mt-2 text-[10px] text-indigo-800/65">
+          {l ? 'Council or property admins can rerun monthly audits from here.' : '业委会或管理处可在此处触发本月批量审计。'}
+        </p>
+      ) : null}
+    </section>
   );
 }
 
@@ -713,6 +1049,85 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
       cancelled = true;
     };
   }, [invoices, currentPropertyId, hybridAuditTick]);
+
+  const [anomaliesByInvoiceId, setAnomaliesByInvoiceId] = useState<Record<string, InvoiceAnomalyLite[]>>({});
+  const [anomaliesFetchTick, setAnomaliesFetchTick] = useState(0);
+  const [monthlyAuditBusyKey, setMonthlyAuditBusyKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!currentPropertyId || invoices.length === 0) {
+      setAnomaliesByInvoiceId({});
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const ids = invoices.map((i) => i.id);
+      const CHUNK = 100;
+      const byInv: Record<string, InvoiceAnomalyLite[]> = {};
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        const slice = ids.slice(i, i + CHUNK);
+        const { data, error } = await supabase
+          .from('invoice_anomalies')
+          .select('invoice_id, rule_code, message_zh, message_en, severity')
+          .eq('property_id', currentPropertyId)
+          .in('invoice_id', slice);
+        if (cancelled) return;
+        if (error) {
+          if (import.meta.env.DEV) {
+            console.warn('[invoices] invoice_anomalies fetch', error.message);
+          }
+          setAnomaliesByInvoiceId({});
+          return;
+        }
+        for (const row of data ?? []) {
+          const invoiceId = String(row.invoice_id ?? '');
+          if (!invoiceId) continue;
+          if (!byInv[invoiceId]) byInv[invoiceId] = [];
+          byInv[invoiceId].push({
+            invoice_id: invoiceId,
+            rule_code: String(row.rule_code ?? ''),
+            message_zh: String(row.message_zh ?? ''),
+            message_en: String(row.message_en ?? ''),
+            severity: String(row.severity ?? ''),
+          });
+        }
+      }
+      if (cancelled) return;
+      setAnomaliesByInvoiceId(byInv);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [invoices, currentPropertyId, anomaliesFetchTick]);
+
+  const runMonthAudit = useCallback(
+    async (mk: string, list: Invoice[]) => {
+      if (!profile || !canAudit || !currentPropertyId) return;
+      const targets = list.filter((inv) => inv.status === 'pending_review' || inv.status === 'approved');
+      if (targets.length === 0) {
+        window.alert(l ? 'No pending or approved invoices this month.' : '该月没有「待审核」或「已批准」的发票。');
+        return;
+      }
+      setMonthlyAuditBusyKey(mk);
+      try {
+        for (let i = 0; i < targets.length; i += 1) {
+          const inv = targets[i]!;
+          const r = await runInvoiceAudit(inv.id, currentPropertyId);
+          if (!r.success && import.meta.env.DEV) {
+            console.warn('[monthly audit]', inv.id, r.error);
+          }
+          // Light spacing so edge function / DB triggers can keep pace
+          await new Promise((resolve) => setTimeout(resolve, 350));
+        }
+        await loadInvoicesQuiet();
+        setHybridAuditTick((n) => n + 1);
+        setAnomaliesFetchTick((n) => n + 1);
+      } finally {
+        setMonthlyAuditBusyKey(null);
+      }
+    },
+    [profile, canAudit, currentPropertyId, loadInvoicesQuiet, l],
+  );
 
   useEffect(() => {
     if (!highlightInvoiceId || invoices.length === 0) return;
@@ -1594,6 +2009,21 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
                           </button>
                           {monthOpen && (
                             <>
+                              <MonthlyAutoAuditPanel
+                                monthKey={mk}
+                                accountingYear={accYear}
+                                accountingMonth={accMonth}
+                                monthList={monthList}
+                                l={l}
+                                canAudit={canAudit}
+                                busyMonthKey={monthlyAuditBusyKey}
+                                onRunForMonth={(key, list) => void runMonthAudit(key, list)}
+                                onPickInvoice={setSelectedInvoice}
+                                hybridAuditByInvoiceId={hybridAuditByInvoiceId}
+                                quoteVarianceByInvoiceId={quoteVarianceByInvoiceId}
+                                aiAuditListMap={aiAuditListMap}
+                                anomaliesByInvoiceId={anomaliesByInvoiceId}
+                              />
                               <div className="hidden max-w-full overflow-x-auto md:block [scrollbar-width:thin]">
               <table className="w-full min-w-0 max-w-full table-fixed border-collapse text-xs">
                 <colgroup>
