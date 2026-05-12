@@ -56,6 +56,12 @@ export interface CommunityNotification {
   created_by: string;
 }
 
+/** Subset of public.properties referenced in finance / governance UI. */
+export interface PropertyGovernanceFields {
+  id: string;
+  governance_start_date?: string | null;
+}
+
 export interface Lead {
   id: string;
   name: string;
@@ -86,6 +92,11 @@ export interface Database {
         Row: CommunityNotification;
         Insert: Pick<CommunityNotification, 'title' | 'content' | 'priority' | 'created_by'>;
         Update: Partial<Pick<CommunityNotification, 'title' | 'content' | 'priority'>>;
+      };
+      properties: {
+        Row: PropertyGovernanceFields;
+        Insert: never;
+        Update: Partial<Pick<PropertyGovernanceFields, 'governance_start_date'>>;
       };
     };
   };

@@ -51,6 +51,7 @@ import {
 } from '../../lib/invoiceAccountingPeriod';
 import { runInvoiceAudit } from '../../lib/invoiceAudit';
 import { INVOICE_AUDIT_RULE_CODES, type InvoiceAuditSummary } from '../../lib/audit/invoiceAuditRules';
+import { resolveLedgerGovernanceMode } from '../../lib/invoiceGovernanceLedgerMode';
 
 interface Invoice {
   id: string;
@@ -322,7 +323,16 @@ function aiExtractDuplicateHeuristic(inv: Invoice): boolean {
   }
 }
 
-/** Council-facing monthly aggregates (best-effort on partial schema). */
+type MonthlyRiskSignals = {
+  procurementScope: boolean;
+  overBudget: boolean;
+  duplicate: boolean;
+  noProcurement: boolean;
+  /** AI / OCR anomaly without hitting structured procurement/budget/dup/no-quote buckets */
+  aiResidual: boolean;
+  anyAlert: boolean;
+};
+
 function monthlyRiskSignals(
   inv: Invoice,
   extras: {
@@ -331,13 +341,7 @@ function monthlyRiskSignals(
     anomalies: InvoiceAnomalyLite[];
     ai?: { risk_level: string; risk_score: number };
   },
-): {
-  procurementScope: boolean;
-  overBudget: boolean;
-  duplicate: boolean;
-  noProcurement: boolean;
-  anyAlert: boolean;
-} {
+): MonthlyRiskSignals {
   const codes = [...(extras.anomalies ?? []).map((r) => r.rule_code), ...auditSummaryCodesForInv(inv)];
   const set = new Set(codes);
 
@@ -367,23 +371,51 @@ function monthlyRiskSignals(
       rs >= 40 &&
       (level === '' || ['medium', 'high', 'critical'].includes(level)));
 
+  const structuredHit =
+    procurementScope === true ||
+    overBudget === true ||
+    duplicate === true ||
+    noProcurement === true;
+
+  const aiResidual = aiRisky === true && !structuredHit;
+
   const anyAlert = procurementScope || overBudget || duplicate || noProcurement || aiRisky;
 
-  return { procurementScope, overBudget, duplicate, noProcurement, anyAlert };
+  return { procurementScope, overBudget, duplicate, noProcurement, aiResidual, anyAlert };
 }
 
 function formatMonthlyRiskExplanation(
   l: boolean,
   inv: Invoice,
-  sx: ReturnType<typeof monthlyRiskSignals>,
+  sx: MonthlyRiskSignals,
   anomalies: InvoiceAnomalyLite[],
+  ledgerMode: 'formal' | 'historical',
 ): string {
   const parts: string[] = [];
   if (sx.procurementScope)
-    parts.push(l ? 'Outside approved procurement / quote tolerance' : '超出采购批复或报价容差');
+    parts.push(
+      ledgerMode === 'historical'
+        ? l
+          ? 'Historical quote / procurement variance'
+          : '历史价格或采购比对异常'
+        : l
+          ? 'Outside approved procurement / quote tolerance'
+          : '超出采购批复或报价容差',
+    );
   if (sx.overBudget) parts.push(l ? 'Over AGM budget envelope' : '超出 AGM 批准预算口径');
   if (sx.duplicate) parts.push(l ? 'Suspected duplicate' : '疑似重复');
-  if (sx.noProcurement) parts.push(l ? 'Missing procurement linkage' : '缺少采购关联');
+  if (sx.noProcurement)
+    parts.push(
+      ledgerMode === 'historical'
+        ? l
+          ? 'Suggested: establish procurement linkage'
+          : '建议补建采购记录'
+        : l
+          ? 'Missing procurement linkage'
+          : '缺少采购关联',
+    );
+  if (sx.aiResidual)
+    parts.push(l ? 'Residual audit / OCR anomaly (historical ledger)' : '历史账本下的异常或OCR标记');
   if (inv.has_anomalies) parts.push(l ? 'OCR anomalies flag' : 'OCR 异常标记');
   if (inv.is_abnormal === true) parts.push(l ? 'Rule audit flagged' : '审计规则标记异常');
 
@@ -402,6 +434,7 @@ function MonthlyAutoAuditPanel(props: {
   accountingYear: number;
   accountingMonth: number;
   monthList: Invoice[];
+  governanceStartIso: string | null;
   l: boolean;
   canAudit: boolean;
   busyMonthKey: string | null;
@@ -417,6 +450,7 @@ function MonthlyAutoAuditPanel(props: {
     accountingYear,
     accountingMonth,
     monthList,
+    governanceStartIso,
     l,
     canAudit,
     busyMonthKey,
@@ -428,11 +462,17 @@ function MonthlyAutoAuditPanel(props: {
     anomaliesByInvoiceId,
   } = props;
 
+  const { mode: ledgerMode, governanceUnset } = resolveLedgerGovernanceMode(
+    accountingYear,
+    accountingMonth,
+    governanceStartIso,
+  );
+
   const { stats, rows } = useMemo(() => {
-    let procurement = 0;
+    let colA = 0;
+    let colB = 0;
     let budget = 0;
     let dup = 0;
-    let missingProcurement = 0;
     let anyCount = 0;
     type Row = {
       inv: Invoice;
@@ -441,6 +481,8 @@ function MonthlyAutoAuditPanel(props: {
       detail: string;
     };
     const outRows: Row[] = [];
+
+    const isHistorical = ledgerMode === 'historical';
 
     for (const inv of monthList) {
       const anomalies = anomaliesByInvoiceId[inv.id] ?? [];
@@ -452,28 +494,55 @@ function MonthlyAutoAuditPanel(props: {
       });
       if (!sx.anyAlert) continue;
       anyCount += 1;
-      if (sx.procurementScope) procurement += 1;
-      if (sx.overBudget) budget += 1;
-      if (sx.duplicate) dup += 1;
-      if (sx.noProcurement) missingProcurement += 1;
+      if (isHistorical) {
+        if (sx.noProcurement) colA += 1;
+        const histPx = sx.procurementScope || sx.aiResidual;
+        if (histPx) colB += 1;
+        if (sx.overBudget) budget += 1;
+        if (sx.duplicate) dup += 1;
+      } else {
+        if (sx.procurementScope) colA += 1;
+        if (sx.overBudget) budget += 1;
+        if (sx.duplicate) dup += 1;
+        if (sx.noProcurement) colB += 1;
+      }
 
       const typeBitsZh: string[] = [];
       const typeBitsEn: string[] = [];
-      if (sx.procurementScope) {
-        typeBitsZh.push('超采购范围');
-        typeBitsEn.push('Procurement');
-      }
-      if (sx.overBudget) {
-        typeBitsZh.push('超预算');
-        typeBitsEn.push('Budget');
-      }
-      if (sx.duplicate) {
-        typeBitsZh.push('疑似重复');
-        typeBitsEn.push('Duplicate');
-      }
-      if (sx.noProcurement) {
-        typeBitsZh.push('无采购记录');
-        typeBitsEn.push('No quote');
+      if (isHistorical) {
+        if (sx.noProcurement) {
+          typeBitsZh.push('建议补建采购记录');
+          typeBitsEn.push('Procurement linkage');
+        }
+        if (sx.procurementScope || sx.aiResidual) {
+          typeBitsZh.push('历史价格异常');
+          typeBitsEn.push('Historical variance');
+        }
+        if (sx.overBudget) {
+          typeBitsZh.push('超预算');
+          typeBitsEn.push('Budget');
+        }
+        if (sx.duplicate) {
+          typeBitsZh.push('疑似重复');
+          typeBitsEn.push('Duplicate');
+        }
+      } else {
+        if (sx.procurementScope) {
+          typeBitsZh.push('超采购范围');
+          typeBitsEn.push('Procurement');
+        }
+        if (sx.overBudget) {
+          typeBitsZh.push('超预算');
+          typeBitsEn.push('Budget');
+        }
+        if (sx.duplicate) {
+          typeBitsZh.push('疑似重复');
+          typeBitsEn.push('Duplicate');
+        }
+        if (sx.noProcurement) {
+          typeBitsZh.push('无采购记录');
+          typeBitsEn.push('No quote');
+        }
       }
       if (typeBitsZh.length === 0) {
         typeBitsZh.push('综合风险');
@@ -482,25 +551,35 @@ function MonthlyAutoAuditPanel(props: {
 
       outRows.push({
         inv,
-        typeLabelZh: typeBitsZh.slice(0, 4).join('、'),
-        typeLabelEn: typeBitsEn.slice(0, 4).join(' · '),
-        detail: formatMonthlyRiskExplanation(l, inv, sx, anomalies),
+        typeLabelZh: typeBitsZh.slice(0, 5).join('、'),
+        typeLabelEn: typeBitsEn.slice(0, 5).join(' · '),
+        detail: formatMonthlyRiskExplanation(l, inv, sx, anomalies, ledgerMode),
       });
     }
 
-    const statsOut = {
-      total: anyCount,
-      procurement,
-      budget,
-      duplicate: dup,
-      noProcurement: missingProcurement,
-    };
+    const statsOut = isHistorical
+      ? {
+          total: anyCount,
+          colA,
+          colB,
+          duplicate: dup,
+          budget,
+        }
+      : {
+          total: anyCount,
+          colA,
+          duplicate: dup,
+          budget,
+          colB,
+        };
+
     outRows.sort((a, b) => a.inv.vendor_name.localeCompare(b.inv.vendor_name));
     return { stats: statsOut, rows: outRows };
   }, [
     monthKey,
     monthList,
     l,
+    ledgerMode,
     hybridAuditByInvoiceId,
     quoteVarianceByInvoiceId,
     aiAuditListMap,
@@ -514,6 +593,24 @@ function MonthlyAutoAuditPanel(props: {
       className="mx-4 mb-3 rounded-xl border border-indigo-200 bg-indigo-50/75 px-4 py-4 shadow-sm sm:mx-8"
       aria-labelledby={`month-ai-audit-heading-${monthKey.replace(/[^a-zA-Z0-9_-]/g, '-')}`}
     >
+      {governanceUnset ? (
+        <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+          <p className="font-semibold">
+            {l ? 'Governance start date not configured' : '未设置治理启动日期'}
+          </p>
+          <p className="mt-1 text-amber-900/90">
+            {l
+              ? 'Set Governance Start Date on the AGM Approved Budget tab first.'
+              : '请先在 AGM批准预算 页面设置治理启动日期。'}
+          </p>
+          <p className="mt-1 text-[11px] text-amber-900/85">
+            {l
+              ? 'Until configured, invoices are summarized in Historical Reconstruction mode so legacy months are not all flagged as strict procurement breaches.'
+              : '未设置前，月度审计默认按「历史倒查模式」呈现，避免将历史账本一律标为严格合规违规（如无采购硬性违规）。'}
+          </p>
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h3
@@ -522,10 +619,23 @@ function MonthlyAutoAuditPanel(props: {
           >
             {l ? 'Monthly Auto Audit' : 'AI月度自动审计'}
           </h3>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-800/85">
+            {ledgerMode === 'historical'
+              ? l
+                ? 'Historical Reconstruction Mode'
+                : '历史倒查模式'
+              : l
+                ? 'Governance Enforcement Mode'
+                : '正式治理模式'}
+          </p>
           <p className="mt-1 text-xs leading-relaxed text-indigo-900/80">
             {l
-              ? 'Each month compares approved procurement envelopes, AGM budget lines, and posted invoices—surfacing actionable alerts automatically.'
-              : '系统按月比对采购批准范围、AGM批准预算与发票记录，自动生成需要业委会处理的报警名单。'}
+              ? ledgerMode === 'historical'
+                ? 'Historical months focus on rebuilding context: duplication, budget stress, procurement narrative—without forcing “no-quote” penalties designed for governed operations.'
+                : 'Each invoice month after governance compares approved procurement envelopes, AGM budgets, and posted invoices with full enforcement—including missing-quote alerts.'
+              : ledgerMode === 'historical'
+                ? '治理启动之前的账本月份以重建线索为主：关注补建采购记录、历史价格异动、疑似重复及预算偏离；不显式将「无采购记录」作为主违规口径。'
+                : '治理启动日当月及之后的账本，系统将按批复采购范围与 AGM 预算对发票进行全面合规提示（含无采购记录告警）。'}
           </p>
         </div>
         <button
@@ -543,22 +653,53 @@ function MonthlyAutoAuditPanel(props: {
           <dt className="text-[10px] font-medium uppercase text-indigo-600">{l ? 'Total alerts' : '风险总数'}</dt>
           <dd className="text-lg font-bold tabular-nums">{stats.total}</dd>
         </div>
-        <div className="rounded-lg bg-white/80 px-2 py-2 ring-1 ring-indigo-100">
-          <dt className="text-[10px] font-medium uppercase text-indigo-600">{l ? 'Procurement scope' : '超采购范围'}</dt>
-          <dd className="text-lg font-bold tabular-nums">{stats.procurement}</dd>
-        </div>
-        <div className="rounded-lg bg-white/80 px-2 py-2 ring-1 ring-indigo-100">
-          <dt className="text-[10px] font-medium uppercase text-indigo-600">{l ? 'Over budget' : '超预算'}</dt>
-          <dd className="text-lg font-bold tabular-nums">{stats.budget}</dd>
-        </div>
-        <div className="rounded-lg bg-white/80 px-2 py-2 ring-1 ring-indigo-100">
-          <dt className="text-[10px] font-medium uppercase text-indigo-600">{l ? 'Duplicates' : '疑似重复'}</dt>
-          <dd className="text-lg font-bold tabular-nums">{stats.duplicate}</dd>
-        </div>
-        <div className="col-span-2 rounded-lg bg-white/80 px-2 py-2 ring-1 ring-indigo-100 sm:col-span-1">
-          <dt className="text-[10px] font-medium uppercase text-indigo-600">{l ? 'No procurement' : '无采购记录'}</dt>
-          <dd className="text-lg font-bold tabular-nums">{stats.noProcurement}</dd>
-        </div>
+        {ledgerMode === 'historical' ? (
+          <>
+            <div className="rounded-lg bg-white/80 px-2 py-2 ring-1 ring-indigo-100">
+              <dt className="text-[10px] font-medium uppercase text-indigo-600">
+                {l ? 'Suggested linkage' : '建议补建采购记录'}
+              </dt>
+              <dd className="text-lg font-bold tabular-nums">{stats.colA}</dd>
+            </div>
+            <div className="rounded-lg bg-white/80 px-2 py-2 ring-1 ring-indigo-100">
+              <dt className="text-[10px] font-medium uppercase text-indigo-600">
+                {l ? 'Historical price risk' : '历史价格异常'}
+              </dt>
+              <dd className="text-lg font-bold tabular-nums">{stats.colB}</dd>
+            </div>
+            <div className="rounded-lg bg-white/80 px-2 py-2 ring-1 ring-indigo-100">
+              <dt className="text-[10px] font-medium uppercase text-indigo-600">{l ? 'Duplicates' : '疑似重复'}</dt>
+              <dd className="text-lg font-bold tabular-nums">{stats.duplicate}</dd>
+            </div>
+            <div className="col-span-2 rounded-lg bg-white/80 px-2 py-2 ring-1 ring-indigo-100 sm:col-span-1">
+              <dt className="text-[10px] font-medium uppercase text-indigo-600">{l ? 'Over budget' : '超预算'}</dt>
+              <dd className="text-lg font-bold tabular-nums">{stats.budget}</dd>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="rounded-lg bg-white/80 px-2 py-2 ring-1 ring-indigo-100">
+              <dt className="text-[10px] font-medium uppercase text-indigo-600">
+                {l ? 'Procurement scope' : '超采购范围'}
+              </dt>
+              <dd className="text-lg font-bold tabular-nums">{stats.colA}</dd>
+            </div>
+            <div className="rounded-lg bg-white/80 px-2 py-2 ring-1 ring-indigo-100">
+              <dt className="text-[10px] font-medium uppercase text-indigo-600">{l ? 'Over budget' : '超预算'}</dt>
+              <dd className="text-lg font-bold tabular-nums">{stats.budget}</dd>
+            </div>
+            <div className="rounded-lg bg-white/80 px-2 py-2 ring-1 ring-indigo-100">
+              <dt className="text-[10px] font-medium uppercase text-indigo-600">{l ? 'Duplicates' : '疑似重复'}</dt>
+              <dd className="text-lg font-bold tabular-nums">{stats.duplicate}</dd>
+            </div>
+            <div className="col-span-2 rounded-lg bg-white/80 px-2 py-2 ring-1 ring-indigo-100 sm:col-span-1">
+              <dt className="text-[10px] font-medium uppercase text-indigo-600">
+                {l ? 'No procurement' : '无采购记录'}
+              </dt>
+              <dd className="text-lg font-bold tabular-nums">{stats.colB}</dd>
+            </div>
+          </>
+        )}
       </dl>
 
       <div className="mt-4 overflow-hidden rounded-lg border border-indigo-100 bg-white shadow-sm">
@@ -1053,6 +1194,34 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
   const [anomaliesByInvoiceId, setAnomaliesByInvoiceId] = useState<Record<string, InvoiceAnomalyLite[]>>({});
   const [anomaliesFetchTick, setAnomaliesFetchTick] = useState(0);
   const [monthlyAuditBusyKey, setMonthlyAuditBusyKey] = useState<string | null>(null);
+
+  /** `YYYY-MM-DD` from DB, or null if unset */
+  const [governanceStartIso, setGovernanceStartIso] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!currentPropertyId) {
+      setGovernanceStartIso(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const { data, error } = await supabase
+        .from('properties')
+        .select('governance_start_date')
+        .eq('id', currentPropertyId)
+        .maybeSingle();
+      if (cancelled) return;
+      if (error || !data) {
+        setGovernanceStartIso(null);
+        return;
+      }
+      const gd = (data as { governance_start_date?: string | null }).governance_start_date ?? null;
+      setGovernanceStartIso(gd);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentPropertyId]);
 
   useEffect(() => {
     if (!currentPropertyId || invoices.length === 0) {
@@ -2014,6 +2183,7 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
                                 accountingYear={accYear}
                                 accountingMonth={accMonth}
                                 monthList={monthList}
+                                governanceStartIso={governanceStartIso}
                                 l={l}
                                 canAudit={canAudit}
                                 busyMonthKey={monthlyAuditBusyKey}
