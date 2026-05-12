@@ -27,6 +27,7 @@ import {
   ChevronDown,
   ChevronRight,
   PenLine,
+  Copy,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useProperty } from '../../contexts/PropertyContext';
@@ -68,6 +69,10 @@ interface Invoice {
   status: string;
   category: string | null;
   notes: string | null;
+  /** 可选：结构化或自由文本描述（若有则优先用于标题推断） */
+  description_zh?: string | null;
+  description_en?: string | null;
+  description?: string | null;
   has_anomalies: boolean;
   /** 规则审计引擎（与 has_anomalies 独立） */
   is_abnormal?: boolean;
@@ -93,6 +98,8 @@ interface Invoice {
   /** 业委会/管理员正式批准后设为 true，用于未审批付款硬规则 */
   approved?: boolean | null;
   fiscal_year?: number | null;
+  /** 若库中有则用于展示推断账期月份；采购草稿不落库（表无字段） */
+  fiscal_month?: number | null;
   budget_category_id?: string | null;
   /** approved/paid 时由库计算锁定；pending 时常为 null */
   is_budget_exceeded?: boolean | null;
@@ -307,6 +314,98 @@ type InvoiceAnomalyLite = {
   severity: string;
 };
 
+/** Monthly audit drill-down + copy: never show raw DB messages (encoding issues). */
+type MonthlyAuditTag = 'link' | 'price' | 'dup' | 'budget';
+
+type MonthlyAuditFilter = 'all' | MonthlyAuditTag;
+
+const RULE_CODE_EXPLAIN_ZH: Record<string, string> = {
+  missing_procurement_link: '建议补建采购记录',
+  no_quote: '建议补建采购记录',
+  historical_price_variance: '当前金额高于历史/市场参考范围',
+  amount_gt_quote_110: '当前金额高于历史/市场参考范围',
+  vendor_price_spike: '当前金额高于历史/市场参考范围',
+  procurement_out_of_scope: '超出采购批复或报价容差',
+  duplicate_invoice: '疑似重复付款',
+  budget_overrun: '超预算',
+  no_budget_category: '预算分类缺失，需核对',
+};
+
+const RULE_CODE_EXPLAIN_EN: Record<string, string> = {
+  missing_procurement_link: 'Suggested: add procurement linkage',
+  no_quote: 'Suggested: add procurement linkage',
+  historical_price_variance: 'Amount above historical / market reference range',
+  amount_gt_quote_110: 'Amount above historical / market reference range',
+  vendor_price_spike: 'Amount above historical / market reference range',
+  procurement_out_of_scope: 'Outside approved procurement / quote tolerance',
+  duplicate_invoice: 'Suspected duplicate payment',
+  budget_overrun: 'Over budget',
+  no_budget_category: 'Budget category missing — verify',
+};
+
+const RULE_FALLBACK_ZH = '需人工复核';
+const RULE_FALLBACK_EN = 'Manual review recommended';
+
+function explainRuleCode(l: boolean, rawCode: string): string {
+  const k = String(rawCode ?? '')
+    .trim()
+    .toLowerCase();
+  if (!k) return l ? RULE_FALLBACK_EN : RULE_FALLBACK_ZH;
+  if (l) return RULE_CODE_EXPLAIN_EN[k] ?? RULE_FALLBACK_EN;
+  return RULE_CODE_EXPLAIN_ZH[k] ?? RULE_FALLBACK_ZH;
+}
+
+/** Stable risk copy from codes + inferred signals only (no message_zh/message_en). */
+function buildMonthlyRiskExplanation(
+  l: boolean,
+  inv: Invoice,
+  sx: MonthlyRiskSignals,
+  anomalies: InvoiceAnomalyLite[],
+  ledgerMode: 'formal' | 'historical',
+): string {
+  const seen = new Set<string>();
+  const parts: string[] = [];
+  const push = (s: string) => {
+    const t = s.trim();
+    if (!t || seen.has(t)) return;
+    seen.add(t);
+    parts.push(t);
+  };
+
+  const codeSet = new Set<string>();
+  for (const a of anomalies) {
+    const c = String(a.rule_code ?? '').trim().toLowerCase();
+    if (c) codeSet.add(c);
+  }
+  for (const c of auditSummaryCodesForInv(inv)) {
+    const k = c.trim().toLowerCase();
+    if (k) codeSet.add(k);
+  }
+  for (const c of codeSet) {
+    push(explainRuleCode(l, c));
+  }
+
+  if (sx.noProcurement) {
+    push(explainRuleCode(l, 'no_quote'));
+  }
+  if (ledgerMode === 'historical') {
+    if (sx.procurementScope || sx.aiResidual) {
+      push(explainRuleCode(l, 'historical_price_variance'));
+    }
+  } else {
+    if (sx.procurementScope) {
+      push(explainRuleCode(l, 'procurement_out_of_scope'));
+    }
+    if (sx.aiResidual) push(l ? RULE_FALLBACK_EN : RULE_FALLBACK_ZH);
+  }
+  if (sx.duplicate) push(explainRuleCode(l, 'duplicate_invoice'));
+  if (sx.overBudget) push(explainRuleCode(l, 'budget_overrun'));
+  if (inv.has_anomalies && parts.length === 0) push(l ? RULE_FALLBACK_EN : RULE_FALLBACK_ZH);
+  if (inv.is_abnormal === true && parts.length === 0) push(l ? RULE_FALLBACK_EN : RULE_FALLBACK_ZH);
+
+  return parts.join(l ? '; ' : '；') || (l ? RULE_FALLBACK_EN : RULE_FALLBACK_ZH);
+}
+
 function auditSummaryCodesForInv(inv: Invoice): string[] {
   const raw = inv.audit_summary as InvoiceAuditSummary | null | undefined;
   if (!raw || typeof raw !== 'object') return [];
@@ -384,49 +483,385 @@ function monthlyRiskSignals(
   return { procurementScope, overBudget, duplicate, noProcurement, aiResidual, anyAlert };
 }
 
-function formatMonthlyRiskExplanation(
-  l: boolean,
+function monthlyRowTags(isHistorical: boolean, sx: MonthlyRiskSignals): MonthlyAuditTag[] {
+  const tags: MonthlyAuditTag[] = [];
+  if (sx.noProcurement) tags.push('link');
+  if (isHistorical) {
+    if (sx.procurementScope || sx.aiResidual) tags.push('price');
+  } else if (sx.procurementScope) {
+    tags.push('price');
+  }
+  if (sx.duplicate) tags.push('dup');
+  if (sx.overBudget) tags.push('budget');
+  return tags;
+}
+
+function rowRiskAccentClass(tags: MonthlyAuditTag[], historical: boolean): string {
+  if (tags.includes('budget')) return 'border-l-4 border-l-red-500 bg-red-50/45';
+  if (tags.includes('dup')) return 'border-l-4 border-l-orange-500 bg-orange-50/40';
+  if (tags.includes('price')) {
+    return historical
+      ? 'border-l-4 border-l-amber-400 bg-amber-50/45'
+      : 'border-l-4 border-l-red-600 bg-red-50/50';
+  }
+  if (tags.includes('link')) {
+    return historical
+      ? 'border-l-4 border-l-blue-600 bg-blue-50/40'
+      : 'border-l-4 border-l-red-600 bg-red-50/50';
+  }
+  return 'border-l-4 border-l-slate-200 bg-white';
+}
+
+function monthlyTagPillClass(tag: MonthlyAuditTag, historical: boolean): string {
+  if (tag === 'budget') return 'bg-red-100 text-red-900 ring-1 ring-red-200';
+  if (tag === 'dup') return 'bg-orange-100 text-orange-950 ring-1 ring-orange-200';
+  if (tag === 'price') {
+    return historical
+      ? 'bg-amber-100 text-amber-950 ring-1 ring-amber-200'
+      : 'bg-red-100 text-red-900 ring-1 ring-red-200';
+  }
+  return historical
+    ? 'bg-blue-100 text-blue-900 ring-1 ring-blue-200'
+    : 'bg-red-100 text-red-900 ring-1 ring-red-200';
+}
+
+function monthlyTagLabel(tag: MonthlyAuditTag, l: boolean, historical: boolean): string {
+  if (tag === 'budget') return l ? 'Over budget' : '超预算';
+  if (tag === 'dup') return l ? 'Duplicate' : '疑似重复';
+  if (tag === 'price') {
+    return l
+      ? historical
+        ? 'Historical price'
+        : 'Procurement scope'
+      : historical
+        ? '历史价格异常'
+        : '超采购范围';
+  }
+  return l ? (historical ? 'Suggested linkage' : 'No procurement') : historical ? '建议补建采购记录' : '无采购记录';
+}
+
+const HIST_PROC_ZH_SUFFIX = '历史发票补建采购';
+const HIST_PROC_EN_SUFFIX = 'Historical invoice linkage';
+const FALLBACK_HIST_PROC_TITLE_ZH = '历史采购补建草稿';
+const FALLBACK_HIST_PROC_TITLE_EN = 'Historical procurement draft';
+
+/** One-line truncation for procurement titles */
+function truncateOneLine(s: string, max: number): string {
+  const t = s.replace(/\s+/g, ' ').trim();
+  if (t.length <= max) return t;
+  return `${t.slice(0, Math.max(1, max - 1))}…`;
+}
+
+function financeCatLabelInvoice(value: string | null | undefined, languageEn: boolean): string {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  const key = trimmed || 'general';
+  const c = CATEGORIES.find((x) => x.value === key);
+  if (!c) return trimmed || (languageEn ? 'General' : '一般');
+  return languageEn ? c.labelEn : c.labelZh;
+}
+
+function pickInvoiceDescriptionForProcTitle(inv: Invoice): string {
+  const zh = typeof inv.description_zh === 'string' && inv.description_zh.trim() ? inv.description_zh.trim() : '';
+  if (zh) return truncateOneLine(zh, 240);
+  const en = typeof inv.description_en === 'string' && inv.description_en.trim() ? inv.description_en.trim() : '';
+  if (en) return truncateOneLine(en, 240);
+  const d = typeof inv.description === 'string' && inv.description.trim() ? inv.description.trim() : '';
+  return truncateOneLine(d, 240);
+}
+
+function inferHistoricalProcurementTitles(inv: Invoice): { titleZh: string; titleEn: string } {
+  const desc = pickInvoiceDescriptionForProcTitle(inv);
+  if (desc)
+    return {
+      titleZh: truncateOneLine(desc, 140),
+      titleEn: truncateOneLine(desc, 140),
+    };
+  const vendorZh = inv.vendor_name?.trim() || '';
+  const vendorEn = inv.vendor_name?.trim() || '';
+  if (!vendorZh) {
+    return { titleZh: FALLBACK_HIST_PROC_TITLE_ZH, titleEn: FALLBACK_HIST_PROC_TITLE_EN };
+  }
+  const catRaw = inv.category?.trim();
+  if (catRaw) {
+    return {
+      titleZh: truncateOneLine(`${vendorZh} · ${financeCatLabelInvoice(catRaw, false)}`, 140),
+      titleEn: truncateOneLine(`${vendorEn || vendorZh} · ${financeCatLabelInvoice(catRaw, true)}`, 140),
+    };
+  }
+  return {
+    titleZh: truncateOneLine(`${vendorZh}${HIST_PROC_ZH_SUFFIX}`, 140),
+    titleEn: truncateOneLine(`${vendorEn || vendorZh} · ${HIST_PROC_EN_SUFFIX}`, 140),
+  };
+}
+
+function humanHistoricalProcFingerprintLines(inv: Invoice, languageEn: boolean): string {
+  const vendor = inv.vendor_name?.trim() || (languageEn ? '—' : '—');
+  const num = inv.invoice_number?.trim() || (languageEn ? '—' : '—');
+  const amt = Number(inv.total_amount);
+  const amtStr = Number.isFinite(amt) ? amt.toFixed(2) : String(inv.total_amount ?? '');
+  const dt = (inv.invoice_date || '').slice(0, 10) || (languageEn ? '—' : '—');
+  if (languageEn) {
+    return `AI historical-invoice linkage draft:\nVendor: ${vendor}\nInvoice: ${num}\nAmount: ${amtStr}\nDate: ${dt}\ninvoice_id: ${inv.id}`;
+  }
+  return `AI根据历史发票补建：\n供应商：${vendor}\n发票号：${num}\n金额：${amtStr}\n日期：${dt}\ninvoice_id：${inv.id}`;
+}
+
+function historicalProcDisclaimerZh(): string {
+  return '说明：这是 AI 根据历史发票生成的补建草稿，用于倒查建账；不代表该支出已完成正式采购审批。';
+}
+
+function historicalProcDisclaimerEn(): string {
+  return 'Note: AI-generated linkage draft from historical invoices for retroactive bookkeeping. Formal procurement approval is not implied.';
+}
+
+function inferInvoiceLedgerYearMonth(inv: Invoice): {
+  fy: number | null;
+  fmDisplay: number | null;
+} {
+  let fy: number | null = typeof inv.fiscal_year === 'number' && Number.isFinite(inv.fiscal_year) ? inv.fiscal_year : null;
+  if (fy === null && typeof inv.invoice_date === 'string' && inv.invoice_date.length >= 4) {
+    const parsed = Number(inv.invoice_date.slice(0, 4));
+    if (Number.isFinite(parsed)) fy = parsed;
+  }
+  let fmDisplay: number | null =
+    typeof inv.fiscal_month === 'number' && inv.fiscal_month >= 1 && inv.fiscal_month <= 12 ? inv.fiscal_month : null;
+  if (
+    fmDisplay === null &&
+    typeof inv.accounting_month === 'number' &&
+    inv.accounting_month >= 1 &&
+    inv.accounting_month <= 12
+  ) {
+    fmDisplay = inv.accounting_month;
+  }
+  if (fmDisplay === null && typeof inv.invoice_date === 'string' && inv.invoice_date.length >= 7) {
+    const m = Number(inv.invoice_date.slice(5, 7));
+    if (Number.isFinite(m) && m >= 1 && m <= 12) fmDisplay = m;
+  }
+  return { fy, fmDisplay };
+}
+
+function buildHistoricalProcAiReasonPayload(inv: Invoice): string | null {
+  const { fy, fmDisplay } = inferInvoiceLedgerYearMonth(inv);
+  const base: Record<string, unknown> = {
+    invoice_id: inv.id,
+    inference_type: 'historical_inferred',
+    reconstruction_source: 'monthly_audit_historical',
+    vendor_name: inv.vendor_name,
+    invoice_number: inv.invoice_number,
+    invoice_date: inv.invoice_date,
+    amount: typeof inv.total_amount === 'number' ? inv.total_amount : Number(inv.total_amount),
+    category: inv.category,
+    fiscal_year: fy ?? inv.fiscal_year ?? null,
+    fiscal_month_hint: fmDisplay,
+  };
+  const raw = inv.ai_extracted_data;
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    const rec = raw as Record<string, unknown>;
+    for (const k of ['metadata', 'extra_data', 'ai_context', 'source_type'] as const) {
+      if (rec[k] !== undefined && rec[k] !== null) base[k] = rec[k];
+    }
+  }
+  try {
+    const j = JSON.stringify(base);
+    if (j.length > 8000) return `${j.slice(0, 7997)}…`;
+    return j;
+  } catch {
+    return null;
+  }
+}
+
+function buildHistoricalProcCopyText(inv: Invoice, languageEn: boolean): string {
+  const { titleZh, titleEn } = inferHistoricalProcurementTitles(inv);
+  const amt = Number(inv.total_amount);
+  const amtStr = Number.isFinite(amt) ? amt.toFixed(2) : String(inv.total_amount ?? '');
+  const { fy: fyHint, fmDisplay } = inferInvoiceLedgerYearMonth(inv);
+  const fySource = fyHint ?? '';
+  const fmSource = fmDisplay ?? '';
+  const lines = languageEn
+    ? [
+        'AI procurement draft — historical linkage',
+        `Title EN: ${titleEn}`,
+        `Title ZH: ${titleZh}`,
+        `Vendor: ${inv.vendor_name ?? ''}`,
+        `Amount: ${amtStr}`,
+        `Invoice date: ${(inv.invoice_date ?? '').slice(0, 10)}`,
+        `Invoice #: ${inv.invoice_number ?? ''}`,
+        `invoice_id: ${inv.id}`,
+        `category tag: historical_inferred`,
+        `fiscal_year: ${fySource || '—'}`,
+        `fiscal_month_hint: ${fmSource || '—'}`,
+        '',
+        humanHistoricalProcFingerprintLines(inv, true),
+      ]
+    : [
+        'AI补建采购记录草稿（倒查）',
+        `项目标题 CN: ${titleZh}`,
+        `Title EN: ${titleEn}`,
+        `供应商：${inv.vendor_name ?? ''}`,
+        `金额：${amtStr}`,
+        `发票日期：${(inv.invoice_date ?? '').slice(0, 10)}`,
+        `发票号：${inv.invoice_number ?? ''}`,
+        `invoice_id：${inv.id}`,
+        `类型标注：historical_inferred`,
+        `fiscal_year：${fySource || '—'}`,
+        `推断 fiscal_month：${fmSource || '—'}`,
+        '',
+        humanHistoricalProcFingerprintLines(inv, false),
+      ];
+  return lines.filter(Boolean).join('\n');
+}
+
+function buildHistoricalProcDraftInsertPayload(
   inv: Invoice,
-  sx: MonthlyRiskSignals,
-  anomalies: InvoiceAnomalyLite[],
-  ledgerMode: 'formal' | 'historical',
-): string {
-  const parts: string[] = [];
-  if (sx.procurementScope)
-    parts.push(
-      ledgerMode === 'historical'
-        ? l
-          ? 'Historical quote / procurement variance'
-          : '历史价格或采购比对异常'
-        : l
-          ? 'Outside approved procurement / quote tolerance'
-          : '超出采购批复或报价容差',
-    );
-  if (sx.overBudget) parts.push(l ? 'Over AGM budget envelope' : '超出 AGM 批准预算口径');
-  if (sx.duplicate) parts.push(l ? 'Suspected duplicate' : '疑似重复');
-  if (sx.noProcurement)
-    parts.push(
-      ledgerMode === 'historical'
-        ? l
-          ? 'Suggested: establish procurement linkage'
-          : '建议补建采购记录'
-        : l
-          ? 'Missing procurement linkage'
-          : '缺少采购关联',
-    );
-  if (sx.aiResidual)
-    parts.push(l ? 'Residual audit / OCR anomaly (historical ledger)' : '历史账本下的异常或OCR标记');
-  if (inv.has_anomalies) parts.push(l ? 'OCR anomalies flag' : 'OCR 异常标记');
-  if (inv.is_abnormal === true) parts.push(l ? 'Rule audit flagged' : '审计规则标记异常');
+  posterId: string,
+  propertyId: string,
+): Record<string, unknown> {
+  const { titleZh, titleEn } = inferHistoricalProcurementTitles(inv);
+  const amtNum = Number(inv.total_amount);
+  const amtSafe = Number.isFinite(amtNum) ? amtNum : 0;
+  const { fy } = inferInvoiceLedgerYearMonth(inv);
 
-  const fromRows = anomalies
-    .slice(0, 2)
-    .map((row) => (l ? row.message_en || row.rule_code : row.message_zh || row.rule_code));
+  const humanZh = humanHistoricalProcFingerprintLines(inv, false);
+  const humanEn = humanHistoricalProcFingerprintLines(inv, true);
 
-  const detail = [...fromRows, parts.join(l ? '; ' : '；')]
-    .filter(Boolean)
-    .join(l ? ' · ' : ' · ');
-  return detail || (l ? 'Review recommended' : '建议复核');
+  const description_zh = `${historicalProcDisclaimerZh()}\n\n${humanZh}\n\ninvoice_id：${inv.id}`;
+  const description_en = `${historicalProcDisclaimerEn()}\n\n${humanEn}\n\ninvoice_id: ${inv.id}`;
+
+  const base: Record<string, unknown> = {
+    property_id: propertyId,
+    posted_by: posterId,
+    title_zh: titleZh || FALLBACK_HIST_PROC_TITLE_ZH,
+    title_en: titleEn || FALLBACK_HIST_PROC_TITLE_EN,
+    description_zh,
+    description_en,
+    estimated_budget: amtSafe,
+    status: 'draft',
+    job_type: 'procurement',
+    priority: 'medium',
+    category: 'historical_inferred',
+    unit_number: null,
+    task_id: null,
+  };
+  if (fy != null) base.fiscal_year = fy;
+  const reason = buildHistoricalProcAiReasonPayload(inv);
+  if (reason) base.ai_estimate_reasoning = reason;
+  return base;
+}
+
+function HistoricalInvoiceProcDraftModal(props: {
+  invoice: Invoice;
+  languageEn: boolean;
+  busy: boolean;
+  feedback: string | null;
+  onClose: () => void;
+  onPersist: () => void;
+}) {
+  const { invoice, languageEn, busy, feedback, onClose, onPersist } = props;
+  const [copyHint, setCopyHint] = useState<string | null>(null);
+
+  const bundle = useMemo(() => {
+    const titles = inferHistoricalProcurementTitles(invoice);
+    const amtNum = Number(invoice.total_amount);
+    const amtStr = Number.isFinite(amtNum) ? amtNum.toFixed(2) : String(invoice.total_amount ?? '');
+    const { fy, fmDisplay } = inferInvoiceLedgerYearMonth(invoice);
+    const copyText = buildHistoricalProcCopyText(invoice, languageEn);
+    return { titles, amtStr, fy, fmDisplay, copyText };
+  }, [invoice, languageEn]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[62] flex items-center justify-center bg-black/50 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="hist-proc-draft-title"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        className="max-h-[90vh] w-full max-w-lg overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="border-b border-gray-100 bg-gray-50 px-4 py-3">
+          <h2 id="hist-proc-draft-title" className="text-base font-semibold text-gray-900">
+            {languageEn ? 'AI procurement draft (historical)' : 'AI补建采购记录草稿'}
+          </h2>
+          <p className="mt-1 text-xs leading-relaxed text-gray-600">
+            {languageEn ? historicalProcDisclaimerEn() : historicalProcDisclaimerZh()}
+          </p>
+        </div>
+        <div className="space-y-3 overflow-y-auto px-4 py-3 text-sm text-gray-800" style={{ maxHeight: '52vh' }}>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs">
+            <dt className="font-medium text-gray-500">{languageEn ? 'Project title ZH' : '项目标题（中）'}</dt>
+            <dd className="min-w-0 break-words">{bundle.titles.titleZh}</dd>
+            <dt className="font-medium text-gray-500">{languageEn ? 'Project title EN' : '项目标题（英）'}</dt>
+            <dd className="min-w-0 break-words">{bundle.titles.titleEn}</dd>
+            <dt className="font-medium text-gray-500">{languageEn ? 'Vendor' : '供应商'}</dt>
+            <dd>{invoice.vendor_name || '—'}</dd>
+            <dt className="font-medium text-gray-500">{languageEn ? 'Amount' : '金额'}</dt>
+            <dd className="font-semibold tabular-nums">${bundle.amtStr}</dd>
+            <dt className="font-medium text-gray-500">{languageEn ? 'Invoice date' : '发票日期'}</dt>
+            <dd>{(invoice.invoice_date || '').slice(0, 10) || '—'}</dd>
+            <dt className="font-medium text-gray-500">{languageEn ? 'Invoice #' : '发票号'}</dt>
+            <dd>{invoice.invoice_number || '—'}</dd>
+            <dt className="font-medium text-gray-500">invoice_id</dt>
+            <dd className="break-all font-mono text-[11px] text-gray-700">{invoice.id}</dd>
+            <dt className="font-medium text-gray-500">{languageEn ? 'Type tag' : '类型'}</dt>
+            <dd>
+              <code className="rounded bg-gray-100 px-1 py-0.5 text-[11px]">historical_inferred</code>
+            </dd>
+            <dt className="font-medium text-gray-500">{languageEn ? 'fiscal_year' : '财年 f.y.'}</dt>
+            <dd>{bundle.fy ?? '—'}</dd>
+            <dt className="font-medium text-gray-500">{languageEn ? 'fiscal_month (inferred)' : '财年月份（推断）'}</dt>
+            <dd>{bundle.fmDisplay ?? '—'}</dd>
+          </dl>
+        </div>
+        {feedback ? (
+          <p className="border-t border-gray-100 bg-gray-50 px-4 py-2 text-xs text-gray-700">{feedback}</p>
+        ) : null}
+        {copyHint ? <p className="border-t border-gray-100 px-4 py-1.5 text-center text-[11px] text-emerald-800">{copyHint}</p> : null}
+        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-gray-100 px-4 py-3">
+          <button
+            type="button"
+            onClick={() => {
+              void (async () => {
+                try {
+                  if (!navigator.clipboard?.writeText) throw new Error('no_clipboard');
+                  await navigator.clipboard.writeText(bundle.copyText);
+                  setCopyHint(languageEn ? 'Copied.' : '已复制。');
+                  window.setTimeout(() => setCopyHint(null), 2000);
+                } catch {
+                  setCopyHint(languageEn ? 'Copy failed.' : '复制失败。');
+                  window.setTimeout(() => setCopyHint(null), 2500);
+                }
+              })();
+            }}
+            className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 hover:bg-gray-50"
+          >
+            <Copy className="size-3.5" aria-hidden />
+            {languageEn ? 'Copy for procurement form' : '复制为采购记录'}
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            className="rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+          >
+            {languageEn ? 'Close' : '关闭'}
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onPersist}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-60"
+          >
+            {busy ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : null}
+            {languageEn ? 'Save draft' : '保存草稿'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function MonthlyAutoAuditPanel(props: {
@@ -440,6 +875,7 @@ function MonthlyAutoAuditPanel(props: {
   busyMonthKey: string | null;
   onRunForMonth: (mk: string, list: Invoice[]) => void;
   onPickInvoice: (inv: Invoice) => void;
+  onOpenHistoricalProcDraft: (inv: Invoice) => void;
   hybridAuditByInvoiceId: Record<string, { over_budget: boolean; bypass_approval: boolean; ai_high: boolean }>;
   quoteVarianceByInvoiceId: Record<string, QuoteVarianceResult>;
   aiAuditListMap: Record<string, { risk_level: string; risk_score: number }>;
@@ -456,6 +892,7 @@ function MonthlyAutoAuditPanel(props: {
     busyMonthKey,
     onRunForMonth,
     onPickInvoice,
+    onOpenHistoricalProcDraft,
     hybridAuditByInvoiceId,
     quoteVarianceByInvoiceId,
     aiAuditListMap,
@@ -468,6 +905,12 @@ function MonthlyAutoAuditPanel(props: {
     governanceStartIso,
   );
 
+  const [auditDrillFilter, setAuditDrillFilter] = useState<MonthlyAuditFilter>('all');
+
+  useEffect(() => {
+    setAuditDrillFilter('all');
+  }, [monthKey]);
+
   const { stats, rows } = useMemo(() => {
     let colA = 0;
     let colB = 0;
@@ -479,6 +922,7 @@ function MonthlyAutoAuditPanel(props: {
       typeLabelZh: string;
       typeLabelEn: string;
       detail: string;
+      tags: MonthlyAuditTag[];
     };
     const outRows: Row[] = [];
 
@@ -507,42 +951,15 @@ function MonthlyAutoAuditPanel(props: {
         if (sx.noProcurement) colB += 1;
       }
 
+      const tags = monthlyRowTags(isHistorical, sx);
+
       const typeBitsZh: string[] = [];
       const typeBitsEn: string[] = [];
-      if (isHistorical) {
-        if (sx.noProcurement) {
-          typeBitsZh.push('建议补建采购记录');
-          typeBitsEn.push('Procurement linkage');
-        }
-        if (sx.procurementScope || sx.aiResidual) {
-          typeBitsZh.push('历史价格异常');
-          typeBitsEn.push('Historical variance');
-        }
-        if (sx.overBudget) {
-          typeBitsZh.push('超预算');
-          typeBitsEn.push('Budget');
-        }
-        if (sx.duplicate) {
-          typeBitsZh.push('疑似重复');
-          typeBitsEn.push('Duplicate');
-        }
-      } else {
-        if (sx.procurementScope) {
-          typeBitsZh.push('超采购范围');
-          typeBitsEn.push('Procurement');
-        }
-        if (sx.overBudget) {
-          typeBitsZh.push('超预算');
-          typeBitsEn.push('Budget');
-        }
-        if (sx.duplicate) {
-          typeBitsZh.push('疑似重复');
-          typeBitsEn.push('Duplicate');
-        }
-        if (sx.noProcurement) {
-          typeBitsZh.push('无采购记录');
-          typeBitsEn.push('No quote');
-        }
+      const orderedTags: MonthlyAuditTag[] = ['link', 'price', 'dup', 'budget'];
+      for (const tg of orderedTags) {
+        if (!tags.includes(tg)) continue;
+        typeBitsZh.push(monthlyTagLabel(tg, false, isHistorical));
+        typeBitsEn.push(monthlyTagLabel(tg, true, isHistorical));
       }
       if (typeBitsZh.length === 0) {
         typeBitsZh.push('综合风险');
@@ -553,7 +970,8 @@ function MonthlyAutoAuditPanel(props: {
         inv,
         typeLabelZh: typeBitsZh.slice(0, 5).join('、'),
         typeLabelEn: typeBitsEn.slice(0, 5).join(' · '),
-        detail: formatMonthlyRiskExplanation(l, inv, sx, anomalies, ledgerMode),
+        detail: buildMonthlyRiskExplanation(l, inv, sx, anomalies, ledgerMode),
+        tags: tags.length ? tags : ([] as MonthlyAuditTag[]),
       });
     }
 
@@ -585,6 +1003,20 @@ function MonthlyAutoAuditPanel(props: {
     aiAuditListMap,
     anomaliesByInvoiceId,
   ]);
+
+  const drillFilteredRows = useMemo(() => {
+    if (auditDrillFilter === 'all') return rows;
+    return rows.filter((r) => r.tags.includes(auditDrillFilter));
+  }, [rows, auditDrillFilter]);
+
+  const pickDrillFilter = (next: MonthlyAuditFilter) => {
+    setAuditDrillFilter((prev) => {
+      if (next === 'all') return 'all';
+      return prev === next ? 'all' : next;
+    });
+  };
+
+  const historical = ledgerMode === 'historical';
 
   const bust = busyMonthKey === monthKey;
 
@@ -648,59 +1080,139 @@ function MonthlyAutoAuditPanel(props: {
         </button>
       </div>
 
-      <dl className="mt-4 grid grid-cols-2 gap-2 text-xs text-indigo-950 sm:grid-cols-5">
-        <div className="rounded-lg bg-white/80 px-2 py-2 ring-1 ring-indigo-100">
-          <dt className="text-[10px] font-medium uppercase text-indigo-600">{l ? 'Total alerts' : '风险总数'}</dt>
-          <dd className="text-lg font-bold tabular-nums">{stats.total}</dd>
-        </div>
-        {ledgerMode === 'historical' ? (
+      <div className="mt-4 grid grid-cols-2 gap-2 text-xs sm:grid-cols-5">
+        <button
+          type="button"
+          onClick={() => pickDrillFilter('all')}
+          aria-pressed={auditDrillFilter === 'all'}
+          className={`rounded-lg px-2 py-2 text-left shadow-sm ring-1 transition hover:brightness-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+            auditDrillFilter === 'all'
+              ? 'bg-white ring-2 ring-indigo-600 ring-offset-1 ring-offset-indigo-50/50'
+              : 'bg-white/90 ring-indigo-100'
+          }`}
+        >
+          <div className="text-[10px] font-medium uppercase text-indigo-600">{l ? 'All risks' : '全部风险'}</div>
+          <div className="text-lg font-bold tabular-nums text-indigo-950">{stats.total}</div>
+        </button>
+        {historical ? (
           <>
-            <div className="rounded-lg bg-white/80 px-2 py-2 ring-1 ring-indigo-100">
-              <dt className="text-[10px] font-medium uppercase text-indigo-600">
-                {l ? 'Suggested linkage' : '建议补建采购记录'}
-              </dt>
-              <dd className="text-lg font-bold tabular-nums">{stats.colA}</dd>
-            </div>
-            <div className="rounded-lg bg-white/80 px-2 py-2 ring-1 ring-indigo-100">
-              <dt className="text-[10px] font-medium uppercase text-indigo-600">
-                {l ? 'Historical price risk' : '历史价格异常'}
-              </dt>
-              <dd className="text-lg font-bold tabular-nums">{stats.colB}</dd>
-            </div>
-            <div className="rounded-lg bg-white/80 px-2 py-2 ring-1 ring-indigo-100">
-              <dt className="text-[10px] font-medium uppercase text-indigo-600">{l ? 'Duplicates' : '疑似重复'}</dt>
-              <dd className="text-lg font-bold tabular-nums">{stats.duplicate}</dd>
-            </div>
-            <div className="col-span-2 rounded-lg bg-white/80 px-2 py-2 ring-1 ring-indigo-100 sm:col-span-1">
-              <dt className="text-[10px] font-medium uppercase text-indigo-600">{l ? 'Over budget' : '超预算'}</dt>
-              <dd className="text-lg font-bold tabular-nums">{stats.budget}</dd>
-            </div>
+            <button
+              type="button"
+              onClick={() => pickDrillFilter('link')}
+              aria-pressed={auditDrillFilter === 'link'}
+              className={`rounded-lg px-2 py-2 text-left shadow-sm ring-1 transition hover:brightness-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+                auditDrillFilter === 'link'
+                  ? 'bg-blue-100 ring-2 ring-blue-600 ring-offset-1 ring-offset-indigo-50/50'
+                  : 'bg-blue-50/90 text-blue-950 ring-blue-200'
+              }`}
+            >
+              <div className="text-[10px] font-medium uppercase text-blue-800">{l ? 'Suggested linkage' : '建议补建采购记录'}</div>
+              <div className="text-lg font-bold tabular-nums">{stats.colA}</div>
+            </button>
+            <button
+              type="button"
+              onClick={() => pickDrillFilter('price')}
+              aria-pressed={auditDrillFilter === 'price'}
+              className={`rounded-lg px-2 py-2 text-left shadow-sm ring-1 transition hover:brightness-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 ${
+                auditDrillFilter === 'price'
+                  ? 'bg-amber-100 ring-2 ring-amber-500 ring-offset-1 ring-offset-indigo-50/50'
+                  : 'bg-amber-50/95 text-amber-950 ring-amber-200'
+              }`}
+            >
+              <div className="text-[10px] font-medium uppercase text-amber-900">{l ? 'Historical price' : '历史价格异常'}</div>
+              <div className="text-lg font-bold tabular-nums">{stats.colB}</div>
+            </button>
+            <button
+              type="button"
+              onClick={() => pickDrillFilter('dup')}
+              aria-pressed={auditDrillFilter === 'dup'}
+              className={`rounded-lg px-2 py-2 text-left shadow-sm ring-1 transition hover:brightness-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 ${
+                auditDrillFilter === 'dup'
+                  ? 'bg-orange-100 ring-2 ring-orange-500 ring-offset-1 ring-offset-indigo-50/50'
+                  : 'bg-orange-50/95 text-orange-950 ring-orange-200'
+              }`}
+            >
+              <div className="text-[10px] font-medium uppercase text-orange-900">{l ? 'Duplicates' : '疑似重复'}</div>
+              <div className="text-lg font-bold tabular-nums">{stats.duplicate}</div>
+            </button>
+            <button
+              type="button"
+              onClick={() => pickDrillFilter('budget')}
+              aria-pressed={auditDrillFilter === 'budget'}
+              className={`col-span-2 rounded-lg px-2 py-2 text-left shadow-sm ring-1 transition hover:brightness-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 sm:col-span-1 ${
+                auditDrillFilter === 'budget'
+                  ? 'bg-red-100 ring-2 ring-red-600 ring-offset-1 ring-offset-indigo-50/50'
+                  : 'bg-red-50/95 text-red-950 ring-red-200'
+              }`}
+            >
+              <div className="text-[10px] font-medium uppercase text-red-800">{l ? 'Over budget' : '超预算'}</div>
+              <div className="text-lg font-bold tabular-nums">{stats.budget}</div>
+            </button>
           </>
         ) : (
           <>
-            <div className="rounded-lg bg-white/80 px-2 py-2 ring-1 ring-indigo-100">
-              <dt className="text-[10px] font-medium uppercase text-indigo-600">
-                {l ? 'Procurement scope' : '超采购范围'}
-              </dt>
-              <dd className="text-lg font-bold tabular-nums">{stats.colA}</dd>
-            </div>
-            <div className="rounded-lg bg-white/80 px-2 py-2 ring-1 ring-indigo-100">
-              <dt className="text-[10px] font-medium uppercase text-indigo-600">{l ? 'Over budget' : '超预算'}</dt>
-              <dd className="text-lg font-bold tabular-nums">{stats.budget}</dd>
-            </div>
-            <div className="rounded-lg bg-white/80 px-2 py-2 ring-1 ring-indigo-100">
-              <dt className="text-[10px] font-medium uppercase text-indigo-600">{l ? 'Duplicates' : '疑似重复'}</dt>
-              <dd className="text-lg font-bold tabular-nums">{stats.duplicate}</dd>
-            </div>
-            <div className="col-span-2 rounded-lg bg-white/80 px-2 py-2 ring-1 ring-indigo-100 sm:col-span-1">
-              <dt className="text-[10px] font-medium uppercase text-indigo-600">
-                {l ? 'No procurement' : '无采购记录'}
-              </dt>
-              <dd className="text-lg font-bold tabular-nums">{stats.colB}</dd>
-            </div>
+            <button
+              type="button"
+              onClick={() => pickDrillFilter('link')}
+              aria-pressed={auditDrillFilter === 'link'}
+              className={`rounded-lg px-2 py-2 text-left shadow-sm ring-1 transition hover:brightness-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 ${
+                auditDrillFilter === 'link'
+                  ? 'bg-red-100 ring-2 ring-red-600 ring-offset-1 ring-offset-indigo-50/50'
+                  : 'bg-red-50/95 text-red-950 ring-red-200'
+              }`}
+            >
+              <div className="text-[10px] font-medium uppercase text-red-800">{l ? 'No procurement' : '无采购记录'}</div>
+              <div className="text-lg font-bold tabular-nums">{stats.colB}</div>
+            </button>
+            <button
+              type="button"
+              onClick={() => pickDrillFilter('price')}
+              aria-pressed={auditDrillFilter === 'price'}
+              className={`rounded-lg px-2 py-2 text-left shadow-sm ring-1 transition hover:brightness-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 ${
+                auditDrillFilter === 'price'
+                  ? 'bg-red-100 ring-2 ring-red-700 ring-offset-1 ring-offset-indigo-50/50'
+                  : 'bg-red-50/95 text-red-950 ring-red-300'
+              }`}
+            >
+              <div className="text-[10px] font-medium uppercase text-red-800">{l ? 'Procurement scope' : '超采购范围'}</div>
+              <div className="text-lg font-bold tabular-nums">{stats.colA}</div>
+            </button>
+            <button
+              type="button"
+              onClick={() => pickDrillFilter('dup')}
+              aria-pressed={auditDrillFilter === 'dup'}
+              className={`rounded-lg px-2 py-2 text-left shadow-sm ring-1 transition hover:brightness-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 ${
+                auditDrillFilter === 'dup'
+                  ? 'bg-orange-100 ring-2 ring-orange-500 ring-offset-1 ring-offset-indigo-50/50'
+                  : 'bg-orange-50/95 text-orange-950 ring-orange-200'
+              }`}
+            >
+              <div className="text-[10px] font-medium uppercase text-orange-900">{l ? 'Duplicates' : '疑似重复'}</div>
+              <div className="text-lg font-bold tabular-nums">{stats.duplicate}</div>
+            </button>
+            <button
+              type="button"
+              onClick={() => pickDrillFilter('budget')}
+              aria-pressed={auditDrillFilter === 'budget'}
+              className={`col-span-2 rounded-lg px-2 py-2 text-left shadow-sm ring-1 transition hover:brightness-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 sm:col-span-1 ${
+                auditDrillFilter === 'budget'
+                  ? 'bg-red-100 ring-2 ring-red-600 ring-offset-1 ring-offset-indigo-50/50'
+                  : 'bg-red-50/95 text-red-950 ring-red-200'
+              }`}
+            >
+              <div className="text-[10px] font-medium uppercase text-red-800">{l ? 'Over budget' : '超预算'}</div>
+              <div className="text-lg font-bold tabular-nums">{stats.budget}</div>
+            </button>
           </>
         )}
-      </dl>
+      </div>
+      {auditDrillFilter !== 'all' && rows.length > 0 ? (
+        <p className="mt-2 text-[11px] text-indigo-800/80">
+          {l
+            ? `Filtered: ${drillFilteredRows.length} of ${rows.length} · click the same card again to clear`
+            : `当前筛选：${drillFilteredRows.length} / ${rows.length} 条 · 再次点击同一卡片可取消筛选`}
+        </p>
+      ) : null}
 
       <div className="mt-4 overflow-hidden rounded-lg border border-indigo-100 bg-white shadow-sm">
         <div className="border-b border-indigo-100 bg-indigo-50/70 px-3 py-2 text-xs font-semibold text-indigo-950">
@@ -711,6 +1223,10 @@ function MonthlyAutoAuditPanel(props: {
         {rows.length === 0 ? (
           <div className="px-4 py-8 text-center text-xs text-indigo-800/75">
             {l ? 'No automated alerts matched for this accounting month.' : '该月份暂无匹配的自动报警条目。'}
+          </div>
+        ) : drillFilteredRows.length === 0 ? (
+          <div className="px-4 py-8 text-center text-xs text-indigo-800/75">
+            {l ? 'No rows match this filter. Choose “All risks” or another card.' : '当前筛选下暂无条目，可点「全部风险」或其它卡片。'}
           </div>
         ) : (
           <div className="max-h-72 overflow-y-auto overscroll-contain">
@@ -726,38 +1242,66 @@ function MonthlyAutoAuditPanel(props: {
                 </tr>
               </thead>
               <tbody className="divide-y divide-indigo-50">
-                {rows.map((row) => (
-                  <tr key={row.inv.id} className="bg-white hover:bg-indigo-50/50">
-                    <td
-                      className="max-w-[130px] truncate px-3 py-2 font-medium text-gray-900"
-                      title={row.inv.vendor_name}
+                {drillFilteredRows.map((row) => {
+                  const pillTags = row.tags.length ? row.tags : ([] as MonthlyAuditTag[]);
+                  return (
+                    <tr
+                      key={row.inv.id}
+                      className={`hover:opacity-95 ${rowRiskAccentClass(pillTags, historical)}`}
                     >
-                      {row.inv.vendor_name}
-                    </td>
-                    <td className="whitespace-nowrap px-2 py-2 text-gray-700">{row.inv.invoice_number || '—'}</td>
-                    <td className="whitespace-nowrap px-2 py-2 font-semibold tabular-nums text-gray-900">
-                      ${Number(row.inv.total_amount).toFixed(2)}
-                    </td>
-                    <td
-                      className="max-w-[120px] truncate px-2 py-2 text-[11px] text-indigo-950"
-                      title={l ? row.typeLabelEn : row.typeLabelZh}
-                    >
-                      {l ? row.typeLabelEn : row.typeLabelZh}
-                    </td>
-                    <td className="max-w-[220px] px-2 py-2 align-top text-[11px] text-gray-700">
-                      <span className="line-clamp-3">{row.detail}</span>
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right">
-                      <button
-                        type="button"
-                        onClick={() => onPickInvoice(row.inv)}
-                        className="rounded-md px-2 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100"
+                      <td
+                        className="max-w-[130px] truncate px-3 py-2 font-medium text-gray-900"
+                        title={row.inv.vendor_name}
                       >
-                        {l ? 'View invoice' : '查看发票'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                        {row.inv.vendor_name}
+                      </td>
+                      <td className="whitespace-nowrap px-2 py-2 text-gray-700">{row.inv.invoice_number || '—'}</td>
+                      <td className="whitespace-nowrap px-2 py-2 font-semibold tabular-nums text-gray-900">
+                        ${Number(row.inv.total_amount).toFixed(2)}
+                      </td>
+                      <td className="max-w-[200px] px-2 py-2 align-top text-[11px]">
+                        {pillTags.length ? (
+                          <div className="flex flex-wrap gap-0.5">
+                            {pillTags.map((tg) => (
+                              <span
+                                key={tg}
+                                className={`inline-block max-w-full truncate rounded px-1.5 py-px text-[10px] font-semibold ${monthlyTagPillClass(tg, historical)}`}
+                                title={monthlyTagLabel(tg, l, historical)}
+                              >
+                                {monthlyTagLabel(tg, l, historical)}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="font-medium text-slate-700">{l ? row.typeLabelEn : row.typeLabelZh}</span>
+                        )}
+                      </td>
+                      <td className="max-w-[220px] px-2 py-2 align-top text-[11px] text-gray-700">
+                        <span className="line-clamp-3">{row.detail}</span>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2 text-right align-top">
+                        <div className="flex flex-col items-end gap-1 sm:flex-row sm:justify-end sm:gap-2">
+                          {historical && canAudit && pillTags.includes('link') ? (
+                            <button
+                              type="button"
+                              onClick={() => onOpenHistoricalProcDraft(row.inv)}
+                              className="rounded-md px-2 py-1 text-[11px] font-semibold bg-indigo-50 text-indigo-800 hover:bg-indigo-100 ring-1 ring-indigo-200/80"
+                            >
+                              {l ? 'Create draft' : 'AI补建草稿'}
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() => onPickInvoice(row.inv)}
+                            className="rounded-md px-2 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100"
+                          >
+                            {l ? 'View invoice' : '查看发票'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1194,6 +1738,9 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
   const [anomaliesByInvoiceId, setAnomaliesByInvoiceId] = useState<Record<string, InvoiceAnomalyLite[]>>({});
   const [anomaliesFetchTick, setAnomaliesFetchTick] = useState(0);
   const [monthlyAuditBusyKey, setMonthlyAuditBusyKey] = useState<string | null>(null);
+  const [historicalProcDraftInv, setHistoricalProcDraftInv] = useState<Invoice | null>(null);
+  const [historicalProcDraftBusy, setHistoricalProcDraftBusy] = useState(false);
+  const [historicalProcDraftFeedback, setHistoricalProcDraftFeedback] = useState<string | null>(null);
 
   /** `YYYY-MM-DD` from DB, or null if unset */
   const [governanceStartIso, setGovernanceStartIso] = useState<string | null>(null);
@@ -1297,6 +1844,51 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
     },
     [profile, canAudit, currentPropertyId, loadInvoicesQuiet, l],
   );
+
+  const persistHistoricalProcDraft = useCallback(async () => {
+    const inv = historicalProcDraftInv;
+    if (!inv || !profile?.id || !currentPropertyId || !canAudit) return;
+    setHistoricalProcDraftBusy(true);
+    setHistoricalProcDraftFeedback(null);
+    try {
+      const payload = buildHistoricalProcDraftInsertPayload(inv, profile.id, currentPropertyId);
+      const { data, error } = await supabase.from('procurement_jobs').insert(payload).select('id').maybeSingle();
+      if (error) {
+        setHistoricalProcDraftFeedback(
+          l
+            ? 'Could not save to procurement. Use Copy for procurement form.'
+            : '未能写入采购草稿，可使用「复制为采购记录」。',
+        );
+        if (import.meta.env.DEV) {
+          console.warn('[historical procurement draft]', error.message);
+        }
+        return;
+      }
+      const row = data as { id?: string } | null;
+      const jid = row?.id ? String(row.id) : '';
+      setHistoricalProcDraftFeedback(
+        l
+          ? jid
+            ? `Draft saved (${jid}).`
+            : 'Draft saved.'
+          : jid
+            ? `草稿已保存（${jid}）。`
+            : '草稿已保存。',
+      );
+    } catch {
+      setHistoricalProcDraftFeedback(l ? 'Save failed. Use Copy instead.' : '保存失败，请使用复制。');
+    } finally {
+      setHistoricalProcDraftBusy(false);
+    }
+  }, [historicalProcDraftInv, profile?.id, currentPropertyId, canAudit, l]);
+
+  useEffect(() => {
+    if (historicalProcDraftInv && !canAudit) {
+      setHistoricalProcDraftInv(null);
+      setHistoricalProcDraftBusy(false);
+      setHistoricalProcDraftFeedback(null);
+    }
+  }, [canAudit, historicalProcDraftInv]);
 
   useEffect(() => {
     if (!highlightInvoiceId || invoices.length === 0) return;
@@ -2189,6 +2781,10 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
                                 busyMonthKey={monthlyAuditBusyKey}
                                 onRunForMonth={(key, list) => void runMonthAudit(key, list)}
                                 onPickInvoice={setSelectedInvoice}
+                                onOpenHistoricalProcDraft={(inv) => {
+                                  setHistoricalProcDraftFeedback(null);
+                                  setHistoricalProcDraftInv(inv);
+                                }}
                                 hybridAuditByInvoiceId={hybridAuditByInvoiceId}
                                 quoteVarianceByInvoiceId={quoteVarianceByInvoiceId}
                                 aiAuditListMap={aiAuditListMap}
@@ -2594,7 +3190,22 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
         <div className="border-t border-gray-200 px-3 py-2 text-sm text-gray-500 sm:px-4 sm:py-2.5">
           {filtered.length} / {invoices.length} {l ? 'invoices' : '张发票'}
         </div>
-      </div>
+        </div>
+
+        {historicalProcDraftInv ? (
+          <HistoricalInvoiceProcDraftModal
+            invoice={historicalProcDraftInv}
+            languageEn={l}
+            busy={historicalProcDraftBusy}
+            feedback={historicalProcDraftFeedback}
+            onClose={() => {
+              setHistoricalProcDraftInv(null);
+              setHistoricalProcDraftBusy(false);
+              setHistoricalProcDraftFeedback(null);
+            }}
+            onPersist={() => void persistHistoricalProcDraft()}
+          />
+        ) : null}
 
       {selectedInvoice && (
         <InvoiceDetailModal
