@@ -4,6 +4,7 @@ import {
   MEETING_VOTE_ARCHIVE_GUIDE_ZH,
   MEETING_VOTE_ARCHIVE_SUPPORTING_DOCUMENTS,
   MEETING_VOTE_ARCHIVE_FORMAL_NOTICE,
+  MEETING_VOTE_ARCHIVE_CARD_CLASSIFICATION_NOTE,
 } from '@/components/meetings/meetingVoteArchiveConstants';
 import type { MeetingSupportingDocumentRow } from '@/features/meetings/meetingDocumentsRead';
 import { meetingTitleZhFirst, type MeetingRow, type OwnerVoteMeetingLite } from '@/features/meetings/api';
@@ -172,6 +173,9 @@ export function MeetingVoteArchiveCard({
             {expanded ? (en ? 'Collapse' : '收起') : en ? 'Expand' : '展开'}
           </button>
         </div>
+        <p className="mt-2 text-xs leading-relaxed text-slate-600">
+          {en ? MEETING_VOTE_ARCHIVE_CARD_CLASSIFICATION_NOTE.en : MEETING_VOTE_ARCHIVE_CARD_CLASSIFICATION_NOTE.zh}
+        </p>
 
         {expanded ? (
           <ul className="mt-3 space-y-2 border-t border-slate-200/80 pt-3">
@@ -331,7 +335,14 @@ export function MeetingVoteArchiveCard({
                 ))}
               </ol>
 
+              <h3 className="text-[13px] font-semibold text-gray-900">{g.legalArchiveTitle}</h3>
+              <p className="whitespace-pre-wrap rounded-md border border-slate-100 bg-slate-50 px-3 py-2 font-mono text-xs leading-relaxed text-gray-800">
+                {g.legalArchiveTree}
+              </p>
+              <p className="text-sm text-gray-800">{g.legalArchiveRouting}</p>
+
               <h3 className="text-[13px] font-semibold text-gray-900">{g.dirTitle}</h3>
+              <p className="text-sm text-gray-700">{g.dirIntro}</p>
               <ul className="space-y-0.5 font-mono text-xs text-gray-800">
                 {g.dirLines.map((line) => (
                   <li key={line}>{line}</li>

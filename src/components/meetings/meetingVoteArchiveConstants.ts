@@ -2,6 +2,11 @@
  * Phase 1: static 「00 使用说明」copy (frontend only; no persistence).
  */
 
+export const MEETING_VOTE_ARCHIVE_CARD_CLASSIFICATION_NOTE = {
+  zh: '会后将按 AGM / SGM / Minutes 分类归档至「法律法规」。',
+  en: 'After the meeting, records are filed under AGM, SGM, or Minutes within Legal & regulatory governance.',
+} as const;
+
 export const MEETING_VOTE_ARCHIVE_GUIDE_ZH = {
   title: 'ClearStrata 远程书面会议与电子投票使用说明',
   subtitle: '适用于 BC Strata 社区治理流程（律师审核版草案）',
@@ -14,7 +19,7 @@ export const MEETING_VOTE_ARCHIVE_GUIDE_ZH = {
     '理事会治理流程（Council Governance）',
     '电子投票（Electronic Voting）',
     '会议纪要归档（Minutes Archiving）',
-    '法律治理文件长期保存（Legal Governance Archive）',
+    '法律法规项下「会议档案」长期分类（AGM / SGM / Minutes）',
   ],
   governanceTitle: '治理原则：',
   principles: [
@@ -33,7 +38,8 @@ export const MEETING_VOTE_ARCHIVE_GUIDE_ZH = {
     {
       num: '3',
       heading: '长期归档',
-      body: '所有会议文件将长期保存。\n所有业主均可查阅历史治理档案。',
+      body:
+        '会议材料在法律法规侧归入「会议档案」，并按下级分类 AGM、SGM、Minutes 留存；全体业主可依权限查阅。',
     },
   ],
   flowTitle: '标准会议流程：',
@@ -44,9 +50,19 @@ export const MEETING_VOTE_ARCHIVE_GUIDE_ZH = {
     '电子投票',
     '正式结果确认',
     '会议纪要',
-    '法律档案归档',
+    '法律档案归档（法律法规 → 会议档案 → AGM / SGM / Minutes）',
   ],
-  dirTitle: '会议档案目录：',
+  legalArchiveTitle: '法律法规侧归档分类（产品口径）：',
+  legalArchiveTree:
+    '法律法规\n' +
+    '└── 会议档案\n' +
+    '    ├── AGM：年度大会完整档案\n' +
+    '    ├── SGM：特别大会完整档案（含理事会召集与业主联署发起）\n' +
+    '    └── Minutes：普通会议纪要、理事会会议纪要及其它非 AGM、SGM 的会议记录',
+  legalArchiveRouting:
+    '会议结束后：AGM 归入 AGM；SGM 归入 SGM（含理事会发起或业主联署发起的特别大会）；其它会议纪要归入 Minutes。下列 00–06 为单次会议内整理目录，与实际入卷分列，便于物业与律师校对。',
+  dirTitle: '本会议内固定目录（00–06）：',
+  dirIntro: '以下为当前会议工作台固定目录，与「法律法规 → 会议档案 → AGM / SGM / Minutes」的长期分类相互配合。',
   dirLines: [
     '00 使用说明 / Guide',
     '01 正式会议通知 / Formal Notice',

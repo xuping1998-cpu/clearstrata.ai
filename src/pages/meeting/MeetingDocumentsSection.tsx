@@ -21,6 +21,11 @@ interface MeetingDocument {
 interface Props {
   meetingId: string;
   isCouncil: boolean;
+  /** Parent may re-fetch derived state (e.g. meeting archive 02 list). */
+  onDocumentsChanged?: () => void;
+  /** Optional section heading (default: Documents / 会议文件). */
+  titleEn?: string;
+  titleZh?: string;
 }
 
 const docTypeLabels: Record<string, Record<'en' | 'zh', string>> = {
@@ -31,7 +36,7 @@ const docTypeLabels: Record<string, Record<'en' | 'zh', string>> = {
   other: { en: 'Other', zh: '其他' },
 };
 
-export function MeetingDocumentsSection({ meetingId, isCouncil }: Props) {
+export function MeetingDocumentsSection({ meetingId, isCouncil, onDocumentsChanged, titleEn, titleZh }: Props) {
   const { currentPropertyId } = useProperty();
   const { user } = useAuth();
   const { language, t } = useLanguage();
@@ -132,7 +137,8 @@ export function MeetingDocumentsSection({ meetingId, isCouncil }: Props) {
       setShowUploadForm(false);
       setNewDoc({ document_type: 'agenda', title_en: '', title_zh: '' });
       setSelectedFile(null);
-      loadDocuments();
+      await loadDocuments();
+      onDocumentsChanged?.();
     } catch (error: any) {
       setUploadError(
         l
@@ -168,7 +174,8 @@ export function MeetingDocumentsSection({ meetingId, isCouncil }: Props) {
         .eq('property_id', currentPropertyId);
 
       if (error) throw error;
-      setDocuments(prev => prev.filter(d => d.id !== doc.id));
+      setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+      onDocumentsChanged?.();
     } catch (error) {
       console.error('Error deleting document:', error);
     } finally {
@@ -189,7 +196,9 @@ export function MeetingDocumentsSection({ meetingId, isCouncil }: Props) {
     <div>
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-gray-900">
-          {l ? `Documents (${documents.length})` : `会议文件 (${documents.length})`}
+          {l
+            ? `${titleEn ?? 'Documents'} (${documents.length})`
+            : `${titleZh ?? '会议文件'} (${documents.length})`}
         </h3>
         {isCouncil && !showUploadForm && (
           <button
