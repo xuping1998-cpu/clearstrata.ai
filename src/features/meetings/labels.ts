@@ -1,5 +1,4 @@
 import type { MeetingFormat, MeetingStatus, MeetingType, VoteRule, VoteStatus } from './api';
-import { extractWrittenRemoteMeta } from './meetingFormatModel';
 
 const meetingTypeZh: Record<MeetingType, string> = {
   agm: 'AGM',
@@ -16,13 +15,13 @@ const meetingTypeEn: Record<MeetingType, string> = {
 const formatZh: Record<MeetingFormat, string> = {
   in_person: '线下会议',
   electronic: '实时远程会议',
-  hybrid: '混合会议',
+  hybrid: '远程书面会议',
 };
 
 const formatEn: Record<MeetingFormat, string> = {
   in_person: 'In-person',
   electronic: 'Live Remote',
-  hybrid: 'Hybrid',
+  hybrid: 'Remote Written Meeting',
 };
 
 const statusZh: Record<MeetingStatus, string> = {
@@ -78,12 +77,9 @@ export function labelMeetingType(t: string, en: boolean): string {
 export function labelFormat(
   fmt: string,
   en: boolean,
-  extras?: { descriptionZh?: string | null },
+  _extras?: { descriptionZh?: string | null },
 ): string {
   const k = fmt as MeetingFormat;
-  if (k === 'hybrid' && extras?.descriptionZh != null && extractWrittenRemoteMeta(extras.descriptionZh).meta) {
-    return en ? 'Written Remote' : '远程书面会议';
-  }
   if (k in formatZh) return en ? formatEn[k] : formatZh[k];
   return fmt;
 }

@@ -222,7 +222,7 @@ const translations: Record<string, Record<Language, string>> = {
   meeting_ov_discussion_period_label: { en: 'Public Notice Period', zh: '公示期' },
   meeting_ov_voting_period_combined_label: { en: 'Voting period', zh: '投票期' },
   meeting_format_written_remote_display: {
-    en: 'Written remote meeting',
+    en: 'Remote Written Meeting',
     zh: '远程书面会议',
   },
   meeting_flow_nomination_period_label: { en: 'Nomination period', zh: '提名期' },
@@ -400,8 +400,8 @@ const translations: Record<string, Record<Language, string>> = {
 
   meeting_format_in_person: { en: 'In-person', zh: '线下会议' },
   meeting_format_live_remote: { en: 'Live Remote', zh: '实时远程会议' },
-  meeting_format_hybrid: { en: 'Hybrid', zh: '混合会议' },
-  meeting_format_written_remote: { en: 'Written Remote', zh: '远程书面会议' },
+  meeting_format_hybrid: { en: 'Remote Written Meeting', zh: '远程书面会议' },
+  meeting_format_written_remote: { en: 'Remote Written Meeting', zh: '远程书面会议' },
 
   meeting_time_local: { en: 'Meeting time', zh: '会议时间（本地）' },
   discussion_opens: { en: 'Public notice opens', zh: '公示开放时间' },
