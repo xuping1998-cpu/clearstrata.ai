@@ -39,6 +39,7 @@ import {
 } from '../../features/meetings/api';
 import {
   councilMeetingTitleForOwnerVoteBinding,
+  findOwnerVoteResolutionForAgenda,
   isOwnerVotingMeeting,
 } from '../../features/meetings/ownerVotingCouncil';
 import { supabase } from '../../lib/supabase';
@@ -48,6 +49,7 @@ import { canManagePropertyMeetings } from '@/lib/meetingPermissions';
 import { labelFormat, labelMeetingType, labelStatus, labelVoteRule, labelVoteStatus, meetingUiStrings } from '../../features/meetings/labels';
 import {
   analyzeCouncilElectionTimeline,
+  buildElectionNominationRibbon,
   defaultElectionMeta,
   displayAgendaZhWithoutElection,
   embedElectionAgendaMeta,
