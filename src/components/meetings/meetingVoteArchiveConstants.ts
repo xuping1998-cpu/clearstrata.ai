@@ -60,10 +60,31 @@ export const MEETING_VOTE_ARCHIVE_GUIDE_ZH = {
   pledges: ['让每一位业主参与治理。', '让每一次决议公开透明。', '让每一份治理文件长期可查。'],
 } as const;
 
+/** 02 支持文件 — 读取 meeting_documents（无则展示空态） */
+export const MEETING_VOTE_ARCHIVE_SUPPORTING_DOCUMENTS = {
+  row02: { id: '02', zh: '支持文件', en: 'Supporting documents' },
+  emptyStatus: { zh: '暂无支持文件', en: 'No supporting documents' },
+  attached: (n: number, zh: boolean) =>
+    zh ? `已附文件 · ${n} 个` : `Attached · ${n} file${n === 1 ? '' : 's'}`,
+  zh: {
+    modalTitle: '支持文件',
+    listHeading: '文件列表',
+    colName: '文件名',
+    colType: '类型',
+    openLink: '打开 / 下载',
+  },
+  en: {
+    modalTitle: 'Supporting documents',
+    listHeading: 'Files',
+    colName: 'Name',
+    colType: 'Type',
+    openLink: 'Open / download',
+  },
+} as const;
+
 /** 01 正式会议通知 — 自动草案预览（仅前端展示，不入库） */
 export const MEETING_VOTE_ARCHIVE_FORMAL_NOTICE = {
   placeholderRows: [
-    { id: '02', zh: '支持文件', en: 'Supporting documents' },
     { id: '03', zh: '讨论记录', en: 'Discussion archive' },
     { id: '04', zh: '投票记录', en: 'Voting record' },
     { id: '05', zh: '决议结果', en: 'Resolution report' },

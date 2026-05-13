@@ -2,8 +2,10 @@ import { useMemo, useState } from 'react';
 import { FileText, X } from 'lucide-react';
 import {
   MEETING_VOTE_ARCHIVE_GUIDE_ZH,
+  MEETING_VOTE_ARCHIVE_SUPPORTING_DOCUMENTS,
   MEETING_VOTE_ARCHIVE_FORMAL_NOTICE,
 } from '@/components/meetings/meetingVoteArchiveConstants';
+import type { MeetingSupportingDocumentRow } from '@/features/meetings/meetingDocumentsRead';
 import { meetingTitleZhFirst, type MeetingRow, type OwnerVoteMeetingLite } from '@/features/meetings/api';
 import { labelFormat, labelMeetingType, meetingUiStrings } from '@/features/meetings/labels';
 import {
@@ -20,6 +22,8 @@ type Props = {
   ownerVoteMeeting?: OwnerVoteMeetingLite | null;
   resolutionAgendaCount: number;
   electionAgendaCount: number;
+  /** Rows from `meeting_documents` (MeetingDocumentsSection query); parent loads once per meeting */
+  supportingDocuments: MeetingSupportingDocumentRow[];
 };
 
 function fmtArchiveTs(iso: string | null | undefined, languageEn: boolean): string | null {
@@ -29,21 +33,63 @@ function fmtArchiveTs(iso: string | null | undefined, languageEn: boolean): stri
   return d.toLocaleString(languageEn ? 'en-CA' : 'zh-CN', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
+function docDisplayTitle(row: MeetingSupportingDocumentRow, languageEn: boolean): string {
+  const zh = row.title_zh?.trim();
+  const e = row.title_en?.trim();
+  if (languageEn) return e || zh || '—';
+  return zh || e || '—';
+}
+
+function displayFileKind(row: MeetingSupportingDocumentRow, languageEn: boolean): string {
+  const mime = (row.mime_type ?? '').toLowerCase();
+  const url = (row.document_url ?? '').split('?')[0] ?? '';
+  const extMatch = /\.([a-zA-Z0-9]+)$/i.exec(url);
+  const ext = (extMatch?.[1] ?? '').toLowerCase();
+  if (mime.includes('pdf') || ext === 'pdf') return 'PDF';
+  if (
+    mime.includes('wordprocessingml') ||
+    mime.includes('msword') ||
+    ext === 'doc' ||
+    ext === 'docx'
+  ) {
+    return languageEn ? 'Word (DOC/DOCX)' : 'Word（DOC/DOCX）';
+  }
+  if (
+    mime.includes('spreadsheetml') ||
+    mime.includes('excel') ||
+    mime.includes('csv') ||
+    ext === 'xls' ||
+    ext === 'xlsx' ||
+    ext === 'csv'
+  ) {
+    return languageEn ? 'Excel (XLS/XLSX)' : 'Excel（XLS/XLSX）';
+  }
+  if (ext) return ext.toUpperCase();
+  if (mime) return mime.split('/').pop()?.slice(0, 24).toUpperCase() ?? '';
+  return languageEn ? 'File' : '文件';
+}
+
 export function MeetingVoteArchiveCard({
   languageEn,
   meeting,
   ownerVoteMeeting = null,
   resolutionAgendaCount,
   electionAgendaCount,
+  supportingDocuments,
 }: Props) {
   const en = languageEn;
   /** Collapsed by default — list + 使用说明仅在展开后出现。 */
   const [expanded, setExpanded] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [noticeOpen, setNoticeOpen] = useState(false);
+  const [docsOpen, setDocsOpen] = useState(false);
   const g = MEETING_VOTE_ARCHIVE_GUIDE_ZH;
   const fc = MEETING_VOTE_ARCHIVE_FORMAL_NOTICE;
+  const sup = MEETING_VOTE_ARCHIVE_SUPPORTING_DOCUMENTS;
+  const supCopy = en ? sup.en : sup.zh;
   const c = en ? fc.en : fc.zh;
+  const docCount = supportingDocuments.length;
+  const hasSupportingAttachments = docCount > 0;
 
   const noticePayload = useMemo(() => {
     const disc = councilWrittenRemoteWindows(meeting);
@@ -161,6 +207,49 @@ export function MeetingVoteArchiveCard({
               >
                 {en ? 'View' : '查看'}
               </button>
+            </li>
+
+            <li
+              className={`flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2 ${
+                hasSupportingAttachments
+                  ? 'border-violet-200/80 bg-white'
+                  : 'border-gray-100 bg-white/80 text-gray-500'
+              }`}
+            >
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <span
+                  className={`font-mono text-xs font-semibold ${
+                    hasSupportingAttachments ? 'text-violet-900' : 'text-gray-500'
+                  }`}
+                >
+                  {sup.row02.id}
+                </span>
+                <span className={`font-medium ${hasSupportingAttachments ? 'text-gray-900' : 'text-gray-700'}`}>
+                  {en ? sup.row02.en : sup.row02.zh}
+                </span>
+                <span
+                  className={`shrink-0 text-[10px] font-semibold ${
+                    hasSupportingAttachments
+                      ? 'rounded border border-violet-300 bg-violet-50 px-1.5 py-px text-violet-950'
+                      : 'text-xs text-gray-500'
+                  }`}
+                >
+                  {hasSupportingAttachments
+                    ? sup.attached(docCount, !en)
+                    : en
+                      ? sup.emptyStatus.en
+                      : sup.emptyStatus.zh}
+                </span>
+              </div>
+              {hasSupportingAttachments ? (
+                <button
+                  type="button"
+                  onClick={() => setDocsOpen(true)}
+                  className="shrink-0 rounded-lg border border-violet-600 bg-violet-700 px-3 py-1 text-xs font-semibold text-white hover:bg-violet-800"
+                >
+                  {en ? 'View' : '查看'}
+                </button>
+              ) : null}
             </li>
 
             {fc.placeholderRows.map((row) => (
@@ -356,6 +445,82 @@ export function MeetingVoteArchiveCard({
               <button
                 type="button"
                 onClick={() => setNoticeOpen(false)}
+                className="rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200/60"
+              >
+                {en ? 'Close' : '关闭'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {docsOpen && hasSupportingAttachments ? (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-3 sm:p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="meeting-vote-archive-supporting-docs-title"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setDocsOpen(false);
+          }}
+        >
+          <div
+            className="max-h-[min(92vh,720px)] w-full max-w-2xl overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl"
+            onMouseDown={(ev) => ev.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-2 border-b border-gray-100 bg-gray-50 px-4 py-3">
+              <h2 id="meeting-vote-archive-supporting-docs-title" className="text-base font-semibold text-gray-900">
+                {supCopy.modalTitle}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setDocsOpen(false)}
+                className="shrink-0 rounded-lg p-1 text-gray-500 hover:bg-gray-200/80 hover:text-gray-800"
+                aria-label={en ? 'Close' : '关闭'}
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+            <div className="max-h-[min(78vh,600px)] space-y-3 overflow-y-auto px-4 py-4 text-sm leading-relaxed text-gray-800">
+              <p className="font-medium text-gray-900">{supCopy.listHeading}</p>
+              <ul className="mt-2 space-y-3">
+                {supportingDocuments.map((row) => {
+                  const name = docDisplayTitle(row, en);
+                  const kind = displayFileKind(row, en);
+                  const urlOk = !!(row.document_url?.trim());
+                  return (
+                    <li key={row.id} className="rounded-lg border border-gray-100 bg-gray-50/80 px-3 py-3">
+                      <div className="flex flex-wrap items-start justify-between gap-2 gap-y-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="break-words font-medium text-gray-900">{name}</p>
+                          <p className="mt-1 text-xs text-gray-600">
+                            {supCopy.colType}：<span className="font-semibold text-gray-800">{kind}</span>
+                          </p>
+                        </div>
+                        <div className="shrink-0">
+                          {urlOk ? (
+                            <a
+                              href={row.document_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs font-semibold text-violet-700 hover:underline"
+                            >
+                              {supCopy.openLink}
+                            </a>
+                          ) : (
+                            <span className="text-xs text-gray-400">—</span>
+                          )}
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+            <div className="border-t border-gray-100 bg-gray-50 px-4 py-2">
+              <button
+                type="button"
+                onClick={() => setDocsOpen(false)}
                 className="rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200/60"
               >
                 {en ? 'Close' : '关闭'}

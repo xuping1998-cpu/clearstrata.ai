@@ -73,6 +73,10 @@ import {
 } from '@/features/meetings/meetingFormatModel';
 import { OwnerVotingInlineControlBar } from '@/components/meetings/OwnerVotingInlineControlBar';
 import { MeetingVoteArchiveCard } from '@/components/meetings/MeetingVoteArchiveCard';
+import {
+  fetchMeetingSupportingDocuments,
+  type MeetingSupportingDocumentRow,
+} from '@/features/meetings/meetingDocumentsRead';
 import { MeetingOwnerVoteResolutionResults } from '@/components/meetings/MeetingOwnerVoteResolutionResults';
 import { StatusAlert, StatusBadge } from '@/components/status';
 
@@ -271,7 +275,28 @@ export function MeetingDetail() {
 
   const meeting = bundle.meeting;
 
+  const [supportingDocumentsArchive, setSupportingDocumentsArchive] = useState<MeetingSupportingDocumentRow[]>([]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (!meeting?.id?.trim() || !meeting.property_id?.trim()) {
+        if (!cancelled) setSupportingDocumentsArchive([]);
+        return;
+      }
+      const { rows, error } = await fetchMeetingSupportingDocuments(meeting.property_id, meeting.id);
+      if (cancelled) return;
+      if (error) {
+        console.warn('[meetings] supporting documents archive', error.message);
+        setSupportingDocumentsArchive([]);
+        return;
+      }
+      setSupportingDocumentsArchive(rows);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [meeting?.id, meeting?.property_id]);
   useEffect(() => {
     if (meeting && isMeetingClosedForVoting(meeting.status)) setAgendaEdit(null);
   }, [meeting?.id, meeting?.status]);
@@ -1385,6 +1410,7 @@ export function MeetingDetail() {
                     ownerVoteMeeting={ovMeta.meeting}
                     resolutionAgendaCount={councilFormalResolutionAgendaCount}
                     electionAgendaCount={electionBundles.length}
+                    supportingDocuments={supportingDocumentsArchive}
                   />
                 </>
               ) : null}
