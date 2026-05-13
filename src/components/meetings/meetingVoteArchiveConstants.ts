@@ -59,3 +59,56 @@ export const MEETING_VOTE_ARCHIVE_GUIDE_ZH = {
   pledgeTitle: 'ClearStrata 承诺：',
   pledges: ['让每一位业主参与治理。', '让每一次决议公开透明。', '让每一份治理文件长期可查。'],
 } as const;
+
+/** 01 正式会议通知 — 自动草案预览（仅前端展示，不入库） */
+export const MEETING_VOTE_ARCHIVE_FORMAL_NOTICE = {
+  placeholderRows: [
+    { id: '02', zh: '支持文件', en: 'Supporting documents' },
+    { id: '03', zh: '讨论记录', en: 'Discussion archive' },
+    { id: '04', zh: '投票记录', en: 'Voting record' },
+    { id: '05', zh: '决议结果', en: 'Resolution report' },
+    { id: '06', zh: '会议纪要', en: 'Minutes' },
+  ] as const,
+  row01: { id: '01', zh: '正式会议通知', en: 'Formal notice' },
+  status: {
+    zh: '已生成 · 自动草案',
+    en: 'Generated · Auto draft',
+  },
+  notSet: { zh: '暂未设置', en: 'Not set' },
+  zh: {
+    modalTitle: '正式会议通知',
+    docTitle: '正式会议通知',
+    intro: '本通知用于告知全体业主本次远程书面会议及电子投票事项。',
+    meetingName: '会议名称：',
+    meetingType: '会议类型：',
+    meetingFormat: '会议形式：',
+    meetingDate: '会议日期：',
+    publicNotice: '公示 / 讨论期：',
+    votingPeriod: '投票期：',
+    description: '会议说明：',
+    topics: '议题与决议：',
+    resolutionCount: '决议数',
+    electionCount: '选举数',
+    participation: '业主参与方式：',
+    participationBody:
+      '业主可通过 ClearStrata 平台查看资料、参与讨论，并在投票开启后进行电子投票。',
+  },
+  en: {
+    modalTitle: 'Formal Notice',
+    docTitle: 'Formal Notice',
+    intro: 'This notice informs all owners of this remote written meeting and electronic voting.',
+    meetingName: 'Meeting name:',
+    meetingType: 'Meeting type:',
+    meetingFormat: 'Meeting format:',
+    meetingDate: 'Meeting date:',
+    publicNotice: 'Public notice / discussion period:',
+    votingPeriod: 'Voting period:',
+    description: 'Meeting description:',
+    topics: 'Agenda & resolutions:',
+    resolutionCount: 'Formal resolutions',
+    electionCount: 'Election items',
+    participation: 'How owners participate:',
+    participationBody:
+      'Owners may review materials and participate in discussion on the ClearStrata platform, and cast electronic votes once voting opens.',
+  },
+} as const;

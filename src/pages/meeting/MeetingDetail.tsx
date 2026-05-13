@@ -1379,7 +1379,13 @@ export function MeetingDetail() {
                     onOpenVoting={() => void handleOpenOwnerVoteMeeting()}
                     onCloseVoting={() => void handleCloseOwnerVoteMeeting()}
                   />
-                  <MeetingVoteArchiveCard languageEn={en} />
+                  <MeetingVoteArchiveCard
+                    languageEn={en}
+                    meeting={meeting}
+                    ownerVoteMeeting={ovMeta.meeting}
+                    resolutionAgendaCount={councilFormalResolutionAgendaCount}
+                    electionAgendaCount={electionBundles.length}
+                  />
                 </>
               ) : null}
               <div className="space-y-6">

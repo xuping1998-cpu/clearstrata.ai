@@ -1,25 +1,110 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { FileText, X } from 'lucide-react';
-import { MEETING_VOTE_ARCHIVE_GUIDE_ZH } from '@/components/meetings/meetingVoteArchiveConstants';
+import {
+  MEETING_VOTE_ARCHIVE_GUIDE_ZH,
+  MEETING_VOTE_ARCHIVE_FORMAL_NOTICE,
+} from '@/components/meetings/meetingVoteArchiveConstants';
+import { meetingTitleZhFirst, type MeetingRow, type OwnerVoteMeetingLite } from '@/features/meetings/api';
+import { labelFormat, labelMeetingType, meetingUiStrings } from '@/features/meetings/labels';
+import {
+  councilMeetingVotingWindowFallback,
+  councilWrittenRemoteWindows,
+  stripWrittenRemoteMeta,
+} from '@/features/meetings/meetingFormatModel';
+import { deriveCouncilElectionCanonFromScheduledAt } from '@/features/meetings/electionTimelineMath';
 
 type Props = {
   languageEn: boolean;
+  meeting: MeetingRow;
+  /** Same source as OwnerVotingInlineControlBar voting display when OV row exists */
+  ownerVoteMeeting?: OwnerVoteMeetingLite | null;
+  resolutionAgendaCount: number;
+  electionAgendaCount: number;
 };
 
-export function MeetingVoteArchiveCard({ languageEn }: Props) {
+function fmtArchiveTs(iso: string | null | undefined, languageEn: boolean): string | null {
+  if (!iso?.trim()) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleString(languageEn ? 'en-CA' : 'zh-CN', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+export function MeetingVoteArchiveCard({
+  languageEn,
+  meeting,
+  ownerVoteMeeting = null,
+  resolutionAgendaCount,
+  electionAgendaCount,
+}: Props) {
+  const en = languageEn;
   /** Collapsed by default — list + 使用说明仅在展开后出现。 */
   const [expanded, setExpanded] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
+  const [noticeOpen, setNoticeOpen] = useState(false);
   const g = MEETING_VOTE_ARCHIVE_GUIDE_ZH;
+  const fc = MEETING_VOTE_ARCHIVE_FORMAL_NOTICE;
+  const c = en ? fc.en : fc.zh;
 
-  const placeholders: { id: string; zh: string; en: string }[] = [
-    { id: '01', zh: '正式会议通知', en: 'Formal notice' },
-    { id: '02', zh: '支持文件', en: 'Supporting documents' },
-    { id: '03', zh: '讨论记录', en: 'Discussion archive' },
-    { id: '04', zh: '投票记录', en: 'Voting record' },
-    { id: '05', zh: '决议结果', en: 'Resolution report' },
-    { id: '06', zh: '会议纪要', en: 'Minutes' },
-  ];
+  const noticePayload = useMemo(() => {
+    const disc = councilWrittenRemoteWindows(meeting);
+    const dO = disc.publicNoticeOpens?.trim() ? disc.publicNoticeOpens : '';
+    const dC = disc.publicNoticeCloses?.trim() ? disc.publicNoticeCloses : '';
+    let noticeOpenIso: string | null = dO || null;
+    let noticeCloseIso: string | null = dC || null;
+    if (!dO && !dC && meeting.scheduled_at?.trim()) {
+      const canon = deriveCouncilElectionCanonFromScheduledAt(meeting.scheduled_at);
+      if (canon) {
+        noticeOpenIso = canon.publicNoticeOpenIso;
+        noticeCloseIso = canon.publicNoticeCloseIso;
+      }
+    }
+    const fb = councilMeetingVotingWindowFallback(meeting);
+    const vOpenDisp = ownerVoteMeeting?.voting_opens_at?.trim()
+      ? ownerVoteMeeting.voting_opens_at
+      : fb.votingOpens ?? null;
+    const vCloseDisp = ownerVoteMeeting?.voting_closes_at?.trim()
+      ? ownerVoteMeeting.voting_closes_at
+      : fb.votingCloses ?? null;
+
+    const notSet = en ? fc.notSet.en : fc.notSet.zh;
+    const orNotSet = (s: string | null | undefined) => (s?.trim() ? s.trim() : notSet);
+
+    const title =
+      meetingTitleZhFirst(meeting)?.trim() ||
+      (en ? meetingUiStrings.untitled.en : meetingUiStrings.untitled.zh);
+    const typeLabel = orNotSet(labelMeetingType(meeting.meeting_type, en));
+    const formatLabel = orNotSet(
+      labelFormat(meeting.meeting_format, en, { descriptionZh: meeting.description_zh }),
+    );
+    const dateStr =
+      fmtArchiveTs(meeting.scheduled_at, en) ??
+      notSet;
+    const noticeFmt = (iso: string | null) =>
+      iso ? fmtArchiveTs(iso, en) ?? notSet : notSet;
+    const noticeSpan =
+      !noticeOpenIso && !noticeCloseIso
+        ? notSet
+        : `${noticeFmt(noticeOpenIso)} · ${noticeFmt(noticeCloseIso)}`;
+    const voteSpan =
+      !vOpenDisp && !vCloseDisp
+        ? notSet
+        : `${noticeFmt(vOpenDisp)} · ${noticeFmt(vCloseDisp)}`;
+
+    const descZh = meeting.description_zh ? stripWrittenRemoteMeta(meeting.description_zh) : '';
+    const descCombined = `${descZh}`.trim() || meeting.description_en?.trim() || '';
+
+    const descDisplay = descCombined ? descCombined : notSet;
+
+    return {
+      title,
+      typeLabel,
+      formatLabel,
+      dateStr,
+      noticeSpan,
+      voteSpan,
+      descDisplay,
+    };
+  }, [meeting, ownerVoteMeeting, en]);
 
   return (
     <>
@@ -27,9 +112,9 @@ export function MeetingVoteArchiveCard({ languageEn }: Props) {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <FileText className="size-4 shrink-0 text-slate-600" aria-hidden />
-            <h3 className="text-base font-semibold text-gray-900">{languageEn ? 'Meeting archive' : '会议档案'}</h3>
+            <h3 className="text-base font-semibold text-gray-900">{en ? 'Meeting archive' : '会议档案'}</h3>
             <span className="rounded bg-slate-200/90 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-700">
-              {languageEn ? 'Fixed folders' : '固定目录'}
+              {en ? 'Fixed folders' : '固定目录'}
             </span>
           </div>
           <button
@@ -38,7 +123,7 @@ export function MeetingVoteArchiveCard({ languageEn }: Props) {
             onClick={() => setExpanded((v) => !v)}
             className="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-100"
           >
-            {expanded ? (languageEn ? 'Collapse' : '收起') : languageEn ? 'Expand' : '展开'}
+            {expanded ? (en ? 'Collapse' : '收起') : en ? 'Expand' : '展开'}
           </button>
         </div>
 
@@ -47,9 +132,9 @@ export function MeetingVoteArchiveCard({ languageEn }: Props) {
             <li className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-emerald-200/70 bg-white/90 px-3 py-2">
               <div className="flex min-w-0 items-center gap-2">
                 <span className="font-mono text-xs font-semibold text-emerald-800">00</span>
-                <span className="font-medium text-gray-900">{languageEn ? 'Guide' : '使用说明'}</span>
+                <span className="font-medium text-gray-900">{en ? 'Guide' : '使用说明'}</span>
                 <span className="shrink-0 rounded border border-emerald-300 bg-emerald-50 px-1.5 py-px text-[10px] font-semibold uppercase text-emerald-900">
-                  {languageEn ? 'Read-only' : '只读'}
+                  {en ? 'Read-only' : '只读'}
                 </span>
               </div>
               <button
@@ -57,20 +142,37 @@ export function MeetingVoteArchiveCard({ languageEn }: Props) {
                 onClick={() => setGuideOpen(true)}
                 className="shrink-0 rounded-lg border border-emerald-600 bg-emerald-700 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-800"
               >
-                {languageEn ? 'View' : '查看'}
+                {en ? 'View' : '查看'}
               </button>
             </li>
 
-            {placeholders.map((row) => (
+            <li className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-sky-200/80 bg-white px-3 py-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <span className="font-mono text-xs font-semibold text-sky-900">{fc.row01.id}</span>
+                <span className="font-medium text-gray-900">{en ? fc.row01.en : fc.row01.zh}</span>
+                <span className="shrink-0 rounded border border-sky-300 bg-sky-50 px-1.5 py-px text-[10px] font-semibold text-sky-950">
+                  {en ? fc.status.en : fc.status.zh}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setNoticeOpen(true)}
+                className="shrink-0 rounded-lg border border-sky-600 bg-sky-700 px-3 py-1 text-xs font-semibold text-white hover:bg-sky-800"
+              >
+                {en ? 'View' : '查看'}
+              </button>
+            </li>
+
+            {fc.placeholderRows.map((row) => (
               <li
                 key={row.id}
                 className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-gray-100 bg-white/80 px-3 py-2 text-gray-500"
               >
                 <span className="font-medium text-gray-700">
                   <span className="mr-2 font-mono text-xs">{row.id}</span>
-                  {languageEn ? row.en : row.zh}
+                  {en ? row.en : row.zh}
                 </span>
-                <span className="text-xs">{languageEn ? 'Pending · No file yet' : '待生成 · 暂无文件'}</span>
+                <span className="text-xs">{en ? 'Pending · No file yet' : '待生成 · 暂无文件'}</span>
               </li>
             ))}
           </ul>
@@ -102,13 +204,13 @@ export function MeetingVoteArchiveCard({ languageEn }: Props) {
                 type="button"
                 onClick={() => setGuideOpen(false)}
                 className="shrink-0 rounded-lg p-1 text-gray-500 hover:bg-gray-200/80 hover:text-gray-800"
-                aria-label={languageEn ? 'Close' : '关闭'}
+                aria-label={en ? 'Close' : '关闭'}
               >
                 <X className="size-5" />
               </button>
             </div>
             <div className="max-h-[min(78vh,600px)] space-y-4 overflow-y-auto px-4 py-4 text-sm leading-relaxed text-gray-800">
-              {languageEn ? (
+              {en ? (
                 <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
                   Reference text below is maintained in Chinese (counsel-draft). UI labels follow your language
                   setting.
@@ -160,7 +262,103 @@ export function MeetingVoteArchiveCard({ languageEn }: Props) {
                 onClick={() => setGuideOpen(false)}
                 className="rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200/60"
               >
-                {languageEn ? 'Close' : '关闭'}
+                {en ? 'Close' : '关闭'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {noticeOpen ? (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-3 sm:p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="meeting-vote-archive-formal-notice-title"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setNoticeOpen(false);
+          }}
+        >
+          <div
+            className="max-h-[min(92vh,720px)] w-full max-w-2xl overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl"
+            onMouseDown={(ev) => ev.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-2 border-b border-gray-100 bg-gray-50 px-4 py-3">
+              <h2 id="meeting-vote-archive-formal-notice-title" className="text-base font-semibold text-gray-900">
+                {c.modalTitle}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setNoticeOpen(false)}
+                className="shrink-0 rounded-lg p-1 text-gray-500 hover:bg-gray-200/80 hover:text-gray-800"
+                aria-label={en ? 'Close' : '关闭'}
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+            <div className="max-h-[min(78vh,600px)] space-y-3 overflow-y-auto px-4 py-4 text-sm leading-relaxed text-gray-800">
+              <p className="text-center text-base font-semibold text-gray-900">{c.docTitle}</p>
+              <p>{c.intro}</p>
+              <p>
+                <span className="font-medium text-gray-900">{c.meetingName}</span>
+                <br />
+                <span className="whitespace-pre-wrap">{noticePayload.title}</span>
+              </p>
+              <p>
+                <span className="font-medium text-gray-900">{c.meetingType}</span>
+                <br />
+                {noticePayload.typeLabel}
+              </p>
+              <p>
+                <span className="font-medium text-gray-900">{c.meetingFormat}</span>
+                <br />
+                {noticePayload.formatLabel}
+              </p>
+              <p>
+                <span className="font-medium text-gray-900">{c.meetingDate}</span>
+                <br />
+                {noticePayload.dateStr}
+              </p>
+              <p>
+                <span className="font-medium text-gray-900">{c.publicNotice}</span>
+                <br />
+                {noticePayload.noticeSpan}
+              </p>
+              <p>
+                <span className="font-medium text-gray-900">{c.votingPeriod}</span>
+                <br />
+                {noticePayload.voteSpan}
+              </p>
+              <p>
+                <span className="font-medium text-gray-900">{c.description}</span>
+                <br />
+                <span className="whitespace-pre-wrap">{noticePayload.descDisplay}</span>
+              </p>
+              <p>
+                <span className="font-medium text-gray-900">{c.topics}</span>
+                <br />
+                {c.resolutionCount}：{resolutionAgendaCount}
+                <br />
+                {c.electionCount}：{electionAgendaCount}
+              </p>
+              <p className="pt-2 border-t border-gray-100">
+                <span className="font-medium text-gray-900">{c.participation}</span>
+                <br />
+                {c.participationBody}
+              </p>
+              <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                {en
+                  ? 'This is an automatically generated draft for reference only.'
+                  : '本文为系统自动生成的草案，仅供参考。'}
+              </p>
+            </div>
+            <div className="border-t border-gray-100 bg-gray-50 px-4 py-2">
+              <button
+                type="button"
+                onClick={() => setNoticeOpen(false)}
+                className="rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200/60"
+              >
+                {en ? 'Close' : '关闭'}
               </button>
             </div>
           </div>
