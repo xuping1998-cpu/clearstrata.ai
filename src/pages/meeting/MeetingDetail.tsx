@@ -72,6 +72,7 @@ import {
   type MeetingInitiationType,
 } from '@/features/meetings/meetingFormatModel';
 import { OwnerVotingInlineControlBar } from '@/components/meetings/OwnerVotingInlineControlBar';
+import { MeetingVoteArchiveCard } from '@/components/meetings/MeetingVoteArchiveCard';
 import { MeetingOwnerVoteResolutionResults } from '@/components/meetings/MeetingOwnerVoteResolutionResults';
 import { StatusAlert, StatusBadge } from '@/components/status';
 
@@ -1355,28 +1356,31 @@ export function MeetingDetail() {
                 </p>
               ) : null}
               {showCouncilOwnerVoteUi ? (
-                <OwnerVotingInlineControlBar
-                  meeting={meeting}
-                  isCouncilMeetingEnded={isMeetingClosedForVoting(meeting.status)}
-                  isStaff={canManageCouncilMeetings}
-                  userId={user?.id}
-                  languageEn={en}
-                  t={t}
-                  onNavigateOwnerVoting={() => handleNavigateOwnerVotingForOwner()}
-                  meta={ovMeta}
-                  ovBusy={ovBusy}
-                  canEnableBinding={
-                    Boolean(councilMeetingTitleForOwnerVoteBinding(meeting).trim()) &&
-                    !electionTimelineBlocksOwnerVote
-                  }
-                  electionNomRibbon={electionNomRibbonModel}
-                  councilFormalResolutionAgendaCount={councilFormalResolutionAgendaCount}
-                  electionAgendaCount={electionBundles.length}
-                  onEnableElectronicVoting={() => void handleEnableElectronicVoting()}
-                  onFreezeSnapshot={() => void handleFreezeOwnerVoteSnapshot()}
-                  onOpenVoting={() => void handleOpenOwnerVoteMeeting()}
-                  onCloseVoting={() => void handleCloseOwnerVoteMeeting()}
-                />
+                <>
+                  <OwnerVotingInlineControlBar
+                    meeting={meeting}
+                    isCouncilMeetingEnded={isMeetingClosedForVoting(meeting.status)}
+                    isStaff={canManageCouncilMeetings}
+                    userId={user?.id}
+                    languageEn={en}
+                    t={t}
+                    onNavigateOwnerVoting={() => handleNavigateOwnerVotingForOwner()}
+                    meta={ovMeta}
+                    ovBusy={ovBusy}
+                    canEnableBinding={
+                      Boolean(councilMeetingTitleForOwnerVoteBinding(meeting).trim()) &&
+                      !electionTimelineBlocksOwnerVote
+                    }
+                    electionNomRibbon={electionNomRibbonModel}
+                    councilFormalResolutionAgendaCount={councilFormalResolutionAgendaCount}
+                    electionAgendaCount={electionBundles.length}
+                    onEnableElectronicVoting={() => void handleEnableElectronicVoting()}
+                    onFreezeSnapshot={() => void handleFreezeOwnerVoteSnapshot()}
+                    onOpenVoting={() => void handleOpenOwnerVoteMeeting()}
+                    onCloseVoting={() => void handleCloseOwnerVoteMeeting()}
+                  />
+                  <MeetingVoteArchiveCard languageEn={en} />
+                </>
               ) : null}
               <div className="space-y-6">
                 {bundle.agendaItems.map((agenda) => {

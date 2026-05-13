@@ -711,6 +711,12 @@ function buildHistoricalProcCopyText(inv: Invoice, languageEn: boolean): string 
   return lines.filter(Boolean).join('\n');
 }
 
+/**
+ * Canonical `procurement_status` enum (see migrations): includes `approved` — suitable as
+ * council-confirmed baseline for invoice matching without implying job `completed`.
+ */
+const HISTORICAL_PROC_CONFIRMED_STATUS = 'approved' as const;
+
 function buildHistoricalProcDraftInsertPayload(
   inv: Invoice,
   posterId: string,
@@ -753,10 +759,30 @@ function HistoricalInvoiceProcDraftModal(props: {
   languageEn: boolean;
   busy: boolean;
   feedback: string | null;
+  /** Council / admin / property_admin — same as invoice workflow auditors. */
+  canAudit: boolean;
+  savedJobId: string | null;
+  isConfirmedBaseline: boolean;
+  confirmUnavailable: boolean;
+  confirmBusy: boolean;
+  onConfirmBaseline: () => void;
   onClose: () => void;
   onPersist: () => void;
 }) {
-  const { invoice, languageEn, busy, feedback, onClose, onPersist } = props;
+  const {
+    invoice,
+    languageEn,
+    busy,
+    feedback,
+    canAudit,
+    savedJobId,
+    isConfirmedBaseline,
+    confirmUnavailable,
+    confirmBusy,
+    onConfirmBaseline,
+    onClose,
+    onPersist,
+  } = props;
   const [copyHint, setCopyHint] = useState<string | null>(null);
 
   const bundle = useMemo(() => {
@@ -789,6 +815,16 @@ function HistoricalInvoiceProcDraftModal(props: {
           <p className="mt-1 text-xs leading-relaxed text-gray-600">
             {languageEn ? historicalProcDisclaimerEn() : historicalProcDisclaimerZh()}
           </p>
+          {isConfirmedBaseline ? (
+            <p className="mt-2 rounded-md border border-emerald-200 bg-emerald-50/90 px-2.5 py-2 text-[11px] font-medium leading-relaxed text-emerald-950">
+              <span className="block">{languageEn ? 'Confirmed historical record' : '已确认补建记录'}</span>
+              <span className="mt-1 block font-normal text-emerald-900/95">
+                {languageEn
+                  ? 'Council confirmed this record as a historical reconstruction baseline for matching; this does not mean formal procurement approval was completed at that time.'
+                  : 'Council确认该记录为历史补建采购基线，不代表当时已完成正式采购审批。'}
+              </span>
+            </p>
+          ) : null}
         </div>
         <div className="space-y-3 overflow-y-auto px-4 py-3 text-sm text-gray-800" style={{ maxHeight: '52vh' }}>
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs">
@@ -814,13 +850,25 @@ function HistoricalInvoiceProcDraftModal(props: {
             <dd>{bundle.fy ?? '—'}</dd>
             <dt className="font-medium text-gray-500">{languageEn ? 'fiscal_month (inferred)' : '财年月份（推断）'}</dt>
             <dd>{bundle.fmDisplay ?? '—'}</dd>
+            {savedJobId ? (
+              <>
+                <dt className="font-medium text-gray-500">procurement_jobs.id</dt>
+                <dd className="break-all font-mono text-[11px] text-gray-700">{savedJobId}</dd>
+              </>
+            ) : null}
           </dl>
+          {confirmUnavailable ? (
+            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+              {languageEn
+                ? 'This database has no usable confirmed status for historical jobs; keep using the draft and Copy.'
+                : '当前采购表缺少可确认状态，暂时只能保存为草稿。'}
+            </p>
+          ) : null}
         </div>
         {feedback ? (
           <p className="border-t border-gray-100 bg-gray-50 px-4 py-2 text-xs text-gray-700">{feedback}</p>
         ) : null}
         {copyHint ? <p className="border-t border-gray-100 px-4 py-1.5 text-center text-[11px] text-emerald-800">{copyHint}</p> : null}
-        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-gray-100 px-4 py-3">
           <button
             type="button"
             onClick={() => {
@@ -844,21 +892,32 @@ function HistoricalInvoiceProcDraftModal(props: {
           <button
             type="button"
             onClick={onClose}
-            disabled={busy}
+            disabled={busy || confirmBusy}
             className="rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-50"
           >
             {languageEn ? 'Close' : '关闭'}
           </button>
           <button
             type="button"
-            disabled={busy}
+            disabled={busy || confirmBusy || !!savedJobId || isConfirmedBaseline}
             onClick={onPersist}
+            title={savedJobId && !languageEn ? '草稿已保存，可进行确认或使用复制。' : savedJobId ? 'Draft saved.' : undefined}
             className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-60"
           >
             {busy ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : null}
             {languageEn ? 'Save draft' : '保存草稿'}
           </button>
-        </div>
+          {canAudit && savedJobId && !isConfirmedBaseline && !confirmUnavailable ? (
+            <button
+              type="button"
+              disabled={busy || confirmBusy}
+              onClick={() => void onConfirmBaseline()}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-800 disabled:opacity-60"
+            >
+              {confirmBusy ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : null}
+              {languageEn ? 'Confirm record' : '确认补建采购记录'}
+            </button>
+          ) : null}
       </div>
     </div>
   );
@@ -1741,6 +1800,10 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
   const [historicalProcDraftInv, setHistoricalProcDraftInv] = useState<Invoice | null>(null);
   const [historicalProcDraftBusy, setHistoricalProcDraftBusy] = useState(false);
   const [historicalProcDraftFeedback, setHistoricalProcDraftFeedback] = useState<string | null>(null);
+  const [historicalProcSavedJobId, setHistoricalProcSavedJobId] = useState<string | null>(null);
+  const [historicalProcDraftConfirmed, setHistoricalProcDraftConfirmed] = useState(false);
+  const [historicalProcConfirmUnavailable, setHistoricalProcConfirmUnavailable] = useState(false);
+  const [historicalProcConfirmBusy, setHistoricalProcConfirmBusy] = useState(false);
 
   /** `YYYY-MM-DD` from DB, or null if unset */
   const [governanceStartIso, setGovernanceStartIso] = useState<string | null>(null);
@@ -1850,10 +1913,12 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
     if (!inv || !profile?.id || !currentPropertyId || !canAudit) return;
     setHistoricalProcDraftBusy(true);
     setHistoricalProcDraftFeedback(null);
+    setHistoricalProcConfirmUnavailable(false);
     try {
       const payload = buildHistoricalProcDraftInsertPayload(inv, profile.id, currentPropertyId);
       const { data, error } = await supabase.from('procurement_jobs').insert(payload).select('id').maybeSingle();
       if (error) {
+        setHistoricalProcSavedJobId(null);
         setHistoricalProcDraftFeedback(
           l
             ? 'Could not save to procurement. Use Copy for procurement form.'
@@ -1866,6 +1931,9 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
       }
       const row = data as { id?: string } | null;
       const jid = row?.id ? String(row.id) : '';
+      if (jid) setHistoricalProcSavedJobId(jid);
+      else setHistoricalProcSavedJobId(null);
+      setHistoricalProcDraftConfirmed(false);
       setHistoricalProcDraftFeedback(
         l
           ? jid
@@ -1876,17 +1944,74 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
             : '草稿已保存。',
       );
     } catch {
+      setHistoricalProcSavedJobId(null);
       setHistoricalProcDraftFeedback(l ? 'Save failed. Use Copy instead.' : '保存失败，请使用复制。');
     } finally {
       setHistoricalProcDraftBusy(false);
     }
   }, [historicalProcDraftInv, profile?.id, currentPropertyId, canAudit, l]);
 
+  const confirmHistoricalProcBaseline = useCallback(async () => {
+    if (!historicalProcSavedJobId || !profile?.id || !currentPropertyId || !canAudit) return;
+    setHistoricalProcConfirmBusy(true);
+    try {
+      const nowIso = new Date().toISOString();
+      const { data: updated, error } = await supabase
+        .from('procurement_jobs')
+        .update({
+          status: HISTORICAL_PROC_CONFIRMED_STATUS,
+          approved_by: profile.id,
+          approved_at: nowIso,
+          updated_at: nowIso,
+        })
+        .eq('id', historicalProcSavedJobId)
+        .eq('property_id', currentPropertyId)
+        .eq('category', 'historical_inferred')
+        .select('id')
+        .maybeSingle();
+      if (error) {
+        const msgLow = error.message?.toLowerCase() ?? '';
+        const looksLikeMissingStatusCapability =
+          msgLow.includes('invalid input value for enum') ||
+          msgLow.includes('procurement_status') ||
+          msgLow.includes('violates check constraint');
+        if (looksLikeMissingStatusCapability) setHistoricalProcConfirmUnavailable(true);
+        setHistoricalProcDraftFeedback(
+          l ? `Could not confirm: ${error.message}` : `确认失败：${error.message}`,
+        );
+        if (import.meta.env.DEV) console.warn('[historical procurement confirm]', error);
+        return;
+      }
+      const rowId = updated && typeof updated === 'object' && updated !== null && 'id' in updated ? String((updated as { id: unknown }).id) : '';
+      if (!rowId) {
+        setHistoricalProcDraftFeedback(
+          l
+            ? 'No matching historical draft row to confirm (wrong property or category).'
+            : '未找到可确认的历史补建草稿（物业或类别不匹配）。',
+        );
+        return;
+      }
+      setHistoricalProcDraftConfirmed(true);
+      setHistoricalProcDraftFeedback(
+        l ? 'Confirmed as historical reconstruction baseline.' : '已确认为历史倒查比对基线。',
+      );
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setHistoricalProcDraftFeedback(l ? `Confirm failed: ${msg}` : `确认失败：${msg}`);
+    } finally {
+      setHistoricalProcConfirmBusy(false);
+    }
+  }, [historicalProcSavedJobId, profile?.id, currentPropertyId, canAudit, l]);
+
   useEffect(() => {
     if (historicalProcDraftInv && !canAudit) {
       setHistoricalProcDraftInv(null);
       setHistoricalProcDraftBusy(false);
       setHistoricalProcDraftFeedback(null);
+      setHistoricalProcSavedJobId(null);
+      setHistoricalProcDraftConfirmed(false);
+      setHistoricalProcConfirmUnavailable(false);
+      setHistoricalProcConfirmBusy(false);
     }
   }, [canAudit, historicalProcDraftInv]);
 
@@ -2783,6 +2908,10 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
                                 onPickInvoice={setSelectedInvoice}
                                 onOpenHistoricalProcDraft={(inv) => {
                                   setHistoricalProcDraftFeedback(null);
+                                  setHistoricalProcSavedJobId(null);
+                                  setHistoricalProcDraftConfirmed(false);
+                                  setHistoricalProcConfirmUnavailable(false);
+                                  setHistoricalProcConfirmBusy(false);
                                   setHistoricalProcDraftInv(inv);
                                 }}
                                 hybridAuditByInvoiceId={hybridAuditByInvoiceId}
@@ -3198,10 +3327,20 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
             languageEn={l}
             busy={historicalProcDraftBusy}
             feedback={historicalProcDraftFeedback}
+            canAudit={canAudit}
+            savedJobId={historicalProcSavedJobId}
+            isConfirmedBaseline={historicalProcDraftConfirmed}
+            confirmUnavailable={historicalProcConfirmUnavailable}
+            confirmBusy={historicalProcConfirmBusy}
+            onConfirmBaseline={() => void confirmHistoricalProcBaseline()}
             onClose={() => {
               setHistoricalProcDraftInv(null);
               setHistoricalProcDraftBusy(false);
               setHistoricalProcDraftFeedback(null);
+              setHistoricalProcSavedJobId(null);
+              setHistoricalProcDraftConfirmed(false);
+              setHistoricalProcConfirmUnavailable(false);
+              setHistoricalProcConfirmBusy(false);
             }}
             onPersist={() => void persistHistoricalProcDraft()}
           />
