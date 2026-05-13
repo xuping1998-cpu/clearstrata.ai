@@ -8,6 +8,7 @@ import {
   meetingFormatUiFromRow,
 } from '@/features/meetings/meetingFormatModel';
 import { formatElectionNominationUiStatus, type ElectionNominationRibbonModel } from '@/features/meetings/electionAgendaModel';
+import { deriveCouncilElectionCanonFromScheduledAt } from '@/features/meetings/electionTimelineMath';
 
 export type OwnerVoteInlineMetaState = {
   loading: boolean;
@@ -77,6 +78,19 @@ export function OwnerVotingInlineControlBar({
   const uiFormat = meetingFormatUiFromRow(meeting);
   const written = isWrittenRemoteUi(uiFormat);
   const disc = councilWrittenRemoteWindows(meeting);
+  /** Prefer `councilWrittenRemoteWindows`; otherwise first phase from canon (T0→T0+7) for Hybrid etc. */
+  const discOpen = disc.publicNoticeOpens?.trim() ? disc.publicNoticeOpens : '';
+  const discClose = disc.publicNoticeCloses?.trim() ? disc.publicNoticeCloses : '';
+  let displayPublicNoticeOpens: string | null = discOpen || null;
+  let displayPublicNoticeCloses: string | null = discClose || null;
+  if (!discOpen && !discClose && meeting.scheduled_at?.trim()) {
+    const canon = deriveCouncilElectionCanonFromScheduledAt(meeting.scheduled_at);
+    if (canon) {
+      displayPublicNoticeOpens = canon.publicNoticeOpenIso;
+      displayPublicNoticeCloses = canon.publicNoticeCloseIso;
+    }
+  }
+  const noticePeriodLabel = en ? 'Public Notice / Discussion Period' : '公示 / 讨论期';
   const fallbackVoting = councilMeetingVotingWindowFallback(meeting);
   const ov = meta.meeting;
 
@@ -169,12 +183,12 @@ export function OwnerVotingInlineControlBar({
           <p className="text-gray-900 font-medium">{formatDisplay}</p>,
         )}
 
-        {written && (disc.publicNoticeOpens || disc.publicNoticeCloses)
+        {displayPublicNoticeOpens || displayPublicNoticeCloses
           ? sectionCard(
-              t('meeting_ov_public_notice_period_label'),
+              noticePeriodLabel,
               <p className="text-gray-900">
-                {fmtTs(disc.publicNoticeOpens, en)} <span className="text-gray-400 px-1">–</span>{' '}
-                {fmtTs(disc.publicNoticeCloses, en)}
+                {fmtTs(displayPublicNoticeOpens, en)} <span className="text-gray-400 px-1">–</span>{' '}
+                {fmtTs(displayPublicNoticeCloses, en)}
               </p>,
             )
           : null}
