@@ -75,7 +75,6 @@ import {
 } from '@/features/meetings/meetingFormatModel';
 import { OwnerVotingInlineControlBar } from '@/components/meetings/OwnerVotingInlineControlBar';
 import { MeetingVoteArchiveCard } from '@/components/meetings/MeetingVoteArchiveCard';
-import { MeetingDocumentsSection } from '@/pages/meeting/MeetingDocumentsSection';
 import {
   fetchMeetingSupportingDocuments,
   type MeetingSupportingDocumentRow,
@@ -1407,20 +1406,14 @@ export function MeetingDetail() {
                   <MeetingVoteArchiveCard
                     languageEn={en}
                     meeting={meeting}
+                    meetingId={String(meeting.id)}
+                    canManageDocuments={canManageCouncilMeetings}
+                    onSupportingDocumentsChanged={() => void refreshSupportingDocumentsArchive()}
                     ownerVoteMeeting={ovMeta.meeting}
                     resolutionAgendaCount={councilFormalResolutionAgendaCount}
                     electionAgendaCount={electionBundles.length}
                     supportingDocuments={supportingDocumentsArchive}
                   />
-                  <div className="mt-6 border-t border-gray-200 pt-6">
-                    <MeetingDocumentsSection
-                      meetingId={String(meeting.id)}
-                      isCouncil={canManageCouncilMeetings}
-                      titleEn="Supporting Documents"
-                      titleZh="会议附件"
-                      onDocumentsChanged={() => void refreshSupportingDocumentsArchive()}
-                    />
-                  </div>
                 </>
               ) : null}
               <div className="space-y-6">

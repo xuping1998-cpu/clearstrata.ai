@@ -26,6 +26,8 @@ interface Props {
   /** Optional section heading (default: Documents / 会议文件). */
   titleEn?: string;
   titleZh?: string;
+  /** When true, omit title row — use inside a modal that already has a heading (upload bar still shown for council). */
+  omitOuterTitle?: boolean;
 }
 
 const docTypeLabels: Record<string, Record<'en' | 'zh', string>> = {
@@ -36,7 +38,14 @@ const docTypeLabels: Record<string, Record<'en' | 'zh', string>> = {
   other: { en: 'Other', zh: '其他' },
 };
 
-export function MeetingDocumentsSection({ meetingId, isCouncil, onDocumentsChanged, titleEn, titleZh }: Props) {
+export function MeetingDocumentsSection({
+  meetingId,
+  isCouncil,
+  onDocumentsChanged,
+  titleEn,
+  titleZh,
+  omitOuterTitle = false,
+}: Props) {
   const { currentPropertyId } = useProperty();
   const { user } = useAuth();
   const { language, t } = useLanguage();
@@ -192,24 +201,32 @@ export function MeetingDocumentsSection({ meetingId, isCouncil, onDocumentsChang
     );
   }
 
+  const uploadTriggerButton =
+    isCouncil && !showUploadForm ? (
+      <button
+        type="button"
+        onClick={() => setShowUploadForm(true)}
+        className="flex items-center gap-1.5 text-sm bg-clearstrata-ui-primary text-white px-3 py-1.5 rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors"
+      >
+        <Upload size={16} />
+        {l ? 'Upload' : '上传文件'}
+      </button>
+    ) : null;
+
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-gray-900">
-          {l
-            ? `${titleEn ?? 'Documents'} (${documents.length})`
-            : `${titleZh ?? '会议文件'} (${documents.length})`}
-        </h3>
-        {isCouncil && !showUploadForm && (
-          <button
-            onClick={() => setShowUploadForm(true)}
-            className="flex items-center gap-1.5 text-sm bg-clearstrata-ui-primary text-white px-3 py-1.5 rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors"
-          >
-            <Upload size={16} />
-            {l ? 'Upload' : '上传文件'}
-          </button>
-        )}
-      </div>
+      {omitOuterTitle ? (
+        uploadTriggerButton ? <div className="mb-3 flex justify-end">{uploadTriggerButton}</div> : null
+      ) : (
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-gray-900">
+            {l
+              ? `${titleEn ?? 'Documents'} (${documents.length})`
+              : `${titleZh ?? '会议文件'} (${documents.length})`}
+          </h3>
+          {uploadTriggerButton}
+        </div>
+      )}
 
       {showUploadForm && (
         <div className="bg-gray-50 rounded-lg p-4 mb-4 border border-gray-200">

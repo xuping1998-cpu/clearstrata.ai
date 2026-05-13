@@ -15,15 +15,22 @@ import {
   stripWrittenRemoteMeta,
 } from '@/features/meetings/meetingFormatModel';
 import { deriveCouncilElectionCanonFromScheduledAt } from '@/features/meetings/electionTimelineMath';
+import { MeetingDocumentsSection } from '@/pages/meeting/MeetingDocumentsSection';
 
 type Props = {
   languageEn: boolean;
   meeting: MeetingRow;
+  /** Council / staff managing meetings — toggles upload + delete inside 02 Supporting documents modal */
+  canManageDocuments: boolean;
+  /** Meeting id string for `meeting_documents` lookups */
+  meetingId: string;
+  /** Refresh parent-derived row count after upload/delete in embedded documents UI */
+  onSupportingDocumentsChanged: () => void;
   /** Same source as OwnerVotingInlineControlBar voting display when OV row exists */
   ownerVoteMeeting?: OwnerVoteMeetingLite | null;
   resolutionAgendaCount: number;
   electionAgendaCount: number;
-  /** Rows from `meeting_documents` (MeetingDocumentsSection query); parent loads once per meeting */
+  /** Rows from `meeting_documents` (parent lightweight count for 02 badge) */
   supportingDocuments: MeetingSupportingDocumentRow[];
 };
 
@@ -34,45 +41,12 @@ function fmtArchiveTs(iso: string | null | undefined, languageEn: boolean): stri
   return d.toLocaleString(languageEn ? 'en-CA' : 'zh-CN', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
-function docDisplayTitle(row: MeetingSupportingDocumentRow, languageEn: boolean): string {
-  const zh = row.title_zh?.trim();
-  const e = row.title_en?.trim();
-  if (languageEn) return e || zh || '—';
-  return zh || e || '—';
-}
-
-function displayFileKind(row: MeetingSupportingDocumentRow, languageEn: boolean): string {
-  const mime = (row.mime_type ?? '').toLowerCase();
-  const url = (row.document_url ?? '').split('?')[0] ?? '';
-  const extMatch = /\.([a-zA-Z0-9]+)$/i.exec(url);
-  const ext = (extMatch?.[1] ?? '').toLowerCase();
-  if (mime.includes('pdf') || ext === 'pdf') return 'PDF';
-  if (
-    mime.includes('wordprocessingml') ||
-    mime.includes('msword') ||
-    ext === 'doc' ||
-    ext === 'docx'
-  ) {
-    return languageEn ? 'Word (DOC/DOCX)' : 'Word（DOC/DOCX）';
-  }
-  if (
-    mime.includes('spreadsheetml') ||
-    mime.includes('excel') ||
-    mime.includes('csv') ||
-    ext === 'xls' ||
-    ext === 'xlsx' ||
-    ext === 'csv'
-  ) {
-    return languageEn ? 'Excel (XLS/XLSX)' : 'Excel（XLS/XLSX）';
-  }
-  if (ext) return ext.toUpperCase();
-  if (mime) return mime.split('/').pop()?.slice(0, 24).toUpperCase() ?? '';
-  return languageEn ? 'File' : '文件';
-}
-
 export function MeetingVoteArchiveCard({
   languageEn,
   meeting,
+  canManageDocuments,
+  meetingId,
+  onSupportingDocumentsChanged,
   ownerVoteMeeting = null,
   resolutionAgendaCount,
   electionAgendaCount,
@@ -91,6 +65,8 @@ export function MeetingVoteArchiveCard({
   const c = en ? fc.en : fc.zh;
   const docCount = supportingDocuments.length;
   const hasSupportingAttachments = docCount > 0;
+  const showSupportingDocsAction = hasSupportingAttachments || canManageDocuments;
+  const supportingDocsActionLabel = canManageDocuments ? (en ? 'Manage' : '管理') : en ? 'View' : '查看';
 
   const noticePayload = useMemo(() => {
     const disc = councilWrittenRemoteWindows(meeting);
@@ -245,13 +221,13 @@ export function MeetingVoteArchiveCard({
                       : sup.emptyStatus.zh}
                 </span>
               </div>
-              {hasSupportingAttachments ? (
+              {showSupportingDocsAction ? (
                 <button
                   type="button"
                   onClick={() => setDocsOpen(true)}
                   className="shrink-0 rounded-lg border border-violet-600 bg-violet-700 px-3 py-1 text-xs font-semibold text-white hover:bg-violet-800"
                 >
-                  {en ? 'View' : '查看'}
+                  {supportingDocsActionLabel}
                 </button>
               ) : null}
             </li>
@@ -465,7 +441,7 @@ export function MeetingVoteArchiveCard({
         </div>
       ) : null}
 
-      {docsOpen && hasSupportingAttachments ? (
+      {docsOpen ? (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-3 sm:p-4"
           role="dialog"
@@ -492,41 +468,17 @@ export function MeetingVoteArchiveCard({
                 <X className="size-5" />
               </button>
             </div>
-            <div className="max-h-[min(78vh,600px)] space-y-3 overflow-y-auto px-4 py-4 text-sm leading-relaxed text-gray-800">
-              <p className="font-medium text-gray-900">{supCopy.listHeading}</p>
-              <ul className="mt-2 space-y-3">
-                {supportingDocuments.map((row) => {
-                  const name = docDisplayTitle(row, en);
-                  const kind = displayFileKind(row, en);
-                  const urlOk = !!(row.document_url?.trim());
-                  return (
-                    <li key={row.id} className="rounded-lg border border-gray-100 bg-gray-50/80 px-3 py-3">
-                      <div className="flex flex-wrap items-start justify-between gap-2 gap-y-2">
-                        <div className="min-w-0 flex-1">
-                          <p className="break-words font-medium text-gray-900">{name}</p>
-                          <p className="mt-1 text-xs text-gray-600">
-                            {supCopy.colType}：<span className="font-semibold text-gray-800">{kind}</span>
-                          </p>
-                        </div>
-                        <div className="shrink-0">
-                          {urlOk ? (
-                            <a
-                              href={row.document_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-xs font-semibold text-violet-700 hover:underline"
-                            >
-                              {supCopy.openLink}
-                            </a>
-                          ) : (
-                            <span className="text-xs text-gray-400">—</span>
-                          )}
-                        </div>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
+            <div className="max-h-[min(78vh,600px)] overflow-y-auto px-4 py-4 text-sm leading-relaxed text-gray-800">
+              <MeetingDocumentsSection
+                meetingId={meetingId}
+                isCouncil={canManageDocuments}
+                titleEn={sup.row02.en}
+                titleZh={sup.row02.zh}
+                omitOuterTitle
+                onDocumentsChanged={() => {
+                  void onSupportingDocumentsChanged();
+                }}
+              />
             </div>
             <div className="border-t border-gray-100 bg-gray-50 px-4 py-2">
               <button
