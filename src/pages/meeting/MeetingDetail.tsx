@@ -56,6 +56,7 @@ import {
   extractElectionAgendaMeta,
   finalizeElectionMeta,
   fromDatetimeLocalValue,
+  isStrictAgmOrSgmMeeting,
   toDatetimeLocalValue,
   type ElectionAgendaMetaV1,
 } from '@/features/meetings/electionAgendaModel';
@@ -327,10 +328,21 @@ export function MeetingDetail() {
 
   const electionRulesLockedForAgendaEdit = !!(agendaEdit && (electionBallotsByAgenda.get(agendaEdit.agendaId) ?? 0) > 0);
 
-  const electionNomRibbonModel =
-    electionBundles.length > 0 && meeting
-      ? buildElectionNominationRibbon(electionBundles.map((e) => e.meta), new Date(), meeting)
-      : null;
+  const electionNomRibbonModel = useMemo(() => {
+    if (!electionBundles.length || !meeting) return null;
+    const base = buildElectionNominationRibbon(electionBundles.map((e) => e.meta), new Date(), meeting);
+    if (!base) return null;
+    if (!isStrictAgmOrSgmMeeting(meeting)) return base;
+    const canon = deriveCouncilElectionCanonFromScheduledAt(meeting.scheduled_at);
+    if (!canon) {
+      return { ...base, nominationOpensIso: null, nominationClosesIso: null };
+    }
+    return {
+      ...base,
+      nominationOpensIso: canon.nominationOpenIso,
+      nominationClosesIso: canon.nominationCloseIso,
+    };
+  }, [electionBundles, meeting]);
 
   const electionTimelineBlocksOwnerVote =
     electionNomRibbonModel?.nominationUiStatus === 'invalid';

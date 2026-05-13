@@ -119,6 +119,25 @@ export function MeetingDocumentsSection({
 
       const { data: urlData } = supabase.storage.from('documents').getPublicUrl(filePath);
 
+      const {
+        data: authData,
+      } = await supabase.auth.getUser();
+
+      console.log('MEETING DOC DEBUG', {
+        authUser: authData?.user?.email,
+        authUid: authData?.user?.id,
+        currentPropertyId,
+        meetingId,
+        insertPayload: {
+          property_id: currentPropertyId,
+          meeting_id: meetingId,
+          document_type: newDoc.document_type,
+          title_en: newDoc.title_en || null,
+          title_zh: newDoc.title_zh || null,
+          uploaded_by: authData?.user?.id,
+        },
+      });
+
       const { data, error } = await supabase
         .from('meeting_documents')
         .insert({

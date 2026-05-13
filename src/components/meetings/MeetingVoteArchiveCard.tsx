@@ -14,6 +14,7 @@ import {
   councilWrittenRemoteWindows,
   stripWrittenRemoteMeta,
 } from '@/features/meetings/meetingFormatModel';
+import { isStrictAgmOrSgmMeeting } from '@/features/meetings/electionAgendaModel';
 import { deriveCouncilElectionCanonFromScheduledAt } from '@/features/meetings/electionTimelineMath';
 import { MeetingDocumentsSection } from '@/pages/meeting/MeetingDocumentsSection';
 
@@ -26,7 +27,7 @@ type Props = {
   meetingId: string;
   /** Refresh parent-derived row count after upload/delete in embedded documents UI */
   onSupportingDocumentsChanged: () => void;
-  /** Same source as OwnerVotingInlineControlBar voting display when OV row exists */
+  /** Formal notice 01: AGM/SGM voting dates follow canon(scheduled_at); other types may use OV row + fallback */
   ownerVoteMeeting?: OwnerVoteMeetingLite | null;
   resolutionAgendaCount: number;
   electionAgendaCount: number;
@@ -69,25 +70,42 @@ export function MeetingVoteArchiveCard({
   const supportingDocsActionLabel = canManageDocuments ? (en ? 'Manage' : '管理') : en ? 'View' : '查看';
 
   const noticePayload = useMemo(() => {
-    const disc = councilWrittenRemoteWindows(meeting);
-    const dO = disc.publicNoticeOpens?.trim() ? disc.publicNoticeOpens : '';
-    const dC = disc.publicNoticeCloses?.trim() ? disc.publicNoticeCloses : '';
-    let noticeOpenIso: string | null = dO || null;
-    let noticeCloseIso: string | null = dC || null;
-    if (!dO && !dC && meeting.scheduled_at?.trim()) {
-      const canon = deriveCouncilElectionCanonFromScheduledAt(meeting.scheduled_at);
-      if (canon) {
-        noticeOpenIso = canon.publicNoticeOpenIso;
-        noticeCloseIso = canon.publicNoticeCloseIso;
+    const agmSgmStrict = isStrictAgmOrSgmMeeting(meeting);
+    const flowCanon = agmSgmStrict ? deriveCouncilElectionCanonFromScheduledAt(meeting.scheduled_at) : null;
+
+    let noticeOpenIso: string | null = null;
+    let noticeCloseIso: string | null = null;
+    let vOpenDisp: string | null = null;
+    let vCloseDisp: string | null = null;
+
+    if (agmSgmStrict) {
+      if (flowCanon) {
+        noticeOpenIso = flowCanon.publicNoticeOpenIso;
+        noticeCloseIso = flowCanon.publicNoticeCloseIso;
+        vOpenDisp = flowCanon.votingOpenIso;
+        vCloseDisp = flowCanon.votingCloseIso;
       }
+    } else {
+      const disc = councilWrittenRemoteWindows(meeting);
+      const dO = disc.publicNoticeOpens?.trim() ? disc.publicNoticeOpens : '';
+      const dC = disc.publicNoticeCloses?.trim() ? disc.publicNoticeCloses : '';
+      noticeOpenIso = dO || null;
+      noticeCloseIso = dC || null;
+      if (!dO && !dC && meeting.scheduled_at?.trim()) {
+        const canon = deriveCouncilElectionCanonFromScheduledAt(meeting.scheduled_at);
+        if (canon) {
+          noticeOpenIso = canon.publicNoticeOpenIso;
+          noticeCloseIso = canon.publicNoticeCloseIso;
+        }
+      }
+      const fb = councilMeetingVotingWindowFallback(meeting);
+      vOpenDisp = ownerVoteMeeting?.voting_opens_at?.trim()
+        ? ownerVoteMeeting.voting_opens_at
+        : fb.votingOpens ?? null;
+      vCloseDisp = ownerVoteMeeting?.voting_closes_at?.trim()
+        ? ownerVoteMeeting.voting_closes_at
+        : fb.votingCloses ?? null;
     }
-    const fb = councilMeetingVotingWindowFallback(meeting);
-    const vOpenDisp = ownerVoteMeeting?.voting_opens_at?.trim()
-      ? ownerVoteMeeting.voting_opens_at
-      : fb.votingOpens ?? null;
-    const vCloseDisp = ownerVoteMeeting?.voting_closes_at?.trim()
-      ? ownerVoteMeeting.voting_closes_at
-      : fb.votingCloses ?? null;
 
     const notSet = en ? fc.notSet.en : fc.notSet.zh;
     const orNotSet = (s: string | null | undefined) => (s?.trim() ? s.trim() : notSet);

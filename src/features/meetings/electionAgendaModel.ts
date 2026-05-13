@@ -69,6 +69,16 @@ export type ElectionNominationRibbonModel = {
   totalCandidates: number;
 };
 
+/** Display-only: strict `meeting_type` only (title/category heuristics excluded). */
+export function isStrictAgmOrSgmMeeting(meeting: Pick<MeetingRow, 'meeting_type'>): boolean {
+  const mt = String(meeting.meeting_type ?? '').trim().toLowerCase();
+  return mt === 'agm' || mt === 'sgm';
+}
+
+export function agmSgmScheduledNotSetLabel(languageEn: boolean): string {
+  return languageEn ? 'Not set' : '暂未设置';
+}
+
 export function parseIsoFlexible(s?: string | null): Date | null {
   const t = s?.trim();
   if (!t) return null;

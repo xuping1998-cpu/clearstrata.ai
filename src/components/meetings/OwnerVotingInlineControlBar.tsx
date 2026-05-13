@@ -7,7 +7,12 @@ import {
   isWrittenRemoteUi,
   meetingFormatUiFromRow,
 } from '@/features/meetings/meetingFormatModel';
-import { formatElectionNominationUiStatus, type ElectionNominationRibbonModel } from '@/features/meetings/electionAgendaModel';
+import {
+  agmSgmScheduledNotSetLabel,
+  formatElectionNominationUiStatus,
+  isStrictAgmOrSgmMeeting,
+  type ElectionNominationRibbonModel,
+} from '@/features/meetings/electionAgendaModel';
 import { deriveCouncilElectionCanonFromScheduledAt } from '@/features/meetings/electionTimelineMath';
 
 export type OwnerVoteInlineMetaState = {
@@ -77,31 +82,50 @@ export function OwnerVotingInlineControlBar({
   const en = languageEn;
   const uiFormat = meetingFormatUiFromRow(meeting);
   const written = isWrittenRemoteUi(uiFormat);
-  const disc = councilWrittenRemoteWindows(meeting);
-  /** Prefer `councilWrittenRemoteWindows`; otherwise first phase from canon (T0→T0+7) for Hybrid etc. */
-  const discOpen = disc.publicNoticeOpens?.trim() ? disc.publicNoticeOpens : '';
-  const discClose = disc.publicNoticeCloses?.trim() ? disc.publicNoticeCloses : '';
-  let displayPublicNoticeOpens: string | null = discOpen || null;
-  let displayPublicNoticeCloses: string | null = discClose || null;
-  if (!discOpen && !discClose && meeting.scheduled_at?.trim()) {
-    const canon = deriveCouncilElectionCanonFromScheduledAt(meeting.scheduled_at);
-    if (canon) {
-      displayPublicNoticeOpens = canon.publicNoticeOpenIso;
-      displayPublicNoticeCloses = canon.publicNoticeCloseIso;
+  const noticePeriodLabel = en ? 'Public Notice / Discussion Period' : '公示 / 讨论期';
+  const ov = meta.meeting;
+  const agmSgmStrict = isStrictAgmOrSgmMeeting(meeting);
+  const flowCanon = agmSgmStrict ? deriveCouncilElectionCanonFromScheduledAt(meeting.scheduled_at) : null;
+  const flowNotSet = agmSgmScheduledNotSetLabel(en);
+
+  let displayPublicNoticeOpens: string | null = null;
+  let displayPublicNoticeCloses: string | null = null;
+  if (agmSgmStrict) {
+    if (flowCanon) {
+      displayPublicNoticeOpens = flowCanon.publicNoticeOpenIso;
+      displayPublicNoticeCloses = flowCanon.publicNoticeCloseIso;
+    }
+  } else {
+    const disc = councilWrittenRemoteWindows(meeting);
+    const discOpen = disc.publicNoticeOpens?.trim() ? disc.publicNoticeOpens : '';
+    const discClose = disc.publicNoticeCloses?.trim() ? disc.publicNoticeCloses : '';
+    displayPublicNoticeOpens = discOpen || null;
+    displayPublicNoticeCloses = discClose || null;
+    if (!discOpen && !discClose && meeting.scheduled_at?.trim()) {
+      const canon = deriveCouncilElectionCanonFromScheduledAt(meeting.scheduled_at);
+      if (canon) {
+        displayPublicNoticeOpens = canon.publicNoticeOpenIso;
+        displayPublicNoticeCloses = canon.publicNoticeCloseIso;
+      }
     }
   }
-  const noticePeriodLabel = en ? 'Public Notice / Discussion Period' : '公示 / 讨论期';
-  const fallbackVoting = councilMeetingVotingWindowFallback(meeting);
-  const ov = meta.meeting;
 
+  const fallbackVoting = councilMeetingVotingWindowFallback(meeting);
   const hasElectionAgenda = electionNomRibbon != null;
 
-  const displayVotingOpens = ov?.voting_opens_at?.trim()
-    ? ov.voting_opens_at
-    : fallbackVoting.votingOpens ?? null;
-  const displayVotingCloses = ov?.voting_closes_at?.trim()
-    ? ov.voting_closes_at
-    : fallbackVoting.votingCloses ?? null;
+  let displayVotingOpens: string | null = null;
+  let displayVotingCloses: string | null = null;
+  if (agmSgmStrict) {
+    if (flowCanon) {
+      displayVotingOpens = flowCanon.votingOpenIso;
+      displayVotingCloses = flowCanon.votingCloseIso;
+    }
+  } else {
+    displayVotingOpens = ov?.voting_opens_at?.trim() ? ov.voting_opens_at : fallbackVoting.votingOpens ?? null;
+    displayVotingCloses = ov?.voting_closes_at?.trim() ? ov.voting_closes_at : fallbackVoting.votingCloses ?? null;
+  }
+
+  const showNoticeSection = agmSgmStrict || !!(displayPublicNoticeOpens || displayPublicNoticeCloses);
 
   const ovStatusLower = ov?.status?.trim().toLowerCase() ?? '';
   const staffOvActionsReadOnly = ovStatusLower === 'closed' || ovStatusLower === 'archived';
@@ -183,13 +207,17 @@ export function OwnerVotingInlineControlBar({
           <p className="text-gray-900 font-medium">{formatDisplay}</p>,
         )}
 
-        {displayPublicNoticeOpens || displayPublicNoticeCloses
+        {showNoticeSection
           ? sectionCard(
               noticePeriodLabel,
-              <p className="text-gray-900">
-                {fmtTs(displayPublicNoticeOpens, en)} <span className="text-gray-400 px-1">–</span>{' '}
-                {fmtTs(displayPublicNoticeCloses, en)}
-              </p>,
+              agmSgmStrict && !flowCanon ? (
+                <p className="text-gray-500">{flowNotSet}</p>
+              ) : (
+                <p className="text-gray-900">
+                  {fmtTs(displayPublicNoticeOpens, en)} <span className="text-gray-400 px-1">–</span>{' '}
+                  {fmtTs(displayPublicNoticeCloses, en)}
+                </p>
+              ),
             )
           : null}
 
@@ -198,7 +226,9 @@ export function OwnerVotingInlineControlBar({
               t('meeting_flow_nomination_period_label'),
               <>
                 <p className="text-gray-900">
-                  {electionNomRibbon.nominationOpensIso || electionNomRibbon.nominationClosesIso ? (
+                  {agmSgmStrict && !flowCanon ? (
+                    <span className="text-gray-500">{flowNotSet}</span>
+                  ) : electionNomRibbon.nominationOpensIso || electionNomRibbon.nominationClosesIso ? (
                     <>
                       {fmtTs(electionNomRibbon.nominationOpensIso ?? null, en)}{' '}
                       <span className="text-gray-400 px-1">–</span>{' '}
@@ -215,9 +245,13 @@ export function OwnerVotingInlineControlBar({
 
         {sectionCard(
           t('meeting_ov_voting_period_combined_label'),
-          <p className="text-gray-900">
-            {fmtTs(displayVotingOpens, en)} <span className="text-gray-400 px-1">–</span> {fmtTs(displayVotingCloses, en)}
-          </p>,
+          agmSgmStrict && !flowCanon ? (
+            <p className="text-gray-500">{flowNotSet}</p>
+          ) : (
+            <p className="text-gray-900">
+              {fmtTs(displayVotingOpens, en)} <span className="text-gray-400 px-1">–</span> {fmtTs(displayVotingCloses, en)}
+            </p>
+          ),
         )}
 
         {sectionCard(
