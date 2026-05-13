@@ -19,14 +19,13 @@ import {
   councilMeetingVotingWindowFallback,
   councilWrittenRemoteWindows,
   stripWrittenRemoteMeta,
-  meetingFormatUiFromRow,
-  isWrittenRemoteUi,
 } from './meetingFormatModel';
 import { councilMeetingTitleForOwnerVoteBinding, isOwnerVotingMeeting } from './ownerVotingCouncil';
 import {
   extractElectionAgendaMeta,
   finalizeElectionMeta,
 } from './electionAgendaModel';
+import { deriveCouncilElectionCanonFromScheduledAt } from './electionTimelineMath';
 import { canManagePropertyMeetings } from '@/lib/meetingPermissions';
 
 type MeetingCardExtras = {
@@ -452,8 +451,19 @@ export function MeetingListView({ variant }: Props) {
                     )}
                     {(() => {
                       const extras = rowId ? cardExtrasByMeetingId[rowId] ?? emptyExtras() : emptyExtras();
-                      const writtenRm = isWrittenRemoteUi(meetingFormatUiFromRow(m));
                       const disc = councilWrittenRemoteWindows(m);
+                      const discOpen = disc.publicNoticeOpens?.trim() ? disc.publicNoticeOpens : '';
+                      const discClose = disc.publicNoticeCloses?.trim() ? disc.publicNoticeCloses : '';
+                      let displayPublicNoticeOpens: string | null = discOpen || null;
+                      let displayPublicNoticeCloses: string | null = discClose || null;
+                      if (!discOpen && !discClose && m.scheduled_at?.trim()) {
+                        const canon = deriveCouncilElectionCanonFromScheduledAt(m.scheduled_at);
+                        if (canon) {
+                          displayPublicNoticeOpens = canon.publicNoticeOpenIso;
+                          displayPublicNoticeCloses = canon.publicNoticeCloseIso;
+                        }
+                      }
+                      const publicNoticeListLabel = en ? 'Public Notice / Discussion' : '公示期';
                       const fb = councilMeetingVotingWindowFallback(m);
                       const vOpenDisp = ovLite?.voting_opens_at?.trim()
                         ? ovLite.voting_opens_at
@@ -470,10 +480,11 @@ export function MeetingListView({ variant }: Props) {
 
                       return (
                         <div className="mt-3 border-t border-gray-100 pt-3 text-[11px] sm:text-xs text-gray-600 space-y-1">
-                          {writtenRm && (disc.publicNoticeOpens || disc.publicNoticeCloses) ? (
+                          {displayPublicNoticeOpens || displayPublicNoticeCloses ? (
                             <p>
-                              <span className="font-medium text-gray-800">{t('meeting_list_flow_summary_public_notice')}</span>{' '}
-                              {fmtListTs(disc.publicNoticeOpens, en)} · {fmtListTs(disc.publicNoticeCloses, en)}
+                              <span className="font-medium text-gray-800">{publicNoticeListLabel}</span>{' '}
+                              {fmtListTs(displayPublicNoticeOpens, en)} ·{' '}
+                              {fmtListTs(displayPublicNoticeCloses, en)}
                             </p>
                           ) : null}
                           {extras.electionAgendaCount > 0 ? (
