@@ -284,7 +284,9 @@ export function MeetingListView({ variant }: Props) {
     );
   }
 
-  const title = t('nav_meetings_records');
+  const title = variant === 'voting' ? t('nav_owner_initiated_sgm') : t('nav_meetings_records');
+  const heroSubtitle =
+    variant === 'voting' ? t('voting_owner_sgm_page_subtitle') : t('meetings_page_subtitle');
 
   /** 单会议详情：两 variant 各自固定前缀，统一透传 propertyId（有则必带）。 */
   const hrefForMeeting = (meetingId: string | null | undefined): string | null => {
@@ -302,7 +304,8 @@ export function MeetingListView({ variant }: Props) {
     ? `/voting?${new URLSearchParams({ propertyId: currentPropertyId }).toString()}`
     : '/voting';
 
-  const primaryCtaLabel = en ? 'Enter meeting voting' : '进入会议投票';
+  const primaryCtaLabel =
+    variant === 'voting' ? t('nav_owner_initiated_sgm') : en ? 'Enter meeting voting' : '进入会议投票';
 
   const rowViewResultsLabel = en ? 'View results' : '查看结果';
 
@@ -322,7 +325,7 @@ export function MeetingListView({ variant }: Props) {
           <Users size={32} />
           <h1 className="text-3xl font-bold">{title}</h1>
         </div>
-        <p className="text-white/90 ml-14 max-w-7xl mx-auto">{t('meetings_page_subtitle')}</p>
+        <p className="text-white/90 ml-14 max-w-7xl mx-auto">{heroSubtitle}</p>
       </div>
 
       <div className="max-w-7xl mx-auto p-6 space-y-6">
