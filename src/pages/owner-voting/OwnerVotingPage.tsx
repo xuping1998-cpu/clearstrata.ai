@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -667,6 +667,7 @@ export function OwnerVotingPage() {
   const { user, loading: authLoading } = useAuth();
   const { language, t } = useLanguage();
   const zh = language !== 'en';
+  const navigate = useNavigate();
 
   const [loadState, setLoadState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -1069,7 +1070,7 @@ export function OwnerVotingPage() {
         <button
           type="button"
           className="mt-4 rounded-lg bg-clearstrata-ui-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:opacity-60"
-          onClick={() => setToast({ kind: 'info', text: zh ? '联署发起功能即将开放。' : 'Petition launch is opening soon.' })}
+          onClick={() => navigate('/meetings/new?kind=owner_sgm_remote')}
         >
           {zh ? '发起联署' : 'Start petition'}
         </button>

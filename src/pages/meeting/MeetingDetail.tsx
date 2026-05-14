@@ -48,7 +48,6 @@ import { shouldDeferAutoPropertyRedirects } from '../../lib/authRecovery';
 import { samePropertyId } from '../../lib/propertyIdMatch';
 import { canManagePropertyMeetings } from '@/lib/meetingPermissions';
 import {
-  labelMeetingFormatUiDisplay,
   labelMeetingFormatUiPrimary,
   labelMeetingType,
   labelStatus,
@@ -1593,23 +1592,9 @@ export function MeetingDetail() {
                   </div>
                 ) : null}
                 <div>
-                  <dt className="text-gray-500">{en ? meetingUiStrings.format.en : meetingUiStrings.format.zh}</dt>
-                  <dd>
-                    {(() => {
-                      const fd = labelMeetingFormatUiDisplay(meeting, en);
-                      return (
-                        <>
-                          <span className="font-medium text-gray-900">{fd.primary}</span>
-                          {fd.secondary ? (
-                            <p className="text-xs text-gray-500 mt-1 leading-relaxed">{fd.secondary}</p>
-                          ) : null}
-                        </>
-                      );
-                    })()}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-gray-500">{en ? 'Notice sent' : '通知发出时间'}</dt>
+                  <dt className="text-gray-500">
+                    {en ? 'Latest meeting notification email sent at' : '会议最新通知电子邮件发出时间'}
+                  </dt>
                   <dd>{meeting.notice_sent_at ? new Date(meeting.notice_sent_at).toLocaleString() : '—'}</dd>
                 </div>
               </dl>

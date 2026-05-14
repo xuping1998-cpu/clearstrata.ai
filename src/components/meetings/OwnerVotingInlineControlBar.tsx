@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
 import { evaluateOwnerVoteOpenGate, type MeetingRow, type OwnerVoteMeetingLite } from '@/features/meetings/api';
-import { labelMeetingFormatUiDisplay } from '@/features/meetings/labels';
 import {
   councilMeetingVotingWindowFallback,
   councilWrittenRemoteWindows,
@@ -78,7 +77,6 @@ export function OwnerVotingInlineControlBar({
   electionAgendaCount = 0,
 }: OwnerVotingInlineControlBarProps) {
   const en = languageEn;
-  const formatUiDisp = labelMeetingFormatUiDisplay(meeting, en);
   const noticePeriodLabel = en ? 'Public Notice / Discussion Period' : '公示 / 讨论期';
   const ov = meta.meeting;
   const agmSgmStrict = isStrictAgmOrSgmMeeting(meeting);
@@ -198,16 +196,6 @@ export function OwnerVotingInlineControlBar({
       <h3 className="text-base font-semibold text-gray-900">{t('meeting_ev_status_title')}</h3>
 
       <div className="space-y-3">
-        {sectionCard(
-          t('meeting_ov_meeting_format_row'),
-          <>
-            <p className="text-gray-900 font-medium">{formatUiDisp.primary}</p>
-            {formatUiDisp.secondary ? (
-              <p className="text-xs text-gray-600 mt-1 leading-relaxed">{formatUiDisp.secondary}</p>
-            ) : null}
-          </>,
-        )}
-
         {showNoticeSection
           ? sectionCard(
               noticePeriodLabel,
