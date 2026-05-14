@@ -55,7 +55,7 @@ export type ElectionNominationUiStatus =
 /** Fields required to validate/auto-derive council election triple-phase from `meetings.scheduled_at`. */
 export type CouncilElectionCanonMeetingInput = Pick<
   MeetingRow,
-  'scheduled_at' | 'voting_open_at' | 'voting_close_at' | 'description_zh' | 'meeting_format'
+  'meeting_type' | 'scheduled_at' | 'voting_open_at' | 'voting_close_at' | 'description_zh' | 'meeting_format'
 >;
 
 export type ElectionNominationRibbonModel = {
@@ -77,6 +77,16 @@ export function isStrictAgmOrSgmMeeting(meeting: Pick<MeetingRow, 'meeting_type'
 
 export function agmSgmScheduledNotSetLabel(languageEn: boolean): string {
   return languageEn ? 'Not set' : '暂未设置';
+}
+
+/** Display-only: strict AGM/SGM nomination window from canon (ignores lagging agenda JSON timestamps). */
+export function councilAgmSgmNominationWindowDisplayIso(
+  meeting: Pick<MeetingRow, 'meeting_type' | 'scheduled_at'> | null | undefined,
+): { openIso: string | null; closeIso: string | null } | null {
+  if (!meeting || !isStrictAgmOrSgmMeeting(meeting)) return null;
+  const canon = deriveCouncilElectionCanonFromScheduledAt(meeting.scheduled_at);
+  if (!canon) return { openIso: null, closeIso: null };
+  return { openIso: canon.nominationOpenIso, closeIso: canon.nominationCloseIso };
 }
 
 export function parseIsoFlexible(s?: string | null): Date | null {
@@ -161,6 +171,14 @@ export function analyzeCouncilElectionTimeline(
   }
 
   const canon = deriveCouncilElectionCanonFromScheduledAt(meeting.scheduled_at);
+  /**
+   * Strict AGM/SGM: phase + UI follow `scheduled_at` canon only. Agenda JSON / row voting timestamps may
+   * lag re-saves; do not surface `invalid` for storage drift vs canon.
+   */
+  if (isStrictAgmOrSgmMeeting(meeting)) {
+    return { invalid_election_timeline: false, votingOpenVsNominationCloseBroken: false };
+  }
+
   if (!canon || !councilElectionStoredMatchesCanon(meeting, meta)) {
     return { invalid_election_timeline: true, votingOpenVsNominationCloseBroken: true };
   }
@@ -194,7 +212,9 @@ export function getElectionNominationStatus(
     }
 
     const canon = deriveCouncilElectionCanonFromScheduledAt(meeting.scheduled_at);
-    if (!canon) return 'invalid';
+    if (!canon) {
+      return isStrictAgmOrSgmMeeting(meeting) ? 'before_open' : 'invalid';
+    }
 
     const n = now.getTime();
     const nomOpenMs = msIsoUtc(canon.nominationOpenIso);

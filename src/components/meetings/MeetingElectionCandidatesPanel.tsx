@@ -9,6 +9,8 @@ import {
   displayAgendaZhWithoutElection,
   formatElectionNominationUiStatus,
   getElectionNominationStatus,
+  councilAgmSgmNominationWindowDisplayIso,
+  agmSgmScheduledNotSetLabel,
   type ElectionAgendaMetaV1,
   type ElectionCandidateDraft,
   type ElectionNominationUiStatus,
@@ -226,6 +228,18 @@ export function MeetingElectionCandidatesPanel({
   const nominationStatusLabel =
     nomStatus !== null ? formatElectionNominationUiStatus(nomStatus, { t, languageEn: en }) : '—';
 
+  const nomWindowDisplay = councilAgmSgmNominationWindowDisplayIso(councilElectionMeeting);
+  const nomOpenDisplayText = nomWindowDisplay
+    ? nomWindowDisplay.openIso
+      ? fmtTs(nomWindowDisplay.openIso, en)
+      : agmSgmScheduledNotSetLabel(en)
+    : fmtTs(metaFinal?.nomination_opens_at, en);
+  const nomCloseDisplayText = nomWindowDisplay
+    ? nomWindowDisplay.closeIso
+      ? fmtTs(nomWindowDisplay.closeIso, en)
+      : agmSgmScheduledNotSetLabel(en)
+    : fmtTs(metaFinal?.nomination_closes_at, en);
+
   if (!metaFinal || nomStatus === null) {
     return null;
   }
@@ -256,11 +270,11 @@ export function MeetingElectionCandidatesPanel({
         </div>
         <div className="rounded-lg bg-white/70 px-2 py-1.5 ring-1 ring-gray-200">
           <dt className="text-gray-500">{t('meeting_election_nomination_opens')}</dt>
-          <dd className="font-medium text-gray-900">{fmtTs(metaFinal?.nomination_opens_at, en)}</dd>
+          <dd className="font-medium text-gray-900">{nomOpenDisplayText}</dd>
         </div>
         <div className="rounded-lg bg-white/70 px-2 py-1.5 ring-1 ring-gray-200">
           <dt className="text-gray-500">{t('meeting_election_nomination_closes')}</dt>
-          <dd className="font-medium text-gray-900">{fmtTs(metaFinal?.nomination_closes_at, en)}</dd>
+          <dd className="font-medium text-gray-900">{nomCloseDisplayText}</dd>
         </div>
         <div className="rounded-lg bg-white/70 px-2 py-1.5 ring-1 ring-gray-200">
           <dt className="text-gray-500">{t('meeting_election_candidates')}</dt>

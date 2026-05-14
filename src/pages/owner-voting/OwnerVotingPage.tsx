@@ -259,6 +259,7 @@ type CouncilMeetingBatchRow = Pick<
   | 'property_id'
   | 'status'
   | 'created_at'
+  | 'meeting_type'
   | 'scheduled_at'
   | 'voting_open_at'
   | 'voting_close_at'
@@ -841,7 +842,7 @@ export function OwnerVotingPage() {
         const { data: councilBatch, error: councilBatchErr } = await supabase
           .from('meetings')
           .select(
-            'id,property_id,status,created_at,scheduled_at,voting_open_at,voting_close_at,description_zh,meeting_format',
+            'id,property_id,status,created_at,meeting_type,scheduled_at,voting_open_at,voting_close_at,description_zh,meeting_format',
           )
           .in('id', distinctCouncilIds);
         if (councilBatchErr) {
