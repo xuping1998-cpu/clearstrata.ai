@@ -1,18 +1,24 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useProperty } from '../contexts/PropertyContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import {
+  createAgendaItem,
   createMeeting,
   fetchOwnerVoteMeetingMetaForCouncilMeeting,
   getMeetingDetail,
   noticeReadiness,
   updateMeeting,
+  updateMeetingAgendaItem,
+  type MeetingAgendaRow,
+  type MeetingBallotRow,
   type MeetingRow,
   type MeetingStatus,
   type MeetingType,
+  type MeetingVoteRow,
+  type VoteRule,
 } from '../features/meetings/api';
 import {
   embedGovernanceMeta,
@@ -33,7 +39,9 @@ import {
   deriveCouncilElectionCanonFromScheduledAt,
 } from '@/features/meetings/electionTimelineMath';
 import { isOwnerVotingMeeting } from '../features/meetings/ownerVotingCouncil';
+import { extractElectionAgendaMeta } from '../features/meetings/electionAgendaModel';
 import { canManagePropertyMeetings } from '@/lib/meetingPermissions';
+import { supabase } from '../lib/supabase';
 
 function sliceDatetimeLocal(iso: string | null | undefined): string {
   if (!iso?.trim()) return '';
@@ -105,6 +113,133 @@ function buildGovernanceMetaForSave(form: typeof defaultForm): MeetingGovernance
   };
 }
 
+type AgendaKindUi = 'normal' | 'resolution' | 'election';
+
+type MeetingEditorAgendaRow = {
+  clientId: string;
+  serverId: string | null;
+  isNew: boolean;
+  title_zh: string;
+  title_en: string;
+  kind: AgendaKindUi;
+  vote_rule: VoteRule;
+  description_zh: string | null;
+  description_en: string | null;
+};
+
+function editorKindFromAgendaRow(row: MeetingAgendaRow): AgendaKindUi {
+  const meta = extractElectionAgendaMeta(row.description_zh ?? '').meta;
+  if (meta?.agenda_type === 'council_election') return 'election';
+  return row.requires_vote ? 'resolution' : 'normal';
+}
+
+function editorRowFromAgendaItem(row: MeetingAgendaRow): MeetingEditorAgendaRow {
+  return {
+    clientId: row.id,
+    serverId: row.id,
+    isNew: false,
+    title_zh: row.title_zh ?? '',
+    title_en: row.title_en ?? '',
+    kind: editorKindFromAgendaRow(row),
+    vote_rule: (row.vote_rule ?? 'simple_majority') as VoteRule,
+    description_zh: row.description_zh,
+    description_en: row.description_en,
+  };
+}
+
+function newTempAgendaRow(): MeetingEditorAgendaRow {
+  return {
+    clientId: `temp_${crypto.randomUUID()}`,
+    serverId: null,
+    isNew: true,
+    title_zh: '',
+    title_en: '',
+    kind: 'normal',
+    vote_rule: 'simple_majority',
+    description_zh: null,
+    description_en: null,
+  };
+}
+
+function cloneAgendaRow(r: MeetingEditorAgendaRow): MeetingEditorAgendaRow {
+  return { ...r };
+}
+
+function agendaHasMeaningfulContent(r: MeetingEditorAgendaRow): boolean {
+  if (String(r.title_zh).trim() || String(r.title_en).trim()) return true;
+  if (String(r.description_zh ?? '').trim() || String(r.description_en ?? '').trim()) return true;
+  return false;
+}
+
+function descriptionZhForPersist(r: MeetingEditorAgendaRow): string | null {
+  if (r.kind === 'election') return r.description_zh ?? null;
+  const peeled = extractElectionAgendaMeta(r.description_zh ?? '').cleanDescriptionZh?.trim();
+  return peeled ? peeled : null;
+}
+
+async function persistMeetingAgendaDrafts(options: {
+  propertyId: string;
+  meetingId: string;
+  rows: MeetingEditorAgendaRow[];
+  deleteServerIds: string[];
+  languageEn: boolean;
+}): Promise<{ error: string | null }> {
+  const { propertyId, meetingId, rows, deleteServerIds, languageEn } = options;
+  const uniqDeletes = [...new Set(deleteServerIds)];
+  for (const id of uniqDeletes) {
+    const { error } = await supabase
+      .from('meeting_agenda_items')
+      .delete()
+      .eq('property_id', propertyId)
+      .eq('meeting_id', meetingId)
+      .eq('id', id);
+    if (error) return { error: error.message };
+  }
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const sortOrder = i + 1;
+    const requiresVote = r.kind === 'resolution';
+    const voteRule = requiresVote ? r.vote_rule : null;
+    const descZh = descriptionZhForPersist(r);
+    const descEn = r.description_en ?? null;
+    if (r.serverId) {
+      const { error } = await updateMeetingAgendaItem({
+        propertyId,
+        meetingId,
+        agendaItemId: r.serverId,
+        titleZh: String(r.title_zh).trim() || null,
+        titleEn: String(r.title_en).trim() || null,
+        descriptionEn: descEn,
+        descriptionZh: descZh,
+        requiresVote,
+        voteRule: requiresVote ? voteRule : null,
+      });
+      if (error) return { error: error.message };
+    } else {
+      if (r.kind === 'election') {
+        return {
+          error: languageEn
+            ? 'Election agendas cannot be created from this screen. Add them on the meeting detail page.'
+            : '无法在本页创建选举议程，请在会议详情页添加。',
+        };
+      }
+      const { error } = await createAgendaItem({
+        propertyId,
+        meetingId,
+        sortOrder,
+        titleZh: String(r.title_zh).trim() || null,
+        titleEn: String(r.title_en).trim() || null,
+        descriptionEn: descEn,
+        descriptionZh: descZh,
+        requiresVote,
+        voteRule: requiresVote ? voteRule : null,
+      });
+      if (error) return { error: error.message };
+    }
+  }
+  return { error: null };
+}
+
 export function MeetingEditor() {
   const { meetingId } = useParams<{ meetingId?: string }>();
   const isEdit = Boolean(meetingId);
@@ -116,12 +251,41 @@ export function MeetingEditor() {
 
   const [form, setForm] = useState(defaultForm);
   const [fiscalYear] = useState(() => new Date().getFullYear());
-  const [agendaCount, setAgendaCount] = useState(0);
+  const [agendaItems, setAgendaItems] = useState<MeetingEditorAgendaRow[]>([]);
+  const [pendingDeleteServerIds, setPendingDeleteServerIds] = useState<string[]>([]);
+  const [meetingVotes, setMeetingVotes] = useState<MeetingVoteRow[]>([]);
+  const [ballotsByVoteId, setBallotsByVoteId] = useState<Record<string, MeetingBallotRow[]>>({});
+  const [editingClientId, setEditingClientId] = useState<string | null>(null);
+  const editSnapshotsRef = useRef<Map<string, MeetingEditorAgendaRow>>(new Map());
   const [detailMeeting, setDetailMeeting] = useState<MeetingRow | null>(null);
   const [loading, setLoading] = useState(isEdit);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [voteLine, setVoteLine] = useState<'loading' | 'none' | string>('loading');
+
+  const agendaCount = useMemo(() => agendaItems.filter(agendaHasMeaningfulContent).length, [agendaItems]);
+
+  const agendaIdsWithCouncilBallots = useMemo(() => {
+    const s = new Set<string>();
+    for (const v of meetingVotes) {
+      const ballots = ballotsByVoteId[v.id] ?? [];
+      if (ballots.length > 0) s.add(v.agenda_item_id);
+    }
+    return s;
+  }, [meetingVotes, ballotsByVoteId]);
+
+  const agendaIdsWithCouncilVote = useMemo(() => new Set(meetingVotes.map((v) => v.agenda_item_id)), [meetingVotes]);
+
+  useEffect(() => {
+    if (!isEdit) {
+      setAgendaItems([]);
+      setPendingDeleteServerIds([]);
+      setMeetingVotes([]);
+      setBallotsByVoteId({});
+      setEditingClientId(null);
+      editSnapshotsRef.current = new Map();
+    }
+  }, [isEdit]);
 
   useEffect(() => {
     if (!isEdit || !meetingId || !currentPropertyId || !user) {
@@ -137,10 +301,20 @@ export function MeetingEditor() {
       if (!m) {
         setErr(en ? 'Meeting not found.' : '未找到该会议。');
         setDetailMeeting(null);
+        setAgendaItems([]);
+        setMeetingVotes([]);
+        setBallotsByVoteId({});
+        setPendingDeleteServerIds([]);
         setLoading(false);
         return;
       }
       setDetailMeeting(m);
+      setAgendaItems(bundle.agendaItems.map(editorRowFromAgendaItem));
+      setMeetingVotes(bundle.votes);
+      setBallotsByVoteId(bundle.ballotsByVoteId);
+      setPendingDeleteServerIds([]);
+      setEditingClientId(null);
+      editSnapshotsRef.current = new Map();
       const uiFmt = meetingFormatUiFromRow(m);
       const layers = peelMeetingDescriptionZhForEditor(m.description_zh);
       const gov = layers.governanceMeta;
@@ -167,7 +341,6 @@ export function MeetingEditor() {
             ? String(Math.floor(gov.signed_units))
             : '',
       });
-      setAgendaCount(bundle.agendaItems.length);
       setLoading(false);
     })();
     return () => {
@@ -209,6 +382,90 @@ export function MeetingEditor() {
       cancelled = true;
     };
   }, [isEdit, detailMeeting, currentPropertyId]);
+
+  function beginEdit(clientId: string) {
+    const row = agendaItems.find((r) => r.clientId === clientId);
+    if (!row) return;
+    editSnapshotsRef.current.set(clientId, cloneAgendaRow(row));
+    setEditingClientId(clientId);
+    setErr(null);
+  }
+
+  function patchAgendaRow(clientId: string, patch: Partial<MeetingEditorAgendaRow>) {
+    setAgendaItems((prev) => prev.map((r) => (r.clientId === clientId ? { ...r, ...patch } : r)));
+  }
+
+  function handleCardSaveLocal(clientId: string) {
+    const row = agendaItems.find((r) => r.clientId === clientId);
+    if (!row) return;
+    if (row.isNew && !agendaHasMeaningfulContent(row)) {
+      setAgendaItems((prev) => prev.filter((r) => r.clientId !== clientId));
+      editSnapshotsRef.current.delete(clientId);
+      setEditingClientId((e) => (e === clientId ? null : e));
+      return;
+    }
+    editSnapshotsRef.current.delete(clientId);
+    setEditingClientId((e) => (e === clientId ? null : e));
+  }
+
+  function handleCancelEditOrRemoveNew(clientId: string) {
+    const row = agendaItems.find((r) => r.clientId === clientId);
+    if (!row) return;
+    if (row.isNew) {
+      setAgendaItems((prev) => prev.filter((r) => r.clientId !== clientId));
+      editSnapshotsRef.current.delete(clientId);
+      setEditingClientId((e) => (e === clientId ? null : e));
+      return;
+    }
+    const snap = editSnapshotsRef.current.get(clientId);
+    if (snap) {
+      setAgendaItems((prev) => prev.map((r) => (r.clientId === clientId ? cloneAgendaRow(snap) : r)));
+      editSnapshotsRef.current.delete(clientId);
+    }
+    setEditingClientId((e) => (e === clientId ? null : e));
+  }
+
+  function handleDeleteExisting(clientId: string) {
+    const row = agendaItems.find((r) => r.clientId === clientId);
+    if (!row?.serverId || row.isNew) return;
+    if (row.kind === 'election') {
+      setErr(en ? 'Remove election agendas on the meeting detail page.' : '请在会议详情页处理选举议程。');
+      return;
+    }
+    if (agendaIdsWithCouncilBallots.has(row.serverId)) {
+      setErr(en ? 'This agenda has council ballots and cannot be deleted here.' : '该议程已有会议表决投票记录，无法在此删除。');
+      return;
+    }
+    if (agendaIdsWithCouncilVote.has(row.serverId)) {
+      setErr(
+        en
+          ? 'This agenda still has a linked council vote. Remove or archive that vote on the meeting detail page first.'
+          : '该议程仍关联会议表决，请先在会议详情中移除或归档表决后再删除议程。',
+      );
+      return;
+    }
+    setErr(null);
+    setPendingDeleteServerIds((prev) => (prev.includes(row.serverId!) ? prev : [...prev, row.serverId!]));
+    setAgendaItems((prev) => prev.filter((r) => r.clientId !== clientId));
+    editSnapshotsRef.current.delete(clientId);
+    setEditingClientId((e) => (e === clientId ? null : e));
+  }
+
+  function handleAddAgendaRow() {
+    const row = newTempAgendaRow();
+    editSnapshotsRef.current.set(row.clientId, cloneAgendaRow(row));
+    setAgendaItems((prev) => [...prev, row]);
+    setEditingClientId(row.clientId);
+    setErr(null);
+  }
+
+  function handleRemoveNewDraft(clientId: string) {
+    const row = agendaItems.find((r) => r.clientId === clientId);
+    if (!row?.isNew) return;
+    setAgendaItems((prev) => prev.filter((r) => r.clientId !== clientId));
+    setEditingClientId((e) => (e === clientId ? null : e));
+    editSnapshotsRef.current.delete(clientId);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -283,6 +540,14 @@ export function MeetingEditor() {
       }
     }
 
+    const rowsSnapshot = agendaItems;
+    const pendingDeletesSnapshot = [...pendingDeleteServerIds];
+    const meaningful = rowsSnapshot.filter(agendaHasMeaningfulContent);
+    const blankServerIds = rowsSnapshot
+      .filter((r) => r.serverId && !agendaHasMeaningfulContent(r))
+      .map((r) => r.serverId as string);
+    const deleteServerIds = [...new Set([...pendingDeletesSnapshot, ...blankServerIds])];
+
     setErr(null);
     setSaving(true);
 
@@ -302,9 +567,26 @@ export function MeetingEditor() {
         status: form.status,
         createdBy: user.id,
       });
-      setSaving(false);
       if (error || !id) {
+        setSaving(false);
         setErr(error?.message ?? (en ? 'Create failed.' : '创建失败。'));
+        return;
+      }
+      const persistResult = await persistMeetingAgendaDrafts({
+        propertyId: currentPropertyId,
+        meetingId: id,
+        rows: meaningful,
+        deleteServerIds: [],
+        languageEn: en,
+      });
+      setSaving(false);
+      if (persistResult.error) {
+        setErr(
+          en
+            ? `Meeting created, but agendas did not save: ${persistResult.error}`
+            : `会议已创建，但议程未保存：${persistResult.error}`,
+        );
+        navigate(`/meetings/${id}`);
         return;
       }
       navigate(`/meetings/${id}`);
@@ -323,11 +605,28 @@ export function MeetingEditor() {
       voting_open_at: votingOpenIso,
       voting_close_at: votingCloseIso,
     });
-    setSaving(false);
     if (error) {
+      setSaving(false);
       setErr(error.message);
       return;
     }
+    const persistResult = await persistMeetingAgendaDrafts({
+      propertyId: currentPropertyId,
+      meetingId: meetingId!,
+      rows: meaningful,
+      deleteServerIds,
+      languageEn: en,
+    });
+    setSaving(false);
+    if (persistResult.error) {
+      setErr(
+        en ? `Meeting saved, but agendas: ${persistResult.error}` : `会议已保存，议程同步失败：${persistResult.error}`,
+      );
+      return;
+    }
+    setPendingDeleteServerIds([]);
+    setAgendaItems(meaningful);
+    setEditingClientId(null);
     navigate(`/meetings/${meetingId}`);
   }
 
@@ -606,19 +905,168 @@ export function MeetingEditor() {
             <option value="closed">{t('meeting_status_closed_label')}</option>
             <option value="archived">{t('meeting_status_archived_label')}</option>
           </select>
+          <p className="text-xs text-gray-500 mt-1">
+            {en
+              ? `Meaningful agenda count (for notice checks): ${agendaCount}`
+              : `计入公示检查的有效议程条数：${agendaCount}`}
+          </p>
           {isEdit && (
-            <>
-              <p className="text-xs text-gray-500 mt-1">
-                {en ? `Agenda items on file: ${agendaCount}` : `当前议程条数：${agendaCount}`}
+            <div className="mt-4 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+              <span className="text-xs font-medium text-gray-600">{t('voting_status')}</span>
+              <p className="text-sm font-medium text-gray-900 mt-0.5">
+                {voteLine === 'loading' ? (en ? '…' : '…') : voteStatusReadLabel()}
               </p>
-              <div className="mt-4 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
-                <span className="text-xs font-medium text-gray-600">{t('voting_status')}</span>
-                <p className="text-sm font-medium text-gray-900 mt-0.5">
-                  {voteLine === 'loading' ? (en ? '…' : '…') : voteStatusReadLabel()}
-                </p>
-              </div>
-            </>
+            </div>
           )}
+        </div>
+
+        <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-medium text-gray-900">
+              {en ? 'Agenda (local draft)' : '议程（本地草稿）'}
+            </p>
+            <button
+              type="button"
+              onClick={handleAddAgendaRow}
+              className="text-sm px-3 py-1.5 rounded-lg border border-gray-300 text-gray-800 hover:bg-gray-50"
+            >
+              {en ? 'Add agenda item' : '添加议程'}
+            </button>
+          </div>
+          <p className="text-xs text-gray-500">
+            {en
+              ? `Items with at least one title or description count toward notice checks (${agendaCount}). Saving the meeting writes changes to the database.`
+              : `至少填写中/英标题或说明的议程会计入公示就绪检查（当前 ${agendaCount} 条）。保存会议时会将议程写入数据库。`}
+          </p>
+          <div className="space-y-3">
+            {agendaItems.map((row, idx) => {
+              const editing = editingClientId === row.clientId;
+              const kindLabel =
+                row.kind === 'normal'
+                  ? t('meeting_agenda_type_normal')
+                  : row.kind === 'resolution'
+                    ? t('meeting_agenda_type_resolution')
+                    : t('meeting_agenda_type_election');
+              return (
+                <div key={row.clientId} className="rounded-lg border border-gray-200 bg-gray-50/80 p-3 space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs font-medium text-gray-500">
+                      #{idx + 1}
+                      {row.isNew ? (
+                        <span className="ml-2 text-amber-700">{en ? '· new' : '· 新建'}</span>
+                      ) : null}
+                    </span>
+                    {!editing ? <span className="text-xs text-gray-600">{kindLabel}</span> : null}
+                  </div>
+                  {editing ? (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <input
+                          value={row.title_zh}
+                          onChange={(e) => patchAgendaRow(row.clientId, { title_zh: e.target.value })}
+                          placeholder={en ? 'Title (Chinese)' : '标题（中文）'}
+                          className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                        />
+                        <input
+                          value={row.title_en}
+                          onChange={(e) => patchAgendaRow(row.clientId, { title_en: e.target.value })}
+                          placeholder={en ? 'Title (English)' : '标题（英文）'}
+                          className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                        />
+                      </div>
+                      <label className="block text-sm">
+                        <span className="font-medium text-gray-800">{t('meeting_agenda_type')}</span>
+                        <select
+                          value={row.kind}
+                          disabled={!row.isNew && row.kind === 'election'}
+                          onChange={(e) => {
+                            const nk = e.target.value as AgendaKindUi;
+                            patchAgendaRow(row.clientId, { kind: nk });
+                          }}
+                          className="mt-1 w-full max-w-md rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                        >
+                          <option value="normal">{t('meeting_agenda_type_normal')}</option>
+                          <option value="resolution">{t('meeting_agenda_type_resolution')}</option>
+                          {!row.isNew && row.kind === 'election' ? (
+                            <option value="election">{t('meeting_agenda_type_election')}</option>
+                          ) : null}
+                        </select>
+                      </label>
+                      {row.kind === 'resolution' ? (
+                        <label className="block text-sm space-y-1">
+                          <span className="font-medium text-gray-800">{en ? 'Vote threshold' : '表决门槛'}</span>
+                          <select
+                            value={row.vote_rule}
+                            onChange={(e) =>
+                              patchAgendaRow(row.clientId, { vote_rule: e.target.value as VoteRule })
+                            }
+                            className="w-full max-w-md rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                          >
+                            <option value="simple_majority">{en ? 'Simple majority' : '普通多数'}</option>
+                            <option value="three_quarter">{en ? 'Three-quarters' : '3/4 票'}</option>
+                            <option value="unanimous">{en ? 'Unanimous' : '全票通过'}</option>
+                          </select>
+                        </label>
+                      ) : null}
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => handleCardSaveLocal(row.clientId)}
+                          className="text-sm px-4 py-2 rounded-lg bg-clearstrata-ui-primary text-white hover:bg-clearstrata-ui-primaryHover"
+                        >
+                          {t('meeting_agenda_save')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleCancelEditOrRemoveNew(row.clientId)}
+                          className="text-sm px-4 py-2 rounded-lg border border-gray-300 hover:bg-white"
+                        >
+                          {row.isNew ? t('meeting_agenda_cancel') : en ? 'Cancel edit' : '取消编辑'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-sm font-medium text-gray-900">
+                        {String(row.title_zh).trim() ||
+                          String(row.title_en).trim() ||
+                          (en ? 'Untitled agenda item' : '未命名议程')}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => beginEdit(row.clientId)}
+                          className="text-sm px-3 py-1.5 rounded-lg border border-gray-300 text-gray-800 hover:bg-white"
+                        >
+                          {t('meeting_agenda_edit')}
+                        </button>
+                        {row.isNew ? (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveNewDraft(row.clientId)}
+                            className="text-sm px-3 py-1.5 rounded-lg border border-gray-300 text-gray-800 hover:bg-white"
+                          >
+                            {t('meeting_agenda_cancel')}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteExisting(row.clientId)}
+                            className="text-sm px-3 py-1.5 rounded-lg border border-red-200 text-red-800 hover:bg-red-50"
+                          >
+                            {t('action_delete')}
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {agendaItems.length === 0 ? (
+            <p className="text-sm text-gray-600">{en ? 'No agenda rows yet.' : '暂无议程条目。'}</p>
+          ) : null}
         </div>
 
         <div className="text-sm text-gray-600 bg-amber-50 border border-amber-100 rounded-lg p-3 space-y-2">

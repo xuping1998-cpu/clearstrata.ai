@@ -117,6 +117,31 @@ function agendaKindFromRow(a: MeetingAgendaRow): AgendaKindUi {
   return a.requires_vote ? 'resolution' : 'normal';
 }
 
+/** DB-backed blank “normal” row with no votes / ballots / linked OV resolution — safe to remove on cancel. */
+function isBlankDeletableCouncilAgendaPlaceholder(
+  row: MeetingAgendaRow,
+  voteByAgendaId: Map<string, MeetingVoteRow & { options: MeetingVoteOptionRow[] }>,
+  electionBallotsByAgenda: Map<string, number>,
+  ownerVoteResolutions: Array<{ id: string; title: string; display_order?: number | null }>,
+): boolean {
+  if (agendaKindFromRow(row) !== 'normal') return false;
+  if (String(row.title_zh ?? '').trim() || String(row.title_en ?? '').trim()) return false;
+  if (voteByAgendaId.has(row.id)) return false;
+  if ((electionBallotsByAgenda.get(row.id) ?? 0) > 0) return false;
+  const ord = row.sort_order;
+  if (ord != null && Number.isFinite(Number(ord))) {
+    const n = Number(ord);
+    if (
+      ownerVoteResolutions.some(
+        (r) => r.display_order != null && Number(r.display_order) === n,
+      )
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function canonElectionNominationPairOrNull(meeting: MeetingRow): { opens: string; closes: string } | null {
   const canon = deriveCouncilElectionCanonFromScheduledAt(meeting.scheduled_at);
   if (!canon) return null;
@@ -560,6 +585,50 @@ export function MeetingDetail() {
     }
     return m;
   }, [bundle.votes]);
+
+  const handleCancelAgendaEdit = useCallback(async () => {
+    if (!agendaEdit) return;
+    if (!meeting || !propertyIdForAgenda) {
+      setAgendaEdit(null);
+      return;
+    }
+    const row = bundle.agendaItems.find((x) => x.id === agendaEdit.agendaId);
+    if (
+      row &&
+      !isMeetingClosedForVoting(meeting.status) &&
+      isBlankDeletableCouncilAgendaPlaceholder(row, voteByAgendaId, electionBallotsByAgenda, ovMeta.resolutions)
+    ) {
+      setBusy(true);
+      setActionErr(null);
+      const { error } = await supabase
+        .from('meeting_agenda_items')
+        .delete()
+        .eq('property_id', propertyIdForAgenda)
+        .eq('meeting_id', meeting.id)
+        .eq('id', row.id);
+      if (error) {
+        setActionErr(error.message);
+        setBusy(false);
+        return;
+      }
+      setAgendaEdit(null);
+      setBusy(false);
+      await load();
+      await refreshOwnerVoteMeta();
+      return;
+    }
+    setAgendaEdit(null);
+  }, [
+    agendaEdit,
+    meeting,
+    propertyIdForAgenda,
+    bundle.agendaItems,
+    voteByAgendaId,
+    electionBallotsByAgenda,
+    ovMeta.resolutions,
+    load,
+    refreshOwnerVoteMeta,
+  ]);
 
   async function handleCreateVote(agenda: MeetingAgendaRow) {
     if (!meeting || !user) return;
@@ -1686,7 +1755,7 @@ export function MeetingDetail() {
                             <button
                               type="button"
                               disabled={busy}
-                              onClick={() => setAgendaEdit(null)}
+                              onClick={() => void handleCancelAgendaEdit()}
                               className="text-sm px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50"
                             >
                               {t('meeting_agenda_cancel')}
