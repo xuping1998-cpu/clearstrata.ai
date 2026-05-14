@@ -29,6 +29,7 @@ import {
   updateVote,
   type VoteRule,
   type MeetingAgendaRow,
+  type MeetingBallotRow,
   type MeetingDetailBundle,
   type MeetingInvitationRow,
   type MeetingVoteOptionRow,
@@ -140,6 +141,70 @@ function isBlankDeletableCouncilAgendaPlaceholder(
     }
   }
   return true;
+}
+
+/**
+ * Explicit agenda delete from MeetingDetail: returns `null` when delete is allowed, otherwise a user-facing reason.
+ * Reuses the same structural gates as blank-placeholder cancel (election / council vote / election ballots / OV slot),
+ * then blocks any linked owner-vote resolution (even without ballots yet).
+ */
+async function meetingDetailAgendaDeleteBlockReason(params: {
+  meeting: MeetingRow;
+  row: MeetingAgendaRow;
+  voteByAgendaId: Map<string, MeetingVoteRow & { options: MeetingVoteOptionRow[] }>;
+  ballotsByVoteId: Record<string, MeetingBallotRow[]>;
+  electionBallotsByAgenda: Map<string, number>;
+  resolutionsForMatch: Array<{ id: string; title: string; display_order?: number | null }>;
+  propertyId: string;
+  en: boolean;
+}): Promise<string | null> {
+  const { meeting, row, voteByAgendaId, ballotsByVoteId, electionBallotsByAgenda, resolutionsForMatch, propertyId, en } =
+    params;
+  if (isMeetingClosedForVoting(meeting.status)) {
+    return en ? 'This meeting has ended. The agenda is locked.' : '会议已结束，议程已锁定。';
+  }
+  if (agendaKindFromRow(row) === 'election') {
+    return en ? 'Election agendas cannot be deleted here.' : '选举议程不能在此删除。';
+  }
+  if ((electionBallotsByAgenda.get(row.id) ?? 0) > 0) {
+    return en
+      ? 'This election agenda already has owner ballots and cannot be deleted here.'
+      : '该选举议题已有业主投票记录，不能在此删除。';
+  }
+  const councilVote = voteByAgendaId.get(row.id);
+  if (councilVote) {
+    const councilBallots = ballotsByVoteId[councilVote.id] ?? [];
+    if (councilBallots.length > 0) {
+      return en
+        ? 'This agenda already has ballots on its council vote and cannot be deleted here.'
+        : '该议题的会议表决已有投票记录，不能在此删除。';
+    }
+    return en
+      ? 'This agenda has a linked council vote (meeting_votes) and cannot be deleted here.'
+      : '该议题已关联会议表决（meeting_votes），不能在此删除。';
+  }
+  const matchedRes = findOwnerVoteResolutionForAgenda(
+    { sort_order: row.sort_order, title_zh: row.title_zh, title_en: row.title_en },
+    resolutionsForMatch,
+  );
+  if (matchedRes) {
+    const { count, error } = await supabase
+      .from('owner_vote_ballots')
+      .select('id', { count: 'exact', head: true })
+      .eq('property_id', propertyId)
+      .eq('resolution_id', matchedRes.id);
+    if (error) console.warn('[MeetingDetail] owner_vote_ballots count (delete)', error.message);
+    const n = typeof count === 'number' ? count : 0;
+    if (n > 0) {
+      return en
+        ? 'This agenda has formal owner-voting records and cannot be deleted here.'
+        : '该议题已有正式表决记录，不能在此删除。';
+    }
+    return en
+      ? 'This agenda is linked to an owner vote resolution. Remove or resolve it in owner voting before deleting the agenda.'
+      : '该议题已关联业主表决决议，请先在业主表决中处理后再删除议程。';
+  }
+  return null;
 }
 
 function canonElectionNominationPairOrNull(meeting: MeetingRow): { opens: string; closes: string } | null {
@@ -626,6 +691,61 @@ export function MeetingDetail() {
     voteByAgendaId,
     electionBallotsByAgenda,
     ovMeta.resolutions,
+    load,
+    refreshOwnerVoteMeta,
+  ]);
+
+  const handleDeleteAgendaItem = useCallback(async () => {
+    if (!agendaEdit || !meeting || !propertyIdForAgenda || !user?.id) return;
+    const row = bundle.agendaItems.find((x) => x.id === agendaEdit.agendaId);
+    if (!row) return;
+    const resolutionsForMatch = ovMeta.resolutions.map((r) => ({
+      id: r.id,
+      title: r.title,
+      display_order: r.display_order ?? null,
+    }));
+    const blockReason = await meetingDetailAgendaDeleteBlockReason({
+      meeting,
+      row,
+      voteByAgendaId,
+      ballotsByVoteId: bundle.ballotsByVoteId,
+      electionBallotsByAgenda,
+      resolutionsForMatch,
+      propertyId: propertyIdForAgenda,
+      en,
+    });
+    if (blockReason) {
+      setActionErr(blockReason);
+      return;
+    }
+    setBusy(true);
+    setActionErr(null);
+    const { error } = await supabase
+      .from('meeting_agenda_items')
+      .delete()
+      .eq('property_id', propertyIdForAgenda)
+      .eq('meeting_id', meeting.id)
+      .eq('id', row.id);
+    if (error) {
+      setActionErr(error.message);
+      setBusy(false);
+      return;
+    }
+    setAgendaEdit(null);
+    setBusy(false);
+    await load();
+    await refreshOwnerVoteMeta();
+  }, [
+    agendaEdit,
+    meeting,
+    propertyIdForAgenda,
+    user?.id,
+    bundle.agendaItems,
+    bundle.ballotsByVoteId,
+    voteByAgendaId,
+    electionBallotsByAgenda,
+    ovMeta.resolutions,
+    en,
     load,
     refreshOwnerVoteMeta,
   ]);
@@ -1759,6 +1879,14 @@ export function MeetingDetail() {
                               className="text-sm px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 disabled:opacity-50"
                             >
                               {t('meeting_agenda_cancel')}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => void handleDeleteAgendaItem()}
+                              className="text-sm px-4 py-2 rounded-lg border border-red-200 text-red-800 hover:bg-red-50 disabled:opacity-50"
+                            >
+                              {t('action_delete')}
                             </button>
                           </div>
                         </div>
