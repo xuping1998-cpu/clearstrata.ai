@@ -15,7 +15,7 @@ import {
   stripWrittenRemoteMeta,
 } from '@/features/meetings/meetingFormatModel';
 import { isStrictAgmOrSgmMeeting } from '@/features/meetings/electionAgendaModel';
-import { deriveCouncilElectionCanonFromScheduledAt } from '@/features/meetings/electionTimelineMath';
+import { deriveAgmSgmCanonDisplayWindows, deriveCouncilElectionCanonFromScheduledAt } from '@/features/meetings/electionTimelineMath';
 import { MeetingDocumentsSection } from '@/pages/meeting/MeetingDocumentsSection';
 
 type Props = {
@@ -71,7 +71,9 @@ export function MeetingVoteArchiveCard({
 
   const noticePayload = useMemo(() => {
     const agmSgmStrict = isStrictAgmOrSgmMeeting(meeting);
-    const flowCanon = agmSgmStrict ? deriveCouncilElectionCanonFromScheduledAt(meeting.scheduled_at) : null;
+    const disp = agmSgmStrict
+      ? deriveAgmSgmCanonDisplayWindows(meeting.scheduled_at, electionAgendaCount > 0)
+      : null;
 
     let noticeOpenIso: string | null = null;
     let noticeCloseIso: string | null = null;
@@ -79,11 +81,11 @@ export function MeetingVoteArchiveCard({
     let vCloseDisp: string | null = null;
 
     if (agmSgmStrict) {
-      if (flowCanon) {
-        noticeOpenIso = flowCanon.publicNoticeOpenIso;
-        noticeCloseIso = flowCanon.publicNoticeCloseIso;
-        vOpenDisp = flowCanon.votingOpenIso;
-        vCloseDisp = flowCanon.votingCloseIso;
+      if (disp) {
+        noticeOpenIso = disp.publicNoticeOpenIso;
+        noticeCloseIso = disp.publicNoticeCloseIso;
+        vOpenDisp = disp.votingOpenIso;
+        vCloseDisp = disp.votingCloseIso;
       }
     } else {
       const disc = councilWrittenRemoteWindows(meeting);
@@ -145,7 +147,7 @@ export function MeetingVoteArchiveCard({
       voteSpan,
       descDisplay,
     };
-  }, [meeting, ownerVoteMeeting, en]);
+  }, [meeting, ownerVoteMeeting, en, electionAgendaCount]);
 
   return (
     <>

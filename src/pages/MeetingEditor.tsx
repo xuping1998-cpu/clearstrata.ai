@@ -28,7 +28,10 @@ import {
   type MeetingGovernanceMetaV1,
   type MeetingInitiationType,
 } from '../features/meetings/meetingFormatModel';
-import { deriveCouncilElectionCanonFromScheduledAt } from '@/features/meetings/electionTimelineMath';
+import {
+  deriveAgmSgmCanonDisplayWindows,
+  deriveCouncilElectionCanonFromScheduledAt,
+} from '@/features/meetings/electionTimelineMath';
 import { isOwnerVotingMeeting } from '../features/meetings/ownerVotingCouncil';
 import { canManagePropertyMeetings } from '@/lib/meetingPermissions';
 
@@ -46,6 +49,12 @@ function isoFromDatetimeLocal(loc: string): string | null {
 
 function nowDatetimeLocalSlice(): string {
   return sliceDatetimeLocal(new Date().toISOString());
+}
+
+/** Editor UI: only `hybrid` | `written_remote` options — map legacy in_person / live_remote to hybrid. */
+function normalizeEditorMeetingFormatUi(ui: MeetingFormatUi): MeetingFormatUi {
+  if (ui === 'written_remote') return 'written_remote';
+  return 'hybrid';
 }
 
 /** Add whole days using local calendar date components (datetime-local UX). */
@@ -146,7 +155,7 @@ export function MeetingEditor() {
         description_en: m.description_en ?? '',
         description_zh: layers.userText,
         scheduled_at: sliceDatetimeLocal(m.scheduled_at),
-        meeting_format_ui: uiFmt,
+        meeting_format_ui: normalizeEditorMeetingFormatUi(uiFmt),
         status: statusMapped,
         initiation_type: gov?.initiation_type ?? 'council_initiated',
         total_voting_units:
@@ -516,8 +525,6 @@ export function MeetingEditor() {
             }}
             className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-900"
           >
-            <option value="in_person">{t('meeting_format_editor_option_in_person')}</option>
-            <option value="live_remote">{t('meeting_format_editor_option_live_remote')}</option>
             <option value="hybrid">{t('meeting_format_editor_option_hybrid')}</option>
             <option value="written_remote">{t('meeting_format_editor_option_written_remote')}</option>
           </select>
@@ -550,11 +557,14 @@ export function MeetingEditor() {
               <p className="mt-2 text-xs text-gray-600 leading-relaxed">{t('meeting_written_remote_auto_phases_hint')}</p>
             </div>
             {form.scheduled_at.trim() &&
-            deriveCouncilElectionCanonFromScheduledAt(isoFromDatetimeLocal(form.scheduled_at) ?? '') ? (
+            deriveAgmSgmCanonDisplayWindows(isoFromDatetimeLocal(form.scheduled_at) ?? '', agendaCount > 0) ? (
               <div className="rounded-lg border border-gray-100 bg-gray-50/90 px-3 py-3 text-xs text-gray-800 space-y-2">
                 {(() => {
-                  const canon = deriveCouncilElectionCanonFromScheduledAt(isoFromDatetimeLocal(form.scheduled_at)!);
-                  if (!canon) return null;
+                  const disp = deriveAgmSgmCanonDisplayWindows(
+                    isoFromDatetimeLocal(form.scheduled_at)!,
+                    agendaCount > 0,
+                  );
+                  if (!disp) return null;
                   const fmt = (iso: string) =>
                     new Date(iso).toLocaleString(en ? 'en-CA' : 'zh-CN', {
                       dateStyle: 'medium',
@@ -564,15 +574,17 @@ export function MeetingEditor() {
                     <>
                       <p>
                         <span className="font-semibold">{t('meeting_election_phase_public_notice')}</span>{' '}
-                        {fmt(canon.publicNoticeOpenIso)} – {fmt(canon.publicNoticeCloseIso)}
+                        {fmt(disp.publicNoticeOpenIso)} – {fmt(disp.publicNoticeCloseIso)}
                       </p>
-                      <p>
-                        <span className="font-semibold">{t('meeting_election_phase_nomination')}</span>{' '}
-                        {fmt(canon.nominationOpenIso)} – {fmt(canon.nominationCloseIso)}
-                      </p>
+                      {disp.nominationOpenIso != null && disp.nominationCloseIso != null ? (
+                        <p>
+                          <span className="font-semibold">{t('meeting_election_phase_nomination')}</span>{' '}
+                          {fmt(disp.nominationOpenIso)} – {fmt(disp.nominationCloseIso)}
+                        </p>
+                      ) : null}
                       <p>
                         <span className="font-semibold">{t('meeting_election_phase_voting')}</span>{' '}
-                        {fmt(canon.votingOpenIso)} – {fmt(canon.votingCloseIso)}
+                        {fmt(disp.votingOpenIso)} – {fmt(disp.votingCloseIso)}
                       </p>
                     </>
                   );

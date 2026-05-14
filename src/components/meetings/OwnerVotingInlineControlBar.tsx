@@ -11,7 +11,7 @@ import {
   isStrictAgmOrSgmMeeting,
   type ElectionNominationRibbonModel,
 } from '@/features/meetings/electionAgendaModel';
-import { deriveCouncilElectionCanonFromScheduledAt } from '@/features/meetings/electionTimelineMath';
+import { deriveAgmSgmCanonDisplayWindows, deriveCouncilElectionCanonFromScheduledAt } from '@/features/meetings/electionTimelineMath';
 
 export type OwnerVoteInlineMetaState = {
   loading: boolean;
@@ -82,15 +82,17 @@ export function OwnerVotingInlineControlBar({
   const noticePeriodLabel = en ? 'Public Notice / Discussion Period' : '公示 / 讨论期';
   const ov = meta.meeting;
   const agmSgmStrict = isStrictAgmOrSgmMeeting(meeting);
-  const flowCanon = agmSgmStrict ? deriveCouncilElectionCanonFromScheduledAt(meeting.scheduled_at) : null;
+  const disp = agmSgmStrict
+    ? deriveAgmSgmCanonDisplayWindows(meeting.scheduled_at, electionAgendaCount > 0)
+    : null;
   const flowNotSet = agmSgmScheduledNotSetLabel(en);
 
   let displayPublicNoticeOpens: string | null = null;
   let displayPublicNoticeCloses: string | null = null;
   if (agmSgmStrict) {
-    if (flowCanon) {
-      displayPublicNoticeOpens = flowCanon.publicNoticeOpenIso;
-      displayPublicNoticeCloses = flowCanon.publicNoticeCloseIso;
+    if (disp) {
+      displayPublicNoticeOpens = disp.publicNoticeOpenIso;
+      displayPublicNoticeCloses = disp.publicNoticeCloseIso;
     }
   } else {
     const disc = councilWrittenRemoteWindows(meeting);
@@ -113,9 +115,9 @@ export function OwnerVotingInlineControlBar({
   let displayVotingOpens: string | null = null;
   let displayVotingCloses: string | null = null;
   if (agmSgmStrict) {
-    if (flowCanon) {
-      displayVotingOpens = flowCanon.votingOpenIso;
-      displayVotingCloses = flowCanon.votingCloseIso;
+    if (disp) {
+      displayVotingOpens = disp.votingOpenIso;
+      displayVotingCloses = disp.votingCloseIso;
     }
   } else {
     displayVotingOpens = ov?.voting_opens_at?.trim() ? ov.voting_opens_at : fallbackVoting.votingOpens ?? null;
@@ -209,7 +211,7 @@ export function OwnerVotingInlineControlBar({
         {showNoticeSection
           ? sectionCard(
               noticePeriodLabel,
-              agmSgmStrict && !flowCanon ? (
+              agmSgmStrict && !disp ? (
                 <p className="text-gray-500">{flowNotSet}</p>
               ) : (
                 <p className="text-gray-900">
@@ -225,7 +227,7 @@ export function OwnerVotingInlineControlBar({
               t('meeting_flow_nomination_period_label'),
               <>
                 <p className="text-gray-900">
-                  {agmSgmStrict && !flowCanon ? (
+                  {agmSgmStrict && !disp ? (
                     <span className="text-gray-500">{flowNotSet}</span>
                   ) : electionNomRibbon.nominationOpensIso || electionNomRibbon.nominationClosesIso ? (
                     <>
@@ -244,7 +246,7 @@ export function OwnerVotingInlineControlBar({
 
         {sectionCard(
           t('meeting_ov_voting_period_combined_label'),
-          agmSgmStrict && !flowCanon ? (
+          agmSgmStrict && !disp ? (
             <p className="text-gray-500">{flowNotSet}</p>
           ) : (
             <p className="text-gray-900">

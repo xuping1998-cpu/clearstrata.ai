@@ -27,7 +27,7 @@ import {
   finalizeElectionMeta,
   isStrictAgmOrSgmMeeting,
 } from './electionAgendaModel';
-import { deriveCouncilElectionCanonFromScheduledAt } from './electionTimelineMath';
+import { deriveAgmSgmCanonDisplayWindows, deriveCouncilElectionCanonFromScheduledAt } from './electionTimelineMath';
 import { canManagePropertyMeetings } from '@/lib/meetingPermissions';
 
 type MeetingCardExtras = {
@@ -459,15 +459,17 @@ export function MeetingListView({ variant }: Props) {
                     {(() => {
                       const extras = rowId ? cardExtrasByMeetingId[rowId] ?? emptyExtras() : emptyExtras();
                       const agmSgmStrict = isStrictAgmOrSgmMeeting(m);
-                      const flowCanon = agmSgmStrict ? deriveCouncilElectionCanonFromScheduledAt(m.scheduled_at) : null;
+                      const disp = agmSgmStrict
+                        ? deriveAgmSgmCanonDisplayWindows(m.scheduled_at, extras.electionAgendaCount > 0)
+                        : null;
                       const notSetLbl = agmSgmScheduledNotSetLabel(en);
 
                       let displayPublicNoticeOpens: string | null = null;
                       let displayPublicNoticeCloses: string | null = null;
                       if (agmSgmStrict) {
-                        if (flowCanon) {
-                          displayPublicNoticeOpens = flowCanon.publicNoticeOpenIso;
-                          displayPublicNoticeCloses = flowCanon.publicNoticeCloseIso;
+                        if (disp) {
+                          displayPublicNoticeOpens = disp.publicNoticeOpenIso;
+                          displayPublicNoticeCloses = disp.publicNoticeCloseIso;
                         }
                       } else {
                         const disc = councilWrittenRemoteWindows(m);
@@ -489,9 +491,9 @@ export function MeetingListView({ variant }: Props) {
                       let vOpenDisp: string | null = null;
                       let vCloseDisp: string | null = null;
                       if (agmSgmStrict) {
-                        if (flowCanon) {
-                          vOpenDisp = flowCanon.votingOpenIso;
-                          vCloseDisp = flowCanon.votingCloseIso;
+                        if (disp) {
+                          vOpenDisp = disp.votingOpenIso;
+                          vCloseDisp = disp.votingCloseIso;
                         }
                       } else {
                         vOpenDisp = ovLite?.voting_opens_at?.trim()
@@ -514,9 +516,9 @@ export function MeetingListView({ variant }: Props) {
                       let nomCloseDisp: string | null = null;
                       if (extras.electionAgendaCount > 0) {
                         if (agmSgmStrict) {
-                          if (flowCanon) {
-                            nomOpenDisp = flowCanon.nominationOpenIso;
-                            nomCloseDisp = flowCanon.nominationCloseIso;
+                          if (disp?.nominationOpenIso && disp.nominationCloseIso) {
+                            nomOpenDisp = disp.nominationOpenIso;
+                            nomCloseDisp = disp.nominationCloseIso;
                           }
                         } else {
                           nomOpenDisp = extras.nominationOpensIso;
@@ -529,7 +531,7 @@ export function MeetingListView({ variant }: Props) {
                           {showPublicRow ? (
                             <p>
                               <span className="font-medium text-gray-800">{publicNoticeListLabel}</span>{' '}
-                              {agmSgmStrict && !flowCanon ? (
+                              {agmSgmStrict && !disp ? (
                                 notSetLbl
                               ) : (
                                 <>
@@ -542,7 +544,7 @@ export function MeetingListView({ variant }: Props) {
                           {extras.electionAgendaCount > 0 ? (
                             <p>
                               <span className="font-medium text-gray-800">{t('meeting_list_flow_summary_nomination')}</span>{' '}
-                              {agmSgmStrict && !flowCanon ? (
+                              {agmSgmStrict && !disp ? (
                                 notSetLbl
                               ) : (
                                 <>
@@ -553,7 +555,7 @@ export function MeetingListView({ variant }: Props) {
                           ) : null}
                           <p>
                             <span className="font-medium text-gray-800">{t('meeting_list_flow_summary_voting_period')}</span>{' '}
-                            {agmSgmStrict && !flowCanon ? (
+                            {agmSgmStrict && !disp ? (
                               notSetLbl
                             ) : (
                               <>

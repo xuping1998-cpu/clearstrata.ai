@@ -46,6 +46,44 @@ export function deriveCouncilElectionCanonFromScheduledAt(
   };
 }
 
+/** AGM/SGM display-only phases: with election = full 7+7+7; without = notice then voting (no empty nomination week). */
+export type AgmSgmCanonDisplayWindows = {
+  publicNoticeOpenIso: string;
+  publicNoticeCloseIso: string;
+  nominationOpenIso: string | null;
+  nominationCloseIso: string | null;
+  votingOpenIso: string;
+  votingCloseIso: string;
+};
+
+export function deriveAgmSgmCanonDisplayWindows(
+  scheduledIso: string | null | undefined,
+  hasElectionAgenda: boolean,
+): AgmSgmCanonDisplayWindows | null {
+  const full = deriveCouncilElectionCanonFromScheduledAt(scheduledIso);
+  if (!full) return null;
+  if (hasElectionAgenda) {
+    return {
+      publicNoticeOpenIso: full.publicNoticeOpenIso,
+      publicNoticeCloseIso: full.publicNoticeCloseIso,
+      nominationOpenIso: full.nominationOpenIso,
+      nominationCloseIso: full.nominationCloseIso,
+      votingOpenIso: full.votingOpenIso,
+      votingCloseIso: full.votingCloseIso,
+    };
+  }
+  const votingOpenIso = full.publicNoticeCloseIso;
+  const votingCloseIso = addDaysIso(votingOpenIso, ELECTION_FIXED_PHASE_DAYS);
+  return {
+    publicNoticeOpenIso: full.publicNoticeOpenIso,
+    publicNoticeCloseIso: full.publicNoticeCloseIso,
+    nominationOpenIso: null,
+    nominationCloseIso: null,
+    votingOpenIso,
+    votingCloseIso,
+  };
+}
+
 /** Compare DB or JSON timestamps that may differ by formatting; default ±90s. */
 export function electionTimestampsCanonEqual(
   stored: string | null | undefined,
