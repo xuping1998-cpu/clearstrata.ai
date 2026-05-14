@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useProperty } from '@/contexts/PropertyContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { StatusBadge } from '@/components/status/StatusBadge';
 import type {
@@ -17,9 +18,17 @@ import {
   extractElectionAgendaMeta,
   finalizeElectionMeta,
 } from '@/features/meetings/electionAgendaModel';
-import type { MeetingRow } from '@/features/meetings/api';
-import { councilMeetingVotingWindowFallback } from '@/features/meetings/meetingFormatModel';
+import { createMeeting, type MeetingRow } from '@/features/meetings/api';
+import {
+  councilMeetingVotingWindowFallback,
+  dbFormatFromUi,
+  embedGovernanceMeta,
+  embedWrittenRemoteCanonFromMeetingStart,
+  MEETING_SGM_REQUISITION_PERCENT_DEFAULT,
+  meetingSgmRequisitionRequiredUnits,
+} from '@/features/meetings/meetingFormatModel';
 import { stripCouncilMeetingBinding, resolveCouncilMeetingIdForOwnerVoteDescription } from '@/features/meetings/ownerVotingCouncil';
+import { deriveCouncilElectionCanonFromScheduledAt } from '@/features/meetings/electionTimelineMath';
 
 export type VoteChoice = 'yes' | 'no' | 'abstain';
 export type MeetingStatus = 'draft' | 'open' | 'closed' | 'archived';
@@ -665,6 +674,7 @@ function OwnerCouncilElectionBlock({
 
 export function OwnerVotingPage() {
   const { user, loading: authLoading } = useAuth();
+  const { currentPropertyId } = useProperty();
   const { language, t } = useLanguage();
   const zh = language !== 'en';
   const navigate = useNavigate();
@@ -676,12 +686,74 @@ export function OwnerVotingPage() {
   const [toast, setToast] = useState<{ kind: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [electionSubmitKey, setElectionSubmitKey] = useState<string | null>(null);
+  const [petitionCreating, setPetitionCreating] = useState(false);
 
   useEffect(() => {
     if (!toast) return;
-    const t = window.setTimeout(() => setToast(null), 4000);
-    return () => window.clearTimeout(t);
+    const timer = window.setTimeout(() => setToast(null), 4000);
+    return () => window.clearTimeout(timer);
   }, [toast]);
+
+  const handleStartOwnerSgmPetition = useCallback(async () => {
+    if (!user?.id || !currentPropertyId) {
+      setToast({
+        kind: 'error',
+        text: zh ? '请先登录并选择物业。' : 'Please sign in and select a property.',
+      });
+      return;
+    }
+    setPetitionCreating(true);
+    try {
+      const scheduledIso = new Date().toISOString();
+      const writtenBlock = embedWrittenRemoteCanonFromMeetingStart('', scheduledIso);
+      if (!writtenBlock) {
+        setToast({
+          kind: 'error',
+          text: zh ? '无法生成书面远程会议信息。' : 'Could not build written-remote meeting data.',
+        });
+        return;
+      }
+      const totalUnits = 0;
+      const signedUnits = 0;
+      const governance = {
+        v: 1 as const,
+        initiation_type: 'owner_requisitioned' as const,
+        total_voting_units: totalUnits,
+        required_percent: MEETING_SGM_REQUISITION_PERCENT_DEFAULT,
+        required_units: meetingSgmRequisitionRequiredUnits(totalUnits),
+        signed_units: signedUnits,
+      };
+      const descriptionZh = embedGovernanceMeta(writtenBlock, governance);
+      const canon = deriveCouncilElectionCanonFromScheduledAt(scheduledIso);
+      const { id, error } = await createMeeting({
+        propertyId: currentPropertyId,
+        fiscalYear: new Date().getFullYear(),
+        meetingType: 'sgm',
+        titleEn: 'Owner Requisitioned Remote Written SGM',
+        titleZh: '远程书面业主联署 SGM',
+        descriptionZh,
+        scheduledAt: scheduledIso,
+        votingOpenAt: canon?.votingOpenIso ?? null,
+        votingCloseAt: canon?.votingCloseIso ?? null,
+        meetingFormat: dbFormatFromUi('written_remote'),
+        status: 'draft',
+        createdBy: user.id,
+      });
+      if (error || !id) {
+        const msg =
+          error && typeof error === 'object' && 'message' in error && typeof (error as { message?: string }).message === 'string'
+            ? (error as { message: string }).message
+            : zh
+              ? '创建会议失败。'
+              : 'Failed to create meeting.';
+        setToast({ kind: 'error', text: msg });
+        return;
+      }
+      navigate(`/meetings/${id}`);
+    } finally {
+      setPetitionCreating(false);
+    }
+  }, [user, currentPropertyId, zh, navigate]);
 
   const reload = useCallback(async () => {
     if (!user?.id) {
@@ -1069,9 +1141,11 @@ export function OwnerVotingPage() {
         </p>
         <button
           type="button"
-          className="mt-4 rounded-lg bg-clearstrata-ui-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:opacity-60"
-          onClick={() => navigate('/meetings/new?kind=owner_sgm_remote')}
+          className="mt-4 inline-flex items-center justify-center rounded-lg bg-clearstrata-ui-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:opacity-60"
+          disabled={petitionCreating}
+          onClick={() => void handleStartOwnerSgmPetition()}
         >
+          {petitionCreating ? <Loader2 className="mr-2 h-4 w-4 animate-spin shrink-0" aria-hidden /> : null}
           {zh ? '发起联署' : 'Start petition'}
         </button>
       </div>

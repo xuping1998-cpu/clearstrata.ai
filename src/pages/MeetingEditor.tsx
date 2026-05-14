@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useProperty } from '../contexts/PropertyContext';
@@ -322,14 +322,12 @@ async function persistMeetingAgendaDrafts(options: {
 export function MeetingEditor() {
   const { meetingId } = useParams<{ meetingId?: string }>();
   const isEdit = Boolean(meetingId);
-  const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const { currentPropertyId, ready: propertyReady, roleInProperty } = useProperty();
   const { language, t } = useLanguage();
   const en = language === 'en';
   const navigate = useNavigate();
 
-  const presetOwnerSgmRemoteRef = useRef(false);
   const [form, setForm] = useState(defaultForm);
   const [fiscalYear] = useState(() => new Date().getFullYear());
   const [agendaItems, setAgendaItems] = useState<MeetingEditorAgendaRow[]>([]);
@@ -367,17 +365,6 @@ export function MeetingEditor() {
       editSnapshotsRef.current = new Map();
     }
   }, [isEdit]);
-
-  useEffect(() => {
-    if (isEdit) {
-      presetOwnerSgmRemoteRef.current = false;
-      return;
-    }
-    if (presetOwnerSgmRemoteRef.current) return;
-    if (searchParams.get('kind') !== 'owner_sgm_remote') return;
-    presetOwnerSgmRemoteRef.current = true;
-    setForm((f) => applyMeetingKindToForm('owner_sgm_remote', f));
-  }, [isEdit, searchParams]);
 
   useEffect(() => {
     if (!isEdit || !meetingId || !currentPropertyId || !user) {
