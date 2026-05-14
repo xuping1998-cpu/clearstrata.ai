@@ -2,7 +2,8 @@
  * Meeting invitation emails via Resend.
  *
  * Secrets (Supabase Dashboard → Project Settings → Edge Functions → Secrets):
- * - APP_BASE_URL (optional): public app origin; path/query stripped. Empty/unset → https://clearstrata.ai
+ * - APP_BASE_URL (optional): public app origin; path/query stripped. Empty/unset or marketing host
+ *   `clearstrata.ai` → https://clearstrataaiserena.vercel.app (current test app).
  * - RESEND_API_KEY (required)
  * - From address is fixed in code: ClearStrata <noreply@clearstrata.ai> (must be verified in Resend).
  * Redeploy after changing secrets: `supabase functions deploy send-meeting-invite`
@@ -19,30 +20,35 @@ import { Resend } from "npm:resend@4";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
   "Access-Control-Allow-Headers":
-    "Content-Type, Authorization, X-Client-Info, Apikey",
+    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-function normalizeBase(raw?: string | null): string {
-  const fallback = "https://clearstrata.ai";
+const APP_BASE_DEFAULT_ORIGIN = "https://clearstrataaiserena.vercel.app";
 
-  if (!raw) return fallback;
+/** Public web origin for email links; never points marketing `clearstrata.ai` at test app. */
+function normalizeAppBaseUrl(raw?: string | null): string {
+  const value = (raw ?? "").trim().replace(/[\u200B-\u200D\uFEFF]/g, "");
+  if (!value) return APP_BASE_DEFAULT_ORIGIN;
 
-  const cleaned = raw.trim().replace(/[\u200B-\u200D\uFEFF]/g, "");
-
-  if (!cleaned) return fallback;
-
-  const withProtocol = /^https?:\/\//i.test(cleaned)
-    ? cleaned
-    : `https://${cleaned}`;
+  const withProtocol =
+    value.startsWith("http://") || value.startsWith("https://")
+      ? value
+      : `https://${value}`;
 
   try {
     const url = new URL(withProtocol);
+    const host = url.hostname.replace(/^www\./, "");
+
+    if (host === "clearstrata.ai") {
+      return APP_BASE_DEFAULT_ORIGIN;
+    }
+
     return url.origin;
   } catch {
     console.warn("[send-meeting-invite] invalid APP_BASE_URL:", raw);
-    return fallback;
+    return APP_BASE_DEFAULT_ORIGIN;
   }
 }
 
@@ -161,6 +167,7 @@ interface InviteEmailHtmlParams {
   organizerName: string;
   inviteLink: string;
   signInUrl: string;
+  logoUrl: string;
 }
 
 function buildEmailHtml(p: InviteEmailHtmlParams): string {
@@ -174,6 +181,7 @@ function buildEmailHtml(p: InviteEmailHtmlParams): string {
     organizerName,
     inviteLink,
     signInUrl,
+    logoUrl,
   } = p;
 
   const safe = {
@@ -183,6 +191,7 @@ function buildEmailHtml(p: InviteEmailHtmlParams): string {
     durationText: escapeHtml(durationText),
     locationText: escapeHtml(locationText),
     organizerName: escapeHtml(organizerName),
+    logoUrl: escapeHtml(logoUrl),
   };
 
   if (locale === "en") {
@@ -202,7 +211,7 @@ function buildEmailHtml(p: InviteEmailHtmlParams): string {
             <td style="background:#16a34a;padding:16px 20px;text-align:center;">
               <div style="margin-bottom:12px;">
                 <img
-                 https://clearstrata.ai/logo-email-final.png
+                  src="${safe.logoUrl}"
                   alt="ClearStrata"
                   style="height:48px;object-fit:contain;display:block;margin:0 auto;"
                 />
@@ -292,7 +301,7 @@ function buildEmailHtml(p: InviteEmailHtmlParams): string {
             <td style="background:#16a34a;padding:16px 20px;text-align:center;">
               <div style="margin-bottom:12px;">
                 <img
-                   src="https://clearstrata.ai/logo-email-final.png"
+                  src="${safe.logoUrl}"
                   alt="ClearStrata"
                   style="height:48px;object-fit:contain;display:block;margin:0 auto;"
                 />
@@ -366,6 +375,17 @@ function buildEmailHtml(p: InviteEmailHtmlParams): string {
 </html>`;
 }
 
+/** JSON API responses (always CORS + Content-Type for browser invoke). */
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+      ...corsHeaders,
+    },
+  });
+}
+
 /** Unified JSON body for clients: always includes ok, message, detail. */
 function apiResponse(
   ok: boolean,
@@ -373,10 +393,7 @@ function apiResponse(
   detail: unknown,
   status: number,
 ): Response {
-  return new Response(JSON.stringify({ ok, message, detail }), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
+  return json({ ok, message, detail }, status);
 }
 
 /** Plain JSON.stringify(err) drops Error fields; use this for logs + response detail. */
@@ -408,16 +425,13 @@ function sendEmailFailedResponse(
   detail: unknown,
   status: number,
 ): Response {
-  return new Response(
-    JSON.stringify({
+  return json(
+    {
       ok: false,
       message,
       detail: unknownToSerializable(detail),
-    }),
-    {
-      status,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
     },
+    status,
   );
 }
 
@@ -451,7 +465,10 @@ async function upsertInvitationDelivery(
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { status: 200, headers: corsHeaders });
+    return new Response("ok", {
+      status: 200,
+      headers: corsHeaders,
+    });
   }
 
   try {
@@ -562,7 +579,14 @@ Deno.serve(async (req: Request) => {
       ? (profile.full_name_en || profile.full_name_zh || "Owner")
       : (profile.full_name_zh || profile.full_name_en || "业主");
 
-    const base = normalizeBase(Deno.env.get("APP_BASE_URL"));
+    const normalizedBaseUrl = normalizeAppBaseUrl(Deno.env.get("APP_BASE_URL"));
+    const logoUrl = `${normalizedBaseUrl}/logo-email.png`;
+    const meetingUrl = `${normalizedBaseUrl}/meetings/${meeting_id}?entry=invite`;
+    const signInUrl =
+      `${normalizedBaseUrl}/login?redirect=${
+        encodeURIComponent(`/meetings/${meeting_id}?entry=invite`)
+      }`;
+    const inviteLink = meetingUrl;
 
     const inviteToken = crypto.randomUUID();
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
@@ -577,14 +601,12 @@ Deno.serve(async (req: Request) => {
       return apiResponse(false, "Could not create invite token", { detail: tokenInsErr.message }, 500);
     }
 
-    const inviteLink = `${base}/invite?token=${encodeURIComponent(inviteToken)}`;
-    const signInUrl = `${base}/login`;
-
     console.log("[send-meeting-invite] base url debug:", {
       raw: Deno.env.get("APP_BASE_URL"),
-      base,
-      inviteLink,
+      normalizedBaseUrl,
+      meetingUrl,
       signInUrl,
+      logoUrl,
     });
 
     console.log("meeting raw:", meeting);
@@ -611,9 +633,10 @@ Deno.serve(async (req: Request) => {
     }
 
     console.log("[send-meeting-invite] email fields", {
-      base,
-      inviteLink,
+      normalizedBaseUrl,
+      meetingUrl,
       signInUrl,
+      logoUrl,
       meetingTitle,
       formattedTime,
     });
@@ -628,6 +651,7 @@ Deno.serve(async (req: Request) => {
       organizerName,
       inviteLink,
       signInUrl,
+      logoUrl,
     });
 
     const email = profile.email as string;
