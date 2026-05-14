@@ -95,6 +95,85 @@ const defaultForm = {
   signed_units: '',
 };
 
+/**
+ * Single editor dropdown; maps to existing `MeetingType` + governance `MeetingInitiationType` + `MeetingFormatUi`.
+ * Product "owners" → `owner_requisitioned`; "council" (initiation) → `council_initiated`; remote written → `written_remote`.
+ * DB has no `meeting` meeting_type — generic council meeting uses `council`.
+ */
+type MeetingKindUi =
+  | 'owner_sgm_remote'
+  | 'council_sgm_remote'
+  | 'council_agm_remote'
+  | 'council_meeting_remote'
+  | 'council_meeting_hybrid';
+
+function inferMeetingKindUi(f: typeof defaultForm): MeetingKindUi {
+  const written = isWrittenRemoteUi(f.meeting_format_ui);
+  const hybrid = f.meeting_format_ui === 'hybrid';
+
+  if (hybrid && f.meeting_type === 'council' && f.initiation_type === 'council_initiated') {
+    return 'council_meeting_hybrid';
+  }
+  if (hybrid && f.meeting_type === 'council') {
+    return 'council_meeting_hybrid';
+  }
+
+  if (written) {
+    if (f.meeting_type === 'sgm' && f.initiation_type === 'owner_requisitioned') return 'owner_sgm_remote';
+    if (f.meeting_type === 'sgm') return 'council_sgm_remote';
+    if (f.meeting_type === 'agm') return 'council_agm_remote';
+    if (f.meeting_type === 'council') return 'council_meeting_remote';
+  }
+
+  if (f.meeting_type === 'agm') return 'council_agm_remote';
+  if (f.meeting_type === 'sgm' && f.initiation_type === 'owner_requisitioned') return 'owner_sgm_remote';
+  if (f.meeting_type === 'sgm') return 'council_sgm_remote';
+  return 'council_meeting_hybrid';
+}
+
+function applyMeetingKindToForm(kind: MeetingKindUi, prev: typeof defaultForm): typeof defaultForm {
+  let meeting_type: MeetingType;
+  let initiation_type: MeetingInitiationType;
+  let meeting_format_ui: MeetingFormatUi;
+  switch (kind) {
+    case 'owner_sgm_remote':
+      meeting_type = 'sgm';
+      initiation_type = 'owner_requisitioned';
+      meeting_format_ui = 'written_remote';
+      break;
+    case 'council_sgm_remote':
+      meeting_type = 'sgm';
+      initiation_type = 'council_initiated';
+      meeting_format_ui = 'written_remote';
+      break;
+    case 'council_agm_remote':
+      meeting_type = 'agm';
+      initiation_type = 'council_initiated';
+      meeting_format_ui = 'written_remote';
+      break;
+    case 'council_meeting_remote':
+      meeting_type = 'council';
+      initiation_type = 'council_initiated';
+      meeting_format_ui = 'written_remote';
+      break;
+    case 'council_meeting_hybrid':
+    default:
+      meeting_type = 'council';
+      initiation_type = 'council_initiated';
+      meeting_format_ui = 'hybrid';
+      break;
+  }
+  let scheduled_at = prev.scheduled_at;
+  if (!isWrittenRemoteUi(prev.meeting_format_ui) && isWrittenRemoteUi(meeting_format_ui)) {
+    scheduled_at = prev.scheduled_at.trim() ? prev.scheduled_at : nowDatetimeLocalSlice();
+  }
+  let description_zh = prev.description_zh;
+  if (isWrittenRemoteUi(prev.meeting_format_ui) && !isWrittenRemoteUi(meeting_format_ui)) {
+    description_zh = stripWrittenRemoteMeta(prev.description_zh);
+  }
+  return { ...prev, meeting_type, initiation_type, meeting_format_ui, scheduled_at, description_zh };
+}
+
 function buildGovernanceMetaForSave(form: typeof defaultForm): MeetingGovernanceMetaV1 {
   const init = form.initiation_type;
   if (init !== 'owner_requisitioned') {
@@ -692,13 +771,17 @@ export function MeetingEditor() {
         <div>
           <label className="block text-sm font-medium text-gray-700">{en ? 'Meeting type' : '会议类型'}</label>
           <select
-            value={form.meeting_type}
-            onChange={(e) => setForm((f) => ({ ...f, meeting_type: e.target.value as MeetingType }))}
+            value={inferMeetingKindUi(form)}
+            onChange={(e) =>
+              setForm((f) => applyMeetingKindToForm(e.target.value as MeetingKindUi, f))
+            }
             className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-900"
           >
-            <option value="council">{en ? 'Council' : '业委会'}</option>
-            <option value="agm">AGM</option>
-            <option value="sgm">SGM</option>
+            <option value="owner_sgm_remote">{en ? 'Owner co-signed SGM (remote written)' : '远程书面业主联署 SGM'}</option>
+            <option value="council_sgm_remote">{en ? 'Council SGM (remote written)' : '远程书面业委会 SGM'}</option>
+            <option value="council_agm_remote">{en ? 'Council AGM (remote written)' : '远程书面业委会 AGM'}</option>
+            <option value="council_meeting_remote">{en ? 'Council meeting (remote written)' : '远程书面业委会会议'}</option>
+            <option value="council_meeting_hybrid">{en ? 'Hybrid council meeting' : '混合业委会会议'}</option>
           </select>
         </div>
 
@@ -742,24 +825,6 @@ export function MeetingEditor() {
           </div>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700">{t('meeting_initiation_type')}</label>
-          <select
-            value={form.initiation_type}
-            onChange={(e) =>
-              setForm((f) => ({
-                ...f,
-                initiation_type: e.target.value as MeetingInitiationType,
-              }))
-            }
-            className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-900"
-          >
-            <option value="council_initiated">{t('meeting_initiation_council')}</option>
-            <option value="owner_requisitioned">{t('meeting_initiation_owner_requisitioned')}</option>
-            <option value="annual_required">{t('meeting_initiation_annual_required')}</option>
-          </select>
-        </div>
-
         {form.initiation_type === 'owner_requisitioned' ? (
           <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-4 space-y-3">
             <p className="text-sm font-medium text-gray-800">{t('meeting_initiation_owner_requisitioned')}</p>
@@ -800,38 +865,6 @@ export function MeetingEditor() {
             </p>
           </div>
         ) : null}
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700">{en ? 'Meeting format' : '会议形式'}</label>
-          <select
-            value={form.meeting_format_ui}
-            onChange={(e) => {
-              const v = e.target.value as MeetingFormatUi;
-              setForm((f) => {
-                if (!isWrittenRemoteUi(f.meeting_format_ui) && isWrittenRemoteUi(v)) {
-                  const discOpen = f.scheduled_at.trim() ? f.scheduled_at : nowDatetimeLocalSlice();
-                  return {
-                    ...f,
-                    meeting_format_ui: v,
-                    scheduled_at: discOpen,
-                  };
-                }
-                if (isWrittenRemoteUi(f.meeting_format_ui) && !isWrittenRemoteUi(v)) {
-                  return { ...f, meeting_format_ui: v, description_zh: stripWrittenRemoteMeta(f.description_zh) };
-                }
-                return { ...f, meeting_format_ui: v };
-              });
-            }}
-            className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-900"
-          >
-            <option value="hybrid">{t('meeting_format_editor_option_hybrid')}</option>
-            <option value="written_remote">{t('meeting_format_editor_option_written_remote')}</option>
-          </select>
-          <div className="mt-2 space-y-2 rounded-lg border border-gray-100 bg-gray-50/90 px-3 py-2 text-xs text-gray-700 leading-relaxed">
-            <p>{t('meeting_format_editor_legend_written')}</p>
-            <p>{t('meeting_format_editor_legend_hybrid')}</p>
-          </div>
-        </div>
 
         {syncTimeModes ? (
           <div>
