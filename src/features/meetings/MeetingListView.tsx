@@ -284,9 +284,7 @@ export function MeetingListView({ variant }: Props) {
     );
   }
 
-  const title = variant === 'voting' ? t('nav_owner_initiated_sgm') : t('nav_meetings_records');
-  const heroSubtitle =
-    variant === 'voting' ? t('voting_owner_sgm_page_subtitle') : t('meetings_page_subtitle');
+  const title = t('nav_meetings_records');
 
   /** 单会议详情：两 variant 各自固定前缀，统一透传 propertyId（有则必带）。 */
   const hrefForMeeting = (meetingId: string | null | undefined): string | null => {
@@ -304,8 +302,7 @@ export function MeetingListView({ variant }: Props) {
     ? `/voting?${new URLSearchParams({ propertyId: currentPropertyId }).toString()}`
     : '/voting';
 
-  const primaryCtaLabel =
-    variant === 'voting' ? t('nav_owner_initiated_sgm') : en ? 'Enter meeting voting' : '进入会议投票';
+  const primaryCtaLabel = en ? 'Enter meeting voting' : '进入会议投票';
 
   const rowViewResultsLabel = en ? 'View results' : '查看结果';
 
@@ -325,7 +322,7 @@ export function MeetingListView({ variant }: Props) {
           <Users size={32} />
           <h1 className="text-3xl font-bold">{title}</h1>
         </div>
-        <p className="text-white/90 ml-14 max-w-7xl mx-auto">{heroSubtitle}</p>
+        <p className="text-white/90 ml-14 max-w-7xl mx-auto">{t('meetings_page_subtitle')}</p>
       </div>
 
       <div className="max-w-7xl mx-auto p-6 space-y-6">
@@ -337,7 +334,12 @@ export function MeetingListView({ variant }: Props) {
               to="/owner-voting"
               className="inline-flex items-center rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-900 hover:bg-violet-100"
             >
-              {en ? 'My voting' : '我的投票'}
+              <div className="flex flex-col items-start leading-tight">
+                <span className="text-sm font-semibold">{en ? 'Owner-initiated SGM' : '业主发起 SGM'}</span>
+                <span className="mt-1 text-xs font-normal text-violet-700">
+                  {en ? 'Owner-initiated SGM' : '在业委会不作为时，业主可发起联署 SGM'}
+                </span>
+              </div>
             </Link>
           </div>
         ) : null}

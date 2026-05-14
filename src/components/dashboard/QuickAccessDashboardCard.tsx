@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom';
 import type { LucideIcon } from 'lucide-react';
 import { CalendarDays, ClipboardList, FileSearch, ShoppingCart } from 'lucide-react';
-import { useLanguage } from '@/contexts/LanguageContext';
 
 export type QuickAccessDashboardCardProps = {
   langEn: boolean;
@@ -69,7 +68,6 @@ const TILES: readonly QuickTile[] = [
  * 首页「快捷入口」：四宫格可点击卡片，与重大公告同属治理首页套件。
  */
 export function QuickAccessDashboardCard({ langEn, meetingsHref }: QuickAccessDashboardCardProps) {
-  const { t } = useLanguage();
   const title = langEn ? 'Quick Access' : '快捷入口';
 
   return (
@@ -90,14 +88,7 @@ export function QuickAccessDashboardCard({ langEn, meetingsHref }: QuickAccessDa
               : to === '__OWNER_REQUEST_TAB__'
                 ? MANAGER_TASKS_OWNER_REQUEST_TAB
                 : to;
-          const label =
-            id === 'meetings-voting'
-              ? meetingsHref === '/owner-voting'
-                ? t('nav_owner_initiated_sgm')
-                : t('nav_meetings_records')
-              : langEn
-                ? labelEn
-                : labelZh;
+          const label = langEn ? labelEn : labelZh;
           return (
             <Link
               key={id}

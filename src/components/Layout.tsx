@@ -161,19 +161,13 @@ export function Layout({ children }: LayoutProps) {
         { path: '/demo/compliance', icon: FileText, label: t('nav_help_compliance'), iconBg: 'bg-indigo-500' },
       ] as Array<{ path: string; icon: LucideIcon; label: string; iconBg: string }>;
     }
-    const meetingsNav = meetingsNavHref(roleInProperty);
     return [
       { path: '/owner-info', icon: Users, label: t('nav_owner_info'), iconBg: 'bg-sky-500' },
       { path: '/manager-tasks', icon: Briefcase, label: t('nav_disputes'), iconBg: 'bg-clearstrata-brand-700' },
       { path: '/procurement', icon: ShoppingCart, label: t('nav_procurement'), iconBg: 'bg-blue-500' },
       { path: '/compliance', icon: FileText, label: t('nav_help_compliance'), iconBg: 'bg-indigo-500' },
       { path: '/finance', icon: DollarSign, label: t('nav_finance'), iconBg: 'bg-clearstrata-brand-600' },
-      {
-        path: meetingsNav,
-        icon: CalendarDays,
-        label: meetingsNav === '/meetings' ? t('nav_meetings_records') : t('nav_owner_initiated_sgm'),
-        iconBg: 'bg-violet-600',
-      },
+      { path: meetingsNavHref(roleInProperty), icon: CalendarDays, label: t('nav_meetings_records'), iconBg: 'bg-violet-600' },
     ] as Array<{ path: string; icon: LucideIcon; label: string; iconBg: string }>;
   }, [t, isDemoMode, isDemoPropertyMock, location.pathname, language, roleInProperty]);
 

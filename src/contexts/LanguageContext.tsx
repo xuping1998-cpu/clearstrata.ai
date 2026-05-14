@@ -77,13 +77,6 @@ const translations: Record<string, Record<Language, string>> = {
   nav_property_settings: { en: 'Property settings', zh: '物业设置' },
   nav_audit_log: { en: 'Audit log', zh: '审计日志' },
   nav_meetings_records: { en: 'Meetings & Voting', zh: '会议投票' },
-  /** Owner hub: sidebar + dashboard tile + /voting list CTA (same route as before; copy only). */
-  nav_owner_initiated_sgm: { en: 'Owner-initiated SGM', zh: '业主发起 SGM' },
-  /** Hero subtitle on `/voting` (MeetingListView variant voting). */
-  voting_owner_sgm_page_subtitle: {
-    en: 'When the council fails to act, owners may pursue a co-signed SGM. Owner-initiated SGM.',
-    zh: '在业委会不作为时，业主可发起联署 SGM / Owner-initiated SGM',
-  },
 
   meetings_page_subtitle: {
     en:
