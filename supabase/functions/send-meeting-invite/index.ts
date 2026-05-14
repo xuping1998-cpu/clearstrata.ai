@@ -446,6 +446,7 @@ async function upsertInvitationDelivery(
   if (error) {
     console.error("send-meeting-invite: invitation upsert failed", error);
   }
+  return { error };
 }
 
 Deno.serve(async (req: Request) => {
@@ -700,13 +701,24 @@ Deno.serve(async (req: Request) => {
       }
 
       const emailId = res.data?.id;
-      await upsertInvitationDelivery(supabaseAdmin, {
+      const { error: invDeliveryErr } = await upsertInvitationDelivery(supabaseAdmin, {
         meeting_id,
         property_id,
         recipient_user_id: user_id,
         email,
         delivery_status: "sent",
       });
+      if (!invDeliveryErr) {
+        const noticeSentIso = new Date().toISOString();
+        const { error: noticeSentErr } = await supabaseAdmin
+          .from("meetings")
+          .update({ notice_sent_at: noticeSentIso })
+          .eq("id", meeting_id)
+          .is("notice_sent_at", null);
+        if (noticeSentErr) {
+          console.warn("[send-meeting-invite] meetings.notice_sent_at update failed (non-fatal)", noticeSentErr);
+        }
+      }
       console.log("[send-meeting-invite] success", { email_id: emailId });
       return apiResponse(true, "Email sent", { email_id: emailId }, 200);
     } catch (err) {
