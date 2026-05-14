@@ -402,6 +402,22 @@ const translations: Record<string, Record<Language, string>> = {
   meeting_format_live_remote: { en: 'Live Remote', zh: '实时远程会议' },
   meeting_format_hybrid: { en: 'Remote Written Meeting', zh: '远程书面会议' },
   meeting_format_written_remote: { en: 'Remote Written Meeting', zh: '远程书面会议' },
+  /** MeetingEditor dropdown — two user-visible buckets; values unchanged. */
+  meeting_format_editor_option_in_person: { en: 'Hybrid Meeting', zh: '混合会议' },
+  meeting_format_editor_option_live_remote: { en: 'Hybrid Meeting', zh: '混合会议' },
+  meeting_format_editor_option_hybrid: { en: 'Hybrid Meeting', zh: '混合会议' },
+  meeting_format_editor_option_written_remote: {
+    en: 'Remote Written Meeting (Recommended)',
+    zh: '远程书面会议（推荐）',
+  },
+  meeting_format_editor_legend_written: {
+    en: 'Remote Written Meeting (Recommended): the most transparent option and best suited for owners participating from anywhere in the world.',
+    zh: '远程书面会议（推荐）：最透明、最适合全球业主参与。',
+  },
+  meeting_format_editor_legend_hybrid: {
+    en: 'Hybrid Meeting: attend at a fixed time, in person, by Zoom, or both.',
+    zh: '混合会议：固定时间参加（现场或 Zoom，或并行）。',
+  },
 
   meeting_time_local: { en: 'Meeting time', zh: '会议时间（本地）' },
   discussion_opens: { en: 'Public notice opens', zh: '公示开放时间' },

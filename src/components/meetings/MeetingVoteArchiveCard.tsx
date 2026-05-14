@@ -8,7 +8,7 @@ import {
 } from '@/components/meetings/meetingVoteArchiveConstants';
 import type { MeetingSupportingDocumentRow } from '@/features/meetings/meetingDocumentsRead';
 import { meetingTitleZhFirst, type MeetingRow, type OwnerVoteMeetingLite } from '@/features/meetings/api';
-import { labelFormat, labelMeetingType, meetingUiStrings } from '@/features/meetings/labels';
+import { labelMeetingFormatUiDisplay, labelMeetingType, meetingUiStrings } from '@/features/meetings/labels';
 import {
   councilMeetingVotingWindowFallback,
   councilWrittenRemoteWindows,
@@ -114,9 +114,9 @@ export function MeetingVoteArchiveCard({
       meetingTitleZhFirst(meeting)?.trim() ||
       (en ? meetingUiStrings.untitled.en : meetingUiStrings.untitled.zh);
     const typeLabel = orNotSet(labelMeetingType(meeting.meeting_type, en));
-    const formatLabel = orNotSet(
-      labelFormat(meeting.meeting_format, en, { descriptionZh: meeting.description_zh }),
-    );
+    const fd = labelMeetingFormatUiDisplay(meeting, en);
+    const formatCore = fd.secondary ? `${fd.primary}\n${fd.secondary}` : fd.primary;
+    const formatLabel = orNotSet(formatCore);
     const dateStr =
       fmtArchiveTs(meeting.scheduled_at, en) ??
       notSet;
@@ -406,7 +406,7 @@ export function MeetingVoteArchiveCard({
               <p>
                 <span className="font-medium text-gray-900">{c.meetingFormat}</span>
                 <br />
-                {noticePayload.formatLabel}
+                <span className="whitespace-pre-wrap">{noticePayload.formatLabel}</span>
               </p>
               <p>
                 <span className="font-medium text-gray-900">{c.meetingDate}</span>

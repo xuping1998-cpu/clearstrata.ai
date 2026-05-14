@@ -1,4 +1,5 @@
-import type { MeetingFormat, MeetingStatus, MeetingType, VoteRule, VoteStatus } from './api';
+import type { MeetingFormat, MeetingRow, MeetingStatus, MeetingType, VoteRule, VoteStatus } from './api';
+import { meetingFormatUiFromRow } from './meetingFormatModel';
 
 const meetingTypeZh: Record<MeetingType, string> = {
   agm: 'AGM',
@@ -82,6 +83,39 @@ export function labelFormat(
   const k = fmt as MeetingFormat;
   if (k in formatZh) return en ? formatEn[k] : formatZh[k];
   return fmt;
+}
+
+/** User-facing meeting format (two buckets); uses `meetingFormatUiFromRow` — DB column + written-remote meta. */
+export type MeetingFormatUiDisplay = {
+  primary: string;
+  /** Hybrid / live-remote / in-person bucket only; null for written-remote. */
+  secondary: string | null;
+};
+
+export function labelMeetingFormatUiDisplay(
+  row: Pick<MeetingRow, 'meeting_format' | 'description_zh'>,
+  languageEn: boolean,
+): MeetingFormatUiDisplay {
+  const ui = meetingFormatUiFromRow(row);
+  if (ui === 'written_remote') {
+    return {
+      primary: languageEn ? 'Remote Written Meeting (Recommended)' : '远程书面会议（推荐）',
+      secondary: null,
+    };
+  }
+  return {
+    primary: languageEn ? 'Hybrid Meeting' : '混合会议',
+    secondary: languageEn
+      ? 'Attend at a fixed time, in person, by Zoom, or both.'
+      : '固定时间参加（现场或 Zoom，或并行）',
+  };
+}
+
+export function labelMeetingFormatUiPrimary(
+  row: Pick<MeetingRow, 'meeting_format' | 'description_zh'>,
+  languageEn: boolean,
+): string {
+  return labelMeetingFormatUiDisplay(row, languageEn).primary;
 }
 
 export function labelStatus(t: string, en: boolean): string {

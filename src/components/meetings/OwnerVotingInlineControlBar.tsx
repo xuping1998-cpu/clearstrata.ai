@@ -1,11 +1,9 @@
 import type { ReactNode } from 'react';
 import { evaluateOwnerVoteOpenGate, type MeetingRow, type OwnerVoteMeetingLite } from '@/features/meetings/api';
-import { labelFormat } from '@/features/meetings/labels';
+import { labelMeetingFormatUiDisplay } from '@/features/meetings/labels';
 import {
   councilMeetingVotingWindowFallback,
   councilWrittenRemoteWindows,
-  isWrittenRemoteUi,
-  meetingFormatUiFromRow,
 } from '@/features/meetings/meetingFormatModel';
 import {
   agmSgmScheduledNotSetLabel,
@@ -80,8 +78,7 @@ export function OwnerVotingInlineControlBar({
   electionAgendaCount = 0,
 }: OwnerVotingInlineControlBarProps) {
   const en = languageEn;
-  const uiFormat = meetingFormatUiFromRow(meeting);
-  const written = isWrittenRemoteUi(uiFormat);
+  const formatUiDisp = labelMeetingFormatUiDisplay(meeting, en);
   const noticePeriodLabel = en ? 'Public Notice / Discussion Period' : '公示 / 讨论期';
   const ov = meta.meeting;
   const agmSgmStrict = isStrictAgmOrSgmMeeting(meeting);
@@ -178,9 +175,6 @@ export function OwnerVotingInlineControlBar({
     }
   }
 
-  const genericFormatLabel = labelFormat(meeting.meeting_format, en, { descriptionZh: meeting.description_zh });
-  const formatDisplay = written ? t('meeting_format_written_remote_display') : genericFormatLabel;
-
   const resolutionsShown =
     ov && !meta.loading ? meta.resolutionCount : Math.max(0, Number(councilFormalResolutionAgendaCount) || 0);
   /** totalCandidates = Σ candidates.length across election agenda metas (buildElectionNominationRibbon). */
@@ -204,7 +198,12 @@ export function OwnerVotingInlineControlBar({
       <div className="space-y-3">
         {sectionCard(
           t('meeting_ov_meeting_format_row'),
-          <p className="text-gray-900 font-medium">{formatDisplay}</p>,
+          <>
+            <p className="text-gray-900 font-medium">{formatUiDisp.primary}</p>
+            {formatUiDisp.secondary ? (
+              <p className="text-xs text-gray-600 mt-1 leading-relaxed">{formatUiDisp.secondary}</p>
+            ) : null}
+          </>,
         )}
 
         {showNoticeSection

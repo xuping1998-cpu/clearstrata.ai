@@ -516,11 +516,15 @@ export function MeetingEditor() {
             }}
             className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-900"
           >
-            <option value="in_person">{t('meeting_format_in_person')}</option>
-            <option value="live_remote">{t('meeting_format_live_remote')}</option>
-            <option value="hybrid">{t('meeting_format_hybrid')}</option>
-            <option value="written_remote">{t('meeting_format_written_remote')}</option>
+            <option value="in_person">{t('meeting_format_editor_option_in_person')}</option>
+            <option value="live_remote">{t('meeting_format_editor_option_live_remote')}</option>
+            <option value="hybrid">{t('meeting_format_editor_option_hybrid')}</option>
+            <option value="written_remote">{t('meeting_format_editor_option_written_remote')}</option>
           </select>
+          <div className="mt-2 space-y-2 rounded-lg border border-gray-100 bg-gray-50/90 px-3 py-2 text-xs text-gray-700 leading-relaxed">
+            <p>{t('meeting_format_editor_legend_written')}</p>
+            <p>{t('meeting_format_editor_legend_hybrid')}</p>
+          </div>
         </div>
 
         {syncTimeModes ? (

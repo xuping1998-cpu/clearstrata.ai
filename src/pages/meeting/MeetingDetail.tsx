@@ -46,7 +46,15 @@ import { supabase } from '../../lib/supabase';
 import { shouldDeferAutoPropertyRedirects } from '../../lib/authRecovery';
 import { samePropertyId } from '../../lib/propertyIdMatch';
 import { canManagePropertyMeetings } from '@/lib/meetingPermissions';
-import { labelFormat, labelMeetingType, labelStatus, labelVoteRule, labelVoteStatus, meetingUiStrings } from '../../features/meetings/labels';
+import {
+  labelMeetingFormatUiDisplay,
+  labelMeetingFormatUiPrimary,
+  labelMeetingType,
+  labelStatus,
+  labelVoteRule,
+  labelVoteStatus,
+  meetingUiStrings,
+} from '../../features/meetings/labels';
 import {
   analyzeCouncilElectionTimeline,
   buildElectionNominationRibbon,
@@ -1231,7 +1239,7 @@ export function MeetingDetail() {
                     {labelMeetingType(meeting.meeting_type, en)}
                   </span>
                   <span className="px-2.5 py-0.5 rounded-md text-xs font-medium bg-white/25 text-white ring-1 ring-white/40 shadow-sm">
-                    {labelFormat(meeting.meeting_format, en, { descriptionZh: meeting.description_zh })}
+                    {labelMeetingFormatUiPrimary(meeting, en)}
                   </span>
                 </div>
                 <h1 className="text-2xl sm:text-3xl font-bold text-white leading-snug break-words">
@@ -1372,7 +1380,19 @@ export function MeetingDetail() {
                 ) : null}
                 <div>
                   <dt className="text-gray-500">{en ? meetingUiStrings.format.en : meetingUiStrings.format.zh}</dt>
-                  <dd>{labelFormat(meeting.meeting_format, en, { descriptionZh: meeting.description_zh })}</dd>
+                  <dd>
+                    {(() => {
+                      const fd = labelMeetingFormatUiDisplay(meeting, en);
+                      return (
+                        <>
+                          <span className="font-medium text-gray-900">{fd.primary}</span>
+                          {fd.secondary ? (
+                            <p className="text-xs text-gray-500 mt-1 leading-relaxed">{fd.secondary}</p>
+                          ) : null}
+                        </>
+                      );
+                    })()}
+                  </dd>
                 </div>
                 <div>
                   <dt className="text-gray-500">{en ? 'Notice sent' : '通知发出时间'}</dt>

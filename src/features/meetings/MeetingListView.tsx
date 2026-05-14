@@ -14,7 +14,7 @@ import {
   type MeetingAgendaItemsListLiteRow,
   type MeetingRow,
 } from './api';
-import { labelFormat, labelMeetingType, labelStatus, meetingUiStrings } from './labels';
+import { labelMeetingFormatUiDisplay, labelMeetingType, labelStatus, meetingUiStrings } from './labels';
 import {
   councilMeetingVotingWindowFallback,
   councilWrittenRemoteWindows,
@@ -425,6 +425,8 @@ export function MeetingListView({ variant }: Props) {
                   : 'cursor-not-allowed opacity-70',
               ].join(' ');
 
+              const formatUiDisp = labelMeetingFormatUiDisplay(m, en);
+
               const inner = (
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch sm:justify-between sm:gap-4">
                   <div className="min-w-0 flex-1">
@@ -433,12 +435,15 @@ export function MeetingListView({ variant }: Props) {
                         {labelMeetingType(m.meeting_type, en)}
                       </span>
                       <span className="px-2 py-0.5 rounded-full text-xs font-medium border border-clearstrata-ui-softBorder bg-clearstrata-brand-50 text-clearstrata-brand-800">
-                        {labelFormat(m.meeting_format, en, { descriptionZh: m.description_zh })}
+                        {formatUiDisp.primary}
                       </span>
                       <span className="px-2 py-0.5 rounded-full text-xs font-semibold border border-clearstrata-ui-softBorder bg-clearstrata-brand-100 text-clearstrata-brand-800">
                         {labelStatus(m.status, en)}
                       </span>
                     </div>
+                    {formatUiDisp.secondary ? (
+                      <p className="text-[10px] text-gray-500 leading-snug mb-1 max-w-xl">{formatUiDisp.secondary}</p>
+                    ) : null}
                     <h2 className="text-lg font-semibold text-gray-900 truncate group-hover:text-clearstrata-brand-700 transition-colors">
                       {meetingTitleZhFirst(m) || (en ? meetingUiStrings.untitled.en : meetingUiStrings.untitled.zh)}
                     </h2>
