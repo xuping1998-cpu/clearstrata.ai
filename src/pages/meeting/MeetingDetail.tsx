@@ -193,7 +193,12 @@ async function meetingDetailAgendaDeleteBlockReason(params: {
       .select('id', { count: 'exact', head: true })
       .eq('property_id', propertyId)
       .eq('resolution_id', matchedRes.id);
-    if (error) console.warn('[MeetingDetail] owner_vote_ballots count (delete)', error.message);
+    if (error) {
+      console.warn('[MeetingDetail] owner_vote_ballots count (delete)', error.message);
+      return en
+        ? 'Could not verify owner-voting ballots. Try again later.'
+        : '无法确认业主表决投票记录，请稍后重试。';
+    }
     const n = typeof count === 'number' ? count : 0;
     if (n > 0) {
       return en
@@ -696,9 +701,27 @@ export function MeetingDetail() {
   ]);
 
   const handleDeleteAgendaItem = useCallback(async () => {
-    if (!agendaEdit || !meeting || !propertyIdForAgenda || !user?.id) return;
+    if (!agendaEdit) {
+      setActionErr(en ? 'No agenda item is being edited.' : '当前没有正在编辑的议程。');
+      return;
+    }
+    if (!meeting) {
+      setActionErr(en ? 'Meeting is not loaded.' : '会议信息未加载。');
+      return;
+    }
+    if (!propertyIdForAgenda) {
+      setActionErr(en ? 'No property context. Select a property and try again.' : '未选择物业，请先选择物业后再试。');
+      return;
+    }
+    if (!user?.id) {
+      setActionErr(en ? 'Sign in required.' : '请先登录。');
+      return;
+    }
     const row = bundle.agendaItems.find((x) => x.id === agendaEdit.agendaId);
-    if (!row) return;
+    if (!row) {
+      setActionErr(en ? 'That agenda row is missing. Refresh the page and try again.' : '找不到该议程，请刷新页面后重试。');
+      return;
+    }
     const resolutionsForMatch = ovMeta.resolutions.map((r) => ({
       id: r.id,
       title: r.title,
@@ -727,7 +750,9 @@ export function MeetingDetail() {
       .eq('meeting_id', meeting.id)
       .eq('id', row.id);
     if (error) {
-      setActionErr(error.message);
+      setActionErr(
+        en ? `Could not delete this agenda item: ${error.message}` : `无法删除该议题：${error.message}`,
+      );
       setBusy(false);
       return;
     }
@@ -1862,6 +1887,11 @@ export function MeetingDetail() {
                                 </p>
                               </div>
                             </>
+                          ) : null}
+                          {actionErr ? (
+                            <StatusAlert tone="danger" className="text-sm">
+                              {actionErr}
+                            </StatusAlert>
                           ) : null}
                           <div className="flex flex-wrap gap-2">
                             <button
