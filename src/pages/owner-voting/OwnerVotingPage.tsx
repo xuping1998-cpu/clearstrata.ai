@@ -18,21 +18,13 @@ import {
   extractElectionAgendaMeta,
   finalizeElectionMeta,
 } from '@/features/meetings/electionAgendaModel';
-import { createMeeting, type MeetingRow } from '@/features/meetings/api';
+import { type MeetingRow } from '@/features/meetings/api';
 import {
   councilMeetingVotingWindowFallback,
-  dbFormatFromUi,
-  embedGovernanceMeta,
-  embedWrittenRemoteV3MetaFromMeetingStart,
   isWrittenRemoteV3Meeting,
-  MEETING_SGM_REQUISITION_PERCENT_DEFAULT,
-  meetingSgmRequisitionRequiredUnits,
 } from '@/features/meetings/meetingFormatModel';
 import { stripCouncilMeetingBinding, resolveCouncilMeetingIdForOwnerVoteDescription } from '@/features/meetings/ownerVotingCouncil';
-import {
-  deriveCouncilElectionCanonFromScheduledAt,
-  deriveRemoteWrittenV3CanonFromScheduledAt,
-} from '@/features/meetings/electionTimelineMath';
+import { deriveRemoteWrittenV3CanonFromScheduledAt } from '@/features/meetings/electionTimelineMath';
 
 export type VoteChoice = 'yes' | 'no' | 'abstain';
 export type MeetingStatus = 'draft' | 'open' | 'closed' | 'archived';
@@ -732,52 +724,32 @@ export function OwnerVotingPage() {
     }
     setPetitionCreating(true);
     try {
-      const scheduledIso = new Date().toISOString();
-      const writtenBlock = embedWrittenRemoteV3MetaFromMeetingStart('', scheduledIso);
-      if (!writtenBlock) {
+      const { data, error } = await supabase.rpc('create_owner_remote_written_v3_sgm', {
+        p_property_id: currentPropertyId,
+      });
+      if (error) {
         setToast({
           kind: 'error',
-          text: zh ? '无法生成书面远程会议信息。' : 'Could not build written-remote meeting data.',
+          text: error.message || (zh ? '创建会议失败。' : 'Failed to create meeting.'),
         });
         return;
       }
-      const totalUnits = 0;
-      const signedUnits = 0;
-      const governance = {
-        v: 1 as const,
-        initiation_type: 'owner_requisitioned' as const,
-        total_voting_units: totalUnits,
-        required_percent: MEETING_SGM_REQUISITION_PERCENT_DEFAULT,
-        required_units: meetingSgmRequisitionRequiredUnits(totalUnits),
-        signed_units: signedUnits,
-      };
-      const descriptionZh = embedGovernanceMeta(writtenBlock, governance);
-      const canon = deriveCouncilElectionCanonFromScheduledAt(scheduledIso);
-      const { id, error } = await createMeeting({
-        propertyId: currentPropertyId,
-        fiscalYear: new Date().getFullYear(),
-        meetingType: 'sgm',
-        titleEn: 'Owner Requisitioned Remote Written SGM',
-        titleZh: '远程书面业主联署 SGM',
-        descriptionZh,
-        scheduledAt: scheduledIso,
-        votingOpenAt: canon?.votingOpenIso ?? null,
-        votingCloseAt: canon?.votingCloseIso ?? null,
-        meetingFormat: dbFormatFromUi('written_remote'),
-        status: 'draft',
-        createdBy: user.id,
-      });
-      if (error || !id) {
-        const msg =
-          error && typeof error === 'object' && 'message' in error && typeof (error as { message?: string }).message === 'string'
-            ? (error as { message: string }).message
-            : zh
-              ? '创建会议失败。'
-              : 'Failed to create meeting.';
-        setToast({ kind: 'error', text: msg });
+      const payload = data as { ok?: boolean; code?: string; meeting_id?: string } | null;
+      if (!payload?.ok) {
+        setToast({
+          kind: 'error',
+          text: payload?.code ?? (zh ? '创建会议失败。' : 'Failed to create meeting.'),
+        });
         return;
       }
-      navigate(`/meetings/${id}`);
+      if (!payload.meeting_id) {
+        setToast({
+          kind: 'error',
+          text: zh ? '创建会议失败。' : 'Failed to create meeting.',
+        });
+        return;
+      }
+      navigate(`/meetings/${payload.meeting_id}`);
     } finally {
       setPetitionCreating(false);
     }
