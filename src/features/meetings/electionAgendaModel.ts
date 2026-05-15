@@ -6,11 +6,13 @@ import {
   councilWrittenRemoteWindows,
   extractWrittenRemoteMeta,
   isWrittenRemoteUi,
+  isWrittenRemoteV3Meeting,
   meetingFormatUiFromRow,
 } from './meetingFormatModel';
 import {
   councilElectionLifecyclePhase,
   deriveCouncilElectionCanonFromScheduledAt,
+  deriveRemoteWrittenV3CanonFromScheduledAt,
   electionTimestampsCanonEqual,
 } from './electionTimelineMath';
 
@@ -104,11 +106,36 @@ export type ElectionCouncilTimelineContext = {
   votingClosesIso: string | null;
 };
 
-/** Storage for council-election agendas must match auto 7–7–7 phases from scheduled start (written-remote meta + row votes + agenda nomin dates). */
+/** Storage for council-election agendas must match auto 7–7–7 phases from scheduled start (written-remote meta + row votes + agenda nomin dates). Remote-written v3 uses a single 14-day participation window. */
 export function councilElectionStoredMatchesCanon(
   meeting: CouncilElectionCanonMeetingInput,
   meta: ElectionAgendaMetaV1,
 ): boolean {
+  if (isWrittenRemoteV3Meeting(meeting)) {
+    const v3 = deriveRemoteWrittenV3CanonFromScheduledAt(meeting.scheduled_at);
+    if (!v3) return false;
+
+    if (!electionTimestampsCanonEqual(meta.nomination_opens_at, v3.nominationOpenIso)) return false;
+    if (!electionTimestampsCanonEqual(meta.nomination_closes_at, v3.nominationCloseIso)) return false;
+
+    if (!electionTimestampsCanonEqual(meeting.voting_open_at, v3.votingOpenIso)) return false;
+    if (!electionTimestampsCanonEqual(meeting.voting_close_at, v3.votingCloseIso)) return false;
+
+    const { meta: wr } = extractWrittenRemoteMeta(meeting.description_zh);
+    if (!wr || wr.v !== 3) return false;
+
+    return (
+      electionTimestampsCanonEqual(wr.participation_open_at, v3.publicNoticeOpenIso) &&
+      electionTimestampsCanonEqual(wr.participation_close_at, v3.publicNoticeCloseIso) &&
+      electionTimestampsCanonEqual(wr.public_notice_open_at, v3.publicNoticeOpenIso) &&
+      electionTimestampsCanonEqual(wr.public_notice_close_at, v3.publicNoticeCloseIso) &&
+      electionTimestampsCanonEqual(wr.nomination_open_at, v3.nominationOpenIso) &&
+      electionTimestampsCanonEqual(wr.nomination_closes_at, v3.nominationCloseIso) &&
+      electionTimestampsCanonEqual(wr.voting_open_at, v3.votingOpenIso) &&
+      electionTimestampsCanonEqual(wr.voting_close_at, v3.votingCloseIso)
+    );
+  }
+
   const canon = deriveCouncilElectionCanonFromScheduledAt(meeting.scheduled_at);
   if (!canon) return false;
 
@@ -161,13 +188,18 @@ function msIsoUtc(iso?: string | null): number | null {
   return d === null ? null : d.getTime();
 }
 
-/** Validates election storage vs auto 7+7+7 timeline from scheduled start plus internal ordering rules. */
+/** Validates election storage vs auto 7+7+7 timeline from scheduled start plus internal ordering rules. Remote-written v3 uses 14-day parallel-window checks only. */
 export function analyzeCouncilElectionTimeline(
   meta: ElectionAgendaMetaV1 | null | undefined,
   meeting: CouncilElectionCanonMeetingInput,
 ): ElectionTimelineAnalysis {
   if (!meta || meta.agenda_type !== 'council_election') {
     return { invalid_election_timeline: false, votingOpenVsNominationCloseBroken: false };
+  }
+
+  if (isWrittenRemoteV3Meeting(meeting)) {
+    const ok = councilElectionStoredMatchesCanon(meeting, meta);
+    return { invalid_election_timeline: !ok, votingOpenVsNominationCloseBroken: !ok };
   }
 
   const canon = deriveCouncilElectionCanonFromScheduledAt(meeting.scheduled_at);
@@ -206,6 +238,26 @@ export function getElectionNominationStatus(
   meeting?: CouncilElectionCanonMeetingInput | null,
 ): ElectionNominationUiStatus {
   if (meeting != null && meta.agenda_type === 'council_election') {
+    if (isWrittenRemoteV3Meeting(meeting)) {
+      const a = analyzeCouncilElectionTimeline(meta, meeting);
+      if (a.invalid_election_timeline || a.votingOpenVsNominationCloseBroken) {
+        return 'invalid';
+      }
+
+      const v3c = deriveRemoteWrittenV3CanonFromScheduledAt(meeting.scheduled_at);
+      if (!v3c) {
+        return 'invalid';
+      }
+
+      const n = now.getTime();
+      const openMs = msIsoUtc(v3c.publicNoticeOpenIso);
+      const closeMs = msIsoUtc(v3c.publicNoticeCloseIso);
+      if (openMs === null || closeMs === null) return 'invalid';
+      if (n < openMs) return 'before_open';
+      if (n >= closeMs) return 'closed';
+      return 'open';
+    }
+
     const a = analyzeCouncilElectionTimeline(meta, meeting);
     if (a.invalid_election_timeline || a.votingOpenVsNominationCloseBroken) {
       return 'invalid';
@@ -274,6 +326,17 @@ export function isFormalElectionVotingAllowed(
   meeting?: CouncilElectionCanonMeetingInput | null,
 ): boolean {
   if (m.agenda_type === 'council_election' && meeting) {
+    if (isWrittenRemoteV3Meeting(meeting)) {
+      if (analyzeCouncilElectionTimeline(m, meeting).invalid_election_timeline) return false;
+      const v3c = deriveRemoteWrittenV3CanonFromScheduledAt(meeting.scheduled_at);
+      if (!v3c) return false;
+      const n = now.getTime();
+      const openMs = msIsoUtc(v3c.votingOpenIso);
+      const closeMs = msIsoUtc(v3c.votingCloseIso);
+      if (openMs === null || closeMs === null) return false;
+      return n >= openMs && n < closeMs;
+    }
+
     if (analyzeCouncilElectionTimeline(m, meeting).invalid_election_timeline) return false;
     const canon = deriveCouncilElectionCanonFromScheduledAt(meeting.scheduled_at);
     if (!canon) return false;

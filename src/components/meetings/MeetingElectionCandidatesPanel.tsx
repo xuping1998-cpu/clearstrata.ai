@@ -15,6 +15,8 @@ import {
   type ElectionCandidateDraft,
   type ElectionNominationUiStatus,
 } from '@/features/meetings/electionAgendaModel';
+import { deriveRemoteWrittenV3CanonFromScheduledAt } from '@/features/meetings/electionTimelineMath';
+import { isWrittenRemoteV3Meeting } from '@/features/meetings/meetingFormatModel';
 import { supabase } from '@/lib/supabase';
 
 export type MeetingElectionCandidatesPanelProps = {
@@ -88,6 +90,8 @@ export function MeetingElectionCandidatesPanel({
   const nomStatus: ElectionNominationUiStatus | null =
     metaFinal !== null ? getElectionNominationStatus(now, metaFinal, councilElectionMeeting ?? null) : null;
 
+  const v3RemoteCouncil = !!(councilElectionMeeting && isWrittenRemoteV3Meeting(councilElectionMeeting));
+
   const unitAlreadyCandidate = useMemo(() => {
     const u = eligibleUnitNo?.trim().toLowerCase();
     if (!u || !metaFinal) return false;
@@ -139,7 +143,7 @@ export function MeetingElectionCandidatesPanel({
   }
 
   async function updateCandidate(patch: ElectionCandidateDraft) {
-    if (!meta || !staffNominationWritesEnabled) return;
+    if (!meta || !staffNominationWritesEnabled || v3RemoteCouncil) return;
     await persist({
       ...finalizeElectionMeta(meta),
       candidates: meta.candidates.map((c) => (c.id === patch.id ? { ...patch } : c)),
@@ -147,7 +151,7 @@ export function MeetingElectionCandidatesPanel({
   }
 
   async function removeCandidate(id: string) {
-    if (!meta || !staffNominationWritesEnabled || electionBallotCount > 0) return;
+    if (!meta || !staffNominationWritesEnabled || electionBallotCount > 0 || v3RemoteCouncil) return;
     await persist({
       ...finalizeElectionMeta(meta),
       candidates: meta.candidates.filter((c) => c.id !== id),
@@ -156,6 +160,7 @@ export function MeetingElectionCandidatesPanel({
 
   async function upsertCandidate() {
     if (!staffNominationWritesEnabled || !meta) return;
+    if (v3RemoteCouncil && editingId) return;
     const name = form.name.trim();
     const unit_no = form.unit.trim();
     if (!name) return;
@@ -228,7 +233,13 @@ export function MeetingElectionCandidatesPanel({
   const nominationStatusLabel =
     nomStatus !== null ? formatElectionNominationUiStatus(nomStatus, { t, languageEn: en }) : '—';
 
-  const nomWindowDisplay = councilAgmSgmNominationWindowDisplayIso(councilElectionMeeting);
+  const nomWindowDisplay =
+    councilElectionMeeting && isWrittenRemoteV3Meeting(councilElectionMeeting)
+      ? (() => {
+          const c = deriveRemoteWrittenV3CanonFromScheduledAt(councilElectionMeeting.scheduled_at);
+          return c ? { openIso: c.nominationOpenIso, closeIso: c.nominationCloseIso } : null;
+        })()
+      : councilAgmSgmNominationWindowDisplayIso(councilElectionMeeting);
   const nomOpenDisplayText = nomWindowDisplay
     ? nomWindowDisplay.openIso
       ? fmtTs(nomWindowDisplay.openIso, en)
@@ -319,7 +330,7 @@ export function MeetingElectionCandidatesPanel({
                       <span className="font-semibold">{c.accepted ? (en ? 'Yes' : '是') : en ? 'No' : '否'}</span>
                     </p>
                   </div>
-                  {staffNominationWritesEnabled ? (
+                  {staffNominationWritesEnabled && !v3RemoteCouncil ? (
                     <div className="flex shrink-0 flex-col gap-1 sm:flex-row">
                       <label className="flex items-center gap-1 text-xs text-gray-800">
                         <input

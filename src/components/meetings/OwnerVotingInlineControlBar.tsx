@@ -3,6 +3,7 @@ import { evaluateOwnerVoteOpenGate, type MeetingRow, type OwnerVoteMeetingLite }
 import {
   councilMeetingVotingWindowFallback,
   councilWrittenRemoteWindows,
+  isWrittenRemoteV3Meeting,
 } from '@/features/meetings/meetingFormatModel';
 import {
   agmSgmScheduledNotSetLabel,
@@ -10,7 +11,11 @@ import {
   isStrictAgmOrSgmMeeting,
   type ElectionNominationRibbonModel,
 } from '@/features/meetings/electionAgendaModel';
-import { deriveAgmSgmCanonDisplayWindows, deriveCouncilElectionCanonFromScheduledAt } from '@/features/meetings/electionTimelineMath';
+import {
+  deriveAgmSgmCanonDisplayWindows,
+  deriveCouncilElectionCanonFromScheduledAt,
+  deriveRemoteWrittenV3CanonFromScheduledAt,
+} from '@/features/meetings/electionTimelineMath';
 
 export type OwnerVoteInlineMetaState = {
   loading: boolean;
@@ -77,6 +82,8 @@ export function OwnerVotingInlineControlBar({
   electionAgendaCount = 0,
 }: OwnerVotingInlineControlBarProps) {
   const en = languageEn;
+  const now = new Date();
+  const hideStaffOvManualLifecycle = isWrittenRemoteV3Meeting(meeting);
   const noticePeriodLabel = en ? 'Public Notice / Discussion Period' : '公示 / 讨论期';
   const ov = meta.meeting;
   const agmSgmStrict = isStrictAgmOrSgmMeeting(meeting);
@@ -99,10 +106,18 @@ export function OwnerVotingInlineControlBar({
     displayPublicNoticeOpens = discOpen || null;
     displayPublicNoticeCloses = discClose || null;
     if (!discOpen && !discClose && meeting.scheduled_at?.trim()) {
-      const canon = deriveCouncilElectionCanonFromScheduledAt(meeting.scheduled_at);
-      if (canon) {
-        displayPublicNoticeOpens = canon.publicNoticeOpenIso;
-        displayPublicNoticeCloses = canon.publicNoticeCloseIso;
+      if (isWrittenRemoteV3Meeting(meeting)) {
+        const v3 = deriveRemoteWrittenV3CanonFromScheduledAt(meeting.scheduled_at);
+        if (v3) {
+          displayPublicNoticeOpens = v3.publicNoticeOpenIso;
+          displayPublicNoticeCloses = v3.publicNoticeCloseIso;
+        }
+      } else {
+        const canon = deriveCouncilElectionCanonFromScheduledAt(meeting.scheduled_at);
+        if (canon) {
+          displayPublicNoticeOpens = canon.publicNoticeOpenIso;
+          displayPublicNoticeCloses = canon.publicNoticeCloseIso;
+        }
       }
     }
   }
@@ -127,9 +142,9 @@ export function OwnerVotingInlineControlBar({
   const ovStatusLower = ov?.status?.trim().toLowerCase() ?? '';
   const staffOvActionsReadOnly = ovStatusLower === 'closed' || ovStatusLower === 'archived';
   const showFreeze =
-    !isCouncilMeetingEnded && isStaff && !!ov && !staffOvActionsReadOnly;
-  const showOpen = !isCouncilMeetingEnded && isStaff && ovStatusLower === 'draft';
-  const showClose = !isCouncilMeetingEnded && isStaff && ovStatusLower === 'open';
+    !hideStaffOvManualLifecycle && !isCouncilMeetingEnded && isStaff && !!ov && !staffOvActionsReadOnly;
+  const showOpen = !hideStaffOvManualLifecycle && !isCouncilMeetingEnded && isStaff && ovStatusLower === 'draft';
+  const showClose = !hideStaffOvManualLifecycle && !isCouncilMeetingEnded && isStaff && ovStatusLower === 'open';
 
   const snapshotOk = !!(ov?.snapshot_frozen_at?.trim());
   const eligibleOk = meta.eligibleCount > 0;
@@ -161,6 +176,19 @@ export function OwnerVotingInlineControlBar({
     if (meta.loading) return '…';
     if (isCouncilMeetingEnded) return t('meeting_status_closed');
     if (!ov) return t('vote_not_enabled');
+    if (hideStaffOvManualLifecycle) {
+      const v3 = deriveRemoteWrittenV3CanonFromScheduledAt(meeting.scheduled_at);
+      if (v3) {
+        const n = now.getTime();
+        const t0 = new Date(v3.votingOpenIso).getTime();
+        const t1 = new Date(v3.votingCloseIso).getTime();
+        if (!Number.isNaN(t0) && !Number.isNaN(t1)) {
+          if (n < t0) return t('vote_draft');
+          if (n >= t1) return t('vote_closed');
+          return t('vote_open');
+        }
+      }
+    }
     switch (ovStatusLower) {
       case 'draft':
         return t('vote_draft');

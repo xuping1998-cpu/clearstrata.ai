@@ -23,6 +23,10 @@ import {
 import {
   embedGovernanceMeta,
   embedWrittenRemoteCanonFromMeetingStart,
+  embedWrittenRemoteV3MetaFromMeetingStart,
+  extractWrittenRemoteMeta,
+  isWrittenRemoteV3Meeting,
+  isWrittenRemoteV3Meta,
   meetingFormatUiFromRow,
   dbFormatFromUi,
   isWrittenRemoteUi,
@@ -548,6 +552,20 @@ export function MeetingEditor() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (isEdit && detailMeeting && isWrittenRemoteV3Meeting(detailMeeting)) {
+      const s = detailMeeting.scheduled_at?.trim();
+      if (s) {
+        const ms = new Date(s).getTime();
+        if (!Number.isNaN(ms) && Date.now() >= ms) {
+          setErr(
+            en
+              ? 'After public notice starts, this remote written meeting is locked and can no longer be edited.'
+              : '公示开始后，远程书面会议已锁定，不能再修改会议内容。',
+          );
+          return;
+        }
+      }
+    }
     if (!user || !currentPropertyId) {
       setErr(en ? 'Not signed in or no property.' : '未登录或未选择物业。');
       return;
@@ -582,7 +600,13 @@ export function MeetingEditor() {
       }
       votingOpenIso = canon.votingOpenIso;
       votingCloseIso = canon.votingCloseIso;
-      const embedded = embedWrittenRemoteCanonFromMeetingStart(form.description_zh || '', scheduledIso);
+      const existingWrittenMeta =
+        isEdit && detailMeeting ? extractWrittenRemoteMeta(detailMeeting.description_zh).meta : null;
+      const useLegacyWrittenEmbed =
+        existingWrittenMeta != null && !isWrittenRemoteV3Meta(existingWrittenMeta);
+      const embedded = useLegacyWrittenEmbed
+        ? embedWrittenRemoteCanonFromMeetingStart(form.description_zh || '', scheduledIso)
+        : embedWrittenRemoteV3MetaFromMeetingStart(form.description_zh || '', scheduledIso);
       if (!embedded) {
         setErr(en ? 'Could not build written-remote schedule from meeting start.' : '无法根据会议开始生成书面远程时间安排。');
         return;

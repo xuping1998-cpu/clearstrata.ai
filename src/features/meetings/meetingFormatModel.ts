@@ -1,6 +1,8 @@
 import type { MeetingFormat, MeetingRow } from './api';
 import {
   deriveCouncilElectionCanonFromScheduledAt,
+  deriveRemoteWrittenV3CanonFromScheduledAt,
+  REMOTE_WRITTEN_V3_PARTICIPATION_DAYS,
   type DerivedCouncilElectionCanon,
 } from './electionTimelineMath';
 import { addDaysIso } from './ownerVotingCouncil';
@@ -25,6 +27,36 @@ export type WrittenRemoteMetaV1 = {
   voting_open_at?: string;
   voting_close_at?: string;
 };
+
+/** Same optional fields as v1; stored as `v: 2` in some rows — treated like legacy written-remote, not v3. */
+export type WrittenRemoteMetaV2 = {
+  v: 2;
+  public_notice_close_at?: string;
+  discussion_closes_at?: string;
+  voting_open_at?: string;
+  voting_close_at?: string;
+};
+
+export type WrittenRemoteMode = 'remote_written' | 'written_remote';
+
+/**
+ * Remote written v3 marker + parallel phase windows (14 days from meeting start).
+ * Gates may still use 7+7+7 from `scheduled_at` until a later rollout; this block is for explicit v3 detection.
+ */
+export type WrittenRemoteMetaV3 = {
+  v: 3;
+  mode: WrittenRemoteMode;
+  participation_open_at: string;
+  participation_close_at: string;
+  public_notice_open_at: string;
+  public_notice_close_at: string;
+  nomination_open_at: string;
+  nomination_close_at: string;
+  voting_open_at: string;
+  voting_close_at: string;
+};
+
+export type WrittenRemoteMeta = WrittenRemoteMetaV1 | WrittenRemoteMetaV2 | WrittenRemoteMetaV3;
 
 export type MeetingInitiationType = 'council_initiated' | 'owner_requisitioned' | 'annual_required';
 
@@ -109,7 +141,7 @@ export function embedGovernanceMeta(base: string | null | undefined, payload: Me
 /** Parse `description_zh` into user-visible text plus embedded metas (governance outermost when both present). */
 export function peelMeetingDescriptionZhForEditor(full: string | null | undefined): {
   userText: string;
-  writtenRemoteMeta: WrittenRemoteMetaV1 | null;
+  writtenRemoteMeta: WrittenRemoteMeta | null;
   governanceMeta: MeetingGovernanceMetaV1 | null;
 } {
   const gov = extractGovernanceMeta(full);
@@ -121,9 +153,86 @@ export function peelMeetingDescriptionZhForEditor(full: string | null | undefine
   };
 }
 
+function parseWrittenRemoteLegacyMeta(o: Record<string, unknown>, v: 1 | 2): WrittenRemoteMetaV1 | WrittenRemoteMetaV2 | null {
+  const pnc = typeof o.public_notice_close_at === 'string' ? o.public_notice_close_at.trim() : '';
+  const dc = typeof o.discussion_closes_at === 'string' ? o.discussion_closes_at.trim() : '';
+  const vo = typeof o.voting_open_at === 'string' ? o.voting_open_at.trim() : '';
+  const vc = typeof o.voting_close_at === 'string' ? o.voting_close_at.trim() : '';
+  const noticeClose = pnc || dc;
+  if (!noticeClose && !vo && !vc) return null;
+  const base = {
+    ...(pnc ? { public_notice_close_at: pnc } : {}),
+    ...(dc ? { discussion_closes_at: dc } : {}),
+    ...(vo ? { voting_open_at: vo } : {}),
+    ...(vc ? { voting_close_at: vc } : {}),
+  };
+  return v === 1 ? ({ v: 1, ...base } as WrittenRemoteMetaV1) : ({ v: 2, ...base } as WrittenRemoteMetaV2);
+}
+
+function parseWrittenRemoteV3Meta(o: Record<string, unknown>): WrittenRemoteMetaV3 | null {
+  const str = (k: string): string | null => {
+    const x = o[k];
+    return typeof x === 'string' && x.trim() ? x.trim() : null;
+  };
+  const participation_open_at = str('participation_open_at');
+  const participation_close_at = str('participation_close_at');
+  const public_notice_open_at = str('public_notice_open_at');
+  const public_notice_close_at = str('public_notice_close_at');
+  const nomination_open_at = str('nomination_open_at');
+  const nomination_close_at = str('nomination_close_at');
+  const voting_open_at = str('voting_open_at');
+  const voting_close_at = str('voting_close_at');
+  const modeRaw = o.mode;
+  const mode: WrittenRemoteMode | null =
+    modeRaw === 'remote_written' || modeRaw === 'written_remote' ? modeRaw : null;
+  const vNum = o.v === 3 || o.version === 3 ? 3 : null;
+  if (vNum !== 3 || !mode) return null;
+  if (
+    !participation_open_at ||
+    !participation_close_at ||
+    !public_notice_open_at ||
+    !public_notice_close_at ||
+    !nomination_open_at ||
+    !nomination_close_at ||
+    !voting_open_at ||
+    !voting_close_at
+  ) {
+    return null;
+  }
+  return {
+    v: 3,
+    mode,
+    participation_open_at,
+    participation_close_at,
+    public_notice_open_at,
+    public_notice_close_at,
+    nomination_open_at,
+    nomination_close_at,
+    voting_open_at,
+    voting_close_at,
+  };
+}
+
+/** True when `meta` is the explicit remote-written v3 payload (by version + mode), regardless of `meeting_format`. */
+export function isWrittenRemoteV3Meta(meta: unknown): boolean {
+  if (!meta || typeof meta !== 'object') return false;
+  const m = meta as Record<string, unknown>;
+  const verOk = m.v === 3 || m.version === 3;
+  if (!verOk) return false;
+  const mode = m.mode;
+  if (mode !== 'remote_written' && mode !== 'written_remote') return false;
+  return true;
+}
+
+/** True when `description_zh` embeds a v3 written-remote HTML comment meta. */
+export function isWrittenRemoteV3Meeting(meeting: Pick<MeetingRow, 'description_zh'>): boolean {
+  const { meta } = extractWrittenRemoteMeta(meeting.description_zh);
+  return isWrittenRemoteV3Meta(meta);
+}
+
 export function extractWrittenRemoteMeta(descriptionZh: string | null | undefined): {
   cleanDescriptionZh: string;
-  meta: WrittenRemoteMetaV1 | null;
+  meta: WrittenRemoteMeta | null;
 } {
   const s = descriptionZh ?? '';
   const i = s.lastIndexOf(META_START);
@@ -131,24 +240,17 @@ export function extractWrittenRemoteMeta(descriptionZh: string | null | undefine
   const end = s.indexOf(META_END, i + META_START.length);
   if (end < 0) return { cleanDescriptionZh: s, meta: null };
   const raw = s.slice(i + META_START.length, end).trim();
-  let meta: WrittenRemoteMetaV1 | null = null;
+  let meta: WrittenRemoteMeta | null = null;
   try {
     const o = JSON.parse(raw) as Record<string, unknown>;
-    if (o && o.v === 1) {
-      const pnc =
-        typeof o.public_notice_close_at === 'string' ? o.public_notice_close_at.trim() : '';
-      const dc = typeof o.discussion_closes_at === 'string' ? o.discussion_closes_at.trim() : '';
-      const vo = typeof o.voting_open_at === 'string' ? o.voting_open_at.trim() : '';
-      const vc = typeof o.voting_close_at === 'string' ? o.voting_close_at.trim() : '';
-      const noticeClose = pnc || dc;
-      if (noticeClose || vo || vc) {
-        meta = {
-          v: 1,
-          ...(pnc ? { public_notice_close_at: pnc } : {}),
-          ...(dc ? { discussion_closes_at: dc } : {}),
-          ...(vo ? { voting_open_at: vo } : {}),
-          ...(vc ? { voting_close_at: vc } : {}),
-        };
+    if (o) {
+      const v3 = parseWrittenRemoteV3Meta(o);
+      if (v3) {
+        meta = v3;
+      } else if (o.v === 1) {
+        meta = parseWrittenRemoteLegacyMeta(o, 1);
+      } else if (o.v === 2) {
+        meta = parseWrittenRemoteLegacyMeta(o, 2);
       }
     }
   } catch {
@@ -172,6 +274,31 @@ export function embedWrittenRemoteCanonFromMeetingStart(
     voting_open_at: canon.votingOpenIso,
     voting_close_at: canon.votingCloseIso,
   };
+  const block = `${META_START}${JSON.stringify(payload)}${META_END}`;
+  return base ? `${base}\n\n${block}` : block;
+}
+
+/** New remote-written meetings: embed v3 marker + 14-day parallel phase timestamps from meeting start (`scheduled_at` ISO). */
+export function embedWrittenRemoteV3MetaFromMeetingStart(
+  cleanDescriptionZh: string | null | undefined,
+  scheduledIso: string,
+): string | null {
+  const t = scheduledIso?.trim();
+  if (!t) return null;
+  const close = addDaysIso(t, REMOTE_WRITTEN_V3_PARTICIPATION_DAYS);
+  const payload: WrittenRemoteMetaV3 = {
+    v: 3,
+    mode: 'remote_written',
+    participation_open_at: t,
+    participation_close_at: close,
+    public_notice_open_at: t,
+    public_notice_close_at: close,
+    nomination_open_at: t,
+    nomination_close_at: close,
+    voting_open_at: t,
+    voting_close_at: close,
+  };
+  const base = (cleanDescriptionZh ?? '').replace(/\s+$/u, '');
   const block = `${META_START}${JSON.stringify(payload)}${META_END}`;
   return base ? `${base}\n\n${block}` : block;
 }
@@ -214,6 +341,11 @@ export function councilWrittenRemoteWindows(m: MeetingRow): {
   discussionOpens: string | null;
   /** @deprecated Alias of `publicNoticeCloses`. */
   discussionCloses: string | null;
+  /** Populated for remote-written v3 only; parallel 14-day participation window. */
+  nominationOpens: string | null;
+  nominationCloses: string | null;
+  votingOpens: string | null;
+  votingCloses: string | null;
 } {
   const ui = meetingFormatUiFromRow(m);
   const empty = (): ReturnType<typeof councilWrittenRemoteWindows> => ({
@@ -221,8 +353,30 @@ export function councilWrittenRemoteWindows(m: MeetingRow): {
     publicNoticeCloses: null,
     discussionOpens: null,
     discussionCloses: null,
+    nominationOpens: null,
+    nominationCloses: null,
+    votingOpens: null,
+    votingCloses: null,
   });
   if (!isWrittenRemoteUi(ui)) return empty();
+
+  if (isWrittenRemoteV3Meeting(m)) {
+    const v3 = deriveRemoteWrittenV3CanonFromScheduledAt(m.scheduled_at);
+    if (v3) {
+      const o = v3.publicNoticeOpenIso;
+      const c = v3.publicNoticeCloseIso;
+      return {
+        publicNoticeOpens: o,
+        publicNoticeCloses: c,
+        discussionOpens: o,
+        discussionCloses: c,
+        nominationOpens: v3.nominationOpenIso,
+        nominationCloses: v3.nominationCloseIso,
+        votingOpens: v3.votingOpenIso,
+        votingCloses: v3.votingCloseIso,
+      };
+    }
+  }
 
   const canon = deriveCouncilElectionCanonFromScheduledAt(m.scheduled_at);
   if (canon) {
@@ -233,6 +387,10 @@ export function councilWrittenRemoteWindows(m: MeetingRow): {
       publicNoticeCloses: c,
       discussionOpens: o,
       discussionCloses: c,
+      nominationOpens: null,
+      nominationCloses: null,
+      votingOpens: null,
+      votingCloses: null,
     };
   }
   const { meta } = extractWrittenRemoteMeta(m.description_zh);
@@ -245,6 +403,10 @@ export function councilWrittenRemoteWindows(m: MeetingRow): {
     publicNoticeCloses: closeRaw,
     discussionOpens: open,
     discussionCloses: closeRaw,
+    nominationOpens: null,
+    nominationCloses: null,
+    votingOpens: null,
+    votingCloses: null,
   };
 }
 
@@ -255,6 +417,15 @@ export function councilMeetingVotingWindowFallback(m: MeetingRow): {
 } {
   const ui = meetingFormatUiFromRow(m);
   if (isWrittenRemoteUi(ui)) {
+    if (isWrittenRemoteV3Meeting(m)) {
+      const v3 = deriveRemoteWrittenV3CanonFromScheduledAt(m.scheduled_at);
+      if (v3) {
+        return {
+          votingOpens: v3.votingOpenIso,
+          votingCloses: v3.votingCloseIso,
+        };
+      }
+    }
     const canon = deriveCouncilElectionCanonFromScheduledAt(m.scheduled_at);
     if (canon) {
       return {
@@ -291,6 +462,15 @@ export function deriveOwnerVoteMeetingVotingTimes(m: MeetingRow): {
 } {
   const ui = meetingFormatUiFromRow(m);
   if (isWrittenRemoteUi(ui)) {
+    if (isWrittenRemoteV3Meeting(m)) {
+      const v3 = deriveRemoteWrittenV3CanonFromScheduledAt(m.scheduled_at);
+      if (v3) {
+        return {
+          voting_opens_at: v3.votingOpenIso,
+          voting_closes_at: v3.votingCloseIso,
+        };
+      }
+    }
     const canon = deriveCouncilElectionCanonFromScheduledAt(m.scheduled_at);
     if (canon) {
       return {
@@ -318,6 +498,11 @@ export function persistedCouncilCanonVotingSlice(m: Partial<MeetingRow>): {
   votingOpenIso: string | null;
   votingCloseIso: string | null;
 } {
+  if (isWrittenRemoteV3Meeting(m as Pick<MeetingRow, 'description_zh'>)) {
+    const v3 = deriveRemoteWrittenV3CanonFromScheduledAt(m.scheduled_at ?? null);
+    if (!v3) return { canon: null, votingOpenIso: null, votingCloseIso: null };
+    return { canon: v3, votingOpenIso: v3.votingOpenIso, votingCloseIso: v3.votingCloseIso };
+  }
   const canon = deriveCouncilElectionCanonFromScheduledAt(m.scheduled_at ?? null);
   if (!canon) return { canon: null, votingOpenIso: null, votingCloseIso: null };
   return { canon, votingOpenIso: canon.votingOpenIso, votingCloseIso: canon.votingCloseIso };

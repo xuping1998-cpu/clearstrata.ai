@@ -23,12 +23,16 @@ import {
   councilMeetingVotingWindowFallback,
   dbFormatFromUi,
   embedGovernanceMeta,
-  embedWrittenRemoteCanonFromMeetingStart,
+  embedWrittenRemoteV3MetaFromMeetingStart,
+  isWrittenRemoteV3Meeting,
   MEETING_SGM_REQUISITION_PERCENT_DEFAULT,
   meetingSgmRequisitionRequiredUnits,
 } from '@/features/meetings/meetingFormatModel';
 import { stripCouncilMeetingBinding, resolveCouncilMeetingIdForOwnerVoteDescription } from '@/features/meetings/ownerVotingCouncil';
-import { deriveCouncilElectionCanonFromScheduledAt } from '@/features/meetings/electionTimelineMath';
+import {
+  deriveCouncilElectionCanonFromScheduledAt,
+  deriveRemoteWrittenV3CanonFromScheduledAt,
+} from '@/features/meetings/electionTimelineMath';
 
 export type VoteChoice = 'yes' | 'no' | 'abstain';
 export type MeetingStatus = 'draft' | 'open' | 'closed' | 'archived';
@@ -190,6 +194,8 @@ export function isCouncilMeetingEndedStatus(status: string | null | undefined): 
 export type EffectiveVotingPhaseInput = {
   /** True when this owner vote is bound to a council `meetings.id` (resolved id present). */
   councilBound: boolean;
+  /** Bound council meeting uses remote-written v3 meta — phase follows 14-day participation window only. */
+  councilRemoteWrittenV3?: boolean;
   councilMeetingStatus: string | null | undefined;
   /** From `councilMeetingVotingWindowFallback` on the bound council row; ignored when not `councilBound`. */
   councilVotingOpensIso: string | null;
@@ -208,6 +214,7 @@ export type EffectiveVotingPhaseInput = {
 export function getEffectiveVotingPhase(input: EffectiveVotingPhaseInput): VotingPhaseUi {
   const {
     councilBound,
+    councilRemoteWrittenV3,
     councilMeetingStatus,
     councilVotingOpensIso,
     councilVotingClosesIso,
@@ -220,6 +227,9 @@ export function getEffectiveVotingPhase(input: EffectiveVotingPhaseInput): Votin
 
   if (councilBound) {
     if (isCouncilMeetingEndedStatus(cs)) return 'closed';
+    if (councilRemoteWrittenV3) {
+      return getVotingPhaseFromTimeWindowOnly(councilVotingOpensIso, councilVotingClosesIso, now);
+    }
     if (cs === 'draft') return 'not_started';
     return getVotingPhaseFromTimeWindowOnly(councilVotingOpensIso, councilVotingClosesIso, now);
   }
@@ -297,8 +307,12 @@ function newestFirstForTieBreak(p: MeetingPack): [number, number] {
 
 function effectivePhaseInputForPack(p: MeetingPack, now: Date): EffectiveVotingPhaseInput {
   const councilBound = Boolean(p.councilMeetingId?.trim());
+  const councilRemoteWrittenV3 = Boolean(
+    p.councilMeetingElectionRow && isWrittenRemoteV3Meeting(p.councilMeetingElectionRow),
+  );
   return {
     councilBound,
+    councilRemoteWrittenV3,
     councilMeetingStatus: p.councilMeetingStatus,
     councilVotingOpensIso: p.councilMeetingVotingOpensIso ?? null,
     councilVotingClosesIso: p.councilMeetingVotingClosesIso ?? null,
@@ -393,8 +407,22 @@ function OwnerCouncilElectionBlock({
   const meta = finalizeElectionMeta(brief.meta, now);
   const maxPick = Math.min(Math.max(1, meta.max_choices_per_unit), Math.max(1, meta.seats));
   const nomStatus = getElectionNominationStatus(now, meta, councilElectionMeeting ?? undefined);
-  const nominationBlocking =
+  const v3Council = !!(councilElectionMeeting && isWrittenRemoteV3Meeting(councilElectionMeeting));
+  let nominationBlocking =
     nomStatus === 'before_open' || nomStatus === 'open' || nomStatus === 'invalid';
+  if (v3Council) {
+    if (nomStatus === 'invalid') nominationBlocking = true;
+    else {
+      const v3c = deriveRemoteWrittenV3CanonFromScheduledAt(councilElectionMeeting?.scheduled_at);
+      if (v3c) {
+        const n = now.getTime();
+        const t0 = new Date(v3c.publicNoticeOpenIso).getTime();
+        const t1 = new Date(v3c.publicNoticeCloseIso).getTime();
+        nominationBlocking =
+          Number.isNaN(t0) || Number.isNaN(t1) ? true : n < t0 || n >= t1;
+      }
+    }
+  }
   const formalVotingGate = isFormalElectionVotingAllowed(now, meta, councilElectionMeeting ?? undefined);
   const ovSt = ownerMeetingStatus.trim().toLowerCase();
   const ovDbEnded = ovSt === 'closed' || ovSt === 'archived' || ovSt === 'ended';
@@ -705,7 +733,7 @@ export function OwnerVotingPage() {
     setPetitionCreating(true);
     try {
       const scheduledIso = new Date().toISOString();
-      const writtenBlock = embedWrittenRemoteCanonFromMeetingStart('', scheduledIso);
+      const writtenBlock = embedWrittenRemoteV3MetaFromMeetingStart('', scheduledIso);
       if (!writtenBlock) {
         setToast({
           kind: 'error',

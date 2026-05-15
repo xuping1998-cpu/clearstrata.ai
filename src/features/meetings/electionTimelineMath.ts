@@ -3,6 +3,9 @@ import { addDaysIso } from './ownerVotingCouncil';
 /** Fixed 7-day phases: public notice → nomination → voting → results (from meeting start). */
 export const ELECTION_FIXED_PHASE_DAYS = 7;
 
+/** Remote written v3: single participation window from meeting start (parallel notice / nomination / voting). */
+export const REMOTE_WRITTEN_V3_PARTICIPATION_DAYS = 14;
+
 const DEFAULT_TS_EQUALITY_MS = 90_000;
 
 function msIsoUtc(s?: string | null): number | null {
@@ -43,6 +46,30 @@ export function deriveCouncilElectionCanonFromScheduledAt(
     nominationCloseIso,
     votingOpenIso,
     votingCloseIso,
+  };
+}
+
+/**
+ * Remote written v3 only: notice, nomination, and voting all span `[scheduled_at, scheduled_at + 14d]`.
+ * Same field names as legacy canon for drop-in use; do not use for v1/v2 written-remote.
+ */
+export function deriveRemoteWrittenV3CanonFromScheduledAt(
+  scheduledIso: string | null | undefined,
+): DerivedCouncilElectionCanon | null {
+  const t = scheduledIso?.trim();
+  if (!t) return null;
+  const baseMs = msIsoUtc(t);
+  if (baseMs === null) return null;
+
+  const publicNoticeOpenIso = new Date(baseMs).toISOString();
+  const closeIso = addDaysIso(publicNoticeOpenIso, REMOTE_WRITTEN_V3_PARTICIPATION_DAYS);
+  return {
+    publicNoticeOpenIso,
+    publicNoticeCloseIso: closeIso,
+    nominationOpenIso: publicNoticeOpenIso,
+    nominationCloseIso: closeIso,
+    votingOpenIso: publicNoticeOpenIso,
+    votingCloseIso: closeIso,
   };
 }
 

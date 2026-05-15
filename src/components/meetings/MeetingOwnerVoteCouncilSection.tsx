@@ -17,6 +17,7 @@ import {
 import { councilMeetingTitleForOwnerVoteBinding } from '@/features/meetings/ownerVotingCouncil';
 import {
   councilMeetingVotingWindowFallback,
+  isWrittenRemoteV3Meeting,
 } from '@/features/meetings/meetingFormatModel';
 import {
   buildElectionNominationRibbon,
@@ -177,6 +178,7 @@ export function MeetingOwnerVoteCouncilSection({ meeting, agendaItems, isStaff }
   const { user } = useAuth();
   const { t, language } = useLanguage();
   const en = language === 'en';
+  const hideStaffOvManualLifecycle = isWrittenRemoteV3Meeting(meeting);
 
   const bindingTitle = councilMeetingTitleForOwnerVoteBinding(meeting);
   const plannedVotingWindow = councilMeetingVotingWindowFallback(meeting);
@@ -605,6 +607,7 @@ export function MeetingOwnerVoteCouncilSection({ meeting, agendaItems, isStaff }
           </div>
 
           {ovMeeting.status?.trim().toLowerCase() === 'draft' &&
+          !hideStaffOvManualLifecycle &&
           (!String(ovMeeting.snapshot_frozen_at ?? '').trim() || eligibleCount <= 0) ? (
             <p className="text-sm text-amber-800 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
               {t('meeting_ov_flow_hint_freeze_snap')}
@@ -612,6 +615,8 @@ export function MeetingOwnerVoteCouncilSection({ meeting, agendaItems, isStaff }
           ) : null}
 
           <div className="flex flex-wrap gap-2">
+            {!hideStaffOvManualLifecycle ? (
+              <>
             {!ovMeeting.snapshot_frozen_at && ovMeeting.status?.trim().toLowerCase() === 'draft' ? (
               <button
                 type="button"
@@ -645,6 +650,8 @@ export function MeetingOwnerVoteCouncilSection({ meeting, agendaItems, isStaff }
             >
               {t('meeting_ov_close_voting')}
             </button>
+              </>
+            ) : null}
           </div>
 
           <div className="border-t border-gray-100 pt-4">

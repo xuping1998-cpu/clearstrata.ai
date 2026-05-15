@@ -77,6 +77,7 @@ import { MeetingElectionCandidatesPanel } from '@/components/meetings/MeetingEle
 import {
   councilMeetingVotingWindowFallback,
   extractGovernanceMeta,
+  isWrittenRemoteV3Meeting,
   meetingSgmRequisitionRequiredUnits,
   MEETING_SGM_REQUISITION_PERCENT_DEFAULT,
   stripWrittenRemoteMeta,
@@ -94,6 +95,23 @@ import { StatusAlert, StatusBadge } from '@/components/status';
 function isMeetingClosedForVoting(status: string | null | undefined): boolean {
   const s = String(status ?? '').trim().toLowerCase();
   return s === 'closed' || s === 'ended' || s === 'archived';
+}
+
+const REMOTE_WRITTEN_V3_DETAIL_EDIT_LOCKED = {
+  en: 'After public notice starts, this remote written meeting is locked and can no longer be edited.',
+  zh: '公示开始后，远程书面会议已锁定，不能再修改会议内容。',
+} as const;
+
+function remoteWrittenV3MeetingAgendaEditBlocked(meeting: MeetingRow): boolean {
+  if (!isWrittenRemoteV3Meeting(meeting)) return false;
+  const s = meeting.scheduled_at?.trim();
+  if (!s) return false;
+  const ms = new Date(s).getTime();
+  return !Number.isNaN(ms) && Date.now() >= ms;
+}
+
+function remoteWrittenV3AgendaEditErr(en: boolean): string {
+  return en ? REMOTE_WRITTEN_V3_DETAIL_EDIT_LOCKED.en : REMOTE_WRITTEN_V3_DETAIL_EDIT_LOCKED.zh;
 }
 
 function initiationTypeLabel(type: MeetingInitiationType, t: (key: string) => string): string {
@@ -161,6 +179,9 @@ async function meetingDetailAgendaDeleteBlockReason(params: {
     params;
   if (isMeetingClosedForVoting(meeting.status)) {
     return en ? 'This meeting has ended. The agenda is locked.' : '会议已结束，议程已锁定。';
+  }
+  if (remoteWrittenV3MeetingAgendaEditBlocked(meeting)) {
+    return remoteWrittenV3AgendaEditErr(en);
   }
   if (agendaKindFromRow(row) === 'election') {
     return en ? 'Election agendas cannot be deleted here.' : '选举议程不能在此删除。';
@@ -400,8 +421,16 @@ export function MeetingDetail() {
     void refreshSupportingDocumentsArchive();
   }, [refreshSupportingDocumentsArchive]);
   useEffect(() => {
-    if (meeting && isMeetingClosedForVoting(meeting.status)) setAgendaEdit(null);
-  }, [meeting?.id, meeting?.status]);
+    if (!meeting) return;
+    if (isMeetingClosedForVoting(meeting.status)) {
+      setAgendaEdit(null);
+      return;
+    }
+    if (isWrittenRemoteV3Meeting(meeting) && meeting.scheduled_at?.trim()) {
+      const ms = new Date(meeting.scheduled_at).getTime();
+      if (!Number.isNaN(ms) && Date.now() >= ms) setAgendaEdit(null);
+    }
+  }, [meeting?.id, meeting?.status, meeting?.scheduled_at, meeting?.description_zh]);
 
   const showCouncilOwnerVoteUi = !!(meeting && currentPropertyId && isOwnerVotingMeeting(meeting));
 
@@ -780,6 +809,10 @@ export function MeetingDetail() {
       setActionErr(en ? 'This meeting has ended. The agenda is locked.' : '会议已结束，议程已锁定。');
       return;
     }
+    if (remoteWrittenV3MeetingAgendaEditBlocked(meeting)) {
+      setActionErr(remoteWrittenV3AgendaEditErr(en));
+      return;
+    }
     setBusy(true);
     setActionErr(null);
     const { voteId, error } = await createVote({
@@ -804,6 +837,10 @@ export function MeetingDetail() {
       setActionErr(en ? 'This meeting has ended. The agenda is locked.' : '会议已结束，议程已锁定。');
       return;
     }
+    if (remoteWrittenV3MeetingAgendaEditBlocked(meeting)) {
+      setActionErr(remoteWrittenV3AgendaEditErr(en));
+      return;
+    }
     setBusy(true);
     setActionErr(null);
     const { error } = await updateVote(voteId, meeting.property_id, {
@@ -819,6 +856,10 @@ export function MeetingDetail() {
     if (!meeting) return;
     if (isMeetingClosedForVoting(meeting.status)) {
       setActionErr(en ? 'This meeting has ended. The agenda is locked.' : '会议已结束，议程已锁定。');
+      return;
+    }
+    if (remoteWrittenV3MeetingAgendaEditBlocked(meeting)) {
+      setActionErr(remoteWrittenV3AgendaEditErr(en));
       return;
     }
     setBusy(true);
@@ -853,6 +894,10 @@ export function MeetingDetail() {
     if (!meeting || !propertyIdForAgenda) return;
     if (isMeetingClosedForVoting(meeting.status)) {
       setActionErr(en ? 'This meeting has ended. The agenda is locked.' : '会议已结束，议程已锁定。');
+      return;
+    }
+    if (remoteWrittenV3MeetingAgendaEditBlocked(meeting)) {
+      setActionErr(remoteWrittenV3AgendaEditErr(en));
       return;
     }
     if (!newAgendaZh.trim() && !newAgendaEn.trim()) {
@@ -971,6 +1016,10 @@ export function MeetingDetail() {
     if (!meeting || !propertyIdForAgenda || !user?.id || !agendaEdit) return;
     if (isMeetingClosedForVoting(meeting.status)) {
       setActionErr(en ? 'This meeting has ended. The agenda is locked.' : '会议已结束，议程已锁定。');
+      return;
+    }
+    if (remoteWrittenV3MeetingAgendaEditBlocked(meeting)) {
+      setActionErr(remoteWrittenV3AgendaEditErr(en));
       return;
     }
     const row = bundle.agendaItems.find((x) => x.id === agendaEdit.agendaId);
@@ -1414,6 +1463,8 @@ export function MeetingDetail() {
 
   const inv = invitationSummary(bundle.invitations);
   const meetingAgendaLocked = isMeetingClosedForVoting(meeting.status);
+  const remoteWrittenV3NoticeStartedLock = remoteWrittenV3MeetingAgendaEditBlocked(meeting);
+  const agendaStructureEditLocked = meetingAgendaLocked || remoteWrittenV3NoticeStartedLock;
   const openRatePct = inv.total ? Math.min(100, Math.round((inv.openedCount / inv.total) * 100)) : 0;
   const voteRatePct = inv.total ? Math.min(100, Math.round((inv.voted / inv.total) * 100)) : 0;
 
@@ -1479,14 +1530,22 @@ export function MeetingDetail() {
                 </dl>
               </div>
             </div>
-            {canManageCouncilMeetings && (
-              <Link
-                to={`/meetings/${meeting.id}/edit?${new URLSearchParams({ propertyId: meeting.property_id }).toString()}`}
-                className="shrink-0 self-start rounded-lg bg-white/22 px-4 py-2.5 text-sm font-medium text-white ring-1 ring-white/40 hover:bg-white/34 transition-colors lg:mt-12 shadow-sm"
-              >
-                {en ? 'Edit meeting' : '编辑会议'}
-              </Link>
-            )}
+            {canManageCouncilMeetings &&
+              (remoteWrittenV3NoticeStartedLock ? (
+                <span
+                  className="shrink-0 self-start rounded-lg bg-white/15 px-4 py-2.5 text-sm font-medium text-white/70 ring-1 ring-white/25 cursor-not-allowed lg:mt-12 shadow-sm"
+                  title={en ? REMOTE_WRITTEN_V3_DETAIL_EDIT_LOCKED.en : REMOTE_WRITTEN_V3_DETAIL_EDIT_LOCKED.zh}
+                >
+                  {en ? 'Edit meeting' : '编辑会议'}
+                </span>
+              ) : (
+                <Link
+                  to={`/meetings/${meeting.id}/edit?${new URLSearchParams({ propertyId: meeting.property_id }).toString()}`}
+                  className="shrink-0 self-start rounded-lg bg-white/22 px-4 py-2.5 text-sm font-medium text-white ring-1 ring-white/40 hover:bg-white/34 transition-colors lg:mt-12 shadow-sm"
+                >
+                  {en ? 'Edit meeting' : '编辑会议'}
+                </Link>
+              ))}
           </div>
         </div>
       </div>
@@ -1605,7 +1664,11 @@ export function MeetingDetail() {
               <h2 className="text-lg font-semibold text-gray-900 mb-4 border-b pb-2">
                 {en ? meetingUiStrings.sectionAgenda.en : meetingUiStrings.sectionAgenda.zh}
               </h2>
-              {meetingAgendaLocked ? (
+              {remoteWrittenV3NoticeStartedLock ? (
+                <p className="mb-4 text-sm text-amber-800 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                  {en ? REMOTE_WRITTEN_V3_DETAIL_EDIT_LOCKED.en : REMOTE_WRITTEN_V3_DETAIL_EDIT_LOCKED.zh}
+                </p>
+              ) : meetingAgendaLocked ? (
                 <p className="mb-4 text-sm text-amber-800 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
                   {en ? 'This meeting has ended. The agenda is locked.' : '会议已结束，议程已锁定。'}
                 </p>
@@ -1686,7 +1749,7 @@ export function MeetingDetail() {
                             </StatusBadge>
                           ) : null}
                         </div>
-                        {canManageCouncilMeetings && !meetingAgendaLocked && agendaEdit?.agendaId !== agenda.id ? (
+                        {canManageCouncilMeetings && !agendaStructureEditLocked && agendaEdit?.agendaId !== agenda.id ? (
                           <button
                             type="button"
                             disabled={busy}
@@ -1720,7 +1783,7 @@ export function MeetingDetail() {
                           </button>
                         ) : null}
                       </div>
-                      {agendaEdit?.agendaId === agenda.id && !meetingAgendaLocked ? (
+                      {agendaEdit?.agendaId === agenda.id && !agendaStructureEditLocked ? (
                         <div className="space-y-3 mt-1">
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             <input
@@ -1921,7 +1984,7 @@ export function MeetingDetail() {
 
                           {agendaKindUi !== 'election' && agenda.requires_vote ? (
                             !vote ? (
-                              canManageCouncilMeetings && !meetingAgendaLocked ? (
+                              canManageCouncilMeetings && !agendaStructureEditLocked ? (
                                 <button
                                   type="button"
                                   disabled={busy}
@@ -1950,7 +2013,7 @@ export function MeetingDetail() {
                                 </span>
                               </div>
 
-                              {canManageCouncilMeetings && !meetingAgendaLocked && vote!.status === 'draft' && (
+                              {canManageCouncilMeetings && !agendaStructureEditLocked && vote!.status === 'draft' && (
                                 <button
                                   type="button"
                                   disabled={busy}
@@ -1960,7 +2023,7 @@ export function MeetingDetail() {
                                   {en ? 'Open voting' : '开放投票'}
                                 </button>
                               )}
-                              {canManageCouncilMeetings && !meetingAgendaLocked && vote!.status === 'open' && (
+                              {canManageCouncilMeetings && !agendaStructureEditLocked && vote!.status === 'open' && (
                                 <button
                                   type="button"
                                   disabled={busy}
@@ -2024,7 +2087,7 @@ export function MeetingDetail() {
                               meetingId={meeting.id}
                               ownerVoteMeetingId={showCouncilOwnerVoteUi ? ovMeta.meeting?.id : null}
                               eligibleUnitNo={viewerOvUnitNo}
-                              canEdit={canManageCouncilMeetings && !meetingAgendaLocked}
+                              canEdit={canManageCouncilMeetings && !agendaStructureEditLocked}
                               electionBallotCount={electionBallotsByAgenda.get(agenda.id) ?? 0}
                               languageEn={en}
                               t={t}
@@ -2046,7 +2109,7 @@ export function MeetingDetail() {
                   </p>
                 )}
 
-                {canManageCouncilMeetings && propertyIdForAgenda && !meetingAgendaLocked && (
+                {canManageCouncilMeetings && propertyIdForAgenda && !agendaStructureEditLocked && (
                   <form onSubmit={handleAddAgenda} className="mt-6 border border-dashed border-gray-300 rounded-lg p-4 space-y-3 bg-white">
                     <p className="text-sm font-medium text-gray-800">{en ? 'Add agenda item' : '添加议程'}</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
