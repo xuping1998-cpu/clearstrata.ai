@@ -6,7 +6,7 @@ export function canManagePropertyMeetings(role: UserRole | null): boolean {
   return role === 'council' || role === 'admin' || role === 'property_admin';
 }
 
-/** 侧栏「会议投票」默认跳转：管理人进会议列表；经理/业主等进业主表决页 */
-export function meetingsNavHref(role: UserRole | null): '/meetings' | '/owner-voting' {
-  return canManagePropertyMeetings(role) ? '/meetings' : '/owner-voting';
+/** 侧栏「会议投票」：管理人进会议管理；业主/经理等进投票列表（非联署专区）。 */
+export function meetingsNavHref(role: UserRole | null): '/meetings' | '/voting' {
+  return canManagePropertyMeetings(role) ? '/meetings' : '/voting';
 }

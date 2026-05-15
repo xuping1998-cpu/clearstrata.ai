@@ -4,8 +4,8 @@ import { CalendarDays, ClipboardList, FileSearch, ShoppingCart } from 'lucide-re
 
 export type QuickAccessDashboardCardProps = {
   langEn: boolean;
-  /** 与侧栏一致：业委会/物业管理员 → /meetings，其余 → /owner-voting */
-  meetingsHref: '/meetings' | '/owner-voting';
+  /** 与侧栏一致：业委会/物业管理员 → /meetings，其余 → /voting */
+  meetingsHref: '/meetings' | '/voting';
 };
 
 type QuickTile = {
