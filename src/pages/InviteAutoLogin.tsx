@@ -84,11 +84,15 @@ export function InviteAutoLogin() {
       return;
     }
 
+    console.log('[InviteAutoLogin] token detected', token);
+
     let cancelled = false;
 
     void consumeInviteOnce(token)
       .then(async (payload) => {
         if (cancelled) return;
+
+        console.log('[InviteAutoLogin] consume success', payload);
 
         const { error: sessionErr } = await supabase.auth.setSession({
           access_token: payload.access_token,
@@ -105,18 +109,20 @@ export function InviteAutoLogin() {
 
         if (didNavigate.current) return;
         didNavigate.current = true;
+        console.log('[InviteAutoLogin] navigating to meeting', payload.meetingId);
         navigate(`/meetings/${payload.meetingId}?entry=invite`, { replace: true });
       })
       .catch((e: unknown) => {
         if (cancelled) return;
         const msg = e instanceof Error ? e.message : String(e);
+        console.warn('[InviteAutoLogin] consume failed', msg);
         setError(msg || (zh ? '邀请无效或已使用。' : 'This invite is invalid or has already been used.'));
       });
 
     return () => {
       cancelled = true;
     };
-  }, [token, navigate]);
+  }, [token, navigate, setCurrentPropertyId]);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 flex flex-col">

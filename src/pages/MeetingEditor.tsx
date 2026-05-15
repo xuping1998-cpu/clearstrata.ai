@@ -44,6 +44,7 @@ import {
 import {
   deriveAgmSgmCanonDisplayWindows,
   deriveCouncilElectionCanonFromScheduledAt,
+  deriveRemoteWrittenV3CanonFromScheduledAt,
 } from '@/features/meetings/electionTimelineMath';
 import { isOwnerVotingMeeting } from '../features/meetings/ownerVotingCouncil';
 import { extractElectionAgendaMeta } from '../features/meetings/electionAgendaModel';
@@ -370,6 +371,9 @@ export function MeetingEditor() {
 
   const ownerOnlyMeetingEditor = ownerPetitionRemoteV3DraftEditAccess && !staffMayEditMeetings;
 
+  /** Edit mode + persisted row is remote_written v3 — show 14d unified window UI (not legacy 7+7+7). */
+  const editorRemoteWrittenV3Ui = isEdit && !!detailMeeting && isWrittenRemoteV3Meeting(detailMeeting);
+
   const agendaIdsWithCouncilBallots = useMemo(() => {
     const s = new Set<string>();
     for (const v of meetingVotes) {
@@ -460,6 +464,7 @@ export function MeetingEditor() {
         !isEdit ||
         !detailMeeting ||
         !currentPropertyId ||
+        isWrittenRemoteV3Meeting(detailMeeting) ||
         !isOwnerVotingMeeting(detailMeeting) ||
         !detailMeeting.property_id ||
         detailMeeting.property_id.trim() !== currentPropertyId.trim()
@@ -815,6 +820,19 @@ export function MeetingEditor() {
     }
   }
 
+  function remoteWrittenV3ParticipationStatusLabel(): string {
+    const iso = isoFromDatetimeLocal(form.scheduled_at) ?? detailMeeting?.scheduled_at ?? null;
+    const t0 = iso?.trim();
+    if (!t0) return en ? '—' : '—';
+    const startMs = new Date(t0).getTime();
+    if (Number.isNaN(startMs)) return en ? '—' : '—';
+    const endMs = startMs + 14 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    if (now < startMs) return en ? 'Not started' : '未开始';
+    if (now >= endMs) return en ? 'Closed' : '已结束';
+    return en ? 'Active' : '进行中';
+  }
+
   if (!user) {
     return <div className="p-8 text-center text-gray-600">{en ? 'Sign in required.' : '请先登录。'}</div>;
   }
@@ -857,7 +875,13 @@ export function MeetingEditor() {
       </h1>
 
       {form.meeting_format_ui === 'written_remote' ? (
-        <p className="mt-3 text-sm leading-relaxed text-gray-600">{t('meeting_written_remote_intro')}</p>
+        <p className="mt-3 text-sm leading-relaxed text-gray-600">
+          {editorRemoteWrittenV3Ui
+            ? en
+              ? 'The schedule is generated from the public notice start time: public discussion, nominations, and voting are open together during a 14-day participation window; results become read-only after the window closes.'
+              : '时间表由「公示开始时间」自动生成：14 天统一参与期内，公示/讨论、提名与投票同步开放；参与期结束后进入只读结果。'
+            : t('meeting_written_remote_intro')}
+        </p>
       ) : null}
 
       <form onSubmit={handleSubmit} className="mt-8 space-y-5">
@@ -980,22 +1004,55 @@ export function MeetingEditor() {
                 onChange={(e) => setForm((f) => ({ ...f, scheduled_at: e.target.value }))}
                 className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-900"
               />
-              <p className="mt-2 text-xs text-gray-600 leading-relaxed">{t('meeting_written_remote_auto_phases_hint')}</p>
+              <p className="mt-2 text-xs text-gray-600 leading-relaxed">
+                {editorRemoteWrittenV3Ui
+                  ? en
+                    ? 'A fixed 14-day participation window applies: public discussion, nominations, and voting are open together; after the deadline, the record becomes read-only.'
+                    : '系统固定为 14 天统一参与期：公示/讨论、提名、投票同步开放；截止后系统进入只读结果。'
+                  : t('meeting_written_remote_auto_phases_hint')}
+              </p>
             </div>
-            {form.scheduled_at.trim() &&
-            deriveAgmSgmCanonDisplayWindows(isoFromDatetimeLocal(form.scheduled_at) ?? '', agendaCount > 0) ? (
+            {(editorRemoteWrittenV3Ui
+              ? (isoFromDatetimeLocal(form.scheduled_at) ?? detailMeeting?.scheduled_at ?? '').trim()
+              : form.scheduled_at.trim()) &&
+            (editorRemoteWrittenV3Ui
+              ? deriveRemoteWrittenV3CanonFromScheduledAt(
+                  isoFromDatetimeLocal(form.scheduled_at) ?? detailMeeting?.scheduled_at ?? '',
+                )
+              : deriveAgmSgmCanonDisplayWindows(isoFromDatetimeLocal(form.scheduled_at) ?? '', agendaCount > 0)) ? (
               <div className="rounded-lg border border-gray-100 bg-gray-50/90 px-3 py-3 text-xs text-gray-800 space-y-2">
                 {(() => {
-                  const disp = deriveAgmSgmCanonDisplayWindows(
-                    isoFromDatetimeLocal(form.scheduled_at)!,
-                    agendaCount > 0,
-                  );
-                  if (!disp) return null;
                   const fmt = (iso: string) =>
                     new Date(iso).toLocaleString(en ? 'en-CA' : 'zh-CN', {
                       dateStyle: 'medium',
                       timeStyle: 'short',
                     });
+                  if (editorRemoteWrittenV3Ui) {
+                    const v3Iso = isoFromDatetimeLocal(form.scheduled_at) ?? detailMeeting?.scheduled_at ?? '';
+                    const v3 = deriveRemoteWrittenV3CanonFromScheduledAt(v3Iso);
+                    if (!v3) return null;
+                    return (
+                      <>
+                        <p>
+                          <span className="font-semibold">{en ? 'Public discussion' : '公示 / 讨论期'}</span>{' '}
+                          {fmt(v3.publicNoticeOpenIso)} – {fmt(v3.publicNoticeCloseIso)}
+                        </p>
+                        <p>
+                          <span className="font-semibold">{t('meeting_election_phase_nomination')}</span>{' '}
+                          {fmt(v3.nominationOpenIso)} – {fmt(v3.nominationCloseIso)}
+                        </p>
+                        <p>
+                          <span className="font-semibold">{t('meeting_election_phase_voting')}</span>{' '}
+                          {fmt(v3.votingOpenIso)} – {fmt(v3.votingCloseIso)}
+                        </p>
+                      </>
+                    );
+                  }
+                  const disp = deriveAgmSgmCanonDisplayWindows(
+                    isoFromDatetimeLocal(form.scheduled_at)!,
+                    agendaCount > 0,
+                  );
+                  if (!disp) return null;
                   return (
                     <>
                       <p>
@@ -1040,9 +1097,17 @@ export function MeetingEditor() {
           </p>
           {isEdit && (
             <div className="mt-4 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
-              <span className="text-xs font-medium text-gray-600">{t('voting_status')}</span>
+              <span className="text-xs font-medium text-gray-600">
+                {editorRemoteWrittenV3Ui ? (en ? 'Participation status' : '参与状态') : t('voting_status')}
+              </span>
               <p className="text-sm font-medium text-gray-900 mt-0.5">
-                {voteLine === 'loading' ? (en ? '…' : '…') : voteStatusReadLabel()}
+                {editorRemoteWrittenV3Ui
+                  ? remoteWrittenV3ParticipationStatusLabel()
+                  : voteLine === 'loading'
+                    ? en
+                      ? '…'
+                      : '…'
+                    : voteStatusReadLabel()}
               </p>
             </div>
           )}

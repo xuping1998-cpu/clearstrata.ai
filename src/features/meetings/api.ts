@@ -20,6 +20,16 @@ export type SendMeetingInvitesResult = {
   error: Error | null;
 };
 
+/** Owner remote_written_v3 SGM invite send — richer than {@link SendMeetingInvitesResult} for UI toasts. */
+export type SendOwnerRemoteWrittenV3SgmInvitesResult = SendMeetingInvitesResult & {
+  preparedCount: number;
+  /** Rows with `delivery_status` in pending / failed (from DB query). */
+  queueCount: number;
+  /** `max(0, preparedCount - queueCount)` — recipients not currently in the send queue. */
+  alreadySentCount: number;
+  messageCode: 'no_recipients' | 'all_already_sent' | null;
+};
+
 /**
  * Calls send-meeting-invite with the anon key (HS256) so the Functions gateway does not verify
  * a user session JWT (ES256). The Edge Function uses the service role only; recipient comes from body.
@@ -238,21 +248,71 @@ export async function prepareOwnerRemoteWrittenV3SgmInvitations(meetingId: strin
 export async function sendOwnerRemoteWrittenV3SgmInvitations(
   meetingId: string,
   locale: 'en' | 'zh' = 'zh',
-): Promise<SendMeetingInvitesResult> {
-  const empty = (error: Error | null): SendMeetingInvitesResult => ({
-    attempted: 0,
-    sent: 0,
-    failed: 0,
-    errors: [],
-    error,
-  });
+): Promise<SendOwnerRemoteWrittenV3SgmInvitesResult> {
+  const base = (params: {
+    preparedCount: number;
+    queueCount: number;
+    attempted: number;
+    sent: number;
+    failed: number;
+    errors: { userId: string; message: string }[];
+    error: Error | null;
+    messageCode: SendOwnerRemoteWrittenV3SgmInvitesResult['messageCode'];
+  }): SendOwnerRemoteWrittenV3SgmInvitesResult => {
+    const alreadySentCount = Math.max(0, params.preparedCount - params.queueCount);
+    return {
+      preparedCount: params.preparedCount,
+      queueCount: params.queueCount,
+      alreadySentCount,
+      attempted: params.attempted,
+      sent: params.sent,
+      failed: params.failed,
+      errors: params.errors,
+      error: params.error,
+      messageCode: params.messageCode,
+    };
+  };
 
   const prep = await prepareOwnerRemoteWrittenV3SgmInvitations(meetingId);
   if (!prep.ok) {
-    return empty(new Error(prep.code ?? 'prepare_failed'));
+    const err = prep.error ?? new Error(prep.code ?? 'prepare_failed');
+    return base({
+      preparedCount: 0,
+      queueCount: 0,
+      attempted: 0,
+      sent: 0,
+      failed: 0,
+      errors: [],
+      error: err,
+      messageCode: null,
+    });
   }
+
+  const preparedCount = Math.max(prep.count, prep.recipientUserIds.length);
   if (!prep.propertyId) {
-    return empty(new Error('missing_property_id'));
+    return base({
+      preparedCount,
+      queueCount: 0,
+      attempted: 0,
+      sent: 0,
+      failed: 0,
+      errors: [],
+      error: new Error('missing_property_id'),
+      messageCode: null,
+    });
+  }
+
+  if (preparedCount === 0) {
+    return base({
+      preparedCount: 0,
+      queueCount: 0,
+      attempted: 0,
+      sent: 0,
+      failed: 0,
+      errors: [],
+      error: null,
+      messageCode: 'no_recipients',
+    });
   }
 
   const { data: queueRows, error: queueErr } = await withProperty(
@@ -264,33 +324,71 @@ export async function sendOwnerRemoteWrittenV3SgmInvitations(
     prep.propertyId,
   );
   if (queueErr) {
-    return empty(new Error(queueErr.message ?? 'Failed to load invitation queue'));
+    return base({
+      preparedCount,
+      queueCount: 0,
+      attempted: 0,
+      sent: 0,
+      failed: 0,
+      errors: [],
+      error: new Error(queueErr.message ?? 'Failed to load invitation queue'),
+      messageCode: null,
+    });
   }
+
+  const queueRowsRaw = (queueRows ?? []) as { recipient_user_id: string | null }[];
+  const queueCount = queueRowsRaw.length;
 
   const userIds = Array.from(
     new Set(
-      ((queueRows ?? []) as { recipient_user_id: string | null }[])
+      queueRowsRaw
         .map((r) => r.recipient_user_id)
         .filter((id): id is string => typeof id === 'string' && id.length > 0),
     ),
   );
 
   if (userIds.length === 0) {
-    return empty(null);
+    return base({
+      preparedCount,
+      queueCount,
+      attempted: 0,
+      sent: 0,
+      failed: 0,
+      errors: [],
+      error: null,
+      messageCode: 'all_already_sent',
+    });
   }
 
   const { emailByUser, error: profErr } = await loadInviteEmailsByUserId(userIds);
   if (profErr) {
-    return empty(profErr);
+    return base({
+      preparedCount,
+      queueCount,
+      attempted: 0,
+      sent: 0,
+      failed: 0,
+      errors: [],
+      error: profErr,
+      messageCode: null,
+    });
   }
 
-  return dispatchMeetingInviteEmails({
+  const dispatched = await dispatchMeetingInviteEmails({
     meetingId,
     propertyId: prep.propertyId,
     userIds,
     emailByUser,
     locale,
   });
+
+  return {
+    ...dispatched,
+    preparedCount,
+    queueCount,
+    alreadySentCount: Math.max(0, preparedCount - queueCount),
+    messageCode: null,
+  };
 }
 
 export type MeetingType = 'agm' | 'sgm' | 'council';

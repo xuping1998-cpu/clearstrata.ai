@@ -38,6 +38,7 @@ import {
   type MeetingRow,
   type OwnerVoteMeetingLite,
   type OwnerVoteResolutionResultNormalized,
+  type SendOwnerRemoteWrittenV3SgmInvitesResult,
 } from '../../features/meetings/api';
 import {
   councilMeetingTitleForOwnerVoteBinding,
@@ -113,6 +114,42 @@ function remoteWrittenV3MeetingAgendaEditBlocked(meeting: MeetingRow): boolean {
 
 function remoteWrittenV3AgendaEditErr(en: boolean): string {
   return en ? REMOTE_WRITTEN_V3_DETAIL_EDIT_LOCKED.en : REMOTE_WRITTEN_V3_DETAIL_EDIT_LOCKED.zh;
+}
+
+/** Maps {@link sendOwnerRemoteWrittenV3SgmInvitations} result to detail-page toast + inline error (owner path only). */
+function ownerRemoteWrittenV3InviteFeedback(
+  en: boolean,
+  result: SendOwnerRemoteWrittenV3SgmInvitesResult,
+): { actionErr: string | null; inviteToast: { kind: 'success' | 'error'; text: string } | null } {
+  if (result.error) {
+    const text = en ? `Send failed: ${result.error.message}` : `发送失败：${result.error.message}`;
+    return { actionErr: text, inviteToast: { kind: 'error', text } };
+  }
+  if (result.messageCode === 'no_recipients') {
+    const text = en ? 'No owner members found to notify.' : '没有找到可通知的业主成员。';
+    return { actionErr: text, inviteToast: { kind: 'error', text } };
+  }
+  if (result.messageCode === 'all_already_sent') {
+    const text = en
+      ? 'All invitations have already been sent; nothing to send again.'
+      : '所有邀请已经发送，无需重复发送。';
+    return { actionErr: null, inviteToast: { kind: 'success', text } };
+  }
+  if (result.attempted === 0) {
+    const text = en ? 'No pending or failed invitations to send.' : '没有待发送或待重发的邀请。';
+    return { actionErr: text, inviteToast: { kind: 'error', text } };
+  }
+  if (result.failed > 0) {
+    const text = en
+      ? `Sent ${result.sent}, failed ${result.failed}.`
+      : `已发送 ${result.sent} 封，失败 ${result.failed} 封。`;
+    return { actionErr: text, inviteToast: { kind: 'error', text } };
+  }
+  if (result.sent > 0) {
+    const text = en ? `Invitation emails sent: ${result.sent}` : `已发送 ${result.sent} 封会议邀请。`;
+    return { actionErr: null, inviteToast: { kind: 'success', text } };
+  }
+  return { actionErr: null, inviteToast: null };
 }
 
 function initiationTypeLabel(type: MeetingInitiationType, t: (key: string) => string): string {
@@ -684,10 +721,18 @@ export function MeetingDetail() {
       searchParams.get('propertyId')?.trim() ||
       new URLSearchParams(location.search).get('propertyId')?.trim() ||
       currentPropertyId?.trim();
+    if (
+      meeting &&
+      isWrittenRemoteV3Meeting(meeting) &&
+      extractGovernanceMeta(meeting.description_zh ?? '').meta?.initiation_type === 'owner_requisitioned' &&
+      pid
+    ) {
+      return `/owner-voting?${new URLSearchParams({ propertyId: pid }).toString()}`;
+    }
     const base = location.pathname.startsWith('/voting') ? '/voting' : '/meetings';
     if (pid) return `${base}?${new URLSearchParams({ propertyId: pid }).toString()}`;
     return base;
-  }, [location.pathname, location.search, searchParams, currentPropertyId, meeting?.property_id]);
+  }, [location.pathname, location.search, searchParams, currentPropertyId, meeting]);
 
   /** 刷新 / 深链：加载会议后把 URL 中的 propertyId 与会议所属物业对齐，返回列表与多物业上下文一致 */
   useEffect(() => {
@@ -1315,20 +1360,17 @@ export function MeetingDetail() {
     setActionErr(null);
     setInviteToast(null);
     try {
-      const result =
-        canOwnerCreatorSendInvites && !canManageCouncilMeetings
-          ? await sendOwnerRemoteWrittenV3SgmInvitations(meeting.id, en ? 'en' : 'zh')
-          : await sendMeetingInvitations(meeting.id, meeting.property_id, en ? 'en' : 'zh');
+      if (canOwnerCreatorSendInvites && !canManageCouncilMeetings) {
+        const result = await sendOwnerRemoteWrittenV3SgmInvitations(meeting.id, en ? 'en' : 'zh');
+        const { actionErr, inviteToast: toast } = ownerRemoteWrittenV3InviteFeedback(en, result);
+        if (actionErr) setActionErr(actionErr);
+        if (toast) setInviteToast(toast);
+        return;
+      }
+      const result = await sendMeetingInvitations(meeting.id, meeting.property_id, en ? 'en' : 'zh');
       console.log('recipients count', result.attempted);
       if (result.attempted === 0) {
-        const msg =
-          canOwnerCreatorSendInvites && !canManageCouncilMeetings
-            ? en
-              ? 'No pending or failed invitations to send.'
-              : '没有待发送或待重发的邀请（可能已全部发送）。'
-            : en
-              ? 'No property members to invite.'
-              : '没有可邀请的成员。';
+        const msg = en ? 'No property members to invite.' : '没有可邀请的成员。';
         setInviteToast({ kind: 'error', text: msg });
         setActionErr(msg);
         return;
@@ -1378,32 +1420,9 @@ export function MeetingDetail() {
     try {
       if (canOwnerCreatorSendInvites && !canManageCouncilMeetings) {
         const result = await sendOwnerRemoteWrittenV3SgmInvitations(meeting.id, en ? 'en' : 'zh');
-        if (result.attempted === 0) {
-          const msg = en ? 'No pending or failed invitations to resend.' : '没有待重发或失败的邀请。';
-          setInviteToast({ kind: 'error', text: msg });
-          setActionErr(msg);
-          return;
-        }
-        if (result.failed > 0 && result.sent === 0) {
-          const msg =
-            result.errors[0]?.message ??
-            (en ? 'All invitation emails failed. See console.' : '全部邀请发送失败，请查看控制台。');
-          setActionErr(msg);
-          setInviteToast({ kind: 'error', text: msg });
-          return;
-        }
-        if (result.failed > 0) {
-          const msg = en
-            ? `Sent ${result.sent}, failed ${result.failed}. Check console for details.`
-            : `已发送 ${result.sent} 封，失败 ${result.failed} 封。详情请查看控制台。`;
-          setActionErr(msg);
-          setInviteToast({ kind: 'error', text: msg });
-          return;
-        }
-        const okMsg = en
-          ? `Invitation emails sent: ${result.sent}`
-          : `已成功发送 ${result.sent} 封会议邀请邮件`;
-        setInviteToast({ kind: 'success', text: okMsg });
+        const { actionErr, inviteToast: toast } = ownerRemoteWrittenV3InviteFeedback(en, result);
+        if (actionErr) setActionErr(actionErr);
+        if (toast) setInviteToast(toast);
         return;
       }
       const { error } = await resetFailedInvitations(meeting.id, meeting.property_id);
@@ -1581,13 +1600,22 @@ export function MeetingDetail() {
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
             <div className="min-w-0 flex-1 space-y-4">
-              <Link
-                to={backToListHref}
-                className="inline-flex w-fit items-center gap-2 rounded-lg bg-white/20 px-3 py-2 text-sm font-medium text-white ring-1 ring-white/35 hover:bg-white/30 transition-colors"
-              >
-                <ArrowLeft size={18} />
-                {isVotingRoute ? (en ? 'Back to voting list' : '返回投票列表') : t('meeting_back_list')}
-              </Link>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => navigate('/')}
+                  className="inline-flex w-fit items-center gap-2 rounded-lg bg-white/25 px-3 py-2 text-sm font-semibold text-white ring-1 ring-white/45 hover:bg-white/35 transition-colors"
+                >
+                  {en ? 'Home' : '返回首页'}
+                </button>
+                <Link
+                  to={backToListHref}
+                  className="inline-flex w-fit items-center gap-2 rounded-lg bg-white/20 px-3 py-2 text-sm font-medium text-white ring-1 ring-white/35 hover:bg-white/30 transition-colors"
+                >
+                  <ArrowLeft size={18} />
+                  {isVotingRoute ? (en ? 'Back to voting list' : '返回投票列表') : t('meeting_back_list')}
+                </Link>
+              </div>
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/90 mb-2 drop-shadow-sm">
                   {isVotingRoute ? (en ? 'Meeting voting' : '会议投票') : en ? 'Meeting details' : '会议详情'}

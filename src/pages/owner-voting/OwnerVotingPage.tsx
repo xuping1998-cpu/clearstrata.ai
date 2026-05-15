@@ -22,6 +22,7 @@ import { type MeetingRow } from '@/features/meetings/api';
 import {
   councilMeetingVotingWindowFallback,
   isWrittenRemoteV3Meeting,
+  stripWrittenRemoteMeta,
 } from '@/features/meetings/meetingFormatModel';
 import { stripCouncilMeetingBinding, resolveCouncilMeetingIdForOwnerVoteDescription } from '@/features/meetings/ownerVotingCouncil';
 import { deriveRemoteWrittenV3CanonFromScheduledAt } from '@/features/meetings/electionTimelineMath';
@@ -1199,7 +1200,9 @@ export function OwnerVotingPage() {
                       </span>
                       <h2 className="mt-2 text-lg font-bold text-gray-900 sm:text-xl">{mt.title}</h2>
                       {(() => {
-                        const vis = stripCouncilMeetingBinding(mt.description ?? '');
+                        const vis = stripWrittenRemoteMeta(
+                          stripCouncilMeetingBinding(mt.description ?? ''),
+                        );
                         return vis.trim() ? (
                           <p className="mt-2 whitespace-pre-wrap text-sm text-gray-600">{vis}</p>
                         ) : null;

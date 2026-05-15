@@ -252,7 +252,7 @@ function buildEmailHtml(p: InviteEmailHtmlParams): string {
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:28px;">
                 <tr>
                   <td align="center" style="padding:0 0 12px;">
-                    <a href="${inviteLink}" style="display:inline-block;background:#1D9E75;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;padding:14px 28px;border-radius:8px;">View meeting &middot; Enter app</a>
+                    <a href="${inviteLink}" style="display:inline-block;background:#1D9E75;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;padding:14px 28px;border-radius:8px;">进入会议 / Enter Meeting</a>
                   </td>
                 </tr>
                 <tr>
@@ -342,7 +342,7 @@ function buildEmailHtml(p: InviteEmailHtmlParams): string {
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:28px;">
                 <tr>
                   <td align="center" style="padding:0 0 12px;">
-                    <a href="${inviteLink}" style="display:inline-block;background:#1D9E75;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;padding:14px 28px;border-radius:8px;">查看会议 · 进入系统</a>
+                    <a href="${inviteLink}" style="display:inline-block;background:#1D9E75;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;padding:14px 28px;border-radius:8px;">进入会议 / Enter Meeting</a>
                   </td>
                 </tr>
                 <tr>
@@ -581,12 +581,6 @@ Deno.serve(async (req: Request) => {
 
     const normalizedBaseUrl = normalizeAppBaseUrl(Deno.env.get("APP_BASE_URL"));
     const logoUrl = `${normalizedBaseUrl}/logo-email.png`;
-    const meetingUrl = `${normalizedBaseUrl}/meetings/${meeting_id}?entry=invite`;
-    const signInUrl =
-      `${normalizedBaseUrl}/login?redirect=${
-        encodeURIComponent(`/meetings/${meeting_id}?entry=invite`)
-      }`;
-    const inviteLink = meetingUrl;
 
     const inviteToken = crypto.randomUUID();
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
@@ -601,10 +595,20 @@ Deno.serve(async (req: Request) => {
       return apiResponse(false, "Could not create invite token", { detail: tokenInsErr.message }, 500);
     }
 
+    const meetingMagicUrl = `${normalizedBaseUrl}/invite?token=${inviteToken}`;
+    const signInUrl =
+      `${normalizedBaseUrl}/login?redirect=${
+        encodeURIComponent(`/meetings/${meeting_id}?entry=invite`)
+      }`;
+    const inviteLink = meetingMagicUrl;
+
+    console.log("[MeetingInviteEmail] inviteToken", inviteToken);
+    console.log("[MeetingInviteEmail] meetingMagicUrl", meetingMagicUrl);
+
     console.log("[send-meeting-invite] base url debug:", {
       raw: Deno.env.get("APP_BASE_URL"),
       normalizedBaseUrl,
-      meetingUrl,
+      meetingMagicUrl,
       signInUrl,
       logoUrl,
     });
@@ -634,7 +638,7 @@ Deno.serve(async (req: Request) => {
 
     console.log("[send-meeting-invite] email fields", {
       normalizedBaseUrl,
-      meetingUrl,
+      meetingMagicUrl,
       signInUrl,
       logoUrl,
       meetingTitle,
