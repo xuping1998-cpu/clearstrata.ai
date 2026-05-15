@@ -11,6 +11,8 @@ import {
   getMeetingDetail,
   noticeReadiness,
   updateMeeting,
+  updateOwnerRemoteWrittenV3SgmDraft,
+  saveOwnerRemoteWrittenV3SgmAgendaDrafts,
   updateMeetingAgendaItem,
   type MeetingAgendaRow,
   type MeetingBallotRow,
@@ -24,6 +26,7 @@ import {
   embedGovernanceMeta,
   embedWrittenRemoteCanonFromMeetingStart,
   embedWrittenRemoteV3MetaFromMeetingStart,
+  extractGovernanceMeta,
   extractWrittenRemoteMeta,
   isWrittenRemoteV3Meeting,
   isWrittenRemoteV3Meta,
@@ -347,6 +350,25 @@ export function MeetingEditor() {
   const [voteLine, setVoteLine] = useState<'loading' | 'none' | string>('loading');
 
   const agendaCount = useMemo(() => agendaItems.filter(agendaHasMeaningfulContent).length, [agendaItems]);
+
+  const staffMayEditMeetings = canManagePropertyMeetings(roleInProperty);
+
+  const ownerPetitionRemoteV3DraftEditAccess =
+    isEdit &&
+    !!detailMeeting &&
+    !!user?.id &&
+    isWrittenRemoteV3Meeting(detailMeeting) &&
+    extractGovernanceMeta(detailMeeting.description_zh ?? '').meta?.initiation_type === 'owner_requisitioned' &&
+    detailMeeting.created_by === user.id &&
+    String(detailMeeting.status ?? '').toLowerCase() === 'draft' &&
+    (() => {
+      const s = detailMeeting.scheduled_at?.trim();
+      if (!s) return false;
+      const ms = new Date(s).getTime();
+      return !Number.isNaN(ms) && Date.now() < ms;
+    })();
+
+  const ownerOnlyMeetingEditor = ownerPetitionRemoteV3DraftEditAccess && !staffMayEditMeetings;
 
   const agendaIdsWithCouncilBallots = useMemo(() => {
     const s = new Set<string>();
@@ -696,36 +718,78 @@ export function MeetingEditor() {
       return;
     }
 
-    const { error } = await updateMeeting(meetingId!, currentPropertyId, {
-      meeting_type: form.meeting_type,
-      title_en: form.title_en || null,
-      title_zh: form.title_zh || null,
-      description_en: form.description_en || null,
-      description_zh: descriptionZhFinal || null,
-      scheduled_at: scheduledIso,
-      meeting_format: dbFormat,
-      status: form.status,
-      voting_open_at: votingOpenIso,
-      voting_close_at: votingCloseIso,
-    });
-    if (error) {
-      setSaving(false);
-      setErr(error.message);
-      return;
+    if (ownerOnlyMeetingEditor) {
+      if (!scheduledIso) {
+        setSaving(false);
+        setErr(en ? 'Set the meeting start (public notice opens).' : '请设置会议开始时间（公示开始）。');
+        return;
+      }
+      const rpc = await updateOwnerRemoteWrittenV3SgmDraft({
+        meetingId: meetingId!,
+        titleZh: form.title_zh?.trim() ? form.title_zh : null,
+        titleEn: form.title_en?.trim() ? form.title_en : null,
+        descriptionZh: descriptionZhFinal || null,
+        descriptionEn: form.description_en?.trim() ? form.description_en : null,
+        scheduledAt: scheduledIso,
+      });
+      if (!rpc.ok) {
+        setSaving(false);
+        setErr(rpc.code ?? (en ? 'Save failed.' : '保存失败。'));
+        return;
+      }
+    } else {
+      const { error } = await updateMeeting(meetingId!, currentPropertyId, {
+        meeting_type: form.meeting_type,
+        title_en: form.title_en || null,
+        title_zh: form.title_zh || null,
+        description_en: form.description_en || null,
+        description_zh: descriptionZhFinal || null,
+        scheduled_at: scheduledIso,
+        meeting_format: dbFormat,
+        status: form.status,
+        voting_open_at: votingOpenIso,
+        voting_close_at: votingCloseIso,
+      });
+      if (error) {
+        setSaving(false);
+        setErr(error.message);
+        return;
+      }
     }
-    const persistResult = await persistMeetingAgendaDrafts({
-      propertyId: currentPropertyId,
-      meetingId: meetingId!,
-      rows: meaningful,
-      deleteServerIds,
-      languageEn: en,
-    });
-    setSaving(false);
-    if (persistResult.error) {
-      setErr(
-        en ? `Meeting saved, but agendas: ${persistResult.error}` : `会议已保存，议程同步失败：${persistResult.error}`,
+
+    if (ownerOnlyMeetingEditor) {
+      const ownerAgenda = await saveOwnerRemoteWrittenV3SgmAgendaDrafts(
+        meetingId!,
+        meaningful.map((r) => ({
+          id: r.serverId,
+          title_zh: String(r.title_zh).trim() || null,
+          title_en: String(r.title_en).trim() || null,
+          description_zh: descriptionZhForPersist(r),
+          description_en: r.description_en ?? null,
+          requires_vote: r.kind === 'resolution',
+          vote_rule: r.kind === 'resolution' ? r.vote_rule : null,
+        })),
       );
-      return;
+      setSaving(false);
+      if (!ownerAgenda.ok) {
+        setErr(ownerAgenda.code ?? (en ? 'Agenda save failed.' : '议程保存失败。'));
+        return;
+      }
+    } else {
+      const persistResult = await persistMeetingAgendaDrafts({
+        propertyId: currentPropertyId,
+        meetingId: meetingId!,
+        rows: meaningful,
+        deleteServerIds,
+        languageEn: en,
+      });
+      setSaving(false);
+      if (persistResult.error) {
+        setErr(
+          en ? `Meeting saved, but agendas: ${persistResult.error}` : `会议已保存，议程同步失败：${persistResult.error}`,
+        );
+        return;
+      }
     }
     setPendingDeleteServerIds([]);
     setAgendaItems(meaningful);
@@ -767,8 +831,13 @@ export function MeetingEditor() {
     return <div className="p-8 text-center text-gray-600">{en ? 'Select a property first.' : '请先选择物业。'}</div>;
   }
 
-  if (!canManagePropertyMeetings(roleInProperty)) {
-    return <Navigate to="/owner-voting" replace />;
+  if (!staffMayEditMeetings) {
+    if (!isEdit) {
+      return <Navigate to="/owner-voting" replace />;
+    }
+    if (!ownerPetitionRemoteV3DraftEditAccess) {
+      return <Navigate to="/owner-voting" replace />;
+    }
   }
 
   const syncTimeModes = !(form.meeting_format_ui === 'written_remote');
@@ -799,6 +868,7 @@ export function MeetingEditor() {
             onChange={(e) =>
               setForm((f) => applyMeetingKindToForm(e.target.value as MeetingKindUi, f))
             }
+            disabled={ownerOnlyMeetingEditor}
             className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-900"
           >
             <option value="owner_sgm_remote">{en ? 'Owner co-signed SGM (remote written)' : '远程书面业主联署 SGM'}</option>
@@ -955,6 +1025,7 @@ export function MeetingEditor() {
           <select
             value={form.status === 'scheduled' ? 'open' : form.status}
             onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as MeetingStatus }))}
+            disabled={ownerOnlyMeetingEditor}
             className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-900"
           >
             <option value="draft">{t('meeting_status_draft_label')}</option>

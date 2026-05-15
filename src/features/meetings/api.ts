@@ -87,6 +87,212 @@ export async function invokeSendMeetingInviteEdge(params: {
   return { ok: false, message: 'Unexpected response from send-meeting-invite', detail: data };
 }
 
+async function loadInviteEmailsByUserId(userIds: string[]): Promise<{
+  emailByUser: Record<string, string | null>;
+  error: Error | null;
+}> {
+  if (userIds.length === 0) {
+    return { emailByUser: {}, error: null };
+  }
+  const { data: profRows, error: profErr } = await supabase
+    .from('profiles')
+    .select('id, email')
+    .in('id', userIds);
+  if (profErr) {
+    return { emailByUser: {}, error: new Error(profErr.message ?? 'Failed to load profiles') };
+  }
+  const emailByUser: Record<string, string | null> = {};
+  for (const p of (profRows ?? []) as { id: string; email: string | null }[]) {
+    emailByUser[p.id] = p.email ?? null;
+  }
+  return { emailByUser, error: null };
+}
+
+/** Invoke send-meeting-invite per recipient and sync meeting_invitations delivery_status. */
+async function dispatchMeetingInviteEmails(params: {
+  meetingId: string;
+  propertyId: string;
+  userIds: string[];
+  emailByUser: Record<string, string | null>;
+  locale: 'en' | 'zh';
+}): Promise<SendMeetingInvitesResult> {
+  const { meetingId, propertyId, userIds, emailByUser, locale } = params;
+  const errors: { userId: string; message: string }[] = [];
+  let sent = 0;
+  let failed = 0;
+
+  for (const userId of userIds) {
+    const r = await invokeSendMeetingInviteEdge({
+      meetingId,
+      propertyId,
+      userId,
+      locale,
+    });
+
+    if (r.ok) {
+      sent += 1;
+      const now = new Date().toISOString();
+      const { error: upErr } = await withProperty(
+        supabase
+          .from('meeting_invitations')
+          .update({
+            delivery_status: 'sent',
+            sent_at: now,
+            email: emailByUser[userId] ?? null,
+            delivery_channel: 'email',
+            property_id: propertyId,
+          } as any)
+          .eq('meeting_id', meetingId)
+          .eq('recipient_user_id', userId) as any,
+        propertyId,
+      );
+      if (upErr) {
+        console.error('[dispatchMeetingInviteEmails] failed to mark sent in DB', upErr);
+      }
+    } else {
+      failed += 1;
+      errors.push({ userId, message: r.message });
+      await withProperty(
+        supabase
+          .from('meeting_invitations')
+          .update({
+            delivery_status: 'failed',
+            sent_at: null,
+            property_id: propertyId,
+          } as any)
+          .eq('meeting_id', meetingId)
+          .eq('recipient_user_id', userId) as any,
+        propertyId,
+      );
+    }
+  }
+
+  return {
+    attempted: userIds.length,
+    sent,
+    failed,
+    errors,
+    error:
+      failed === userIds.length && userIds.length > 0
+        ? new Error(errors[0]?.message ?? 'All sends failed')
+        : null,
+  };
+}
+
+export async function prepareOwnerRemoteWrittenV3SgmInvitations(meetingId: string): Promise<{
+  ok: boolean;
+  code?: string;
+  meetingId?: string;
+  propertyId?: string;
+  recipientUserIds: string[];
+  count: number;
+  error: Error | null;
+}> {
+  const { data, error } = await supabase.rpc('prepare_owner_remote_written_v3_sgm_invitations', {
+    p_meeting_id: meetingId,
+  });
+  if (error) {
+    return {
+      ok: false,
+      code: error.message,
+      recipientUserIds: [],
+      count: 0,
+      error: new Error(error.message),
+    };
+  }
+  const body = data as {
+    ok?: boolean;
+    code?: string;
+    meeting_id?: string;
+    property_id?: string;
+    recipient_user_ids?: string[];
+    count?: number;
+  } | null;
+  if (!body?.ok) {
+    return {
+      ok: false,
+      code: typeof body?.code === 'string' ? body.code : 'unknown',
+      recipientUserIds: [],
+      count: 0,
+      error: null,
+    };
+  }
+  const ids = Array.isArray(body.recipient_user_ids)
+    ? body.recipient_user_ids.filter((id): id is string => typeof id === 'string' && id.length > 0)
+    : [];
+  const resolvedCount =
+    typeof body.count === 'number' && Number.isFinite(body.count) ? body.count : ids.length;
+  return {
+    ok: true,
+    meetingId: typeof body.meeting_id === 'string' ? body.meeting_id : meetingId,
+    propertyId: typeof body.property_id === 'string' ? body.property_id : undefined,
+    recipientUserIds: ids,
+    count: resolvedCount,
+    error: null,
+  };
+}
+
+/**
+ * Owner-requisitioned remote-written v3 draft SGM creator: RPC prepares all recipients, then Edge sends email.
+ */
+export async function sendOwnerRemoteWrittenV3SgmInvitations(
+  meetingId: string,
+  locale: 'en' | 'zh' = 'zh',
+): Promise<SendMeetingInvitesResult> {
+  const empty = (error: Error | null): SendMeetingInvitesResult => ({
+    attempted: 0,
+    sent: 0,
+    failed: 0,
+    errors: [],
+    error,
+  });
+
+  const prep = await prepareOwnerRemoteWrittenV3SgmInvitations(meetingId);
+  if (!prep.ok) {
+    return empty(new Error(prep.code ?? 'prepare_failed'));
+  }
+  if (!prep.propertyId) {
+    return empty(new Error('missing_property_id'));
+  }
+
+  const { data: queueRows, error: queueErr } = await withProperty(
+    supabase
+      .from('meeting_invitations')
+      .select('recipient_user_id')
+      .eq('meeting_id', meetingId)
+      .in('delivery_status', ['pending', 'failed']) as any,
+    prep.propertyId,
+  );
+  if (queueErr) {
+    return empty(new Error(queueErr.message ?? 'Failed to load invitation queue'));
+  }
+
+  const userIds = Array.from(
+    new Set(
+      ((queueRows ?? []) as { recipient_user_id: string | null }[])
+        .map((r) => r.recipient_user_id)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0),
+    ),
+  );
+
+  if (userIds.length === 0) {
+    return empty(null);
+  }
+
+  const { emailByUser, error: profErr } = await loadInviteEmailsByUserId(userIds);
+  if (profErr) {
+    return empty(profErr);
+  }
+
+  return dispatchMeetingInviteEmails({
+    meetingId,
+    propertyId: prep.propertyId,
+    userIds,
+    emailByUser,
+    locale,
+  });
+}
+
 export type MeetingType = 'agm' | 'sgm' | 'council';
 export type MeetingFormat = 'in_person' | 'electronic' | 'hybrid';
 export type MeetingStatus = 'draft' | 'scheduled' | 'open' | 'closed' | 'archived';
@@ -710,6 +916,66 @@ export async function updateMeeting(
   return { id: data?.id, error };
 }
 
+/** Owner-created remote-written v3 owner-requisitioned SGM draft: bypasses staff-only meetings UPDATE RLS. */
+export async function updateOwnerRemoteWrittenV3SgmDraft(params: {
+  meetingId: string;
+  titleZh: string | null;
+  titleEn: string | null;
+  descriptionZh: string | null;
+  descriptionEn: string | null;
+  scheduledAt: string;
+}): Promise<{ ok: boolean; code?: string; error: Error | null }> {
+  const { data, error } = await supabase.rpc('update_owner_remote_written_v3_sgm_draft', {
+    p_meeting_id: params.meetingId,
+    p_title_zh: params.titleZh,
+    p_title_en: params.titleEn,
+    p_description_zh: params.descriptionZh,
+    p_description_en: params.descriptionEn,
+    p_scheduled_at: params.scheduledAt,
+  });
+  if (error) {
+    return { ok: false, code: error.message, error: new Error(error.message) };
+  }
+  const body = data as { ok?: boolean; code?: string } | null;
+  if (!body?.ok) {
+    return { ok: false, code: typeof body?.code === 'string' ? body.code : 'unknown', error: null };
+  }
+  return { ok: true, error: null };
+}
+
+/** Payload row for `save_owner_remote_written_v3_sgm_agenda_drafts` (matches `persistMeetingAgendaDrafts` fields). */
+export type SaveOwnerRemoteWrittenV3SgmAgendaDraftRow = {
+  id?: string | null;
+  title_zh?: string | null;
+  title_en?: string | null;
+  description_zh?: string | null;
+  description_en?: string | null;
+  requires_vote: boolean;
+  vote_rule?: VoteRule | null;
+};
+
+export async function saveOwnerRemoteWrittenV3SgmAgendaDrafts(
+  meetingId: string,
+  agendas: SaveOwnerRemoteWrittenV3SgmAgendaDraftRow[],
+): Promise<{ ok: boolean; code?: string; count?: number; error: Error | null }> {
+  const { data, error } = await supabase.rpc('save_owner_remote_written_v3_sgm_agenda_drafts', {
+    p_meeting_id: meetingId,
+    p_agendas: agendas,
+  });
+  if (error) {
+    return { ok: false, code: error.message, error: new Error(error.message) };
+  }
+  const body = data as { ok?: boolean; code?: string; count?: number } | null;
+  if (!body?.ok) {
+    return { ok: false, code: typeof body?.code === 'string' ? body.code : 'unknown', error: null };
+  }
+  return {
+    ok: true,
+    count: typeof body.count === 'number' && Number.isFinite(body.count) ? body.count : agendas.length,
+    error: null,
+  };
+}
+
 export async function createAgendaItem(input: {
   propertyId: string;
   meetingId: string;
@@ -929,19 +1195,10 @@ export async function sendMeetingInvitations(
       return empty(null);
     }
 
-    const { data: profRows, error: profErr } = await supabase
-      .from('profiles')
-      .select('id, email')
-      .in('id', userIds);
-
+    const { emailByUser, error: profErr } = await loadInviteEmailsByUserId(userIds);
     if (profErr) {
       console.warn('🚨 early return reason:', 'profiles query failed', profErr);
-      return empty(new Error((profErr as { message?: string }).message ?? 'Failed to load profiles'));
-    }
-
-    const emailByUser: Record<string, string | null> = {};
-    for (const p of (profRows ?? []) as { id: string; email: string | null }[]) {
-      emailByUser[p.id] = p.email ?? null;
+      return empty(profErr);
     }
 
     const pendingRows = userIds.map((userId) => ({
@@ -968,77 +1225,13 @@ export async function sendMeetingInvitations(
       );
     }
 
-    const recipientsList = userIds.map((id) => ({
-      userId: id,
-      email: emailByUser[id] ?? null,
-    }));
-    console.log('🚨 about to invoke send-meeting-invite', { meetingId, propertyId, recipientsList });
-
-    const errors: { userId: string; message: string }[] = [];
-    let sent = 0;
-    let failed = 0;
-
-    for (const userId of userIds) {
-      const inviteEmail = emailByUser[userId] ?? null;
-      console.log('🚨 invoking for', inviteEmail, { userId });
-      console.log('invoking send-meeting-invite', userId);
-      console.log('[sendMeetingInvitations] invoking send-meeting-invite', { userId, meetingId, propertyId });
-      const r = await invokeSendMeetingInviteEdge({
-        meetingId,
-        propertyId,
-        userId,
-        locale,
-      });
-
-      if (r.ok) {
-        console.log('send-meeting-invite success', userId);
-        console.log('[sendMeetingInvitations] send-meeting-invite success', userId);
-        sent += 1;
-        const now = new Date().toISOString();
-        const { error: upErr } = await withProperty(
-          supabase
-            .from('meeting_invitations')
-            .update({
-              delivery_status: 'sent',
-              sent_at: now,
-              email: emailByUser[userId] ?? null,
-              delivery_channel: 'email',
-              property_id: propertyId,
-            } as any)
-            .eq('meeting_id', meetingId)
-            .eq('recipient_user_id', userId) as any,
-          propertyId,
-        );
-        if (upErr) {
-          console.error('[sendMeetingInvitations] failed to mark sent in DB', upErr);
-        }
-      } else {
-        console.error('send-meeting-invite error', userId, r.message);
-        console.error('[sendMeetingInvitations] send-meeting-invite error', userId, r.message, r.detail);
-        failed += 1;
-        errors.push({ userId, message: r.message });
-        await withProperty(
-          supabase
-            .from('meeting_invitations')
-            .update({
-              delivery_status: 'failed',
-              sent_at: null,
-              property_id: propertyId,
-            } as any)
-            .eq('meeting_id', meetingId)
-            .eq('recipient_user_id', userId) as any,
-          propertyId,
-        );
-      }
-    }
-
-    return {
-      attempted: userIds.length,
-      sent,
-      failed,
-      errors,
-      error: failed === userIds.length && userIds.length > 0 ? new Error(errors[0]?.message ?? 'All sends failed') : null,
-    };
+    return dispatchMeetingInviteEmails({
+      meetingId,
+      propertyId,
+      userIds,
+      emailByUser,
+      locale,
+    });
   } catch (error) {
     console.error('🚨 invoke failed', error);
     return empty(error instanceof Error ? error : new Error('Unknown error'));

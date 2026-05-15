@@ -25,6 +25,7 @@ import {
   meetingTitleZhFirst,
   resetFailedInvitations,
   sendMeetingInvitations,
+  sendOwnerRemoteWrittenV3SgmInvitations,
   updateMeetingAgendaItem,
   updateVote,
   type VoteRule,
@@ -323,8 +324,32 @@ export function MeetingDetail() {
     if (!propertyReady || !meetingId) return;
     if (!location.pathname.startsWith('/meetings/')) return;
     if (canManageCouncilMeetings) return;
+    if (!coreDone) return;
+
+    const m = bundle.meeting;
+    if (
+      m &&
+      user?.id &&
+      isWrittenRemoteV3Meeting(m) &&
+      extractGovernanceMeta(m.description_zh ?? '').meta?.initiation_type === 'owner_requisitioned' &&
+      m.created_by === user.id
+    ) {
+      return;
+    }
+
     navigate(`/voting/${encodeURIComponent(meetingId)}${location.search}${location.hash}`, { replace: true });
-  }, [propertyReady, meetingId, location.pathname, location.search, location.hash, navigate, canManageCouncilMeetings]);
+  }, [
+    propertyReady,
+    meetingId,
+    location.pathname,
+    location.search,
+    location.hash,
+    navigate,
+    canManageCouncilMeetings,
+    coreDone,
+    bundle.meeting,
+    user?.id,
+  ]);
 
   const propertyIdForAgenda = currentPropertyId ?? bundle.meeting?.property_id ?? null;
 
@@ -438,6 +463,23 @@ export function MeetingDetail() {
     if (!meeting?.description_zh) return null;
     return extractGovernanceMeta(meeting.description_zh).meta;
   }, [meeting?.description_zh]);
+
+  const isOwnerRemoteWrittenV3PetitionCreator = useMemo(() => {
+    if (!meeting || !user?.id) return false;
+    return (
+      isWrittenRemoteV3Meeting(meeting) &&
+      governanceMeta?.initiation_type === 'owner_requisitioned' &&
+      meeting.created_by === user.id
+    );
+  }, [meeting, user?.id, governanceMeta?.initiation_type]);
+
+  const canOwnerCreatorSendInvites = useMemo(() => {
+    if (!isOwnerRemoteWrittenV3PetitionCreator || !meeting) return false;
+    return String(meeting.status ?? '').toLowerCase() === 'draft';
+  }, [isOwnerRemoteWrittenV3PetitionCreator, meeting]);
+
+  const canSendMeetingInvites = canManageCouncilMeetings || canOwnerCreatorSendInvites;
+  const canShowMeetingEditControl = canManageCouncilMeetings || isOwnerRemoteWrittenV3PetitionCreator;
 
   const electionBundles = useMemo(() => {
     return bundle.agendaItems.flatMap((a) => {
@@ -1273,10 +1315,20 @@ export function MeetingDetail() {
     setActionErr(null);
     setInviteToast(null);
     try {
-      const result = await sendMeetingInvitations(meeting.id, meeting.property_id, en ? 'en' : 'zh');
+      const result =
+        canOwnerCreatorSendInvites && !canManageCouncilMeetings
+          ? await sendOwnerRemoteWrittenV3SgmInvitations(meeting.id, en ? 'en' : 'zh')
+          : await sendMeetingInvitations(meeting.id, meeting.property_id, en ? 'en' : 'zh');
       console.log('recipients count', result.attempted);
       if (result.attempted === 0) {
-        const msg = en ? 'No property members to invite.' : '没有可邀请的成员。';
+        const msg =
+          canOwnerCreatorSendInvites && !canManageCouncilMeetings
+            ? en
+              ? 'No pending or failed invitations to send.'
+              : '没有待发送或待重发的邀请（可能已全部发送）。'
+            : en
+              ? 'No property members to invite.'
+              : '没有可邀请的成员。';
         setInviteToast({ kind: 'error', text: msg });
         setActionErr(msg);
         return;
@@ -1322,10 +1374,52 @@ export function MeetingDetail() {
     if (!meeting) return;
     setBusy(true);
     setActionErr(null);
-    const { error } = await resetFailedInvitations(meeting.id, meeting.property_id);
-    if (error) setActionErr(error.message);
-    setBusy(false);
-    await load();
+    setInviteToast(null);
+    try {
+      if (canOwnerCreatorSendInvites && !canManageCouncilMeetings) {
+        const result = await sendOwnerRemoteWrittenV3SgmInvitations(meeting.id, en ? 'en' : 'zh');
+        if (result.attempted === 0) {
+          const msg = en ? 'No pending or failed invitations to resend.' : '没有待重发或失败的邀请。';
+          setInviteToast({ kind: 'error', text: msg });
+          setActionErr(msg);
+          return;
+        }
+        if (result.failed > 0 && result.sent === 0) {
+          const msg =
+            result.errors[0]?.message ??
+            (en ? 'All invitation emails failed. See console.' : '全部邀请发送失败，请查看控制台。');
+          setActionErr(msg);
+          setInviteToast({ kind: 'error', text: msg });
+          return;
+        }
+        if (result.failed > 0) {
+          const msg = en
+            ? `Sent ${result.sent}, failed ${result.failed}. Check console for details.`
+            : `已发送 ${result.sent} 封，失败 ${result.failed} 封。详情请查看控制台。`;
+          setActionErr(msg);
+          setInviteToast({ kind: 'error', text: msg });
+          return;
+        }
+        const okMsg = en
+          ? `Invitation emails sent: ${result.sent}`
+          : `已成功发送 ${result.sent} 封会议邀请邮件`;
+        setInviteToast({ kind: 'success', text: okMsg });
+        return;
+      }
+      const { error } = await resetFailedInvitations(meeting.id, meeting.property_id);
+      if (error) setActionErr(error.message);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setActionErr(msg);
+      setInviteToast({ kind: 'error', text: msg });
+    } finally {
+      setBusy(false);
+      try {
+        await load();
+      } catch (loadErr) {
+        console.warn('[MeetingDetail] load after retry invites failed (non-blocking)', loadErr);
+      }
+    }
   }
 
   async function handleEnableElectronicVoting() {
@@ -1530,7 +1624,7 @@ export function MeetingDetail() {
                 </dl>
               </div>
             </div>
-            {canManageCouncilMeetings &&
+            {canShowMeetingEditControl &&
               (remoteWrittenV3NoticeStartedLock ? (
                 <span
                   className="shrink-0 self-start rounded-lg bg-white/15 px-4 py-2.5 text-sm font-medium text-white/70 ring-1 ring-white/25 cursor-not-allowed lg:mt-12 shadow-sm"
@@ -2389,7 +2483,7 @@ export function MeetingDetail() {
               </div>
             ) : null}
 
-            {canManageCouncilMeetings && (
+            {canSendMeetingInvites && (
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"

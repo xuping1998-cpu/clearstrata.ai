@@ -84,20 +84,33 @@ export function OwnerVotingInlineControlBar({
   const en = languageEn;
   const now = new Date();
   const hideStaffOvManualLifecycle = isWrittenRemoteV3Meeting(meeting);
+  const isV3 = hideStaffOvManualLifecycle;
+  const v3Canon = isV3 ? deriveRemoteWrittenV3CanonFromScheduledAt(meeting.scheduled_at) : null;
   const noticePeriodLabel = en ? 'Public Notice / Discussion Period' : '公示 / 讨论期';
   const ov = meta.meeting;
   const agmSgmStrict = isStrictAgmOrSgmMeeting(meeting);
-  const disp = agmSgmStrict
+  const legacyAgmDisp = agmSgmStrict && !isV3
     ? deriveAgmSgmCanonDisplayWindows(meeting.scheduled_at, electionAgendaCount > 0)
     : null;
+  const agmDisp =
+    isV3 && v3Canon
+      ? {
+          publicNoticeOpenIso: v3Canon.publicNoticeOpenIso,
+          publicNoticeCloseIso: v3Canon.publicNoticeCloseIso,
+          nominationOpenIso: v3Canon.nominationOpenIso,
+          nominationCloseIso: v3Canon.nominationCloseIso,
+          votingOpenIso: v3Canon.votingOpenIso,
+          votingCloseIso: v3Canon.votingCloseIso,
+        }
+      : legacyAgmDisp;
   const flowNotSet = agmSgmScheduledNotSetLabel(en);
 
   let displayPublicNoticeOpens: string | null = null;
   let displayPublicNoticeCloses: string | null = null;
   if (agmSgmStrict) {
-    if (disp) {
-      displayPublicNoticeOpens = disp.publicNoticeOpenIso;
-      displayPublicNoticeCloses = disp.publicNoticeCloseIso;
+    if (agmDisp) {
+      displayPublicNoticeOpens = agmDisp.publicNoticeOpenIso;
+      displayPublicNoticeCloses = agmDisp.publicNoticeCloseIso;
     }
   } else {
     const disc = councilWrittenRemoteWindows(meeting);
@@ -128,14 +141,23 @@ export function OwnerVotingInlineControlBar({
   let displayVotingOpens: string | null = null;
   let displayVotingCloses: string | null = null;
   if (agmSgmStrict) {
-    if (disp) {
-      displayVotingOpens = disp.votingOpenIso;
-      displayVotingCloses = disp.votingCloseIso;
+    if (agmDisp) {
+      displayVotingOpens = agmDisp.votingOpenIso;
+      displayVotingCloses = agmDisp.votingCloseIso;
     }
   } else {
     displayVotingOpens = ov?.voting_opens_at?.trim() ? ov.voting_opens_at : fallbackVoting.votingOpens ?? null;
     displayVotingCloses = ov?.voting_closes_at?.trim() ? ov.voting_closes_at : fallbackVoting.votingCloses ?? null;
   }
+
+  const displayNominationOpens =
+    isV3 && v3Canon
+      ? v3Canon.nominationOpenIso
+      : electionNomRibbon?.nominationOpensIso ?? null;
+  const displayNominationCloses =
+    isV3 && v3Canon
+      ? v3Canon.nominationCloseIso
+      : electionNomRibbon?.nominationClosesIso ?? null;
 
   const showNoticeSection = agmSgmStrict || !!(displayPublicNoticeOpens || displayPublicNoticeCloses);
 
@@ -227,7 +249,7 @@ export function OwnerVotingInlineControlBar({
         {showNoticeSection
           ? sectionCard(
               noticePeriodLabel,
-              agmSgmStrict && !disp ? (
+              agmSgmStrict && !agmDisp ? (
                 <p className="text-gray-500">{flowNotSet}</p>
               ) : (
                 <p className="text-gray-900">
@@ -243,13 +265,13 @@ export function OwnerVotingInlineControlBar({
               t('meeting_flow_nomination_period_label'),
               <>
                 <p className="text-gray-900">
-                  {agmSgmStrict && !disp ? (
+                  {agmSgmStrict && !agmDisp ? (
                     <span className="text-gray-500">{flowNotSet}</span>
-                  ) : electionNomRibbon.nominationOpensIso || electionNomRibbon.nominationClosesIso ? (
+                  ) : displayNominationOpens || displayNominationCloses ? (
                     <>
-                      {fmtTs(electionNomRibbon.nominationOpensIso ?? null, en)}{' '}
+                      {fmtTs(displayNominationOpens, en)}{' '}
                       <span className="text-gray-400 px-1">–</span>{' '}
-                      {fmtTs(electionNomRibbon.nominationClosesIso ?? null, en)}
+                      {fmtTs(displayNominationCloses, en)}
                     </>
                   ) : (
                     <span className="text-gray-500">—</span>
@@ -262,7 +284,7 @@ export function OwnerVotingInlineControlBar({
 
         {sectionCard(
           t('meeting_ov_voting_period_combined_label'),
-          agmSgmStrict && !disp ? (
+          agmSgmStrict && !agmDisp ? (
             <p className="text-gray-500">{flowNotSet}</p>
           ) : (
             <p className="text-gray-900">
