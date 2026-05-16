@@ -272,55 +272,6 @@ function editorNominationPairFromScheduled(
   return { opens: canon.nominationOpenIso, closes: canon.nominationCloseIso };
 }
 
-function buildOwnerSgmRemoteDefaultAgendaRows(
-  nominationPair: { opens: string; closes: string } | null,
-): MeetingEditorAgendaRow[] {
-  const electionDescriptionZh = nominationPair
-    ? embedElectionAgendaMeta(
-        '',
-        defaultElectionMeta({
-          nomination_opens_at: nominationPair.opens,
-          nomination_closes_at: nominationPair.closes,
-        }),
-      )
-    : null;
-  return [
-    {
-      clientId: `temp_${crypto.randomUUID()}`,
-      serverId: null,
-      isNew: true,
-      title_zh: '罢免现任业委会',
-      title_en: 'Remove current council',
-      kind: 'resolution',
-      vote_rule: 'three_quarter',
-      description_zh: null,
-      description_en: null,
-    },
-    {
-      clientId: `temp_${crypto.randomUUID()}`,
-      serverId: null,
-      isNew: true,
-      title_zh: '选举新业委会成员',
-      title_en: 'Elect new council members',
-      kind: 'election',
-      vote_rule: 'simple_majority',
-      description_zh: electionDescriptionZh,
-      description_en: null,
-    },
-  ];
-}
-
-function seedOwnerSgmRemoteAgendasIfEmpty(
-  prev: MeetingEditorAgendaRow[],
-  scheduledLocal: string,
-  useV3Canon: boolean,
-): MeetingEditorAgendaRow[] {
-  if (prev.some(agendaHasMeaningfulContent)) return prev;
-  const scheduledIso = isoFromDatetimeLocal(scheduledLocal.trim() ? scheduledLocal : '');
-  const pair = editorNominationPairFromScheduled(scheduledIso, useV3Canon);
-  return buildOwnerSgmRemoteDefaultAgendaRows(pair);
-}
-
 function agendaHasMeaningfulContent(r: MeetingEditorAgendaRow): boolean {
   if (String(r.title_zh).trim() || String(r.title_en).trim()) return true;
   if (String(r.description_zh ?? '').trim() || String(r.description_en ?? '').trim()) return true;
@@ -944,15 +895,7 @@ export function MeetingEditor() {
             value={inferMeetingKindUi(form)}
             onChange={(e) => {
               const kind = e.target.value as MeetingKindUi;
-              let nextScheduled = form.scheduled_at;
-              setForm((f) => {
-                const next = applyMeetingKindToForm(kind, f);
-                nextScheduled = next.scheduled_at;
-                return next;
-              });
-              if (kind === 'owner_sgm_remote') {
-                setAgendaItems((prev) => seedOwnerSgmRemoteAgendasIfEmpty(prev, nextScheduled, true));
-              }
+              setForm((f) => applyMeetingKindToForm(kind, f));
             }}
             className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-900"
           >

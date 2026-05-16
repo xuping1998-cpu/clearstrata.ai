@@ -203,7 +203,7 @@ export function HistoricalBenchmarkReviewModal({ open, invoice, propertyId, lang
         </div>
 
         <div className="flex justify-end gap-2 border-t border-gray-100 px-4 py-3">
-          {review?.supported ? (
+          {review ? (
             <button
               type="button"
               disabled={loading}
