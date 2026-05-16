@@ -130,13 +130,16 @@ ${historyContext}
 - 请根据描述中的具体工作量（单元数、面积等）合理估算
 
 ## 输出要求：
-你必须严格按照以下JSON格式返回，不要包含任何其他文字：
+你必须只返回一个严格合法的 JSON 对象，不要包含任何其他文字：
+- property names must be double quoted
+- no trailing commas
+- no markdown code fences or prose outside the JSON object
 
 {
-  "low": <最低合理价格（数字）>,
-  "high": <最高合理价格（数字）>,
-  "reasoning": "<简要中文说明，包含关键计算依据>"${hasFloorPlan ? `,
-  "material_calc": "<详细的材料量计算过程，包括：从图纸读取的面积→计算所需材料体积→材料单价→总材料费+人工费+运费的完整推导>"` : ""}
+  "low": 0,
+  "high": 0,
+  "reasoning": "简要中文说明，包含关键计算依据"${hasFloorPlan ? `,
+  "material_calc": "详细的材料量计算过程（从图纸面积到材料量与总价）"` : ""}
 }`;
 
   return prompt;
@@ -302,6 +305,7 @@ ${hasFloorPlan ? "\n请务必从楼面图中提取面积数据，结合工程描
         max_tokens: hasFloorPlan ? 2048 : 512,
         messages,
         temperature: 0.3,
+        response_format: { type: "json_object" },
       }),
     });
 
@@ -321,11 +325,23 @@ ${hasFloorPlan ? "\n请务必从楼面图中提取面积数据，结合工程描
     if (!jsonMatch) {
       return new Response(
         JSON.stringify({ error: "Failed to parse AI response" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    const estimate = JSON.parse(jsonMatch[0]);
+    let estimate: { low?: number; high?: number; reasoning?: string; material_calc?: string | null };
+    try {
+      estimate = JSON.parse(jsonMatch[0]);
+    } catch (parseErr) {
+      console.error("AI_PRICING_JSON_PARSE_ERROR", {
+        parseErr,
+        responseText,
+      });
+      return new Response(
+        JSON.stringify({ error: "Failed to parse OpenAI pricing JSON" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
 
     return new Response(
       JSON.stringify({
