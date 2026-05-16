@@ -148,13 +148,15 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const anthropicApiKey = Deno.env.get("ANTHROPIC_API_KEY");
-    if (!anthropicApiKey) {
+    const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
+    if (!openaiApiKey) {
       return new Response(
-        JSON.stringify({ error: "ANTHROPIC_API_KEY not configured" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: "OPENAI_API_KEY not configured" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
+
+    console.log("AI_PRICING_PROVIDER", "openai");
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -263,7 +265,12 @@ ${hasFloorPlan ? "\n请务必从楼面图中提取面积数据，结合工程描
 
 请给出合理的价格区间。`;
 
-    const messages: any[] = [];
+    type ChatMessage = {
+      role: "system" | "user";
+      content: string | Array<{ type: string; text?: string; image_url?: { url: string } }>;
+    };
+
+    const messages: ChatMessage[] = [{ role: "system", content: systemPrompt }];
 
     if (floor_plan_base64) {
       const mediaType = floor_plan_base64.startsWith("/9j/") ? "image/jpeg" : "image/png";
@@ -271,12 +278,8 @@ ${hasFloorPlan ? "\n请务必从楼面图中提取面积数据，结合工程描
         role: "user",
         content: [
           {
-            type: "image",
-            source: {
-              type: "base64",
-              media_type: mediaType,
-              data: floor_plan_base64,
-            },
+            type: "image_url",
+            image_url: { url: `data:${mediaType};base64,${floor_plan_base64}` },
           },
           {
             type: "text",
@@ -288,36 +291,31 @@ ${hasFloorPlan ? "\n请务必从楼面图中提取面积数据，结合工程描
       messages.push({ role: "user", content: userMessage });
     }
 
-    const anthropicResponse = await fetch(
-      "https://api.anthropic.com/v1/messages",
-      {
-        method: "POST",
-        headers: {
-          "x-api-key": anthropicApiKey,
-          "anthropic-version": "2023-06-01",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: hasFloorPlan ? 2048 : 512,
-          system: systemPrompt,
-          messages,
-          temperature: 0.3,
-        }),
-      }
-    );
+    const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${openaiApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        max_tokens: hasFloorPlan ? 2048 : 512,
+        messages,
+        temperature: 0.3,
+      }),
+    });
 
-    if (!anthropicResponse.ok) {
-      const errorText = await anthropicResponse.text();
-      console.error("Anthropic API error:", errorText);
+    if (!openaiResponse.ok) {
+      const errorText = await openaiResponse.text();
+      console.error("OpenAI API error:", errorText);
       return new Response(
         JSON.stringify({ error: "AI service unavailable" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    const data = await anthropicResponse.json();
-    const responseText = data.content[0]?.text || "";
+    const data = await openaiResponse.json();
+    const responseText = data.choices?.[0]?.message?.content || "";
 
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {

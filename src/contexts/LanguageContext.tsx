@@ -361,8 +361,8 @@ const translations: Record<string, Record<Language, string>> = {
   },
   meeting_election_invalid_timeline: {
     en:
-      'This election schedule no longer matches the required automatic phases (public notice, nomination, and voting are each seven days from the meeting start). Please ask an administrator to fix meeting time and synced fields.',
-    zh: '该选举时间安排与系统自动阶段不一致（公示、提名、投票各 7 天，自会议召开时间起）。请管理员修正会议时间及相关同步字段。',
+      "This election schedule does not match the current meeting's automatic participation timeline. Please update the meeting time and synchronized election fields.",
+    zh: '该选举时间安排与当前会议自动阶段规则不一致，请管理员修正会议时间及相关同步字段。',
   },
   meeting_election_time_overlap_admin_warn: {
     en: 'Meeting schedule is misconfigured (voting must start strictly after nominations close). Please ask an administrator to fix the times.',

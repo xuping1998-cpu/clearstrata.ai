@@ -130,7 +130,11 @@ export function councilElectionStoredMatchesCanon(
       electionTimestampsCanonEqual(wr.public_notice_open_at, v3.publicNoticeOpenIso) &&
       electionTimestampsCanonEqual(wr.public_notice_close_at, v3.publicNoticeCloseIso) &&
       electionTimestampsCanonEqual(wr.nomination_open_at, v3.nominationOpenIso) &&
-      electionTimestampsCanonEqual(wr.nomination_closes_at, v3.nominationCloseIso) &&
+      electionTimestampsCanonEqual(
+        wr.nomination_close_at ??
+          (wr as { nomination_closes_at?: string }).nomination_closes_at,
+        v3.nominationCloseIso,
+      ) &&
       electionTimestampsCanonEqual(wr.voting_open_at, v3.votingOpenIso) &&
       electionTimestampsCanonEqual(wr.voting_close_at, v3.votingCloseIso)
     );
