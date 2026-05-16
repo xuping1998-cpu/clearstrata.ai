@@ -25,7 +25,6 @@ import {
   meetingTitleZhFirst,
   resetFailedInvitations,
   sendMeetingInvitations,
-  sendOwnerRemoteWrittenV3SgmInvitations,
   updateMeetingAgendaItem,
   updateVote,
   type VoteRule,
@@ -38,7 +37,6 @@ import {
   type MeetingRow,
   type OwnerVoteMeetingLite,
   type OwnerVoteResolutionResultNormalized,
-  type SendOwnerRemoteWrittenV3SgmInvitesResult,
 } from '../../features/meetings/api';
 import {
   councilMeetingTitleForOwnerVoteBinding,
@@ -114,42 +112,6 @@ function remoteWrittenV3MeetingAgendaEditBlocked(meeting: MeetingRow): boolean {
 
 function remoteWrittenV3AgendaEditErr(en: boolean): string {
   return en ? REMOTE_WRITTEN_V3_DETAIL_EDIT_LOCKED.en : REMOTE_WRITTEN_V3_DETAIL_EDIT_LOCKED.zh;
-}
-
-/** Maps {@link sendOwnerRemoteWrittenV3SgmInvitations} result to detail-page toast + inline error (owner path only). */
-function ownerRemoteWrittenV3InviteFeedback(
-  en: boolean,
-  result: SendOwnerRemoteWrittenV3SgmInvitesResult,
-): { actionErr: string | null; inviteToast: { kind: 'success' | 'error'; text: string } | null } {
-  if (result.error) {
-    const text = en ? `Send failed: ${result.error.message}` : `发送失败：${result.error.message}`;
-    return { actionErr: text, inviteToast: { kind: 'error', text } };
-  }
-  if (result.messageCode === 'no_recipients') {
-    const text = en ? 'No owner members found to notify.' : '没有找到可通知的业主成员。';
-    return { actionErr: text, inviteToast: { kind: 'error', text } };
-  }
-  if (result.messageCode === 'all_already_sent') {
-    const text = en
-      ? 'All invitations have already been sent; nothing to send again.'
-      : '所有邀请已经发送，无需重复发送。';
-    return { actionErr: null, inviteToast: { kind: 'success', text } };
-  }
-  if (result.attempted === 0) {
-    const text = en ? 'No pending or failed invitations to send.' : '没有待发送或待重发的邀请。';
-    return { actionErr: text, inviteToast: { kind: 'error', text } };
-  }
-  if (result.failed > 0) {
-    const text = en
-      ? `Sent ${result.sent}, failed ${result.failed}.`
-      : `已发送 ${result.sent} 封，失败 ${result.failed} 封。`;
-    return { actionErr: text, inviteToast: { kind: 'error', text } };
-  }
-  if (result.sent > 0) {
-    const text = en ? `Invitation emails sent: ${result.sent}` : `已发送 ${result.sent} 封会议邀请。`;
-    return { actionErr: null, inviteToast: { kind: 'success', text } };
-  }
-  return { actionErr: null, inviteToast: null };
 }
 
 function initiationTypeLabel(type: MeetingInitiationType, t: (key: string) => string): string {
@@ -363,17 +325,6 @@ export function MeetingDetail() {
     if (canManageCouncilMeetings) return;
     if (!coreDone) return;
 
-    const m = bundle.meeting;
-    if (
-      m &&
-      user?.id &&
-      isWrittenRemoteV3Meeting(m) &&
-      extractGovernanceMeta(m.description_zh ?? '').meta?.initiation_type === 'owner_requisitioned' &&
-      m.created_by === user.id
-    ) {
-      return;
-    }
-
     navigate(`/voting/${encodeURIComponent(meetingId)}${location.search}${location.hash}`, { replace: true });
   }, [
     propertyReady,
@@ -384,8 +335,6 @@ export function MeetingDetail() {
     navigate,
     canManageCouncilMeetings,
     coreDone,
-    bundle.meeting,
-    user?.id,
   ]);
 
   const propertyIdForAgenda = currentPropertyId ?? bundle.meeting?.property_id ?? null;
@@ -501,22 +450,8 @@ export function MeetingDetail() {
     return extractGovernanceMeta(meeting.description_zh).meta;
   }, [meeting?.description_zh]);
 
-  const isOwnerRemoteWrittenV3PetitionCreator = useMemo(() => {
-    if (!meeting || !user?.id) return false;
-    return (
-      isWrittenRemoteV3Meeting(meeting) &&
-      governanceMeta?.initiation_type === 'owner_requisitioned' &&
-      meeting.created_by === user.id
-    );
-  }, [meeting, user?.id, governanceMeta?.initiation_type]);
-
-  const canOwnerCreatorSendInvites = useMemo(() => {
-    if (!isOwnerRemoteWrittenV3PetitionCreator || !meeting) return false;
-    return String(meeting.status ?? '').toLowerCase() === 'draft';
-  }, [isOwnerRemoteWrittenV3PetitionCreator, meeting]);
-
-  const canSendMeetingInvites = canManageCouncilMeetings || canOwnerCreatorSendInvites;
-  const canShowMeetingEditControl = canManageCouncilMeetings || isOwnerRemoteWrittenV3PetitionCreator;
+  const canSendMeetingInvites = canManageCouncilMeetings;
+  const canShowMeetingEditControl = canManageCouncilMeetings;
 
   const electionBundles = useMemo(() => {
     return bundle.agendaItems.flatMap((a) => {
@@ -1387,13 +1322,6 @@ export function MeetingDetail() {
     setActionErr(null);
     setInviteToast(null);
     try {
-      if (canOwnerCreatorSendInvites && !canManageCouncilMeetings) {
-        const result = await sendOwnerRemoteWrittenV3SgmInvitations(meeting.id, en ? 'en' : 'zh');
-        const { actionErr, inviteToast: toast } = ownerRemoteWrittenV3InviteFeedback(en, result);
-        if (actionErr) setActionErr(actionErr);
-        if (toast) setInviteToast(toast);
-        return;
-      }
       const result = await sendMeetingInvitations(meeting.id, meeting.property_id, en ? 'en' : 'zh');
       console.log('recipients count', result.attempted);
       if (result.attempted === 0) {
@@ -1445,13 +1373,6 @@ export function MeetingDetail() {
     setActionErr(null);
     setInviteToast(null);
     try {
-      if (canOwnerCreatorSendInvites && !canManageCouncilMeetings) {
-        const result = await sendOwnerRemoteWrittenV3SgmInvitations(meeting.id, en ? 'en' : 'zh');
-        const { actionErr, inviteToast: toast } = ownerRemoteWrittenV3InviteFeedback(en, result);
-        if (actionErr) setActionErr(actionErr);
-        if (toast) setInviteToast(toast);
-        return;
-      }
       const { error } = await resetFailedInvitations(meeting.id, meeting.property_id);
       if (error) setActionErr(error.message);
     } catch (e) {
@@ -1679,22 +1600,25 @@ export function MeetingDetail() {
                 </dl>
               </div>
             </div>
-            {canShowMeetingEditControl &&
-              (remoteWrittenV3NoticeStartedLock ? (
-                <span
-                  className="shrink-0 self-start rounded-lg bg-white/15 px-4 py-2.5 text-sm font-medium text-white/70 ring-1 ring-white/25 cursor-not-allowed lg:mt-12 shadow-sm"
-                  title={en ? REMOTE_WRITTEN_V3_DETAIL_EDIT_LOCKED.en : REMOTE_WRITTEN_V3_DETAIL_EDIT_LOCKED.zh}
-                >
-                  {en ? 'Edit meeting' : '编辑会议'}
-                </span>
-              ) : (
-                <Link
-                  to={`/meetings/${meeting.id}/edit?${new URLSearchParams({ propertyId: meeting.property_id }).toString()}`}
-                  className="shrink-0 self-start rounded-lg bg-white/22 px-4 py-2.5 text-sm font-medium text-white ring-1 ring-white/40 hover:bg-white/34 transition-colors lg:mt-12 shadow-sm"
-                >
-                  {en ? 'Edit meeting' : '编辑会议'}
-                </Link>
-              ))}
+            {canShowMeetingEditControl ? (
+              <div className="flex shrink-0 self-start lg:mt-12">
+                {remoteWrittenV3NoticeStartedLock ? (
+                  <span
+                    className="rounded-lg bg-white/15 px-4 py-2.5 text-sm font-medium text-white/70 ring-1 ring-white/25 cursor-not-allowed shadow-sm"
+                    title={en ? REMOTE_WRITTEN_V3_DETAIL_EDIT_LOCKED.en : REMOTE_WRITTEN_V3_DETAIL_EDIT_LOCKED.zh}
+                  >
+                    {en ? 'Edit meeting' : '编辑会议'}
+                  </span>
+                ) : (
+                  <Link
+                    to={`/meetings/${meeting.id}/edit?${new URLSearchParams({ propertyId: meeting.property_id }).toString()}`}
+                    className="rounded-lg bg-white/22 px-4 py-2.5 text-sm font-medium text-white text-center ring-1 ring-white/40 hover:bg-white/34 transition-colors shadow-sm"
+                  >
+                    {en ? 'Edit meeting' : '编辑会议'}
+                  </Link>
+                )}
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
