@@ -242,13 +242,21 @@ async function callOpenAIClassify(
 
 async function callAiPricing(
   supabaseUrl: string,
-  serviceKey: string,
+  authHeader: string,
+  anonKey: string,
   body: Record<string, unknown>,
 ): Promise<{ low: number; high: number; reasoning: string }> {
-  const res = await fetch(`${supabaseUrl}/functions/v1/ai-pricing`, {
+  const pricingUrl = `${supabaseUrl}/functions/v1/ai-pricing`;
+  console.log("AI_PRICING_CALL_AUTH", {
+    hasAuth: Boolean(authHeader),
+    hasAnonKey: Boolean(anonKey),
+    url: pricingUrl,
+  });
+  const res = await fetch(pricingUrl, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${serviceKey}`,
+      Authorization: authHeader,
+      apikey: anonKey,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
@@ -293,6 +301,12 @@ Deno.serve(async (req: Request) => {
   }
 
   const authHeader = req.headers.get("Authorization") ?? "";
+  if (!authHeader.trim()) {
+    return new Response(JSON.stringify({ error: "missing user authorization" }), {
+      status: 401,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
   if (!authHeader.startsWith("Bearer ")) {
     return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
       status: 401,
@@ -525,7 +539,7 @@ Deno.serve(async (req: Request) => {
         job_type: aiPricingBody.job_type,
       },
     });
-    estimate = await callAiPricing(supabaseUrl, serviceKey, aiPricingBody);
+    estimate = await callAiPricing(supabaseUrl, authHeader, anonKey, aiPricingBody);
   } catch (e) {
     baseReview.notes = e instanceof Error ? e.message : "ai-pricing failed";
     const merged = { ...prevCtx, benchmarkReview: baseReview };
