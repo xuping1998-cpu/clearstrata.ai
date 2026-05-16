@@ -14,6 +14,55 @@ const MVP_TYPES = new Set([
   "security_monitoring",
 ]);
 
+/** Map OpenAI free-text / alias enums onto MVP slugs (exact Set keys only). */
+const SERVICE_TYPE_ALIASES: Record<string, string> = {
+  property_management: "strata_management",
+  property_management_fee: "strata_management",
+  strata_management_fee: "strata_management",
+  council_management: "strata_management",
+  management: "strata_management",
+  management_fee: "strata_management",
+  strata: "strata_management",
+  telecommunications: "telecom",
+  internet: "telecom",
+  telecom_internet: "telecom",
+  security: "security_monitoring",
+  alarm_monitoring: "security_monitoring",
+  cctv_monitoring: "security_monitoring",
+};
+
+function normalizeClassifiedServiceType(classify: Record<string, unknown>): {
+  raw: string;
+  normalized: string;
+  mvpSupported: boolean;
+} {
+  const rawValue =
+    classify.serviceType ??
+    classify.service_type ??
+    classify.type ??
+    "unsupported";
+  const raw = String(rawValue).trim();
+  const slug = raw.toLowerCase().replace(/[\s-]+/g, "_");
+
+  if (MVP_TYPES.has(slug)) {
+    return { raw, normalized: slug, mvpSupported: true };
+  }
+  const alias = SERVICE_TYPE_ALIASES[slug];
+  if (alias && MVP_TYPES.has(alias)) {
+    return { raw, normalized: alias, mvpSupported: true };
+  }
+  if (/property|strata|management|council/.test(slug) && /management|admin|strata|council/.test(slug)) {
+    return { raw, normalized: "strata_management", mvpSupported: true };
+  }
+  if (/telecom|internet|phone|cable|network/.test(slug)) {
+    return { raw, normalized: "telecom", mvpSupported: true };
+  }
+  if (/security|alarm|cctv|monitoring/.test(slug) && !/strata|property|management/.test(slug)) {
+    return { raw, normalized: "security_monitoring", mvpSupported: true };
+  }
+  return { raw, normalized: "unsupported", mvpSupported: false };
+}
+
 const SERVICE_LABELS: Record<string, { zh: string; en: string }> = {
   strata_management: { zh: "物业管理费", en: "Strata management fee" },
   cleaning: { zh: "清洁服务", en: "Cleaning" },
@@ -388,14 +437,32 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  const rawServiceType = String(classify.serviceType ?? "unsupported").trim();
-  const serviceType = MVP_TYPES.has(rawServiceType) ? rawServiceType : "unsupported";
+  const { raw: classifiedServiceTypeRaw, normalized: serviceType, mvpSupported } =
+    normalizeClassifiedServiceType(classify);
   const confidence = typeof classify.confidence === "number" ? classify.confidence : 0;
-  const rationale = String(classify.rationale ?? "");
-  const billingPeriod = String(classify.billingPeriod ?? "unknown");
+  const rationale = String(classify.rationale ?? classify.reasoning ?? "");
+  const billingPeriod = String(classify.billingPeriod ?? classify.billing_period ?? "unknown");
   const period = periodLabels(billingPeriod);
   const labels = SERVICE_LABELS[serviceType] ?? { zh: "未分类", en: "Unclassified" };
   const generatedAt = new Date().toISOString();
+
+  const pricingInPreview = mvpSupported
+    ? pricingPayloadForType(serviceType, unitCount, city, vendorName, invoiceBlob)
+    : null;
+
+  console.log({
+    classifiedServiceType: classifiedServiceTypeRaw,
+    normalizedServiceType: serviceType,
+    mvpSupported,
+    supported: mvpSupported,
+    aiPricingPayload: pricingInPreview
+      ? {
+          title: pricingInPreview.title,
+          category: pricingInPreview.category,
+          job_type: pricingInPreview.job_type,
+        }
+      : null,
+  });
 
   const baseReview = {
     serviceType: serviceType === "unsupported" ? null : serviceType,
@@ -418,11 +485,11 @@ Deno.serve(async (req: Request) => {
     periodLabelEn: period.en,
   };
 
-  if (serviceType === "unsupported" || !MVP_TYPES.has(serviceType)) {
+  if (!mvpSupported || serviceType === "unsupported") {
     baseReview.notes =
-      serviceType === "unsupported"
-        ? "Invoice could not be mapped to a supported benchmark category."
-        : "MVP supports strata management, telecom, and security monitoring only.";
+      classifiedServiceTypeRaw && classifiedServiceTypeRaw !== "unsupported"
+        ? `Classified as "${classifiedServiceTypeRaw}"; MVP supports strata_management, telecom, security_monitoring only.`
+        : "Invoice could not be mapped to a supported benchmark category.";
     const merged = { ...prevCtx, benchmarkReview: baseReview };
     await admin.from("invoice_ai_audit_contexts").upsert(
       {
@@ -438,17 +505,27 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  const pricingIn = pricingPayloadForType(serviceType, unitCount, city, vendorName, invoiceBlob);
+  const pricingIn = pricingInPreview ?? pricingPayloadForType(serviceType, unitCount, city, vendorName, invoiceBlob);
   let estimate: { low: number; high: number; reasoning: string };
   try {
-    estimate = await callAiPricing(supabaseUrl, serviceKey, {
+    const aiPricingBody = {
       property_id: propertyId,
       title: pricingIn.title,
       description: pricingIn.description,
       job_type: pricingIn.job_type,
       category: pricingIn.category,
       estimated_budget: amount,
+    };
+    console.log({
+      classifiedServiceType: classifiedServiceTypeRaw,
+      supported: true,
+      aiPricingPayload: {
+        title: aiPricingBody.title,
+        category: aiPricingBody.category,
+        job_type: aiPricingBody.job_type,
+      },
     });
+    estimate = await callAiPricing(supabaseUrl, serviceKey, aiPricingBody);
   } catch (e) {
     baseReview.notes = e instanceof Error ? e.message : "ai-pricing failed";
     const merged = { ...prevCtx, benchmarkReview: baseReview };

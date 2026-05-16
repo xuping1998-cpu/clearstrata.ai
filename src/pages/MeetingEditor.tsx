@@ -441,8 +441,10 @@ export function MeetingEditor() {
 
   const staffMayEditMeetings = canManagePropertyMeetings(roleInProperty);
 
-  /** Edit mode + persisted row is remote_written v3 — show 14d unified window UI (not legacy 7+7+7). */
-  const editorRemoteWrittenV3Ui = isEdit && !!detailMeeting && isWrittenRemoteV3Meeting(detailMeeting);
+  /** V3 UI: persisted v3 row, or any new written_remote create (all new remote written = v3). */
+  const editorRemoteWrittenV3Ui =
+    (isEdit && !!detailMeeting && isWrittenRemoteV3Meeting(detailMeeting)) ||
+    (!isEdit && isWrittenRemoteUi(form.meeting_format_ui));
 
   const agendaIdsWithCouncilBallots = useMemo(() => {
     const s = new Set<string>();
@@ -685,30 +687,47 @@ export function MeetingEditor() {
 
     const dbFormat = dbFormatFromUi(form.meeting_format_ui);
 
+    let useLegacyWrittenEmbed = false;
+    if (written && isEdit && detailMeeting) {
+      const existingWrittenMeta = extractWrittenRemoteMeta(detailMeeting.description_zh).meta;
+      useLegacyWrittenEmbed = existingWrittenMeta != null && !isWrittenRemoteV3Meta(existingWrittenMeta);
+    }
+
     if (written) {
       if (!scheduledIso) {
         setErr(en ? 'Set the meeting start (public notice opens).' : '请设置会议开始时间（公示开始）。');
         return;
       }
-      const canon = deriveCouncilElectionCanonFromScheduledAt(scheduledIso);
-      if (!canon) {
-        setErr(en ? 'Meeting start date is invalid.' : '会议开始时间无效。');
-        return;
+
+      if (useLegacyWrittenEmbed) {
+        const legacyCanon = deriveCouncilElectionCanonFromScheduledAt(scheduledIso);
+        if (!legacyCanon) {
+          setErr(en ? 'Meeting start date is invalid.' : '会议开始时间无效。');
+          return;
+        }
+        votingOpenIso = legacyCanon.votingOpenIso;
+        votingCloseIso = legacyCanon.votingCloseIso;
+        const embedded = embedWrittenRemoteCanonFromMeetingStart(form.description_zh || '', scheduledIso);
+        if (!embedded) {
+          setErr(en ? 'Could not build written-remote schedule from meeting start.' : '无法根据会议开始生成书面远程时间安排。');
+          return;
+        }
+        descriptionZhFinal = embedded;
+      } else {
+        const v3Canon = deriveRemoteWrittenV3CanonFromScheduledAt(scheduledIso);
+        if (!v3Canon) {
+          setErr(en ? 'Meeting start date is invalid.' : '会议开始时间无效。');
+          return;
+        }
+        votingOpenIso = v3Canon.votingOpenIso;
+        votingCloseIso = v3Canon.votingCloseIso;
+        const embedded = embedWrittenRemoteV3MetaFromMeetingStart(form.description_zh || '', scheduledIso);
+        if (!embedded) {
+          setErr(en ? 'Could not build written-remote schedule from meeting start.' : '无法根据会议开始生成书面远程时间安排。');
+          return;
+        }
+        descriptionZhFinal = embedded;
       }
-      votingOpenIso = canon.votingOpenIso;
-      votingCloseIso = canon.votingCloseIso;
-      const existingWrittenMeta =
-        isEdit && detailMeeting ? extractWrittenRemoteMeta(detailMeeting.description_zh).meta : null;
-      const useLegacyWrittenEmbed =
-        existingWrittenMeta != null && !isWrittenRemoteV3Meta(existingWrittenMeta);
-      const embedded = useLegacyWrittenEmbed
-        ? embedWrittenRemoteCanonFromMeetingStart(form.description_zh || '', scheduledIso)
-        : embedWrittenRemoteV3MetaFromMeetingStart(form.description_zh || '', scheduledIso);
-      if (!embedded) {
-        setErr(en ? 'Could not build written-remote schedule from meeting start.' : '无法根据会议开始生成书面远程时间安排。');
-        return;
-      }
-      descriptionZhFinal = embedded;
     } else {
       descriptionZhFinal = stripWrittenRemoteMeta(form.description_zh);
       votingOpenIso = null;
@@ -729,9 +748,15 @@ export function MeetingEditor() {
     };
 
     if (form.status !== 'draft') {
+      let discussionClosesIso: string | null = null;
+      if (written && scheduledIso) {
+        discussionClosesIso = useLegacyWrittenEmbed
+          ? deriveCouncilElectionCanonFromScheduledAt(scheduledIso)?.publicNoticeCloseIso ?? null
+          : deriveRemoteWrittenV3CanonFromScheduledAt(scheduledIso)?.publicNoticeCloseIso ?? null;
+      }
       const readiness = noticeReadiness(readinessMeeting, agendaCount, {
         writtenRemote: written,
-        discussionClosesIso: written && scheduledIso ? deriveCouncilElectionCanonFromScheduledAt(scheduledIso)?.publicNoticeCloseIso ?? null : null,
+        discussionClosesIso,
       });
       if (!readiness.ok) {
         const key = written ? 'meeting_create_notice_ready_written_missing' : 'meeting_create_notice_ready_sync_missing';
@@ -779,7 +804,7 @@ export function MeetingEditor() {
         deleteServerIds: [],
         languageEn: en,
         scheduledIso,
-        useV3ElectionCanon: inferMeetingKindUi(form) === 'owner_sgm_remote',
+        useV3ElectionCanon: isWrittenRemoteUi(form.meeting_format_ui),
       });
       setSaving(false);
       if (persistResult.error) {
@@ -820,9 +845,7 @@ export function MeetingEditor() {
       deleteServerIds,
       languageEn: en,
       scheduledIso,
-      useV3ElectionCanon:
-        inferMeetingKindUi(form) === 'owner_sgm_remote' ||
-        (!!detailMeeting && isWrittenRemoteV3Meeting(detailMeeting)),
+      useV3ElectionCanon: written && !useLegacyWrittenEmbed,
     });
     setSaving(false);
     if (persistResult.error) {
@@ -908,7 +931,7 @@ export function MeetingEditor() {
         <p className="mt-3 text-sm leading-relaxed text-gray-600">
           {editorRemoteWrittenV3Ui
             ? en
-              ? 'The schedule is generated from the public notice start time: public discussion, nominations, and voting are open together during a 14-day participation window; results become read-only after the window closes.'
+              ? 'The timeline is generated from the public notice start time: during the unified 14-day participation period, discussion, nominations, and voting are open together. After the period ends, results become read-only.'
               : '时间表由「公示开始时间」自动生成：14 天统一参与期内，公示/讨论、提名与投票同步开放；参与期结束后进入只读结果。'
             : t('meeting_written_remote_intro')}
         </p>
