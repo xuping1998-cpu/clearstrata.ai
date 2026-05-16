@@ -23,6 +23,8 @@ const SERVICE_TYPE_ALIASES: Record<string, string> = {
   management: "strata_management",
   management_fee: "strata_management",
   strata: "strata_management",
+  administrative: "strata_management",
+  administrative_charges: "strata_management",
   telecommunications: "telecom",
   internet: "telecom",
   telecom_internet: "telecom",
@@ -31,36 +33,88 @@ const SERVICE_TYPE_ALIASES: Record<string, string> = {
   cctv_monitoring: "security_monitoring",
 };
 
+function slugifyServiceToken(raw: string): string {
+  return raw.toLowerCase().trim().replace(/[\s-]+/g, "_");
+}
+
+function rationaleSuggestsStrataManagement(classify: Record<string, unknown>): boolean {
+  const rationale = String(classify.rationale ?? classify.reasoning ?? "").toLowerCase();
+  return (
+    rationale.includes("property management") ||
+    rationale.includes("strata management") ||
+    rationale.includes("management fee") ||
+    rationale.includes("administrative charges related to property management")
+  );
+}
+
+function normalizeFieldToken(raw: string): string {
+  const slug = slugifyServiceToken(raw);
+  if (!slug || slug === "unsupported" || slug === "unknown" || slug === "other") {
+    return "unsupported";
+  }
+  if (MVP_TYPES.has(slug)) return slug;
+  const alias = SERVICE_TYPE_ALIASES[slug];
+  if (alias && MVP_TYPES.has(alias)) return alias;
+  if (/property|strata|management|council/.test(slug) && /management|admin|strata|council/.test(slug)) {
+    return "strata_management";
+  }
+  if (/telecom|internet|phone|cable|network/.test(slug)) {
+    return "telecom";
+  }
+  if (/security|alarm|cctv|monitoring/.test(slug) && !/strata|property|management/.test(slug)) {
+    return "security_monitoring";
+  }
+  return "unsupported";
+}
+
 function normalizeClassifiedServiceType(classify: Record<string, unknown>): {
   raw: string;
   normalized: string;
+  normalizedServiceType: string;
   mvpSupported: boolean;
 } {
-  const rawValue =
-    classify.serviceType ??
-    classify.service_type ??
-    classify.type ??
-    "unsupported";
-  const raw = String(rawValue).trim();
-  const slug = raw.toLowerCase().replace(/[\s-]+/g, "_");
+  const fieldValues = [
+    classify.serviceType,
+    classify.service_type,
+    classify.type,
+    classify.service,
+    classify.category,
+  ];
 
-  if (MVP_TYPES.has(slug)) {
-    return { raw, normalized: slug, mvpSupported: true };
+  let raw = "";
+  let normalizedServiceType = "unsupported";
+
+  for (const value of fieldValues) {
+    if (value == null || !String(value).trim()) continue;
+    const candidateRaw = String(value).trim();
+    const candidateNormalized = normalizeFieldToken(candidateRaw);
+    if (candidateNormalized !== "unsupported") {
+      raw = candidateRaw;
+      normalizedServiceType = candidateNormalized;
+      break;
+    }
   }
-  const alias = SERVICE_TYPE_ALIASES[slug];
-  if (alias && MVP_TYPES.has(alias)) {
-    return { raw, normalized: alias, mvpSupported: true };
+
+  if (normalizedServiceType === "unsupported") {
+    for (const value of fieldValues) {
+      if (value == null || !String(value).trim()) continue;
+      raw = String(value).trim();
+      break;
+    }
   }
-  if (/property|strata|management|council/.test(slug) && /management|admin|strata|council/.test(slug)) {
-    return { raw, normalized: "strata_management", mvpSupported: true };
+
+  if (normalizedServiceType === "unsupported" && rationaleSuggestsStrataManagement(classify)) {
+    normalizedServiceType = "strata_management";
+    if (!raw) raw = "rationale:strata_management";
   }
-  if (/telecom|internet|phone|cable|network/.test(slug)) {
-    return { raw, normalized: "telecom", mvpSupported: true };
-  }
-  if (/security|alarm|cctv|monitoring/.test(slug) && !/strata|property|management/.test(slug)) {
-    return { raw, normalized: "security_monitoring", mvpSupported: true };
-  }
-  return { raw, normalized: "unsupported", mvpSupported: false };
+
+  const mvpSupported = MVP_TYPES.has(normalizedServiceType);
+  return {
+    raw: raw || "unsupported",
+    normalized: normalizedServiceType,
+    normalizedServiceType,
+    mvpSupported,
+  };
 }
 
 const SERVICE_LABELS: Record<string, { zh: string; en: string }> = {
@@ -451,8 +505,25 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  const { raw: classifiedServiceTypeRaw, normalized: serviceType, mvpSupported } =
-    normalizeClassifiedServiceType(classify);
+  console.log("HIST_BENCH_CLASSIFY_RAW", JSON.stringify(classify));
+
+  const {
+    raw: classifiedServiceTypeRaw,
+    normalized: serviceType,
+    normalizedServiceType,
+    mvpSupported,
+  } = normalizeClassifiedServiceType(classify);
+
+  console.log("HIST_BENCH_CLASSIFY_NORMALIZED", {
+    serviceType: classify?.serviceType,
+    service_type: classify?.service_type,
+    type: classify?.type,
+    service: classify?.service,
+    category: classify?.category,
+    normalizedServiceType,
+    mvpSupported: MVP_TYPES.has(normalizedServiceType),
+  });
+
   const confidence = typeof classify.confidence === "number" ? classify.confidence : 0;
   const rationale = String(classify.rationale ?? classify.reasoning ?? "");
   const billingPeriod = String(classify.billingPeriod ?? classify.billing_period ?? "unknown");
@@ -463,20 +534,6 @@ Deno.serve(async (req: Request) => {
   const pricingInPreview = mvpSupported
     ? pricingPayloadForType(serviceType, unitCount, city, vendorName, invoiceBlob)
     : null;
-
-  console.log({
-    classifiedServiceType: classifiedServiceTypeRaw,
-    normalizedServiceType: serviceType,
-    mvpSupported,
-    supported: mvpSupported,
-    aiPricingPayload: pricingInPreview
-      ? {
-          title: pricingInPreview.title,
-          category: pricingInPreview.category,
-          job_type: pricingInPreview.job_type,
-        }
-      : null,
-  });
 
   const baseReview = {
     serviceType: serviceType === "unsupported" ? null : serviceType,
