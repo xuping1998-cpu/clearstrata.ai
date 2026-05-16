@@ -851,10 +851,10 @@ export function MeetingEditor() {
 
   if (!staffMayEditMeetings) {
     if (!isEdit) {
-      return <Navigate to="/owner-voting" replace />;
+      return <Navigate to="/voting" replace />;
     }
     if (!ownerPetitionRemoteV3DraftEditAccess) {
-      return <Navigate to="/owner-voting" replace />;
+      return <Navigate to="/voting" replace />;
     }
   }
 
@@ -895,7 +895,9 @@ export function MeetingEditor() {
             disabled={ownerOnlyMeetingEditor}
             className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-900"
           >
-            <option value="owner_sgm_remote">{en ? 'Owner co-signed SGM (remote written)' : '远程书面业主联署 SGM'}</option>
+            {isEdit && inferMeetingKindUi(form) === 'owner_sgm_remote' ? (
+              <option value="owner_sgm_remote">{en ? 'Owner co-signed SGM (remote written)' : '远程书面业主联署 SGM'}</option>
+            ) : null}
             <option value="council_sgm_remote">{en ? 'Council SGM (remote written)' : '远程书面业委会 SGM'}</option>
             <option value="council_agm_remote">{en ? 'Council AGM (remote written)' : '远程书面业委会 AGM'}</option>
             <option value="council_meeting_remote">{en ? 'Council meeting (remote written)' : '远程书面业委会会议'}</option>

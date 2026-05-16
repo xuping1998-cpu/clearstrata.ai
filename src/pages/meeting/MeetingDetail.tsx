@@ -600,8 +600,20 @@ export function MeetingDetail() {
       });
       return;
     }
-    navigate('/owner-voting');
-  }, [ovMeta.meeting, ovMeta.eligibleCount, ovMeta.resolutionCount, electionBundles.length, en, t, navigate, electionTimelineBlocksOwnerVote]);
+    const pid = currentPropertyId?.trim() || meeting?.property_id?.trim();
+    navigate(pid ? `/voting?${new URLSearchParams({ propertyId: pid }).toString()}` : '/voting');
+  }, [
+    ovMeta.meeting,
+    ovMeta.eligibleCount,
+    ovMeta.resolutionCount,
+    electionBundles.length,
+    en,
+    t,
+    navigate,
+    electionTimelineBlocksOwnerVote,
+    currentPropertyId,
+    meeting?.property_id,
+  ]);
 
   const showVoteWaitingResultsBanner =
     showCouncilOwnerVoteUi &&
@@ -728,8 +740,8 @@ export function MeetingDetail() {
       return '/voting';
     }
     if (sourceRaw === 'owner-voting') {
-      if (pid) return `/owner-voting?${new URLSearchParams({ propertyId: pid }).toString()}`;
-      return '/owner-voting';
+      if (pid) return `/voting?${new URLSearchParams({ propertyId: pid }).toString()}`;
+      return '/voting';
     }
     if (sourceRaw === 'meetings') {
       if (pid) return `/meetings?${new URLSearchParams({ propertyId: pid }).toString()}`;
@@ -742,7 +754,7 @@ export function MeetingDetail() {
       extractGovernanceMeta(meeting.description_zh ?? '').meta?.initiation_type === 'owner_requisitioned' &&
       pid
     ) {
-      return `/owner-voting?${new URLSearchParams({ propertyId: pid }).toString()}`;
+      return `/voting?${new URLSearchParams({ propertyId: pid }).toString()}`;
     }
     const base = location.pathname.startsWith('/voting') ? '/voting' : '/meetings';
     if (pid) return `${base}?${new URLSearchParams({ propertyId: pid }).toString()}`;

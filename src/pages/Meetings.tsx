@@ -9,7 +9,7 @@ export function Meetings() {
   const { roleInProperty, ready: propertyReady } = useProperty();
 
   if (user && propertyReady && !canManagePropertyMeetings(roleInProperty)) {
-    return <Navigate to="/owner-voting" replace />;
+    return <Navigate to="/voting" replace />;
   }
 
   return <MeetingListView variant="meetings" />;

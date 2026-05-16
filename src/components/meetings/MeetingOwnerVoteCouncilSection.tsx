@@ -501,7 +501,11 @@ export function MeetingOwnerVoteCouncilSection({ meeting, agendaItems, isStaff }
         <h2 className="mb-3 text-lg font-semibold text-gray-900 border-b border-gray-100 pb-2">{t('nav_owner_voting')}</h2>
         <p className="text-sm leading-relaxed text-gray-700 mb-4">{t('meeting_ov_owner_notice')}</p>
         <Link
-          to="/owner-voting"
+          to={
+            meeting.property_id?.trim()
+              ? `/voting?${new URLSearchParams({ propertyId: meeting.property_id.trim() }).toString()}`
+              : '/voting'
+          }
           className="inline-flex min-h-[44px] items-center justify-center rounded-xl bg-clearstrata-ui-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive"
         >
           {t('meeting_ov_go_vote')}

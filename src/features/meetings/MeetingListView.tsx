@@ -299,10 +299,6 @@ export function MeetingListView({ variant }: Props) {
     return q ? `${path}?${q}` : path;
   };
 
-  const ownerPetitionHubHref = currentPropertyId?.trim()
-    ? `/owner-voting?${new URLSearchParams({ source: 'voting', propertyId: currentPropertyId.trim() }).toString()}`
-    : '/owner-voting?source=voting';
-
   const votingHubHref = currentPropertyId
     ? `/voting?${new URLSearchParams({ propertyId: currentPropertyId }).toString()}`
     : '/voting';
@@ -332,40 +328,12 @@ export function MeetingListView({ variant }: Props) {
             <Users size={32} />
             <h1 className="text-3xl font-bold">{title}</h1>
           </div>
-          {variant === 'voting' ? (
-            <Link
-              to={ownerPetitionHubHref}
-              className="shrink-0 rounded-lg border border-white/35 bg-white/10 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-white/20 sm:text-sm"
-            >
-              {en ? 'Owner-initiated SGM' : '业主联署 SGM'}
-            </Link>
-          ) : null}
         </div>
         <p className="text-white/90 ml-14 max-w-7xl mx-auto">{t('meetings_page_subtitle')}</p>
       </div>
 
       <div className="max-w-7xl mx-auto p-6 space-y-6">
         {err ? <p className="text-sm text-red-600">{err}</p> : null}
-
-        {variant === 'meetings' && canManageMeetings ? (
-          <div className="flex flex-wrap justify-end gap-2">
-            <Link
-              to={
-                currentPropertyId?.trim()
-                  ? `/owner-voting?${new URLSearchParams({ source: 'meetings', propertyId: currentPropertyId.trim() }).toString()}`
-                  : '/owner-voting?source=meetings'
-              }
-              className="inline-flex items-center rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-900 hover:bg-violet-100"
-            >
-              <div className="flex flex-col items-start leading-tight">
-                <span className="text-sm font-semibold">{en ? 'Owner-initiated SGM' : '业主发起 SGM'}</span>
-                <span className="mt-1 text-xs font-normal text-violet-700">
-                  {en ? 'Owner-initiated SGM' : '在业委会不作为时，业主可发起联署 SGM'}
-                </span>
-              </div>
-            </Link>
-          </div>
-        ) : null}
 
         {stats && (
           <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
