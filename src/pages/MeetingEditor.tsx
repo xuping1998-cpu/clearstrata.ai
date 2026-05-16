@@ -1325,10 +1325,20 @@ export function MeetingEditor() {
         </div>
 
         <div className="text-sm text-gray-600 bg-amber-50 border border-amber-100 rounded-lg p-3 space-y-2">
-          <p>{t('meeting_editor_schedule_guard_note')}</p>
-          {!isEdit ? (
-            <p className="pt-2 border-t border-amber-200">{t('meeting_create_save_then_agenda_hint')}</p>
-          ) : null}
+          {editorRemoteWrittenV3Ui ? (
+            <p>
+              {en
+                ? 'After saving, the meeting will automatically use the unified 14-day participation period for discussion, nominations, and voting. Agenda items will be saved together with the meeting.'
+                : '保存会议后，系统将按 14 天统一参与期自动开放讨论、提名与表决；会议议程会随会议一并保存。'}
+            </p>
+          ) : (
+            <>
+              <p>{t('meeting_editor_schedule_guard_note')}</p>
+              {!isEdit ? (
+                <p className="pt-2 border-t border-amber-200">{t('meeting_create_save_then_agenda_hint')}</p>
+              ) : null}
+            </>
+          )}
         </div>
 
         {err ? <p className="text-sm text-red-600">{err}</p> : null}
