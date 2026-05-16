@@ -10,6 +10,7 @@ import { RevenueDashboard } from './finance/RevenueDashboard';
 import { FinanceBudgetTab } from './finance/FinanceBudgetTab';
 import { DemoPropertyMockFinancePanel } from '@/components/demoProperty/DemoPropertyMockFinancePanel';
 import { DemoCreatePropertyCtaCard } from '@/components/onboarding/DemoCreatePropertyCta';
+import { canViewInvoiceReview, canUploadInvoicePackage, canManageInvoiceReview } from '../lib/financePermissions';
 
 type FinanceTab = 'invoices' | 'budget' | 'interpreter' | 'revenue';
 
@@ -45,13 +46,11 @@ export function Finance() {
   }
 
   const [searchParams] = useSearchParams();
-  const financeFullAccess =
-    currentRole === 'council' ||
-    currentRole === 'admin' ||
-    currentRole === 'property_admin' ||
-    currentRole === 'manager';
+  const canView = canViewInvoiceReview(currentRole);
+  const canUploadPkg = canUploadInvoicePackage(currentRole);
+  const financeReadOnly = canView && !canUploadPkg && !canManageInvoiceReview(currentRole);
 
-  const visibleTabs = useMemo(() => (financeFullAccess ? mainNavTabs : []), [financeFullAccess]);
+  const visibleTabs = useMemo(() => (canView ? mainNavTabs : []), [canView]);
 
   const [activeTab, setActiveTab] = useState<FinanceTab>('invoices');
   const invoiceLedgerRef = useRef<InvoiceManagementHandle>(null);
@@ -65,15 +64,12 @@ export function Finance() {
   const rangeThisMonth = searchParams.get('range') === 'this_month';
 
   useEffect(() => {
-    if (!financeFullAccess) return;
+    if (!canView) return;
 
     const tab = searchParams.get('tab') as FinanceTab | null;
     const validTabs = ['invoices', 'budget', 'interpreter', 'revenue'] as const;
 
-    if (
-      (filterDanger || filterAudit || filterAbnormal || filterHighRisk) &&
-      financeFullAccess
-    ) {
+    if ((filterDanger || filterAudit || filterAbnormal || filterHighRisk) && canView) {
       setActiveTab('invoices');
       return;
     }
@@ -82,22 +78,15 @@ export function Finance() {
     } else {
       setActiveTab('invoices');
     }
-  }, [
-    financeFullAccess,
-    searchParams,
-    filterDanger,
-    filterAudit,
-    filterAbnormal,
-    filterHighRisk,
-  ]);
+  }, [canView, searchParams, filterDanger, filterAudit, filterAbnormal, filterHighRisk]);
 
   if (isDemoMode) {
     return (
       <div className="mx-auto max-w-3xl space-y-4">
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
           {l
-            ? 'Demo mode: full financial reporting and invoice tools unlock after you register and join the property.'
-            : '演示模式：完整月度财报与发票工具请在注册并加入物业后使用。'}
+            ? 'Demo mode: full invoice review and finance tools unlock after you register and join the property.'
+            : '演示模式：完整发票审核与财务工具请在注册并加入物业后使用。'}
         </div>
         <DemoCreatePropertyCtaCard />
         <p className="text-sm text-gray-600">
@@ -111,19 +100,23 @@ export function Finance() {
     <div className="mx-0 min-w-0 w-full max-w-none">
       <BackButton />
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900">{l ? 'Financial reporting' : '月度财报'}</h1>
+        <h1 className="text-3xl font-bold text-gray-900">{l ? 'Invoice Review' : '发票审核'}</h1>
         <p className="text-gray-600 mt-2">
-          {financeFullAccess
+          {!canView
             ? l
-              ? 'A monthly ledger view: AGM-approved budget, invoice line items, and revenue. Uploads and OCR live under Invoice details.'
-              : '围绕月度账本呈现：AGM 批准预算、发票明细与收入看板并列；上传与 OCR 请在「发票明细」完成。'
-            : l
-              ? 'Published monthly financial summaries for owners.'
-              : '业主可查阅已发布的月度财务摘要。'}
+              ? 'Invoice review is available to owners and property staff after you join a property.'
+              : '加入物业后，业主与物业工作人员可使用发票审核。'
+            : financeReadOnly
+              ? l
+                ? 'Read-only: invoices, AGM-approved budget, revenue dashboards, and audit alerts. Uploads and approvals are for property staff.'
+                : '只读查看：发票明细、AGM 批准预算、收入看板与审计报警；上传与审批由物业工作人员操作。'
+              : l
+                ? 'A monthly ledger view: AGM-approved budget, invoice line items, and revenue. Uploads and OCR live under Invoice details.'
+                : '围绕月度账本呈现：AGM 批准预算、发票明细与收入看板并列；上传与 OCR 请在「发票明细」完成。'}
         </p>
       </div>
 
-      {financeFullAccess && visibleTabs.length > 0 && (
+      {canView && visibleTabs.length > 0 && (
         <div className="mb-6 flex min-w-0 flex-col gap-3 border-b border-gray-200 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
           <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:thin]">
             <nav className="flex min-w-0 flex-wrap gap-1 sm:min-w-max sm:flex-nowrap">
@@ -146,19 +139,21 @@ export function Finance() {
           </div>
           {activeTab === 'invoices' && (
             <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 pb-3">
-              <button
-                type="button"
-                disabled={invoiceToolbarUploading}
-                onClick={() => invoiceLedgerRef.current?.openUploadModal()}
-                className={`inline-flex items-center gap-1.5 rounded-lg bg-clearstrata-ui-primary px-2.5 py-1.5 text-xs font-medium text-white transition-colors sm:gap-2 sm:px-3 sm:py-2 sm:text-sm ${
-                  invoiceToolbarUploading
-                    ? 'pointer-events-none opacity-50'
-                    : 'hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive'
-                }`}
-              >
-                <Upload size={16} className="sm:h-[18px] sm:w-[18px]" />
-                {invoiceToolbarUploading ? (l ? 'Working…' : '处理中…') : l ? 'Upload package' : '上传发票包'}
-              </button>
+              {canUploadPkg ? (
+                <button
+                  type="button"
+                  disabled={invoiceToolbarUploading}
+                  onClick={() => invoiceLedgerRef.current?.openUploadModal()}
+                  className={`inline-flex items-center gap-1.5 rounded-lg bg-clearstrata-ui-primary px-2.5 py-1.5 text-xs font-medium text-white transition-colors sm:gap-2 sm:px-3 sm:py-2 sm:text-sm ${
+                    invoiceToolbarUploading
+                      ? 'pointer-events-none opacity-50'
+                      : 'hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive'
+                  }`}
+                >
+                  <Upload size={16} className="sm:h-[18px] sm:w-[18px]" />
+                  {invoiceToolbarUploading ? (l ? 'Working…' : '处理中…') : l ? 'Upload package' : '上传发票包'}
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => invoiceLedgerRef.current?.exportCsv()}
@@ -180,15 +175,15 @@ export function Finance() {
         </div>
       )}
 
-      {!financeFullAccess && (
+      {!canView && (
         <div className="mb-6 rounded-xl border border-gray-200 bg-gray-50/90 px-4 py-12 text-center text-sm text-gray-600">
           {l
-            ? 'Full financial reporting tools require council or property manager access.'
-            : '完整月度财报工具需要业委会或管理处权限。'}
+            ? 'Invoice review is available to owners and property staff (council, property admin, or manager).'
+            : '发票审核面向业主与物业工作人员（业委会、物业管理员或物业经理）。'}
         </div>
       )}
 
-      {financeFullAccess && activeTab === 'invoices' && (
+      {canView && activeTab === 'invoices' && (
         <InvoiceManagement
           ref={invoiceLedgerRef}
           hideToolbar
@@ -201,9 +196,9 @@ export function Finance() {
           rangeThisMonthOnly={rangeThisMonth}
         />
       )}
-      {financeFullAccess && activeTab === 'budget' && <FinanceBudgetTab />}
-      {financeFullAccess && activeTab === 'interpreter' && <InvoiceInterpreter />}
-      {financeFullAccess && activeTab === 'revenue' && <RevenueDashboard />}
+      {canView && activeTab === 'budget' && <FinanceBudgetTab />}
+      {canView && activeTab === 'interpreter' && <InvoiceInterpreter />}
+      {canView && activeTab === 'revenue' && <RevenueDashboard />}
     </div>
   );
 }

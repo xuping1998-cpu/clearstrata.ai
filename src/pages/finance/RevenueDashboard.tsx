@@ -52,6 +52,12 @@ export function RevenueDashboard() {
 
   const isCouncil =
     currentRole === 'council' || currentRole === 'admin' || currentRole === 'property_admin';
+  const canSeeArrearsDetail =
+    currentRole === 'owner' ||
+    currentRole === 'manager' ||
+    currentRole === 'council' ||
+    currentRole === 'admin' ||
+    currentRole === 'property_admin';
   const l = language === 'en';
 
   const [invoiceRows, setInvoiceRows] = useState<
@@ -200,10 +206,6 @@ export function RevenueDashboard() {
       setTotalCollected(collected);
       setTotalOutstanding(outstanding);
 
-      const canSeeArrearsDetail =
-        currentRole === 'council' ||
-        currentRole === 'admin' ||
-        currentRole === 'property_admin';
       if (arrearsUsers.length > 0 && canSeeArrearsDetail && currentPropertyId) {
         const { data: profiles } = await supabase
           .from('profiles')
@@ -250,8 +252,8 @@ export function RevenueDashboard() {
 
   useEffect(() => {
     void loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when tenant changes
-  }, [currentPropertyId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when tenant / role changes
+  }, [currentPropertyId, currentRole]);
 
   if (loading) {
     return (
@@ -392,7 +394,7 @@ export function RevenueDashboard() {
         </div>
       </div>
 
-      {isCouncil && arrears.length > 0 && (
+      {canSeeArrearsDetail && arrears.length > 0 && (
         <div className="bg-white rounded-xl shadow-sm">
           <div className="p-6 border-b border-gray-200">
             <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">

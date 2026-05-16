@@ -6,7 +6,7 @@ import { useProperty } from '../../contexts/PropertyContext';
 import { BudgetOverviewCard } from '../../components/dashboard/BudgetOverviewCard';
 import { fetchDashboardBudgetSummary } from '../../lib/budget/dashboardApi';
 import { supabase } from '../../lib/supabase';
-import { canManageInvoiceWorkflow } from '../../lib/financePermissions';
+import { canManageInvoiceReview } from '../../lib/financePermissions';
 
 const YEARS_BACK = 3;
 const YEARS_FORWARD = 2;
@@ -21,7 +21,7 @@ export function FinanceBudgetTab() {
   const { language } = useLanguage();
   const en = language === 'en';
   const { currentPropertyId, roleInProperty } = useProperty();
-  const canSetGovernance = canManageInvoiceWorkflow(roleInProperty);
+  const canSetGovernance = canManageInvoiceReview(roleInProperty);
   const [searchParams] = useSearchParams();
   const anchorYear = new Date().getFullYear();
   const yearFromUrl = Number(searchParams.get('year'));

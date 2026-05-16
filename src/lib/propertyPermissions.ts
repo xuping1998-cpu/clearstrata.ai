@@ -60,8 +60,27 @@ export function canDeleteInvoice(
 ): boolean {
   if (!profileId) return false;
   const r = normalizeRoleKey(role);
+  /** Owner (and similar) have read-only finance; never delete from this UI. */
+  if (r === 'owner' || r === 'tenant' || r === 'viewer') return false;
   if (r === 'manager') return false;
   if (profileId === uploadedBy) return true;
+  return canManageInvoiceWorkflow(role);
+}
+
+/** `/finance` invoice review: view invoices, budget tab, revenue (owner + staff). */
+export function canViewInvoiceReview(role: UserRole | null | undefined): boolean {
+  const r = normalizeRoleKey(role);
+  return r === 'owner' || r === 'council' || r === 'admin' || r === 'property_admin' || r === 'manager';
+}
+
+/** PDF package + single-file supplement uploads (not owners). */
+export function canUploadInvoicePackage(role: UserRole | null | undefined): boolean {
+  const r = normalizeRoleKey(role);
+  return r === 'manager' || r === 'council' || r === 'admin' || r === 'property_admin';
+}
+
+/** Same gate as approve/reject/governance save — council, admin, property_admin (not manager). */
+export function canManageInvoiceReview(role: UserRole | null | undefined): boolean {
   return canManageInvoiceWorkflow(role);
 }
 

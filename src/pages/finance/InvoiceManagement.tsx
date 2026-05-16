@@ -33,7 +33,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useProperty } from '../../contexts/PropertyContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { supabase } from '../../lib/supabase';
-import { canManageInvoiceWorkflow, canDeleteInvoice } from '../../lib/financePermissions';
+import { canManageInvoiceWorkflow, canDeleteInvoice, canUploadInvoicePackage } from '../../lib/financePermissions';
 import { fetchTaskTitleByInvoiceIds, fetchTasksForInvoice, type LinkedTask } from '../../lib/invoiceTaskLinks';
 import { computeQuoteInvoiceVariance, isRedAlertVariance, type QuoteVarianceResult } from '../../lib/quoteInvoiceVariance';
 import { exportInvoiceApprovalPdf } from '../../lib/pdf/exportInvoiceApprovalPdf';
@@ -1493,13 +1493,15 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
   const expandAccountingUiDone = useRef(false);
 
   const openUploadModal = useCallback(() => {
+    if (!canUploadInvoicePackage(roleInProperty)) return;
     const d = currentAccountingDefaults();
     setUploadAccountingYear(d.year);
     setUploadAccountingMonth(d.month);
     setUploadModalOpen(true);
-  }, []);
+  }, [roleInProperty]);
 
   const canAudit = canManageInvoiceWorkflow(roleInProperty);
+  const canUploadPkg = canUploadInvoicePackage(roleInProperty);
 
   const loadInvoices = useCallback(async () => {
     if (!currentPropertyId) {
@@ -2050,6 +2052,10 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
     const file = e.target.files?.[0];
     const inputEl = e.target;
     if (!file || !profile || !currentPropertyId) return;
+    if (!canUploadPkg) {
+      inputEl.value = '';
+      return;
+    }
 
     const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
     if (!isPdf) {
@@ -2115,6 +2121,10 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
     const file = e.target.files?.[0];
     const inputEl = e.target;
     if (!file || !profile || !currentPropertyId) return;
+    if (!canUploadPkg) {
+      inputEl.value = '';
+      return;
+    }
 
     if (!isAllowedInvoiceUploadFile(file)) {
       alert(l ? 'Please upload a PDF, JPG, or PNG file.' : '请上传 PDF、JPG 或 PNG 格式的文件。');
@@ -2711,24 +2721,32 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
             />
 
             <div className="mt-5 flex flex-col gap-2">
-              <button
-                type="button"
-                disabled={uploading}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-clearstrata-ui-primary py-2.5 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover disabled:opacity-50"
-                onClick={() => uploadPackagePdfInputRef.current?.click()}
-              >
-                <Upload size={16} aria-hidden />
-                {l ? 'Upload PDF payable package' : '上传 PDF 发票包（主流程）'}
-              </button>
-              <button
-                type="button"
-                disabled={uploading}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white py-2.5 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
-                onClick={() => uploadSupplementInputRef.current?.click()}
-              >
-                <PenLine size={16} aria-hidden />
-                {l ? 'Single-file supplement (1-page PDF / image)' : '单张补录（单页 PDF / 图片）'}
-              </button>
+              {canUploadPkg ? (
+                <>
+                  <button
+                    type="button"
+                    disabled={uploading}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-clearstrata-ui-primary py-2.5 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover disabled:opacity-50"
+                    onClick={() => uploadPackagePdfInputRef.current?.click()}
+                  >
+                    <Upload size={16} aria-hidden />
+                    {l ? 'Upload PDF payable package' : '上传 PDF 发票包（主流程）'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={uploading}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white py-2.5 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                    onClick={() => uploadSupplementInputRef.current?.click()}
+                  >
+                    <PenLine size={16} aria-hidden />
+                    {l ? 'Single-file supplement (1-page PDF / image)' : '单张补录（单页 PDF / 图片）'}
+                  </button>
+                </>
+              ) : (
+                <p className="text-sm text-gray-600">
+                  {l ? 'Upload is restricted to property staff.' : '仅物业工作人员可上传发票。'}
+                </p>
+              )}
               <button
                 type="button"
                 disabled={uploading}
@@ -2792,17 +2810,19 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
         {!hideToolbar ? (
           <div className="border-b border-gray-200 p-2.5 sm:p-3 md:p-4">
             <div className="flex flex-wrap items-center justify-end gap-2">
-              <button
-                type="button"
-                disabled={uploading}
-                onClick={openUploadModal}
-                className={`inline-flex items-center gap-1.5 rounded-lg bg-clearstrata-ui-primary px-2.5 py-1.5 text-xs font-medium text-white transition-colors sm:gap-2 sm:px-3 sm:py-2 sm:text-sm ${
-                  uploading ? 'pointer-events-none opacity-50' : 'hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive'
-                }`}
-              >
-                <Upload size={16} className="sm:h-[18px] sm:w-[18px]" />
-                {uploading ? (l ? 'Working…' : '处理中…') : l ? 'Upload package' : '上传发票包'}
-              </button>
+              {canUploadPkg ? (
+                <button
+                  type="button"
+                  disabled={uploading}
+                  onClick={openUploadModal}
+                  className={`inline-flex items-center gap-1.5 rounded-lg bg-clearstrata-ui-primary px-2.5 py-1.5 text-xs font-medium text-white transition-colors sm:gap-2 sm:px-3 sm:py-2 sm:text-sm ${
+                    uploading ? 'pointer-events-none opacity-50' : 'hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive'
+                  }`}
+                >
+                  <Upload size={16} className="sm:h-[18px] sm:w-[18px]" />
+                  {uploading ? (l ? 'Working…' : '处理中…') : l ? 'Upload package' : '上传发票包'}
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => exportRows(false)}

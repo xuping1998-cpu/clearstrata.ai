@@ -4,13 +4,14 @@ import { ChevronLeft, Loader2, PenLine, Upload } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useProperty } from '../contexts/PropertyContext';
 import { useLanguage } from '../contexts/LanguageContext';
+import { canUploadInvoicePackage } from '../lib/financePermissions';
 import { uploadInvoiceDocumentDirect, isAllowedInvoiceUploadFile } from '../lib/invoiceDirectUpload';
 import { currentAccountingDefaults } from '../lib/invoiceAccountingPeriod';
 import { getPdfPageCountFromFile, processPayablePdfPackage } from '../lib/invoicePdfPackage';
 
 export function InvoiceUpload() {
   const { profile } = useAuth();
-  const { currentPropertyId } = useProperty();
+  const { currentPropertyId, roleInProperty } = useProperty();
   const { language } = useLanguage();
   const en = language === 'en';
   const navigate = useNavigate();
@@ -134,6 +135,31 @@ export function InvoiceUpload() {
     );
   }
 
+  if (!canUploadInvoicePackage(roleInProperty)) {
+    return (
+      <div className="mx-auto max-w-lg px-4 py-10">
+        <Link
+          to="/"
+          className="mb-6 inline-flex items-center gap-1 text-sm font-medium text-emerald-800 hover:underline"
+        >
+          <ChevronLeft className="size-4" />
+          {en ? 'Home' : '首页'}
+        </Link>
+        <p className="text-sm text-gray-700">
+          {en
+            ? 'Invoice uploads are limited to property staff. Open Invoice Review to browse invoices read-only.'
+            : '发票上传仅限物业工作人员。请在「发票审核」中只读查看发票明细。'}
+        </p>
+        <Link
+          to="/finance?tab=invoices"
+          className="mt-4 inline-block text-sm font-medium text-clearstrata-ui-primary hover:underline"
+        >
+          {en ? 'Go to Invoice Review' : '前往发票审核'}
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-lg px-4 py-8">
       <Link
@@ -144,7 +170,7 @@ export function InvoiceUpload() {
         {en ? 'Home' : '首页'}
       </Link>
 
-      <h1 className="text-2xl font-bold text-gray-900">{en ? 'Financial reporting · uploads' : '月度财报 · 上传发票'}</h1>
+      <h1 className="text-2xl font-bold text-gray-900">{en ? 'Invoice Review · uploads' : '发票审核 · 上传发票'}</h1>
       <p className="mt-2 text-sm font-semibold text-gray-900">{en ? 'Main: monthly payable PDF package' : '主流程：整月 PDF 发票包'}</p>
       <p className="mt-1 text-sm text-gray-600">
         {en

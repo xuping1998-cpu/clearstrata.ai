@@ -1,1 +1,7 @@
-export { canManageInvoiceWorkflow, canDeleteInvoice } from './propertyPermissions';
+export {
+  canManageInvoiceWorkflow,
+  canManageInvoiceReview,
+  canDeleteInvoice,
+  canViewInvoiceReview,
+  canUploadInvoicePackage,
+} from './propertyPermissions';

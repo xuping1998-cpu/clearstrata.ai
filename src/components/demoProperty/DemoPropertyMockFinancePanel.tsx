@@ -19,7 +19,7 @@ export function DemoPropertyMockFinancePanel() {
 
       <div>
         <p className="text-xs font-medium text-gray-500">{d.buildingLabel}</p>
-        <h1 className="mt-1 text-3xl font-bold text-gray-900">{en ? 'Financial reporting' : '月度财报'}</h1>
+        <h1 className="mt-1 text-3xl font-bold text-gray-900">{en ? 'Invoice Review' : '发票审核'}</h1>
         <p className="mt-2 text-gray-600">
           {en
             ? 'A monthly picture of spend, anomalies, and AGM-approved budget utilization (demo build).'
