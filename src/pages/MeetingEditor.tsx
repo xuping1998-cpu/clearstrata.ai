@@ -53,9 +53,16 @@ import {
 import { canManagePropertyMeetings } from '@/lib/meetingPermissions';
 import { supabase } from '../lib/supabase';
 
+function datetimeLocalFromDate(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function sliceDatetimeLocal(iso: string | null | undefined): string {
   if (!iso?.trim()) return '';
-  return iso.slice(0, 16);
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return datetimeLocalFromDate(d);
 }
 
 function isoFromDatetimeLocal(loc: string): string | null {
@@ -66,7 +73,7 @@ function isoFromDatetimeLocal(loc: string): string | null {
 }
 
 function nowDatetimeLocalSlice(): string {
-  return sliceDatetimeLocal(new Date().toISOString());
+  return datetimeLocalFromDate(new Date());
 }
 
 /** Editor UI: only `hybrid` | `written_remote` options — map legacy in_person / live_remote to hybrid. */
