@@ -25,6 +25,7 @@ import {
   meetingTitleZhFirst,
   resetFailedInvitations,
   sendMeetingInvitations,
+  deleteDraftMeetingBeforeStart,
   updateMeetingAgendaItem,
   updateVote,
   type VoteRule,
@@ -47,6 +48,7 @@ import { supabase } from '../../lib/supabase';
 import { shouldDeferAutoPropertyRedirects } from '../../lib/authRecovery';
 import { samePropertyId } from '../../lib/propertyIdMatch';
 import { canManagePropertyMeetings } from '@/lib/meetingPermissions';
+import { isPlatformAdmin } from '@/lib/permissions';
 import {
   labelMeetingFormatUiPrimary,
   labelMeetingType,
@@ -112,6 +114,29 @@ function remoteWrittenV3MeetingAgendaEditBlocked(meeting: MeetingRow): boolean {
 
 function remoteWrittenV3AgendaEditErr(en: boolean): string {
   return en ? REMOTE_WRITTEN_V3_DETAIL_EDIT_LOCKED.en : REMOTE_WRITTEN_V3_DETAIL_EDIT_LOCKED.zh;
+}
+
+function deleteDraftMeetingErr(code: string | undefined, en: boolean): string {
+  switch (code) {
+    case 'not_authenticated':
+      return en ? 'Please sign in.' : '请先登录。';
+    case 'meeting_not_found':
+      return en ? 'Meeting not found.' : '未找到会议。';
+    case 'not_draft':
+      return en ? 'Only draft meetings can be deleted.' : '仅可删除草稿会议。';
+    case 'schedule_locked':
+      return en
+        ? 'Cannot delete: the meeting has already started.'
+        : '无法删除：会议已开始。';
+    case 'has_votes':
+      return en
+        ? 'Cannot delete: this meeting already has vote records.'
+        : '无法删除：该会议已有投票记录。';
+    case 'not_allowed':
+      return en ? 'You are not allowed to delete this meeting.' : '无权删除此会议。';
+    default:
+      return en ? 'Delete failed.' : '删除失败。';
+  }
 }
 
 function initiationTypeLabel(type: MeetingInitiationType, t: (key: string) => string): string {
@@ -267,7 +292,7 @@ export function MeetingDetail() {
   const { meetingId: meetingIdParam, id: legacyVotingId } = useParams<{ meetingId?: string; id?: string }>();
   const meetingId = meetingIdParam ?? legacyVotingId;
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { currentPropertyId, roleInProperty, ready: propertyReady } = useProperty();
   const { language, t } = useLanguage();
   const en = language === 'en';
@@ -318,6 +343,7 @@ export function MeetingDetail() {
   const openedTrackedRef = useRef<string | null>(null);
 
   const canManageCouncilMeetings = canManagePropertyMeetings(roleInProperty);
+  const platformAdmin = isPlatformAdmin(profile);
 
   useEffect(() => {
     if (!propertyReady || !meetingId) return;
@@ -452,6 +478,16 @@ export function MeetingDetail() {
 
   const canSendMeetingInvites = canManageCouncilMeetings;
   const canShowMeetingEditControl = canManageCouncilMeetings;
+
+  const canDeleteDraftMeeting = useMemo(() => {
+    if (!meeting) return false;
+    if (!canManageCouncilMeetings && !platformAdmin) return false;
+    if (String(meeting.status ?? '').toLowerCase() !== 'draft') return false;
+    const s = meeting.scheduled_at?.trim();
+    if (!s) return true;
+    const ms = new Date(s).getTime();
+    return !Number.isNaN(ms) && Date.now() < ms;
+  }, [meeting, canManageCouncilMeetings, platformAdmin]);
 
   const electionBundles = useMemo(() => {
     return bundle.agendaItems.flatMap((a) => {
@@ -1311,6 +1347,35 @@ export function MeetingDetail() {
     return () => window.clearTimeout(t);
   }, [inviteToast]);
 
+  async function handleDeleteDraftMeeting() {
+    if (!meeting || !canDeleteDraftMeeting) return;
+    const confirmed = window.confirm(
+      en
+        ? 'Delete this draft meeting? This cannot be undone.'
+        : '确认删除这个草稿会议？删除后不可恢复。',
+    );
+    if (!confirmed) return;
+    setBusy(true);
+    setActionErr(null);
+    setInviteToast(null);
+    try {
+      const result = await deleteDraftMeetingBeforeStart(meeting.id);
+      if (!result.ok) {
+        const msg = deleteDraftMeetingErr(result.code, en);
+        setActionErr(msg);
+        setInviteToast({ kind: 'error', text: msg });
+        return;
+      }
+      const pid = meeting.property_id?.trim() || '';
+      navigate(
+        pid ? `/meetings?${new URLSearchParams({ propertyId: pid }).toString()}` : '/meetings',
+        { replace: true },
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleSendInvites() {
     console.log('🚨 BUILD VERSION', import.meta.env.VITE_BUILD_TIME || 'dev');
     if (!meeting) {
@@ -1600,10 +1665,11 @@ export function MeetingDetail() {
                 </dl>
               </div>
             </div>
-            {canShowMeetingEditControl ? (
-              <div className="flex shrink-0 self-start lg:mt-12">
-                {remoteWrittenV3NoticeStartedLock ? (
-                  <span
+            {canShowMeetingEditControl || canDeleteDraftMeeting ? (
+              <div className="flex shrink-0 flex-col gap-2 self-start lg:mt-12">
+                {canShowMeetingEditControl ? (
+                  remoteWrittenV3NoticeStartedLock ? (
+                    <span
                     className="rounded-lg bg-white/15 px-4 py-2.5 text-sm font-medium text-white/70 ring-1 ring-white/25 cursor-not-allowed shadow-sm"
                     title={en ? REMOTE_WRITTEN_V3_DETAIL_EDIT_LOCKED.en : REMOTE_WRITTEN_V3_DETAIL_EDIT_LOCKED.zh}
                   >
@@ -1616,7 +1682,18 @@ export function MeetingDetail() {
                   >
                     {en ? 'Edit meeting' : '编辑会议'}
                   </Link>
-                )}
+                  )
+                ) : null}
+                {canDeleteDraftMeeting ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void handleDeleteDraftMeeting()}
+                    className="rounded-lg border border-red-200/80 bg-red-500/25 px-4 py-2.5 text-sm font-medium text-white ring-1 ring-red-200/60 hover:bg-red-500/40 disabled:opacity-50 transition-colors shadow-sm"
+                  >
+                    {en ? 'Delete draft' : '删除草稿'}
+                  </button>
+                ) : null}
               </div>
             ) : null}
           </div>

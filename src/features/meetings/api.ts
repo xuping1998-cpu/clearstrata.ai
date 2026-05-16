@@ -802,6 +802,27 @@ export async function updateMeeting(
   return { id: data?.id, error };
 }
 
+/** Staff / platform: delete draft meeting before scheduled_at when RPC gates pass (no vote ballots). */
+export async function deleteDraftMeetingBeforeStart(
+  meetingId: string,
+): Promise<{ ok: boolean; code?: string; error: Error | null }> {
+  const { data, error } = await supabase.rpc('delete_draft_meeting_before_start', {
+    p_meeting_id: meetingId,
+  });
+  if (error) {
+    return { ok: false, code: error.message, error: new Error(error.message) };
+  }
+  const body = data as { ok?: boolean; code?: string } | null;
+  if (!body?.ok) {
+    return {
+      ok: false,
+      code: typeof body?.code === 'string' ? body.code : 'unknown',
+      error: null,
+    };
+  }
+  return { ok: true, error: null };
+}
+
 export async function createAgendaItem(input: {
   propertyId: string;
   meetingId: string;
