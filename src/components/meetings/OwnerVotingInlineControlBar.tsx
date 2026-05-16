@@ -4,6 +4,7 @@ import {
   councilMeetingVotingWindowFallback,
   councilWrittenRemoteWindows,
   isWrittenRemoteV3Meeting,
+  writtenRemoteV3AutoParticipationCopy,
 } from '@/features/meetings/meetingFormatModel';
 import {
   agmSgmScheduledNotSetLabel,
@@ -85,6 +86,7 @@ export function OwnerVotingInlineControlBar({
   const now = new Date();
   const hideStaffOvManualLifecycle = isWrittenRemoteV3Meeting(meeting);
   const isV3 = hideStaffOvManualLifecycle;
+  const v3AutoParticipationCopy = writtenRemoteV3AutoParticipationCopy(en);
   const v3Canon = isV3 ? deriveRemoteWrittenV3CanonFromScheduledAt(meeting.scheduled_at) : null;
   const noticePeriodLabel = en ? 'Public Notice / Discussion Period' : '公示 / 讨论期';
   const ov = meta.meeting;
@@ -315,7 +317,21 @@ export function OwnerVotingInlineControlBar({
       {meta.loading ? (
         <p className="text-xs text-gray-500">{t('meeting_ov_loading')}</p>
       ) : !ov ? (
-        isStaff ? (
+        hideStaffOvManualLifecycle ? (
+          <div className="space-y-3 border-t border-gray-200/90 pt-3">
+            {isCouncilMeetingEnded ? (
+              <p className="text-sm text-amber-800 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                {en
+                  ? 'This meeting has ended. The voting workflow is closed.'
+                  : '会议已结束，投票流程已关闭。'}
+              </p>
+            ) : (
+              <p className="text-sm text-gray-800 rounded-md border border-blue-100 bg-blue-50/70 px-3 py-2">
+                {v3AutoParticipationCopy}
+              </p>
+            )}
+          </div>
+        ) : isStaff ? (
           <div className="space-y-3 border-t border-gray-200/90 pt-3">
             {isCouncilMeetingEnded ? (
               <p className="text-sm text-amber-800 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
@@ -363,6 +379,23 @@ export function OwnerVotingInlineControlBar({
                 ? 'This meeting has ended. The voting workflow is closed.'
                 : '会议已结束，投票流程已关闭。'}
             </p>
+          ) : hideStaffOvManualLifecycle ? (
+            <>
+              <p className="text-sm text-gray-800 rounded-md border border-blue-100 bg-blue-50/70 px-3 py-2">
+                {v3AutoParticipationCopy}
+              </p>
+              {!isStaff ? (
+                <motion>
+                  <button
+                    type="button"
+                    onClick={onNavigateOwnerVoting}
+                    className="rounded-lg bg-clearstrata-ui-primary px-4 py-2 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover"
+                  >
+                    {t('meeting_ov_go_vote')}
+                  </button>
+                </motion>
+              ) : null}
+            </>
           ) : (
             <>
               {!isStaff ? <p className="text-gray-600">{t('meeting_ov_owner_notice')}</p> : null}
@@ -379,7 +412,7 @@ export function OwnerVotingInlineControlBar({
                 </p>
               ) : null}
 
-              <div className="flex flex-wrap gap-2">
+              <motion>
                 {isStaff ? (
                   <>
                     {showFreeze ? (
@@ -422,7 +455,7 @@ export function OwnerVotingInlineControlBar({
                     {t('meeting_ov_go_vote')}
                   </button>
                 )}
-              </div>
+              </motion>
             </>
           )}
         </div>

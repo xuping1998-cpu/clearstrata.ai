@@ -70,7 +70,10 @@ import {
   toDatetimeLocalValue,
   type ElectionAgendaMetaV1,
 } from '@/features/meetings/electionAgendaModel';
-import { deriveCouncilElectionCanonFromScheduledAt } from '@/features/meetings/electionTimelineMath';
+import {
+  deriveCouncilElectionCanonFromScheduledAt,
+  deriveRemoteWrittenV3CanonFromScheduledAt,
+} from '@/features/meetings/electionTimelineMath';
 import {
   CouncilElectionResultsBlock,
   type OwnerElectionBallotLite,
@@ -258,6 +261,11 @@ async function meetingDetailAgendaDeleteBlockReason(params: {
 }
 
 function canonElectionNominationPairOrNull(meeting: MeetingRow): { opens: string; closes: string } | null {
+  if (isWrittenRemoteV3Meeting(meeting)) {
+    const v3 = deriveRemoteWrittenV3CanonFromScheduledAt(meeting.scheduled_at);
+    if (!v3) return null;
+    return { opens: v3.nominationOpenIso, closes: v3.nominationCloseIso };
+  }
   const canon = deriveCouncilElectionCanonFromScheduledAt(meeting.scheduled_at);
   if (!canon) return null;
   return { opens: canon.nominationOpenIso, closes: canon.nominationCloseIso };

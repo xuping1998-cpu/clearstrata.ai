@@ -45,7 +45,11 @@ import {
   deriveRemoteWrittenV3CanonFromScheduledAt,
 } from '@/features/meetings/electionTimelineMath';
 import { isOwnerVotingMeeting } from '../features/meetings/ownerVotingCouncil';
-import { extractElectionAgendaMeta } from '../features/meetings/electionAgendaModel';
+import {
+  defaultElectionMeta,
+  embedElectionAgendaMeta,
+  extractElectionAgendaMeta,
+} from '../features/meetings/electionAgendaModel';
 import { canManagePropertyMeetings } from '@/lib/meetingPermissions';
 import { supabase } from '../lib/supabase';
 
@@ -254,6 +258,69 @@ function cloneAgendaRow(r: MeetingEditorAgendaRow): MeetingEditorAgendaRow {
   return { ...r };
 }
 
+function editorNominationPairFromScheduled(
+  scheduledIso: string | null | undefined,
+  useV3Canon: boolean,
+): { opens: string; closes: string } | null {
+  if (useV3Canon) {
+    const v3 = deriveRemoteWrittenV3CanonFromScheduledAt(scheduledIso);
+    if (!v3) return null;
+    return { opens: v3.nominationOpenIso, closes: v3.nominationCloseIso };
+  }
+  const canon = deriveCouncilElectionCanonFromScheduledAt(scheduledIso);
+  if (!canon) return null;
+  return { opens: canon.nominationOpenIso, closes: canon.nominationCloseIso };
+}
+
+function buildOwnerSgmRemoteDefaultAgendaRows(
+  nominationPair: { opens: string; closes: string } | null,
+): MeetingEditorAgendaRow[] {
+  const electionDescriptionZh = nominationPair
+    ? embedElectionAgendaMeta(
+        '',
+        defaultElectionMeta({
+          nomination_opens_at: nominationPair.opens,
+          nomination_closes_at: nominationPair.closes,
+        }),
+      )
+    : null;
+  return [
+    {
+      clientId: `temp_${crypto.randomUUID()}`,
+      serverId: null,
+      isNew: true,
+      title_zh: '罢免现任业委会',
+      title_en: 'Remove current council',
+      kind: 'resolution',
+      vote_rule: 'three_quarter',
+      description_zh: null,
+      description_en: null,
+    },
+    {
+      clientId: `temp_${crypto.randomUUID()}`,
+      serverId: null,
+      isNew: true,
+      title_zh: '选举新业委会成员',
+      title_en: 'Elect new council members',
+      kind: 'election',
+      vote_rule: 'simple_majority',
+      description_zh: electionDescriptionZh,
+      description_en: null,
+    },
+  ];
+}
+
+function seedOwnerSgmRemoteAgendasIfEmpty(
+  prev: MeetingEditorAgendaRow[],
+  scheduledLocal: string,
+  useV3Canon: boolean,
+): MeetingEditorAgendaRow[] {
+  if (prev.some(agendaHasMeaningfulContent)) return prev;
+  const scheduledIso = isoFromDatetimeLocal(scheduledLocal.trim() ? scheduledLocal : '');
+  const pair = editorNominationPairFromScheduled(scheduledIso, useV3Canon);
+  return buildOwnerSgmRemoteDefaultAgendaRows(pair);
+}
+
 function agendaHasMeaningfulContent(r: MeetingEditorAgendaRow): boolean {
   if (String(r.title_zh).trim() || String(r.title_en).trim()) return true;
   if (String(r.description_zh ?? '').trim() || String(r.description_en ?? '').trim()) return true;
@@ -272,8 +339,10 @@ async function persistMeetingAgendaDrafts(options: {
   rows: MeetingEditorAgendaRow[];
   deleteServerIds: string[];
   languageEn: boolean;
+  scheduledIso: string | null;
+  useV3ElectionCanon: boolean;
 }): Promise<{ error: string | null }> {
-  const { propertyId, meetingId, rows, deleteServerIds, languageEn } = options;
+  const { propertyId, meetingId, rows, deleteServerIds, languageEn, scheduledIso, useV3ElectionCanon } = options;
   const uniqDeletes = [...new Set(deleteServerIds)];
   for (const id of uniqDeletes) {
     const { error } = await supabase
@@ -305,12 +374,25 @@ async function persistMeetingAgendaDrafts(options: {
       });
       if (error) return { error: error.message };
     } else {
+      let createDescZh = descZh;
       if (r.kind === 'election') {
-        return {
-          error: languageEn
-            ? 'Election agendas cannot be created from this screen. Add them on the meeting detail page.'
-            : '无法在本页创建选举议程，请在会议详情页添加。',
-        };
+        if (!createDescZh || !extractElectionAgendaMeta(createDescZh).meta) {
+          const pair = editorNominationPairFromScheduled(scheduledIso, useV3ElectionCanon);
+          if (!pair) {
+            return {
+              error: languageEn
+                ? 'Set the meeting start (public notice opens) before saving an election agenda.'
+                : '请先设置会议开始时间（公示开始）后再保存选举议程。',
+            };
+          }
+          createDescZh = embedElectionAgendaMeta(
+            '',
+            defaultElectionMeta({
+              nomination_opens_at: pair.opens,
+              nomination_closes_at: pair.closes,
+            }),
+          );
+        }
       }
       const { error } = await createAgendaItem({
         propertyId,
@@ -319,7 +401,7 @@ async function persistMeetingAgendaDrafts(options: {
         titleZh: String(r.title_zh).trim() || null,
         titleEn: String(r.title_en).trim() || null,
         descriptionEn: descEn,
-        descriptionZh: descZh,
+        descriptionZh: r.kind === 'election' ? createDescZh : descZh,
         requiresVote,
         voteRule: requiresVote ? voteRule : null,
       });
@@ -353,6 +435,9 @@ export function MeetingEditor() {
   const [voteLine, setVoteLine] = useState<'loading' | 'none' | string>('loading');
 
   const agendaCount = useMemo(() => agendaItems.filter(agendaHasMeaningfulContent).length, [agendaItems]);
+
+  const meetingKindUi = inferMeetingKindUi(form);
+  const ownerSgmRemoteEditor = meetingKindUi === 'owner_sgm_remote';
 
   const staffMayEditMeetings = canManagePropertyMeetings(roleInProperty);
 
@@ -693,6 +778,8 @@ export function MeetingEditor() {
         rows: meaningful,
         deleteServerIds: [],
         languageEn: en,
+        scheduledIso,
+        useV3ElectionCanon: inferMeetingKindUi(form) === 'owner_sgm_remote',
       });
       setSaving(false);
       if (persistResult.error) {
@@ -732,6 +819,10 @@ export function MeetingEditor() {
       rows: meaningful,
       deleteServerIds,
       languageEn: en,
+      scheduledIso,
+      useV3ElectionCanon:
+        inferMeetingKindUi(form) === 'owner_sgm_remote' ||
+        (!!detailMeeting && isWrittenRemoteV3Meeting(detailMeeting)),
     });
     setSaving(false);
     if (persistResult.error) {
@@ -828,9 +919,18 @@ export function MeetingEditor() {
           <label className="block text-sm font-medium text-gray-700">{en ? 'Meeting type' : '会议类型'}</label>
           <select
             value={inferMeetingKindUi(form)}
-            onChange={(e) =>
-              setForm((f) => applyMeetingKindToForm(e.target.value as MeetingKindUi, f))
-            }
+            onChange={(e) => {
+              const kind = e.target.value as MeetingKindUi;
+              let nextScheduled = form.scheduled_at;
+              setForm((f) => {
+                const next = applyMeetingKindToForm(kind, f);
+                nextScheduled = next.scheduled_at;
+                return next;
+              });
+              if (kind === 'owner_sgm_remote') {
+                setAgendaItems((prev) => seedOwnerSgmRemoteAgendasIfEmpty(prev, nextScheduled, true));
+              }
+            }}
             className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-900"
           >
             <option value="council_sgm_remote">{en ? 'Council SGM (remote written)' : '远程书面业委会 SGM'}</option>
@@ -1119,7 +1219,7 @@ export function MeetingEditor() {
                         >
                           <option value="normal">{t('meeting_agenda_type_normal')}</option>
                           <option value="resolution">{t('meeting_agenda_type_resolution')}</option>
-                          {!row.isNew && row.kind === 'election' ? (
+                          {(row.isNew && ownerSgmRemoteEditor) || (!row.isNew && row.kind === 'election') ? (
                             <option value="election">{t('meeting_agenda_type_election')}</option>
                           ) : null}
                         </select>

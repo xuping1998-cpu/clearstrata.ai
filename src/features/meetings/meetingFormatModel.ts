@@ -230,6 +230,20 @@ export function isWrittenRemoteV3Meeting(meeting: Pick<MeetingRow, 'description_
   return isWrittenRemoteV3Meta(meta);
 }
 
+/** Read-only copy: V3 participation is system-scheduled (no manual enable/freeze/open/close). */
+export function writtenRemoteV3AutoParticipationCopy(languageEn: boolean): string {
+  return languageEn
+    ? 'Participation opens and closes automatically on the system schedule. Manual enable, pause, or early open are not available.'
+    : '参与由系统自动开放、系统自动截止；不可人工启用、暂停或提前开启。';
+}
+
+/** Read-only copy: resolution agendas on V3 meetings (no “generate formal ballot” control). */
+export function writtenRemoteV3ResolutionVotingCopy(languageEn: boolean): string {
+  return languageEn
+    ? 'Voting will be available automatically during the unified participation window.'
+    : '表决将在统一参与期内自动开放。';
+}
+
 export function extractWrittenRemoteMeta(descriptionZh: string | null | undefined): {
   cleanDescriptionZh: string;
   meta: WrittenRemoteMeta | null;
