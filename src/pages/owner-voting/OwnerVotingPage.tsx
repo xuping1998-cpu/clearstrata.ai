@@ -1127,8 +1127,15 @@ export function OwnerVotingPage() {
         <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">{headline}</h1>
         <p className="mt-2 max-w-3xl text-sm text-gray-600 sm:text-base">{subline}</p>
         <p className="mt-3">
-          <Link to="/meetings" className="text-sm font-medium text-clearstrata-ui-primary hover:underline">
-            {`« ${t('meeting_back_list')}`}
+          <Link
+            to={
+              currentPropertyId?.trim()
+                ? `/voting?${new URLSearchParams({ propertyId: currentPropertyId.trim() }).toString()}`
+                : '/voting'
+            }
+            className="text-sm font-medium text-clearstrata-ui-primary hover:underline"
+          >
+            {zh ? '« 返回会议投票' : '« Back to meeting voting'}
           </Link>
         </p>
       </div>
@@ -1418,6 +1425,7 @@ export function OwnerVotingPage() {
                   <Link
                     to={`/voting/${encodeURIComponent((pack.councilMeetingId ?? pack.meetingId).trim())}?${new URLSearchParams({
                       propertyId: String(pack.propertyId),
+                      source: 'owner-voting',
                     }).toString()}`}
                     className="inline-flex w-full items-center justify-center rounded-xl bg-clearstrata-ui-primary px-4 py-2.5 text-center text-sm font-semibold text-white shadow-sm hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive sm:w-auto sm:min-w-[11rem]"
                   >

@@ -721,6 +721,21 @@ export function MeetingDetail() {
       searchParams.get('propertyId')?.trim() ||
       new URLSearchParams(location.search).get('propertyId')?.trim() ||
       currentPropertyId?.trim();
+
+    const sourceRaw = (searchParams.get('source') ?? '').trim().toLowerCase();
+    if (sourceRaw === 'voting') {
+      if (pid) return `/voting?${new URLSearchParams({ propertyId: pid }).toString()}`;
+      return '/voting';
+    }
+    if (sourceRaw === 'owner-voting') {
+      if (pid) return `/owner-voting?${new URLSearchParams({ propertyId: pid }).toString()}`;
+      return '/owner-voting';
+    }
+    if (sourceRaw === 'meetings') {
+      if (pid) return `/meetings?${new URLSearchParams({ propertyId: pid }).toString()}`;
+      return '/meetings';
+    }
+
     if (
       meeting &&
       isWrittenRemoteV3Meeting(meeting) &&

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { ArrowLeft, Plus, Users } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useProperty } from '../../contexts/PropertyContext';
@@ -160,7 +160,6 @@ export function MeetingListView({ variant }: Props) {
   const { currentPropertyId, roleInProperty, ready: propertyReady } = useProperty();
   const { language, t } = useLanguage();
   const en = language === 'en';
-  const navigate = useNavigate();
 
   const fiscalYear = new Date().getFullYear();
   const [meetings, setMeetings] = useState<MeetingRow[]>([]);
@@ -286,17 +285,23 @@ export function MeetingListView({ variant }: Props) {
 
   const title = t('nav_meetings_records');
 
-  /** 单会议详情：两 variant 各自固定前缀，统一透传 propertyId（有则必带）。 */
-  const hrefForMeeting = (meetingId: string | null | undefined): string | null => {
+  /** 单会议详情：两 variant 各自固定前缀；带 propertyId + source 供 MeetingDetail 返回列表。 */
+  const hrefForMeeting = (meetingId: string | null | undefined, meetingPropertyId?: string | null): string | null => {
     const id = typeof meetingId === 'string' ? meetingId.trim() : '';
     if (!id) return null;
     const path = variant === 'voting' ? `/voting/${encodeURIComponent(id)}` : `/meetings/${encodeURIComponent(id)}`;
-    const pid = currentPropertyId?.trim();
-    if (pid) {
-      return `${path}?${new URLSearchParams({ propertyId: pid }).toString()}`;
-    }
-    return path;
+    const pid = (currentPropertyId?.trim() || (meetingPropertyId && String(meetingPropertyId).trim()) || '') || '';
+    const qs = new URLSearchParams();
+    if (pid) qs.set('propertyId', pid);
+    if (variant === 'voting') qs.set('source', 'voting');
+    if (variant === 'meetings') qs.set('source', 'meetings');
+    const q = qs.toString();
+    return q ? `${path}?${q}` : path;
   };
+
+  const ownerPetitionHubHref = currentPropertyId?.trim()
+    ? `/owner-voting?${new URLSearchParams({ source: 'voting', propertyId: currentPropertyId.trim() }).toString()}`
+    : '/owner-voting?source=voting';
 
   const votingHubHref = currentPropertyId
     ? `/voting?${new URLSearchParams({ propertyId: currentPropertyId }).toString()}`
@@ -309,18 +314,32 @@ export function MeetingListView({ variant }: Props) {
   return (
     <div className="min-h-screen bg-gray-50 pb-16">
       <div className="bg-gradient-to-r from-clearstrata-brand-500 to-clearstrata-brand-600 text-white p-6">
-        <div className="flex items-center gap-3 mb-2 max-w-7xl mx-auto">
-          {variant === 'meetings' ? (
-            <Link to="/" className="hover:bg-white/20 p-2 rounded-lg transition-colors">
-              <ArrowLeft size={24} />
+        <div className="mb-2 flex max-w-7xl mx-auto flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            {variant === 'meetings' ? (
+              <Link to="/" className="hover:bg-white/20 p-2 rounded-lg transition-colors">
+                <ArrowLeft size={24} />
+              </Link>
+            ) : (
+              <Link
+                to={votingHubHref}
+                className="hover:bg-white/20 p-2 rounded-lg transition-colors"
+                aria-label={en ? 'Back to voting list' : '返回投票列表'}
+              >
+                <ArrowLeft size={24} />
+              </Link>
+            )}
+            <Users size={32} />
+            <h1 className="text-3xl font-bold">{title}</h1>
+          </div>
+          {variant === 'voting' ? (
+            <Link
+              to={ownerPetitionHubHref}
+              className="shrink-0 rounded-lg border border-white/35 bg-white/10 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-white/20 sm:text-sm"
+            >
+              {en ? 'Owner-initiated SGM' : '业主联署 SGM'}
             </Link>
-          ) : (
-            <button type="button" onClick={() => navigate(-1)} className="hover:bg-white/20 p-2 rounded-lg transition-colors">
-              <ArrowLeft size={24} />
-            </button>
-          )}
-          <Users size={32} />
-          <h1 className="text-3xl font-bold">{title}</h1>
+          ) : null}
         </div>
         <p className="text-white/90 ml-14 max-w-7xl mx-auto">{t('meetings_page_subtitle')}</p>
       </div>
@@ -331,7 +350,11 @@ export function MeetingListView({ variant }: Props) {
         {variant === 'meetings' && canManageMeetings ? (
           <div className="flex flex-wrap justify-end gap-2">
             <Link
-              to="/owner-voting"
+              to={
+                currentPropertyId?.trim()
+                  ? `/owner-voting?${new URLSearchParams({ source: 'meetings', propertyId: currentPropertyId.trim() }).toString()}`
+                  : '/owner-voting?source=meetings'
+              }
               className="inline-flex items-center rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-900 hover:bg-violet-100"
             >
               <div className="flex flex-col items-start leading-tight">
@@ -403,7 +426,7 @@ export function MeetingListView({ variant }: Props) {
           ) : (
             meetings.map((m, idx) => {
               const rowId = m.id != null && String(m.id).trim() !== '' ? String(m.id).trim() : '';
-              const detailHref = rowId ? hrefForMeeting(rowId) : null;
+              const detailHref = rowId ? hrefForMeeting(rowId, m.property_id) : null;
               const cardInteractive = detailHref !== null;
               const councilBind = councilMeetingTitleForOwnerVoteBinding(m).trim();
               const ovLite = councilBind ? ovCardByCouncilTitle[councilBind] : undefined;
