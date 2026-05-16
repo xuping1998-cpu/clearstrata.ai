@@ -28,17 +28,24 @@ const SERVICE_LABELS: Record<string, { zh: string; en: string }> = {
   hvac_repair: { zh: "暖通维修", en: "HVAC repair" },
 };
 
-const CLASSIFY_SYSTEM = `You classify Canadian strata (condo) AP invoices for retrospective market benchmark review.
-Use vendor name, line descriptions, OCR text, notes, and category — NOT vendor name alone.
-Example: "Dwell" may be management, accounting, copying, or other services — read the invoice body.
+const OPENAI_MODEL = "gpt-4o-mini";
 
-Return JSON only:
+const CLASSIFY_SYSTEM = `You classify Canadian strata (condo) AP invoices for retrospective market benchmark review.
+Classify by the actual SERVICE CONTENT on the invoice — never by vendor name alone.
+Example: "Dwell" may be strata management, repair, consulting, or copying; read line items, descriptions, and OCR text.
+
+Return JSON only (no markdown):
 {
-  "serviceType": "strata_management" | "cleaning" | "landscaping" | "snow_removal" | "elevator_maintenance" | "fire_inspection" | "telecom" | "waste_disposal" | "security_monitoring" | "plumbing_repair" | "hvac_repair" | "unsupported",
+  "serviceType": "strata_management" | "telecom" | "security_monitoring" | "unsupported",
   "confidence": <0-1 number>,
   "rationale": "<brief bilingual-friendly reason>",
   "billingPeriod": "monthly" | "one_time" | "annual" | "unknown"
-}`;
+}
+
+Use strata_management for recurring strata/council management or accounting administration fees.
+Use telecom for internet, phone, cable, or building connectivity services.
+Use security_monitoring for alarm, CCTV, or security monitoring contracts.
+Use unsupported for all other services (cleaning, repairs, landscaping, one-off trades, etc.).`;
 
 function pricingPayloadForType(
   serviceType: string,
@@ -131,31 +138,57 @@ function parseJsonBlock(text: string): Record<string, unknown> | null {
   }
 }
 
-async function callAnthropic(system: string, user: string, maxTokens = 512): Promise<string> {
-  const key = Deno.env.get("ANTHROPIC_API_KEY");
-  if (!key) throw new Error("ANTHROPIC_API_KEY not configured");
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+function descriptionFromAiExtracted(ai: unknown): string | null {
+  if (!ai || typeof ai !== "object") return null;
+  const o = ai as Record<string, unknown>;
+  for (const key of ["description", "description_zh", "description_en", "service_description"]) {
+    const v = o[key];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return null;
+}
+
+async function callOpenAIClassify(
+  openaiKey: string,
+  classifyInput: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const userContent =
+    "Classify this invoice for historical market benchmark (JSON input):\n" +
+    JSON.stringify(classifyInput);
+
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
-      "x-api-key": key,
-      "anthropic-version": "2023-06-01",
+      Authorization: `Bearer ${openaiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: maxTokens,
-      system,
-      messages: [{ role: "user", content: user }],
+      model: OPENAI_MODEL,
       temperature: 0.2,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: CLASSIFY_SYSTEM },
+        { role: "user", content: userContent },
+      ],
     }),
   });
+
   if (!res.ok) {
     const t = await res.text();
-    console.error("Anthropic error", t);
-    throw new Error("AI classification unavailable");
+    console.error("[historical-benchmark-review] openai error", res.status, t);
+    throw new Error("openai error");
   }
-  const data = await res.json();
-  return data.content?.[0]?.text ?? "";
+
+  const data = (await res.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+  const raw = data.choices?.[0]?.message?.content ?? "";
+  const parsed = parseJsonBlock(raw);
+  if (!parsed) {
+    console.error("[historical-benchmark-review] classification parse failed", raw.slice(0, 500));
+    throw new Error("classification failed");
+  }
+  return parsed;
 }
 
 async function callAiPricing(
@@ -196,8 +229,15 @@ Deno.serve(async (req: Request) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  const openaiKey = Deno.env.get("OPENAI_API_KEY") ?? "";
   if (!supabaseUrl || !anonKey || !serviceKey) {
     return new Response(JSON.stringify({ error: "SERVER_CONFIG" }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  if (!openaiKey.trim()) {
+    return new Response(JSON.stringify({ success: false, error: "OPENAI_API_KEY missing" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -313,15 +353,24 @@ Deno.serve(async (req: Request) => {
   const amount = Number(inv.total_amount) || 0;
   const currency = String(inv.currency ?? "CAD").trim() || "CAD";
 
-  const notesText = String(inv.notes ?? inv.review_notes ?? "").trim();
-  const invoiceBlob = JSON.stringify({
+  const notesText = String(inv.notes ?? "").trim();
+  const reviewNotesText = String(inv.review_notes ?? "").trim();
+  const descriptionText = descriptionFromAiExtracted(inv.ai_extracted_data);
+
+  const classifyInput = {
     vendor_name: inv.vendor_name,
     category: inv.category,
+    review_notes: reviewNotesText || null,
     notes: notesText || null,
+    description: descriptionText,
     ai_extracted_data: inv.ai_extracted_data,
     invoice_number: inv.invoice_number,
     ocr_structured: ocrRow?.structured_json ?? null,
     ocr_raw_excerpt: String(ocrRow?.raw_text ?? "").slice(0, 6000),
+  };
+
+  const invoiceBlob = JSON.stringify({
+    ...classifyInput,
     total_amount: amount,
     property_units: unitCount,
     city,
@@ -329,19 +378,18 @@ Deno.serve(async (req: Request) => {
 
   let classify: Record<string, unknown>;
   try {
-    const classifyText = await callAnthropic(
-      CLASSIFY_SYSTEM,
-      `Classify this invoice:\n${invoiceBlob}`,
-    );
-    classify = parseJsonBlock(classifyText) ?? { serviceType: "unsupported", confidence: 0, rationale: "parse failed" };
+    classify = await callOpenAIClassify(openaiKey, classifyInput);
   } catch (e) {
+    const msg = e instanceof Error ? e.message : "classification failed";
+    const status = msg === "openai error" ? 502 : 500;
     return new Response(
-      JSON.stringify({ success: false, error: e instanceof Error ? e.message : "classification failed" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      JSON.stringify({ success: false, error: msg }),
+      { status, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 
-  const serviceType = String(classify.serviceType ?? "unsupported").trim();
+  const rawServiceType = String(classify.serviceType ?? "unsupported").trim();
+  const serviceType = MVP_TYPES.has(rawServiceType) ? rawServiceType : "unsupported";
   const confidence = typeof classify.confidence === "number" ? classify.confidence : 0;
   const rationale = String(classify.rationale ?? "");
   const billingPeriod = String(classify.billingPeriod ?? "unknown");
@@ -402,7 +450,7 @@ Deno.serve(async (req: Request) => {
       estimated_budget: amount,
     });
   } catch (e) {
-    baseReview.notes = e instanceof Error ? e.message : "benchmark fetch failed";
+    baseReview.notes = e instanceof Error ? e.message : "ai-pricing failed";
     const merged = { ...prevCtx, benchmarkReview: baseReview };
     await admin.from("invoice_ai_audit_contexts").upsert(
       { invoice_id: invoiceId, property_id: propertyId, context_json: merged },
