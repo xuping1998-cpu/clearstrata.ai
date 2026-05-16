@@ -83,6 +83,8 @@ import {
   councilMeetingVotingWindowFallback,
   extractGovernanceMeta,
   isWrittenRemoteV3Meeting,
+  writtenRemoteV3AutoParticipationCopy,
+  writtenRemoteV3ResolutionVotingCopy,
   meetingSgmRequisitionRequiredUnits,
   MEETING_SGM_REQUISITION_PERCENT_DEFAULT,
   stripWrittenRemoteMeta,
@@ -478,6 +480,7 @@ export function MeetingDetail() {
   }, [meeting?.id, meeting?.status, meeting?.scheduled_at, meeting?.description_zh]);
 
   const showCouncilOwnerVoteUi = !!(meeting && currentPropertyId && isOwnerVotingMeeting(meeting));
+  const writtenRemoteV3Meeting = !!(meeting && isWrittenRemoteV3Meeting(meeting));
 
   const governanceMeta = useMemo(() => {
     if (!meeting?.description_zh) return null;
@@ -1873,7 +1876,10 @@ export function MeetingDetail() {
                   const agendaKindUi = agendaKindFromRow(agenda);
                   const vote = voteByAgendaId.get(agenda.id);
                   const legacyCouncilVoteUi =
-                    !showCouncilOwnerVoteUi && agendaKindUi !== 'election' && vote;
+                    !writtenRemoteV3Meeting &&
+                    !showCouncilOwnerVoteUi &&
+                    agendaKindUi !== 'election' &&
+                    vote;
                   const ballots = legacyCouncilVoteUi ? bundle.ballotsByVoteId[vote!.id] ?? [] : [];
                   const tallies = legacyCouncilVoteUi ? ballotTallies(ballots) : {};
                   const my = legacyCouncilVoteUi ? bundle.myBallotsByVoteId[vote!.id] : undefined;
@@ -2141,7 +2147,11 @@ export function MeetingDetail() {
                           )}
 
                           {agendaKindUi !== 'election' && agenda.requires_vote ? (
-                            !vote ? (
+                            writtenRemoteV3Meeting ? (
+                              <p className="mt-3 text-sm text-gray-700 rounded-md border border-blue-100 bg-blue-50/60 px-3 py-2">
+                                {writtenRemoteV3ResolutionVotingCopy(en)}
+                              </p>
+                            ) : !vote ? (
                               canManageCouncilMeetings && !agendaStructureEditLocked ? (
                                 <button
                                   type="button"
@@ -2390,7 +2400,11 @@ export function MeetingDetail() {
             <>
               {ovMeta.loading ? <p className="text-sm text-gray-500">{t('meeting_ov_loading')}</p> : null}
               {!ovMeta.loading && !ovMeta.meeting ? (
-                <p className="text-sm text-gray-600">{t('meeting_vote_not_enabled')}</p>
+                <p className="text-sm text-gray-600">
+                  {writtenRemoteV3Meeting
+                    ? writtenRemoteV3AutoParticipationCopy(en)
+                    : t('meeting_vote_not_enabled')}
+                </p>
               ) : null}
               {showVoteWaitingResultsBanner ? (
                 <p className="text-sm text-gray-700 mb-3">{t('meeting_vote_waiting_tallies_open')}</p>

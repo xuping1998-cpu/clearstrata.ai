@@ -2,6 +2,8 @@
  * Historical ledger retrospective market benchmark (not formal procurement approval).
  */
 
+import { supabase } from '../supabase';
+
 export const BENCHMARK_SERVICE_TYPES = [
   'strata_management',
   'cleaning',
@@ -145,27 +147,22 @@ export async function runHistoricalBenchmarkReview(params: {
   propertyId: string;
   forceRefresh?: boolean;
 }): Promise<RunHistoricalBenchmarkResponse> {
-  const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/historical-benchmark-review`;
-  const response = await fetch(apiUrl, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
+  const { data, error } = await supabase.functions.invoke('historical-benchmark-review', {
+    body: {
       invoice_id: params.invoiceId,
       property_id: params.propertyId,
       force_refresh: params.forceRefresh === true,
-    }),
+    },
   });
-  let data: RunHistoricalBenchmarkResponse & { error?: string };
-  try {
-    data = await response.json();
-  } catch {
-    return { success: false, error: 'Invalid response from benchmark service' };
+  if (error) {
+    return { success: false, error: error.message };
   }
-  if (!response.ok) {
-    return { success: false, error: data.error ?? `HTTP ${response.status}` };
+  const payload = data as RunHistoricalBenchmarkResponse & { error?: string } | null;
+  if (!payload) {
+    return { success: false, error: 'Empty response from benchmark service' };
   }
-  return data;
+  if (payload.success === false) {
+    return { success: false, error: payload.error ?? 'Benchmark review failed' };
+  }
+  return payload;
 }

@@ -239,15 +239,22 @@ Deno.serve(async (req: Request) => {
   const { data: inv, error: invErr } = await userClient
     .from("invoices")
     .select(
-      "id, property_id, vendor_name, total_amount, category, notes, description_zh, description_en, description, ai_extracted_data, currency",
+      "id, property_id, vendor_name, total_amount, category, notes, review_notes, ai_extracted_data, currency, invoice_number",
     )
     .eq("id", invoiceId)
     .eq("property_id", propertyId)
     .maybeSingle();
 
-  if (invErr || !inv) {
-    return new Response(JSON.stringify({ error: "invoice not found" }), {
-      status: 404,
+  if (invErr) {
+    console.error("[historical-benchmark-review] invoice select", invErr.message);
+    return new Response(JSON.stringify({ error: "FORBIDDEN_OR_NOT_FOUND" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  if (!inv?.id || inv.property_id !== propertyId) {
+    return new Response(JSON.stringify({ error: "FORBIDDEN_OR_NOT_FOUND" }), {
+      status: 403,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
@@ -306,14 +313,13 @@ Deno.serve(async (req: Request) => {
   const amount = Number(inv.total_amount) || 0;
   const currency = String(inv.currency ?? "CAD").trim() || "CAD";
 
+  const notesText = String(inv.notes ?? inv.review_notes ?? "").trim();
   const invoiceBlob = JSON.stringify({
     vendor_name: inv.vendor_name,
     category: inv.category,
-    notes: inv.notes,
-    description_zh: inv.description_zh,
-    description_en: inv.description_en,
-    description: inv.description,
+    notes: notesText || null,
     ai_extracted_data: inv.ai_extracted_data,
+    invoice_number: inv.invoice_number,
     ocr_structured: ocrRow?.structured_json ?? null,
     ocr_raw_excerpt: String(ocrRow?.raw_text ?? "").slice(0, 6000),
     total_amount: amount,

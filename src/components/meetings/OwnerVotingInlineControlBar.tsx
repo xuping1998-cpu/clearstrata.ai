@@ -385,7 +385,7 @@ export function OwnerVotingInlineControlBar({
                 {v3AutoParticipationCopy}
               </p>
               {!isStaff ? (
-                <motion>
+                <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={onNavigateOwnerVoting}
@@ -393,7 +393,7 @@ export function OwnerVotingInlineControlBar({
                   >
                     {t('meeting_ov_go_vote')}
                   </button>
-                </motion>
+                </div>
               ) : null}
             </>
           ) : (
@@ -412,7 +412,7 @@ export function OwnerVotingInlineControlBar({
                 </p>
               ) : null}
 
-              <motion>
+              <div className="flex flex-wrap gap-2">
                 {isStaff ? (
                   <>
                     {showFreeze ? (
@@ -455,7 +455,7 @@ export function OwnerVotingInlineControlBar({
                     {t('meeting_ov_go_vote')}
                   </button>
                 )}
-              </motion>
+              </div>
             </>
           )}
         </div>

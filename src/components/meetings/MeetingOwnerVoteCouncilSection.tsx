@@ -18,6 +18,7 @@ import { councilMeetingTitleForOwnerVoteBinding } from '@/features/meetings/owne
 import {
   councilMeetingVotingWindowFallback,
   isWrittenRemoteV3Meeting,
+  writtenRemoteV3AutoParticipationCopy,
 } from '@/features/meetings/meetingFormatModel';
 import {
   buildElectionNominationRibbon,
@@ -553,26 +554,32 @@ export function MeetingOwnerVoteCouncilSection({ meeting, agendaItems, isStaff }
               : null}
           </p>
           {bindingTitle.trim() ? (
-            <>
-              <div className="text-sm space-y-1 text-gray-700 mb-3">
-                <p>
-                  <span className="text-gray-600">{t('meeting_ov_vote_opens')}:</span>{' '}
-                  <span className="font-medium text-gray-900">{fmtTs(plannedVotingWindow.votingOpens)}</span>
-                </p>
-                <p>
-                  <span className="text-gray-600">{t('meeting_ov_vote_closes')}:</span>{' '}
-                  <span className="font-medium text-gray-900">{fmtTs(plannedVotingWindow.votingCloses)}</span>
-                </p>
-              </div>
-              <button
-                type="button"
-                disabled={busy || !user?.id || electionTimelineBlocksVoting}
-                onClick={() => void handleEnable()}
-                className="rounded-xl bg-clearstrata-ui-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover disabled:opacity-50"
-              >
-                {t('meeting_ov_enable')}
-              </button>
-            </>
+            hideStaffOvManualLifecycle ? (
+              <p className="text-sm text-gray-800 rounded-md border border-blue-100 bg-blue-50/70 px-3 py-2">
+                {writtenRemoteV3AutoParticipationCopy(en)}
+              </p>
+            ) : (
+              <>
+                <div className="text-sm space-y-1 text-gray-700 mb-3">
+                  <p>
+                    <span className="text-gray-600">{t('meeting_ov_vote_opens')}:</span>{' '}
+                    <span className="font-medium text-gray-900">{fmtTs(plannedVotingWindow.votingOpens)}</span>
+                  </p>
+                  <p>
+                    <span className="text-gray-600">{t('meeting_ov_vote_closes')}:</span>{' '}
+                    <span className="font-medium text-gray-900">{fmtTs(plannedVotingWindow.votingCloses)}</span>
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={busy || !user?.id || electionTimelineBlocksVoting}
+                  onClick={() => void handleEnable()}
+                  className="rounded-xl bg-clearstrata-ui-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover disabled:opacity-50"
+                >
+                  {t('meeting_ov_enable')}
+                </button>
+              </>
+            )
           ) : null}
         </div>
       ) : (
@@ -619,7 +626,11 @@ export function MeetingOwnerVoteCouncilSection({ meeting, agendaItems, isStaff }
           ) : null}
 
           <div className="flex flex-wrap gap-2">
-            {!hideStaffOvManualLifecycle ? (
+            {hideStaffOvManualLifecycle ? (
+              <p className="text-sm text-gray-800 rounded-md border border-blue-100 bg-blue-50/70 px-3 py-2">
+                {writtenRemoteV3AutoParticipationCopy(en)}
+              </p>
+            ) : (
               <>
             {!ovMeeting.snapshot_frozen_at && ovMeeting.status?.trim().toLowerCase() === 'draft' ? (
               <button
@@ -655,7 +666,7 @@ export function MeetingOwnerVoteCouncilSection({ meeting, agendaItems, isStaff }
               {t('meeting_ov_close_voting')}
             </button>
               </>
-            ) : null}
+            )}
           </div>
 
           <div className="border-t border-gray-100 pt-4">
