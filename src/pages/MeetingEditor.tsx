@@ -108,6 +108,7 @@ const defaultForm = {
  */
 type MeetingKindUi =
   | 'council_sgm_remote'
+  | 'owner_sgm_remote'
   | 'council_agm_remote'
   | 'council_meeting_remote'
   | 'council_meeting_hybrid';
@@ -124,11 +125,17 @@ function inferMeetingKindUi(f: typeof defaultForm): MeetingKindUi {
   }
 
   if (written) {
+    if (f.meeting_type === 'sgm' && f.initiation_type === 'owner_requisitioned') {
+      return 'owner_sgm_remote';
+    }
     if (f.meeting_type === 'sgm') return 'council_sgm_remote';
     if (f.meeting_type === 'agm') return 'council_agm_remote';
     if (f.meeting_type === 'council') return 'council_meeting_remote';
   }
 
+  if (f.meeting_type === 'sgm' && f.initiation_type === 'owner_requisitioned') {
+    return 'owner_sgm_remote';
+  }
   if (f.meeting_type === 'agm') return 'council_agm_remote';
   if (f.meeting_type === 'sgm') return 'council_sgm_remote';
   return 'council_meeting_hybrid';
@@ -142,6 +149,11 @@ function applyMeetingKindToForm(kind: MeetingKindUi, prev: typeof defaultForm): 
     case 'council_sgm_remote':
       meeting_type = 'sgm';
       initiation_type = 'council_initiated';
+      meeting_format_ui = 'written_remote';
+      break;
+    case 'owner_sgm_remote':
+      meeting_type = 'sgm';
+      initiation_type = 'owner_requisitioned';
       meeting_format_ui = 'written_remote';
       break;
     case 'council_agm_remote':
@@ -822,6 +834,9 @@ export function MeetingEditor() {
             className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-900"
           >
             <option value="council_sgm_remote">{en ? 'Council SGM (remote written)' : '远程书面业委会 SGM'}</option>
+            <option value="owner_sgm_remote">
+              {en ? 'Remote Written Owner-Requisitioned SGM' : '远程书面业主联署 SGM'}
+            </option>
             <option value="council_agm_remote">{en ? 'Council AGM (remote written)' : '远程书面业委会 AGM'}</option>
             <option value="council_meeting_remote">{en ? 'Council meeting (remote written)' : '远程书面业委会会议'}</option>
             <option value="council_meeting_hybrid">{en ? 'Hybrid council meeting' : '混合业委会会议'}</option>

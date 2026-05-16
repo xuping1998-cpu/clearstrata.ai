@@ -53,6 +53,7 @@ import {
 import { runInvoiceAudit } from '../../lib/invoiceAudit';
 import { INVOICE_AUDIT_RULE_CODES, type InvoiceAuditSummary } from '../../lib/audit/invoiceAuditRules';
 import { resolveLedgerGovernanceMode } from '../../lib/invoiceGovernanceLedgerMode';
+import { HistoricalBenchmarkReviewModal } from '../../components/finance/HistoricalBenchmarkReviewModal';
 
 interface Invoice {
   id: string;
@@ -974,6 +975,7 @@ function MonthlyAutoAuditPanel(props: {
   onRunForMonth: (mk: string, list: Invoice[]) => void;
   onPickInvoice: (inv: Invoice) => void;
   onOpenHistoricalProcDraft: (inv: Invoice) => void;
+  onOpenBenchmarkReview: (inv: Invoice) => void;
   hybridAuditByInvoiceId: Record<string, { over_budget: boolean; bypass_approval: boolean; ai_high: boolean }>;
   quoteVarianceByInvoiceId: Record<string, QuoteVarianceResult>;
   aiAuditListMap: Record<string, { risk_level: string; risk_score: number }>;
@@ -991,6 +993,7 @@ function MonthlyAutoAuditPanel(props: {
     onRunForMonth,
     onPickInvoice,
     onOpenHistoricalProcDraft,
+    onOpenBenchmarkReview,
     hybridAuditByInvoiceId,
     quoteVarianceByInvoiceId,
     aiAuditListMap,
@@ -1385,6 +1388,15 @@ function MonthlyAutoAuditPanel(props: {
                               className="rounded-md px-2 py-1 text-[11px] font-semibold bg-indigo-50 text-indigo-800 hover:bg-indigo-100 ring-1 ring-indigo-200/80"
                             >
                               {l ? 'Create draft' : 'AI补建草稿'}
+                            </button>
+                          ) : null}
+                          {historical && pillTags.includes('price') ? (
+                            <button
+                              type="button"
+                              onClick={() => onOpenBenchmarkReview(row.inv)}
+                              className="rounded-md px-2 py-1 text-[11px] font-semibold bg-amber-50 text-amber-950 hover:bg-amber-100 ring-1 ring-amber-200/80"
+                            >
+                              {l ? 'Benchmark review' : '历史补询价'}
                             </button>
                           ) : null}
                           <button
@@ -1838,6 +1850,7 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
   const [anomaliesFetchTick, setAnomaliesFetchTick] = useState(0);
   const [monthlyAuditBusyKey, setMonthlyAuditBusyKey] = useState<string | null>(null);
   const [historicalProcDraftInv, setHistoricalProcDraftInv] = useState<Invoice | null>(null);
+  const [benchmarkReviewInv, setBenchmarkReviewInv] = useState<Invoice | null>(null);
   const [historicalProcDraftBusy, setHistoricalProcDraftBusy] = useState(false);
   const [historicalProcDraftFeedback, setHistoricalProcDraftFeedback] = useState<string | null>(null);
   const [historicalProcSavedJobId, setHistoricalProcSavedJobId] = useState<string | null>(null);
@@ -2972,6 +2985,7 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
                                   setHistoricalProcConfirmBusy(false);
                                   setHistoricalProcDraftInv(inv);
                                 }}
+                                onOpenBenchmarkReview={(inv) => setBenchmarkReviewInv(inv)}
                                 hybridAuditByInvoiceId={hybridAuditByInvoiceId}
                                 quoteVarianceByInvoiceId={quoteVarianceByInvoiceId}
                                 aiAuditListMap={aiAuditListMap}
@@ -3401,6 +3415,16 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
               setHistoricalProcConfirmBusy(false);
             }}
             onPersist={() => void persistHistoricalProcDraft()}
+          />
+        ) : null}
+
+        {benchmarkReviewInv && currentPropertyId ? (
+          <HistoricalBenchmarkReviewModal
+            open
+            invoice={benchmarkReviewInv}
+            propertyId={currentPropertyId}
+            languageEn={l}
+            onClose={() => setBenchmarkReviewInv(null)}
           />
         ) : null}
 
