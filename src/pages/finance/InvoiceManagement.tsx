@@ -346,11 +346,26 @@ const RULE_CODE_EXPLAIN_EN: Record<string, string> = {
 const RULE_FALLBACK_ZH = '需人工复核';
 const RULE_FALLBACK_EN = 'Manual review recommended';
 
-function explainRuleCode(l: boolean, rawCode: string): string {
+/** Historical reconstruction: retrospective benchmark review (not vendor-average spike). */
+const HIST_BENCHMARK_REVIEW_ZH =
+  'AI建议对该历史发票进行市场补询价比对，以辅助业委会判断是否存在异常支出。';
+const HIST_BENCHMARK_REVIEW_EN =
+  'AI recommends a retrospective market benchmark review for this invoice.';
+
+function explainRuleCode(
+  l: boolean,
+  rawCode: string,
+  ledgerMode: 'formal' | 'historical' = 'formal',
+): string {
   const k = String(rawCode ?? '')
     .trim()
     .toLowerCase();
   if (!k) return l ? RULE_FALLBACK_EN : RULE_FALLBACK_ZH;
+  if (ledgerMode === 'historical') {
+    if (k === 'vendor_price_spike' || k === 'historical_price_variance') {
+      return l ? HIST_BENCHMARK_REVIEW_EN : HIST_BENCHMARK_REVIEW_ZH;
+    }
+  }
   if (l) return RULE_CODE_EXPLAIN_EN[k] ?? RULE_FALLBACK_EN;
   return RULE_CODE_EXPLAIN_ZH[k] ?? RULE_FALLBACK_ZH;
 }
@@ -382,19 +397,23 @@ function buildMonthlyRiskExplanation(
     if (k) codeSet.add(k);
   }
   for (const c of codeSet) {
-    push(explainRuleCode(l, c));
+    if (ledgerMode === 'historical' && c === 'vendor_price_spike') {
+      push(l ? HIST_BENCHMARK_REVIEW_EN : HIST_BENCHMARK_REVIEW_ZH);
+      continue;
+    }
+    push(explainRuleCode(l, c, ledgerMode));
   }
 
   if (sx.noProcurement) {
-    push(explainRuleCode(l, 'no_quote'));
+    push(explainRuleCode(l, 'no_quote', ledgerMode));
   }
   if (ledgerMode === 'historical') {
-    if (sx.procurementScope || sx.aiResidual) {
-      push(explainRuleCode(l, 'historical_price_variance'));
+    if (sx.benchmarkReviewCandidate && !codeSet.has('vendor_price_spike')) {
+      push(l ? HIST_BENCHMARK_REVIEW_EN : HIST_BENCHMARK_REVIEW_ZH);
     }
   } else {
     if (sx.procurementScope) {
-      push(explainRuleCode(l, 'procurement_out_of_scope'));
+      push(explainRuleCode(l, 'procurement_out_of_scope', ledgerMode));
     }
     if (sx.aiResidual) push(l ? RULE_FALLBACK_EN : RULE_FALLBACK_ZH);
   }
@@ -424,6 +443,8 @@ function aiExtractDuplicateHeuristic(inv: Invoice): boolean {
 
 type MonthlyRiskSignals = {
   procurementScope: boolean;
+  /** Historical mode: vendor_price_spike → benchmark review candidate, not confirmed price anomaly */
+  benchmarkReviewCandidate: boolean;
   overBudget: boolean;
   duplicate: boolean;
   noProcurement: boolean;
@@ -450,6 +471,8 @@ function monthlyRiskSignals(
     (!inv.quote_id &&
       (inv.status === 'pending_review' || inv.status === 'approved') &&
       Number(inv.total_amount) >= 50);
+
+  const benchmarkReviewCandidate = set.has(INVOICE_AUDIT_RULE_CODES.VENDOR_PRICE_SPIKE);
 
   const procurementScope =
     extras.hybrid?.bypass_approval === true ||
@@ -480,14 +503,30 @@ function monthlyRiskSignals(
 
   const anyAlert = procurementScope || overBudget || duplicate || noProcurement || aiRisky;
 
-  return { procurementScope, overBudget, duplicate, noProcurement, aiResidual, anyAlert };
+  return {
+    procurementScope,
+    benchmarkReviewCandidate,
+    overBudget,
+    duplicate,
+    noProcurement,
+    aiResidual,
+    anyAlert,
+  };
+}
+
+function historicalBenchmarkReviewRow(sx: MonthlyRiskSignals): boolean {
+  return (
+    sx.benchmarkReviewCandidate ||
+    sx.aiResidual ||
+    (sx.procurementScope && !sx.benchmarkReviewCandidate)
+  );
 }
 
 function monthlyRowTags(isHistorical: boolean, sx: MonthlyRiskSignals): MonthlyAuditTag[] {
   const tags: MonthlyAuditTag[] = [];
   if (sx.noProcurement) tags.push('link');
   if (isHistorical) {
-    if (sx.procurementScope || sx.aiResidual) tags.push('price');
+    if (historicalBenchmarkReviewRow(sx)) tags.push('price');
   } else if (sx.procurementScope) {
     tags.push('price');
   }
@@ -531,10 +570,10 @@ function monthlyTagLabel(tag: MonthlyAuditTag, l: boolean, historical: boolean):
   if (tag === 'price') {
     return l
       ? historical
-        ? 'Historical price'
+        ? 'Historical Benchmark Review'
         : 'Procurement scope'
       : historical
-        ? '历史价格异常'
+        ? '历史补询价'
         : '超采购范围';
   }
   return l ? (historical ? 'Suggested linkage' : 'No procurement') : historical ? '建议补建采购记录' : '无采购记录';
@@ -999,8 +1038,7 @@ function MonthlyAutoAuditPanel(props: {
       anyCount += 1;
       if (isHistorical) {
         if (sx.noProcurement) colA += 1;
-        const histPx = sx.procurementScope || sx.aiResidual;
-        if (histPx) colB += 1;
+        if (historicalBenchmarkReviewRow(sx)) colB += 1;
         if (sx.overBudget) budget += 1;
         if (sx.duplicate) dup += 1;
       } else {
@@ -1125,7 +1163,7 @@ function MonthlyAutoAuditPanel(props: {
                 ? 'Historical months focus on rebuilding context: duplication, budget stress, procurement narrative—without forcing “no-quote” penalties designed for governed operations.'
                 : 'Each invoice month after governance compares approved procurement envelopes, AGM budgets, and posted invoices with full enforcement—including missing-quote alerts.'
               : ledgerMode === 'historical'
-                ? '治理启动之前的账本月份以重建线索为主：关注补建采购记录、历史价格异动、疑似重复及预算偏离；不显式将「无采购记录」作为主违规口径。'
+                ? '治理启动之前的账本月份以重建线索为主：关注补建采购记录、历史补询价、疑似重复及预算偏离；不显式将「无采购记录」作为主违规口径。'
                 : '治理启动日当月及之后的账本，系统将按批复采购范围与 AGM 预算对发票进行全面合规提示（含无采购记录告警）。'}
           </p>
         </div>
@@ -1178,7 +1216,7 @@ function MonthlyAutoAuditPanel(props: {
                   : 'bg-amber-50/95 text-amber-950 ring-amber-200'
               }`}
             >
-              <div className="text-[10px] font-medium uppercase text-amber-900">{l ? 'Historical price' : '历史价格异常'}</div>
+              <div className="text-[10px] font-medium uppercase text-amber-900">{l ? 'Historical Benchmark Review' : '历史补询价'}</div>
               <div className="text-lg font-bold tabular-nums">{stats.colB}</div>
             </button>
             <button

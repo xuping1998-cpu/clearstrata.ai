@@ -79,9 +79,8 @@ const translations: Record<string, Record<Language, string>> = {
   nav_meetings_records: { en: 'Meetings & Voting', zh: '会议投票' },
 
   meetings_page_subtitle: {
-    en:
-      'Written remote meetings: a fixed public-notice phase, nominations, then formal electronic voting—fair and transparent.',
-    zh: '远程书面会议按固定公示、提名与正式电子表决三阶段流转，保障公开透明。',
+    en: 'Remote written meetings support online discussion, agenda voting, and archived results for transparent governance.',
+    zh: '远程书面会议支持在线讨论、议程表决与结果归档，保障公开透明。',
   },
   nav_owner_voting: { en: 'Owner Voting', zh: '业主电子表决' },
   meeting_ov_staff_intro: {
