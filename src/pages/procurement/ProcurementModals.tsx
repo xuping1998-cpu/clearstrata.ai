@@ -2,7 +2,12 @@ import { useState, useEffect } from 'react';
 import { X, Plus, AlertCircle, Camera, Send, Mail, Phone, CheckCircle, XCircle, Image as ImageIcon, Search, Globe, Loader2, ExternalLink, FileText } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useProperty } from '../../contexts/PropertyContext';
-import { MAX_QUOTE_ATTACHMENTS, PhotoUpload } from '../../components/PhotoUpload';
+import {
+  cleanQuoteAttachmentBaseName,
+  MAX_QUOTE_ATTACHMENTS,
+  PhotoUpload,
+  type AttachmentItem,
+} from '../../components/PhotoUpload';
 import { InvoiceUpload } from '../../components/InvoiceUpload';
 import { VendorRating } from '../../components/VendorRating';
 import { getTrafficLight, TrafficLightBadge } from './AiPricingPanel';
@@ -54,6 +59,26 @@ interface PropertyManager {
   status: string;
 }
 
+function resolveProcurementSubmitTitles(
+  titleEn: string,
+  titleZh: string,
+  firstAttachmentName: string | null,
+  languageEn: boolean,
+): { titleEn: string; titleZh: string } {
+  const en = titleEn.trim();
+  const zh = titleZh.trim();
+  if (en && zh) return { titleEn: en, titleZh: zh };
+  if (en && !zh) return { titleEn: en, titleZh: zh };
+  if (!en && zh) return { titleEn: en || zh, titleZh: zh };
+
+  const cleaned = cleanQuoteAttachmentBaseName(firstAttachmentName ?? '');
+  const baseName = cleaned || (languageEn ? 'Vendor Quote' : '供应商报价');
+  return {
+    titleEn: `Quote - ${baseName}`,
+    titleZh: `供应商报价 - ${baseName}`,
+  };
+}
+
 export interface SearchedVendor {
   company_name: string;
   phone: string;
@@ -78,7 +103,8 @@ export function NewJobModal({
   const { currentPropertyId } = useProperty();
   const l = language === 'en';
   const [error, setError] = useState('');
-  const [_requestPhotos, setRequestPhotos] = useState<string[]>([]);
+  const [requestPhotos, setRequestPhotos] = useState<string[]>([]);
+  const [requestAttachmentNames, setRequestAttachmentNames] = useState<string[]>([]);
   const [step, setStep] = useState<'form' | 'searching' | 'select_vendors' | 'sending'>('form');
   const [searchedVendors, setSearchedVendors] = useState<SearchedVendor[]>([]);
   const [selectedVendorIdxs, setSelectedVendorIdxs] = useState<Set<number>>(new Set());
@@ -112,18 +138,50 @@ export function NewJobModal({
     };
   }, [currentPropertyId]);
 
+  const handleQuoteAttachmentsChange = (items: AttachmentItem[]) => {
+    setRequestPhotos(items.map((a) => a.url));
+    setRequestAttachmentNames(items.map((a) => a.name));
+  };
+
   const createJobAndSearch = async () => {
     if (!profile || !currentPropertyId) return;
     setError('');
-    if (!newJob.title_en && !newJob.title_zh) { setError(l ? 'Please enter a title' : '请输入标题'); return; }
-    if (!newJob.description_en && !newJob.description_zh) { setError(l ? 'Please enter a description' : '请输入描述'); return; }
+
+    const hasTitle = Boolean(newJob.title_en?.trim() || newJob.title_zh?.trim());
+    const hasAttachments = requestPhotos.length > 0;
+
+    if (newJob.job_type === 'procurement') {
+      if (!hasTitle && !hasAttachments) {
+        setError(
+          l
+            ? 'Please enter a title, or upload quote materials (PDF/image) first.'
+            : '请输入标题，或先上传 PDF / 图片报价资料',
+        );
+        return;
+      }
+    } else if (!hasTitle) {
+      setError(l ? 'Please enter a title' : '请输入标题');
+      return;
+    }
+
+    if (!newJob.description_en && !newJob.description_zh) {
+      setError(l ? 'Please enter a description' : '请输入描述');
+      return;
+    }
+
+    const { titleEn: finalTitleEn, titleZh: finalTitleZh } = resolveProcurementSubmitTitles(
+      newJob.title_en,
+      newJob.title_zh,
+      requestAttachmentNames[0] ?? null,
+      l,
+    );
 
     try {
       const { data, error: insertError } = await supabase.from('procurement_jobs').insert({
         property_id: currentPropertyId,
         posted_by: profile.id,
-        title_en: newJob.title_en || newJob.title_zh,
-        title_zh: newJob.title_zh || newJob.title_en,
+        title_en: finalTitleEn,
+        title_zh: finalTitleZh,
         description_en: newJob.description_en || newJob.description_zh,
         description_zh: newJob.description_zh || newJob.description_en,
         estimated_budget: newJob.estimated_budget ? parseFloat(newJob.estimated_budget) : 0,
@@ -146,7 +204,7 @@ export function NewJobModal({
         method: 'POST',
         headers: { 'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title: newJob.title_zh || newJob.title_en,
+          title: finalTitleZh || finalTitleEn,
           description: newJob.description_zh || newJob.description_en,
           category: newJob.category,
         }),
@@ -450,6 +508,7 @@ export function NewJobModal({
               variant="quote_attachments"
               photoType="request"
               onPhotosUploaded={(urls) => setRequestPhotos(urls)}
+              onQuoteAttachmentsChange={handleQuoteAttachmentsChange}
               maxPhotos={MAX_QUOTE_ATTACHMENTS}
             />
           </div>
