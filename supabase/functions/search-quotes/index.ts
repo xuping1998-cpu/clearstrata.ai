@@ -7,6 +7,10 @@ const corsHeaders = {
     "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
+const OPENAI_MODEL = "gpt-4o-mini";
+const SEARCH_QUOTES_PROVIDER = "openai_web_search";
+
 interface SearchRequest {
   title: string;
   description: string;
@@ -23,10 +27,23 @@ interface VendorResult {
   price_reference: string;
 }
 
-const webSearchTool = {
-  type: "web_search_20250305",
-  name: "web_search",
-  max_uses: 5,
+const CATEGORY_LABELS: Record<string, string> = {
+  landscaping: "landscaping, gardening, lawn care, bark mulch, tree service",
+  cleaning: "cleaning, pressure washing, window cleaning, janitorial",
+  plumbing: "plumbing, pipe repair, drain cleaning, water heater",
+  electrical: "electrical, wiring, lighting, panel upgrade, electrician",
+  hvac: "HVAC, heating, cooling, air conditioning, furnace",
+  roofing: "roofing, roof repair, gutter, shingle",
+  painting: "painting, interior painting, exterior painting, staining",
+  elevator: "elevator maintenance, elevator repair, lift service",
+  fire_safety: "fire safety, fire alarm, sprinkler, fire extinguisher",
+  security: "security, access control, CCTV, surveillance, intercom",
+  waterproofing: "waterproofing, membrane, sealant, foundation waterproofing",
+  general_maintenance: "general maintenance, handyman, building maintenance",
+};
+
+const WEB_SEARCH_TOOL = {
+  type: "web_search_preview",
   user_location: {
     type: "approximate",
     city: "Vancouver",
@@ -36,139 +53,246 @@ const webSearchTool = {
   },
 };
 
+function buildServiceType(category: string, title: string): string {
+  return CATEGORY_LABELS[category] || category || title;
+}
+
+function buildInstructions(serviceType: string): string {
+  return [
+    `You are a procurement research assistant for Canadian strata properties in Greater Vancouver (Vancouver, Richmond, Burnaby, BC).`,
+    `Use web search to find exactly 3 real, contactable local vendors for: ${serviceType}.`,
+    `Prefer businesses with a verifiable phone or website in BC.`,
+    `Return ONLY valid JSON (no markdown, no code fences, no commentary) with this exact shape:`,
+    `{"vendors":[{"company_name":"","phone":"","website":"","address":"","description_en":"","description_zh":"","price_reference":""}]}`,
+    `Each vendor must include all fields. price_reference may be a short text range like "$1,800–$2,500 typical".`,
+    `description_zh should be Simplified Chinese summarizing the vendor and service fit.`,
+  ].join("\n");
+}
+
+function buildUserInput(title: string, description: string, serviceType: string): string {
+  return [
+    `Search for 3 Vancouver / Richmond / Burnaby / BC vendors for this strata procurement job.`,
+    `Service category: ${serviceType}`,
+    `Title: ${title}`,
+    `Description: ${description}`,
+  ].join("\n");
+}
+
+function stripMarkdownFences(text: string): string {
+  return text
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+}
+
+function normalizeVendor(raw: unknown): VendorResult | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const company_name = String(o.company_name ?? "").trim();
+  if (!company_name) return null;
+  return {
+    company_name,
+    phone: String(o.phone ?? "").trim(),
+    website: String(o.website ?? "").trim(),
+    address: String(o.address ?? "").trim(),
+    description_en: String(o.description_en ?? "").trim(),
+    description_zh: String(o.description_zh ?? "").trim(),
+    price_reference: String(o.price_reference ?? "").trim(),
+  };
+}
+
+function normalizeVendors(list: unknown[]): VendorResult[] {
+  const out: VendorResult[] = [];
+  for (const item of list) {
+    const v = normalizeVendor(item);
+    if (v) out.push(v);
+  }
+  return out;
+}
+
+function parseVendorsFromText(responseText: string): VendorResult[] {
+  const unfenced = stripMarkdownFences(responseText);
+  if (!unfenced) return [];
+
+  const tryParse = (raw: string): VendorResult[] | null => {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (Array.isArray(parsed)) return normalizeVendors(parsed);
+      if (parsed && typeof parsed === "object") {
+        const vendors = (parsed as Record<string, unknown>).vendors;
+        if (Array.isArray(vendors)) return normalizeVendors(vendors);
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  };
+
+  const direct = tryParse(unfenced);
+  if (direct && direct.length > 0) return direct;
+
+  const objectMatch = unfenced.match(/\{[\s\S]*"vendors"\s*:\s*\[[\s\S]*?\]\s*[\s\S]*?\}/);
+  if (objectMatch) {
+    const fromObj = tryParse(objectMatch[0]);
+    if (fromObj && fromObj.length > 0) return fromObj;
+  }
+
+  const arrayMatch = unfenced.match(/\[[\s\S]*\]/);
+  if (arrayMatch) {
+    const fromArr = tryParse(arrayMatch[0]);
+    if (fromArr && fromArr.length > 0) return fromArr;
+  }
+
+  console.error("SEARCH_QUOTES_PARSE_ERROR", {
+    preview: unfenced.slice(0, 1200),
+  });
+  return [];
+}
+
+function extractResponsesOutputText(data: Record<string, unknown>): string {
+  if (typeof data.output_text === "string" && data.output_text.trim()) {
+    return data.output_text.trim();
+  }
+
+  const chunks: string[] = [];
+  const output = data.output;
+  if (!Array.isArray(output)) return "";
+
+  for (const item of output) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    if (row.type !== "message" || !Array.isArray(row.content)) continue;
+    for (const part of row.content) {
+      if (!part || typeof part !== "object") continue;
+      const block = part as Record<string, unknown>;
+      if (block.type === "output_text" && typeof block.text === "string") {
+        chunks.push(block.text);
+      } else if (typeof block.text === "string") {
+        chunks.push(block.text);
+      }
+    }
+  }
+
+  return chunks.join("\n").trim();
+}
+
+async function callOpenAIWebSearch(params: {
+  apiKey: string;
+  instructions: string;
+  input: string;
+  useJsonFormat: boolean;
+}): Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; status: number; detail: string }> {
+  const body: Record<string, unknown> = {
+    model: OPENAI_MODEL,
+    instructions: params.instructions,
+    input: params.input,
+    tools: [WEB_SEARCH_TOOL],
+    temperature: 0.2,
+    max_output_tokens: 4096,
+  };
+
+  if (params.useJsonFormat) {
+    body.text = { format: { type: "json_object" } };
+  }
+
+  const res = await fetch(OPENAI_RESPONSES_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${params.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  const raw = await res.text();
+  let data: Record<string, unknown> = {};
+  try {
+    data = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+  } catch {
+    data = {};
+  }
+
+  if (!res.ok) {
+    const errObj = data.error as Record<string, unknown> | undefined;
+    const detail =
+      (typeof errObj?.message === "string" && errObj.message) ||
+      raw.slice(0, 500) ||
+      `API returned ${res.status}`;
+    return { ok: false, status: res.status, detail };
+  }
+
+  return { ok: true, data };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
 
   try {
-    const anthropicApiKey = Deno.env.get("ANTHROPIC_API_KEY");
-    if (!anthropicApiKey) {
+    const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
+    if (!openaiApiKey) {
       return new Response(
         JSON.stringify({
           success: false,
-          error: "ANTHROPIC_API_KEY not configured",
+          error: "OPENAI_API_KEY not configured",
         }),
         {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        },
       );
     }
 
     const { title, description, category }: SearchRequest = await req.json();
+    const serviceType = buildServiceType(category ?? "", title ?? "");
+    const instructions = buildInstructions(serviceType);
+    const input = buildUserInput(title ?? "", description ?? "", serviceType);
 
-    const categoryLabels: Record<string, string> = {
-      landscaping: "landscaping, gardening, lawn care, bark mulch, tree service",
-      cleaning: "cleaning, pressure washing, window cleaning, janitorial",
-      plumbing: "plumbing, pipe repair, drain cleaning, water heater",
-      electrical: "electrical, wiring, lighting, panel upgrade, electrician",
-      hvac: "HVAC, heating, cooling, air conditioning, furnace",
-      roofing: "roofing, roof repair, gutter, shingle",
-      painting: "painting, interior painting, exterior painting, staining",
-      elevator: "elevator maintenance, elevator repair, lift service",
-      fire_safety: "fire safety, fire alarm, sprinkler, fire extinguisher",
-      security: "security, access control, CCTV, surveillance, intercom",
-      waterproofing:
-        "waterproofing, membrane, sealant, foundation waterproofing",
-      general_maintenance:
-        "general maintenance, handyman, building maintenance",
-    };
+    console.log("SEARCH_QUOTES_PROVIDER", SEARCH_QUOTES_PROVIDER);
+    console.log("SEARCH_QUOTES_QUERY", {
+      title,
+      category,
+      serviceType,
+      descriptionPreview: String(description ?? "").slice(0, 240),
+    });
 
-    const serviceType = categoryLabels[category] || category || title;
+    let apiResult = await callOpenAIWebSearch({
+      apiKey: openaiApiKey,
+      instructions,
+      input,
+      useJsonFormat: true,
+    });
 
-    const systemPrompt = `Search 3 real Vancouver ${serviceType} vendors. Return ONLY a JSON array, no markdown. Each: {"company_name":"","phone":"","website":"","address":"","description_en":"","description_zh":"","price_reference":""}`;
+    if (!apiResult.ok && apiResult.status === 400) {
+      console.warn("SEARCH_QUOTES_JSON_FORMAT_RETRY", apiResult.detail);
+      apiResult = await callOpenAIWebSearch({
+        apiKey: openaiApiKey,
+        instructions,
+        input,
+        useJsonFormat: false,
+      });
+    }
 
-    const userMessage = `Vancouver ${serviceType}: ${title}. ${description}`;
-
-    let allContent: unknown[] = [];
-    let continueLoop = true;
-    let messages: { role: string; content: unknown }[] = [
-      { role: "user", content: userMessage },
-    ];
-
-    while (continueLoop) {
-      const anthropicResponse = await fetch(
-        "https://api.anthropic.com/v1/messages",
+    if (!apiResult.ok) {
+      console.error("OpenAI Responses API error:", apiResult.detail);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: apiResult.detail,
+        }),
         {
-          method: "POST",
-          headers: {
-            "x-api-key": anthropicApiKey,
-            "anthropic-version": "2023-06-01",
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "claude-sonnet-4-20250514",
-            max_tokens: 2048,
-            system: systemPrompt,
-            messages,
-            tools: [webSearchTool],
-          }),
-        }
+          status: 502,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
       );
-
-      if (!anthropicResponse.ok) {
-        const errorBody = await anthropicResponse.text();
-        console.error(
-          `Anthropic API error [${anthropicResponse.status}]:`,
-          errorBody
-        );
-
-        let detail = `API returned ${anthropicResponse.status}`;
-        try {
-          const parsed = JSON.parse(errorBody);
-          if (parsed?.error?.message) {
-            detail = parsed.error.message;
-          }
-        } catch {
-          // use status code detail
-        }
-
-        return new Response(
-          JSON.stringify({
-            success: false,
-            error: detail,
-          }),
-          {
-            status: 502,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
-        );
-      }
-
-      const data = await anthropicResponse.json();
-
-      if (data.content) {
-        allContent = allContent.concat(data.content);
-      }
-
-      if (data.stop_reason === "pause_turn") {
-        messages = [
-          ...messages,
-          { role: "assistant", content: data.content },
-        ];
-      } else {
-        continueLoop = false;
-      }
     }
 
-    let responseText = "";
-    for (const block of allContent) {
-      if ((block as { type: string }).type === "text") {
-        responseText += (block as { type: string; text: string }).text;
-      }
-    }
+    const responseText = extractResponsesOutputText(apiResult.data);
+    const vendors = parseVendorsFromText(responseText);
 
-    let vendors: VendorResult[] = [];
-    try {
-      const jsonMatch = responseText.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        vendors = JSON.parse(jsonMatch[0]);
-      }
-    } catch (parseErr) {
-      console.error("Failed to parse vendor results:", parseErr);
-      console.error("Raw response text:", responseText);
-    }
+    console.log("SEARCH_QUOTES_RESULT_COUNT", vendors.length);
 
     return new Response(
       JSON.stringify({
@@ -178,19 +302,20 @@ Deno.serve(async (req: Request) => {
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      },
     );
   } catch (error) {
     console.error("Error:", error);
+    const message = error instanceof Error ? error.message : "Internal server error";
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message || "Internal server error",
+        error: message,
       }),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      },
     );
   }
 });
