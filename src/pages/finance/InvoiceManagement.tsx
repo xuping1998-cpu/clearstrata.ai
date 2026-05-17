@@ -54,6 +54,17 @@ import { runInvoiceAudit } from '../../lib/invoiceAudit';
 import { INVOICE_AUDIT_RULE_CODES, type InvoiceAuditSummary } from '../../lib/audit/invoiceAuditRules';
 import { resolveLedgerGovernanceMode } from '../../lib/invoiceGovernanceLedgerMode';
 import { HistoricalBenchmarkReviewModal } from '../../components/finance/HistoricalBenchmarkReviewModal';
+import {
+  formatHistoricalBenchmarkRange,
+  historicalAuditPanelClass,
+  historicalAuditServiceTypeLabel,
+  historicalAuditStatusBadgeClass,
+  historicalAuditStatusMessage,
+  parseHistoricalAuditFromContext,
+  partitionReasonsForHistoricalCandidate,
+  isVendorHistoryComparisonText,
+  type HistoricalAuditPayload,
+} from '../../lib/audit/historicalAudit';
 
 interface Invoice {
   id: string;
@@ -1423,6 +1434,77 @@ function MonthlyAutoAuditPanel(props: {
         </p>
       ) : null}
     </section>
+  );
+}
+
+function HistoricalAuditBenchmarkBlock({
+  audit,
+  invoiceAmount,
+  languageEn,
+}: {
+  audit: HistoricalAuditPayload;
+  invoiceAmount: number;
+  languageEn: boolean;
+}) {
+  const l = languageEn;
+  const status = audit.benchmarkStatus;
+  const rangeText = formatHistoricalBenchmarkRange(audit.benchmarkLow, audit.benchmarkHigh, l);
+  const amt = Number.isFinite(invoiceAmount) ? invoiceAmount : 0;
+
+  return (
+    <div
+      className={`rounded-xl p-4 space-y-3 ${historicalAuditPanelClass(status)}`}
+      aria-labelledby="hist-audit-benchmark-heading"
+    >
+      <div id="hist-audit-benchmark-heading" className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="text-sm font-semibold text-gray-900">
+          {l ? 'Market benchmark' : 'AI市场核价'}
+          <span className="ml-2 font-normal text-gray-600">
+            {l ? 'Historical bare spend' : '历史裸支出'}
+          </span>
+        </h4>
+        <span
+          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${historicalAuditStatusBadgeClass(status)}`}
+        >
+          {historicalAuditStatusMessage(status, l)}
+        </span>
+      </div>
+      <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm">
+        <div>
+          <dt className="text-xs text-gray-600">{l ? 'Service type' : '服务类型'}</dt>
+          <dd className="font-medium text-gray-900">
+            {historicalAuditServiceTypeLabel(audit.serviceType, l)}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs text-gray-600">{l ? 'Market reference' : '市场参考'}</dt>
+          <dd className="font-medium text-gray-900">{rangeText}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-gray-600">{l ? 'Invoice amount' : '当前发票金额'}</dt>
+          <dd className="font-medium text-gray-900">${amt.toFixed(2)} CAD</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-gray-600">{l ? 'Assessment' : '判断'}</dt>
+          <dd className="font-medium text-gray-900">{historicalAuditStatusMessage(status, l)}</dd>
+        </div>
+        {typeof audit.variancePct === 'number' && Number.isFinite(audit.variancePct) ? (
+          <div className="sm:col-span-2">
+            <dt className="text-xs text-gray-600">{l ? 'Vs. range midpoint' : '相对区间中位'}</dt>
+            <dd className="font-medium text-gray-900">
+              {audit.variancePct >= 0 ? '+' : ''}
+              {audit.variancePct}%
+            </dd>
+          </div>
+        ) : null}
+      </dl>
+      {audit.reasoning?.trim() ? (
+        <div className="text-sm text-gray-700 border-t border-gray-200/80 pt-3">
+          <span className="font-medium text-gray-900">{l ? 'Basis' : '依据'}: </span>
+          <span className="leading-relaxed">{audit.reasoning.trim()}</span>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -3651,6 +3733,12 @@ function InvoiceDetailModal({
   const st = statusStyle(invoice.status);
   const aiData = invoice.ai_extracted_data as Record<string, unknown> | null;
 
+  const historicalAudit = useMemo(
+    () => parseHistoricalAuditFromContext(aiAuditContextRow?.context_json),
+    [aiAuditContextRow],
+  );
+  const historicalCandidate = historicalAudit?.candidate === true;
+
   const loadAiAuditBundle = useCallback(async () => {
     if (!currentPropertyId) {
       setAiAudit(null);
@@ -4303,25 +4391,75 @@ function InvoiceDetailModal({
                     </div>
                   </div>
                 </div>
-                <p className="text-sm sm:text-base leading-6 text-gray-700 whitespace-pre-wrap">
-                  {l ? aiAudit.ai_summary_en || aiAudit.ai_summary_zh : aiAudit.ai_summary_zh || aiAudit.ai_summary_en}
-                </p>
+                {historicalCandidate && historicalAudit ? (
+                  <HistoricalAuditBenchmarkBlock
+                    audit={historicalAudit}
+                    invoiceAmount={Number(invoice.total_amount)}
+                    languageEn={l}
+                  />
+                ) : null}
+                {historicalCandidate && historicalAudit ? (
+                  <p
+                    className={`text-sm sm:text-base leading-6 font-medium ${
+                      historicalAudit.benchmarkStatus === 'warning'
+                        ? 'text-amber-950'
+                        : historicalAudit.benchmarkStatus === 'normal'
+                          ? 'text-blue-950'
+                          : 'text-gray-800'
+                    }`}
+                  >
+                    {historicalAuditStatusMessage(historicalAudit.benchmarkStatus, l)}
+                  </p>
+                ) : (
+                  <p className="text-sm sm:text-base leading-6 text-gray-700 whitespace-pre-wrap">
+                    {l
+                      ? aiAudit.ai_summary_en || aiAudit.ai_summary_zh
+                      : aiAudit.ai_summary_zh || aiAudit.ai_summary_en}
+                  </p>
+                )}
                 {(() => {
                   const reasonsRaw = Array.isArray(aiAudit.ai_reasons)
                     ? (aiAudit.ai_reasons as unknown[])
                     : [];
                   const parsed = reasonsRaw.map((r) => parseReasonItem(r, l));
-                  const show = reasonsExpanded ? parsed : parsed.slice(0, 3);
-                  if (parsed.length === 0) return null;
+                  const { primary, supplemental } = partitionReasonsForHistoricalCandidate(
+                    parsed,
+                    historicalCandidate,
+                  );
+                  const aiSummaryText = l
+                    ? aiAudit.ai_summary_en || aiAudit.ai_summary_zh
+                    : aiAudit.ai_summary_zh || aiAudit.ai_summary_en;
+                  const deferredSummary =
+                    historicalCandidate && isVendorHistoryComparisonText(aiSummaryText)
+                      ? aiSummaryText
+                      : null;
+                  const primaryVisible = reasonsExpanded ? primary : primary.slice(0, 3);
+                  const supplementalVisible = reasonsExpanded ? supplemental : [];
+                  const hiddenPrimaryCount = reasonsExpanded ? 0 : Math.max(0, primary.length - 3);
+                  const hiddenSupplementalCount = reasonsExpanded ? 0 : supplemental.length;
+                  const hiddenSummaryCount = reasonsExpanded || !deferredSummary ? 0 : 1;
+                  const hiddenTotal =
+                    hiddenPrimaryCount + hiddenSupplementalCount + hiddenSummaryCount;
+                  const hasVisible =
+                    primaryVisible.length > 0 ||
+                    supplementalVisible.length > 0 ||
+                    (reasonsExpanded && deferredSummary);
+                  if (!hasVisible && hiddenTotal === 0) return null;
                   return (
                     <div>
                       <h4 className="text-sm font-semibold text-gray-900 mb-2">
-                        {l ? 'Risk factors' : '风险原因'}
+                        {historicalCandidate
+                          ? l
+                            ? 'Other risk factors'
+                            : '其他风险因素'
+                          : l
+                            ? 'Risk factors'
+                            : '风险原因'}
                       </h4>
                       <ul className="space-y-2">
-                        {show.map((item, idx) => (
+                        {primaryVisible.map((item, idx) => (
                           <li
-                            key={idx}
+                            key={`p-${idx}`}
                             className="rounded-lg bg-gray-50 border border-gray-100 px-3 py-2 text-sm text-gray-800"
                           >
                             <div className="font-medium text-gray-900">{item.title}</div>
@@ -4330,20 +4468,53 @@ function InvoiceDetailModal({
                             ) : null}
                           </li>
                         ))}
+                        {reasonsExpanded && deferredSummary ? (
+                          <li className="rounded-lg bg-gray-50 border border-gray-100 px-3 py-2 text-sm text-gray-800">
+                            <div className="font-medium text-gray-900">
+                              {l ? 'AI summary (vendor history)' : 'AI 摘要（供应商历史对比）'}
+                            </div>
+                            <p className="mt-1 text-gray-600 leading-relaxed whitespace-pre-wrap">
+                              {deferredSummary}
+                            </p>
+                          </li>
+                        ) : null}
+                        {supplementalVisible.length > 0 ? (
+                          <li className="list-none">
+                            <p className="text-xs font-medium text-gray-500 mb-1.5 pt-1">
+                              {l ? 'Vendor history comparison (reference)' : '供应商历史对比（参考）'}
+                            </p>
+                            <ul className="space-y-2">
+                              {supplementalVisible.map((item, idx) => (
+                                <li
+                                  key={`s-${idx}`}
+                                  className="rounded-lg bg-gray-50/80 border border-dashed border-gray-200 px-3 py-2 text-sm text-gray-700"
+                                >
+                                  <div className="font-medium text-gray-900">{item.title}</div>
+                                  {item.detail ? (
+                                    <p className="mt-1 text-gray-600 leading-relaxed">{item.detail}</p>
+                                  ) : null}
+                                </li>
+                              ))}
+                            </ul>
+                          </li>
+                        ) : null}
                       </ul>
-                      {parsed.length > 3 ? (
+                      {hiddenTotal > 0 ? (
                         <button
                           type="button"
-                          onClick={() => setReasonsExpanded((v) => !v)}
+                          onClick={() => setReasonsExpanded(true)}
                           className="mt-2 text-xs font-medium text-clearstrata-ui-primary hover:underline"
                         >
-                          {reasonsExpanded
-                            ? l
-                              ? 'Show less'
-                              : '收起'
-                            : l
-                              ? `Show ${parsed.length - 3} more`
-                              : `展开更多（${parsed.length - 3}）`}
+                          {l ? `Show ${hiddenTotal} more` : `展开更多（${hiddenTotal}）`}
+                        </button>
+                      ) : reasonsExpanded &&
+                        (primary.length > 3 || supplemental.length > 0 || deferredSummary) ? (
+                        <button
+                          type="button"
+                          onClick={() => setReasonsExpanded(false)}
+                          className="mt-2 text-xs font-medium text-clearstrata-ui-primary hover:underline"
+                        >
+                          {l ? 'Show less' : '收起'}
                         </button>
                       ) : null}
                     </div>
