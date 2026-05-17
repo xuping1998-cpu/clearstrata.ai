@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import { runHistoricalAuditAuto } from "../_shared/historicalInvoiceAudit.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -318,11 +319,56 @@ Deno.serve(async (req: Request) => {
     });
   }
 
+  const { data: existingCtxRow } = await admin
+    .from("invoice_ai_audit_contexts")
+    .select("context_json")
+    .eq("invoice_id", invFull.id)
+    .maybeSingle();
+
+  const prevCtx = (existingCtxRow?.context_json ?? {}) as Record<string, unknown>;
+
+  let historicalAudit: Record<string, unknown> | null = null;
+  try {
+    historicalAudit = await runHistoricalAuditAuto({
+      admin,
+      supabaseUrl,
+      anonKey,
+      authHeader,
+      openaiKey,
+      invoiceId: invFull.id,
+      propertyId: invFull.property_id,
+    }) as unknown as Record<string, unknown>;
+    console.log("[run-invoice-ai-audit] historicalAudit", {
+      invoice_id: invFull.id,
+      candidate: historicalAudit?.candidate,
+      benchmarkStatus: historicalAudit?.benchmarkStatus,
+    });
+  } catch (e) {
+    console.error("[run-invoice-ai-audit] historicalAudit failed", e);
+    historicalAudit = {
+      candidate: true,
+      benchmarkStatus: "unsupported",
+      reasoning: e instanceof Error ? e.message : "historical audit failed",
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  const baseContext =
+    contextJson && typeof contextJson === "object" && !Array.isArray(contextJson)
+      ? (contextJson as Record<string, unknown>)
+      : {};
+
+  const mergedContext: Record<string, unknown> = {
+    ...baseContext,
+    ...(prevCtx.benchmarkReview ? { benchmarkReview: prevCtx.benchmarkReview } : {}),
+    historicalAudit,
+  };
+
   const { error: ctxSaveErr } = await admin.from("invoice_ai_audit_contexts").upsert(
     {
       invoice_id: invFull.id,
       property_id: invFull.property_id,
-      context_json: contextJson as Record<string, unknown>,
+      context_json: mergedContext,
     },
     { onConflict: "invoice_id" },
   );
