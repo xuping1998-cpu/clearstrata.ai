@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { X, Plus, AlertCircle, Camera, Send, Mail, Phone, CheckCircle, XCircle, Image as ImageIcon, Search, Globe, Loader2, ExternalLink } from 'lucide-react';
+import { X, Plus, AlertCircle, Camera, Send, Mail, Phone, CheckCircle, XCircle, Image as ImageIcon, Search, Globe, Loader2, ExternalLink, FileText } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useProperty } from '../../contexts/PropertyContext';
-import { PhotoUpload } from '../../components/PhotoUpload';
+import { MAX_QUOTE_ATTACHMENTS, PhotoUpload } from '../../components/PhotoUpload';
 import { InvoiceUpload } from '../../components/InvoiceUpload';
 import { VendorRating } from '../../components/VendorRating';
 import { getTrafficLight, TrafficLightBadge } from './AiPricingPanel';
@@ -441,11 +441,17 @@ export function NewJobModal({
 
           <div className="border-t border-gray-200 pt-4">
             <div className="flex items-center gap-2 mb-3">
-              <Camera className="text-gray-600" size={20} />
-              <h3 className="text-sm font-semibold text-gray-900">{l ? 'Upload Photos' : '上传照片'}</h3>
-              <span className="text-xs text-gray-500">({l ? 'Recommended' : '推荐'})</span>
+              <FileText className="text-gray-600" size={20} />
+              <h3 className="text-sm font-semibold text-gray-900">
+                {l ? 'Upload quote materials (optional)' : '上传报价资料（可选）'}
+              </h3>
             </div>
-            <PhotoUpload photoType="request" onPhotosUploaded={(urls) => setRequestPhotos(urls)} maxPhotos={5} />
+            <PhotoUpload
+              variant="quote_attachments"
+              photoType="request"
+              onPhotosUploaded={(urls) => setRequestPhotos(urls)}
+              maxPhotos={MAX_QUOTE_ATTACHMENTS}
+            />
           </div>
 
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
