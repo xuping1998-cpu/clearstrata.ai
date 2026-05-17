@@ -79,6 +79,24 @@ function resolveProcurementSubmitTitles(
   };
 }
 
+function resolveProcurementSubmitDescriptions(
+  descriptionEn: string,
+  descriptionZh: string,
+): { descriptionEn: string; descriptionZh: string } {
+  const en = descriptionEn.trim();
+  const zh = descriptionZh.trim();
+  if (en && zh) return { descriptionEn: en, descriptionZh: zh };
+  if (en && !zh) return { descriptionEn: en, descriptionZh: zh || en };
+  if (!en && zh) return { descriptionEn: en || zh, descriptionZh: zh };
+
+  return {
+    descriptionEn:
+      'Vendor quote uploaded from attachment. Please review the attached PDF / image and search matching local suppliers.',
+    descriptionZh:
+      '已上传供应商报价附件，请查看 PDF / 图片报价资料，并搜索匹配的本地供应商。',
+  };
+}
+
 export interface SearchedVendor {
   company_name: string;
   phone: string;
@@ -164,8 +182,15 @@ export function NewJobModal({
       return;
     }
 
-    if (!newJob.description_en && !newJob.description_zh) {
-      setError(l ? 'Please enter a description' : '请输入描述');
+    const hasDescription = Boolean(newJob.description_en?.trim() || newJob.description_zh?.trim());
+    const isProcurement = newJob.job_type === 'procurement';
+
+    if (!hasDescription && !(isProcurement && hasAttachments)) {
+      setError(
+        l
+          ? 'Please enter a description, or upload quote materials (PDF/image) first.'
+          : '请输入描述，或先上传 PDF / 图片报价资料',
+      );
       return;
     }
 
@@ -176,14 +201,22 @@ export function NewJobModal({
       l,
     );
 
+    const { descriptionEn: finalDescriptionEn, descriptionZh: finalDescriptionZh } =
+      isProcurement && hasAttachments && !hasDescription
+        ? resolveProcurementSubmitDescriptions(newJob.description_en, newJob.description_zh)
+        : {
+            descriptionEn: (newJob.description_en || newJob.description_zh || '').trim(),
+            descriptionZh: (newJob.description_zh || newJob.description_en || '').trim(),
+          };
+
     try {
       const { data, error: insertError } = await supabase.from('procurement_jobs').insert({
         property_id: currentPropertyId,
         posted_by: profile.id,
         title_en: finalTitleEn,
         title_zh: finalTitleZh,
-        description_en: newJob.description_en || newJob.description_zh,
-        description_zh: newJob.description_zh || newJob.description_en,
+        description_en: finalDescriptionEn || finalDescriptionZh,
+        description_zh: finalDescriptionZh || finalDescriptionEn,
         estimated_budget: newJob.estimated_budget ? parseFloat(newJob.estimated_budget) : 0,
         status: 'collecting_quotes',
         job_type: newJob.job_type,
@@ -205,7 +238,7 @@ export function NewJobModal({
         headers: { 'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: finalTitleZh || finalTitleEn,
-          description: newJob.description_zh || newJob.description_en,
+          description: finalDescriptionZh || finalDescriptionEn,
           category: newJob.category,
         }),
       });
