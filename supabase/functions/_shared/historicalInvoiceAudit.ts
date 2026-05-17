@@ -24,55 +24,267 @@ const MVP_TYPES = new Set([
   "security_monitoring",
 ]);
 
+/** Narrow aliases only — never map bare "management" or unknown to strata_management. */
 const SERVICE_TYPE_ALIASES: Record<string, string> = {
-  property_management: "strata_management",
   property_management_fee: "strata_management",
   strata_management_fee: "strata_management",
+  strata_management: "strata_management",
   council_management: "strata_management",
-  management: "strata_management",
   management_fee: "strata_management",
-  strata: "strata_management",
-  administrative: "strata_management",
-  administrative_charges: "strata_management",
+  monthly_management: "strata_management",
   telecommunications: "telecom",
-  internet: "telecom",
   telecom_internet: "telecom",
-  security: "security_monitoring",
   alarm_monitoring: "security_monitoring",
   cctv_monitoring: "security_monitoring",
+  security_monitoring: "security_monitoring",
 };
+
+const REPAIR_TRADE_KEYWORDS = [
+  "mechanical",
+  "hvac",
+  "h.v.a.c",
+  "boiler",
+  "pump",
+  "plumbing",
+  "repair",
+  "maintenance repair",
+  "service call",
+  "servicecall",
+  "labour",
+  "labor",
+  "parts",
+  "furnace",
+  "heating",
+  "cooling",
+  "drain",
+  "leak",
+  "pipe",
+  "piping",
+  "valve",
+  "motor",
+  "fan",
+  "compressor",
+  "refrigeration",
+  "technician",
+  "weld",
+  "duct",
+  "thermostat",
+  "water heater",
+  "hot water tank",
+];
+
+const STRATA_MANAGEMENT_KEYWORDS = [
+  "strata management",
+  "property management fee",
+  "property management",
+  "management fee",
+  "monthly management",
+  "management contract",
+  "management services",
+  "strata fee",
+  "strata corp",
+  "council management",
+  "administration fee",
+  "administrative charges",
+  "strata council",
+  "condo management",
+];
+
+const TELECOM_KEYWORDS = [
+  "telecom",
+  "internet",
+  "wifi",
+  "wi-fi",
+  "network",
+  "phone",
+  "cable",
+  "shaw",
+  "telus",
+  "rogers",
+  "bell",
+  "fibre",
+  "fiber",
+  "broadband",
+];
+
+const SECURITY_KEYWORDS = [
+  "security monitoring",
+  "alarm monitoring",
+  "alarm system",
+  "cctv",
+  "access control",
+  "fob",
+  "video surveillance",
+  "intrusion",
+  "monitoring service",
+];
+
+const REPAIR_UNSUPPORTED_REASONING =
+  "该发票看起来是机械/维修类服务，当前自动市场核价暂未支持，建议人工复核。";
 
 const OPENAI_MODEL = "gpt-4o-mini";
 
 const CLASSIFY_SYSTEM = `You classify Canadian strata (condo) AP invoices for retrospective market benchmark review.
-Classify by the actual SERVICE CONTENT on the invoice — never by vendor name alone.
-Example: "Dwell" may be strata management, repair, consulting, or copying; read line items, descriptions, and OCR text.
+
+CRITICAL RULES:
+1. Classify based PRIMARILY on invoice service description, line items, OCR text, and ai_extracted_data — NOT vendor name alone.
+2. Do NOT classify as strata_management unless invoice content clearly refers to recurring strata/property management fees (management fee, strata management contract, monthly admin for the corporation).
+3. If invoice content indicates repair, mechanical, HVAC, plumbing, boiler, pump, parts, labour/labor, or service call, return serviceType "unsupported" (never strata_management).
+4. Vendor names like "Property Management" are only a weak hint; invoice line items override vendor name.
+5. If uncertain, return unsupported.
 
 Return JSON only (no markdown):
 {
   "serviceType": "strata_management" | "telecom" | "security_monitoring" | "unsupported",
+  "detectedServiceLabelZh": "<short Chinese label for the detected service>",
   "confidence": <0-1 number>,
-  "rationale": "<brief bilingual-friendly reason>",
+  "rationale": "<brief bilingual-friendly reason citing invoice content>",
   "billingPeriod": "monthly" | "one_time" | "annual" | "unknown"
 }
 
-Use strata_management for recurring strata/council management or accounting administration fees.
-Use telecom for internet, phone, cable, or building connectivity services.
-Use security_monitoring for alarm, CCTV, or security monitoring contracts.
-Use unsupported for all other services (cleaning, repairs, landscaping, one-off trades, etc.).`;
+strata_management: ONLY recurring strata/council/property management fees.
+telecom: internet, phone, cable, building connectivity (Shaw, Telus, Rogers, etc.).
+security_monitoring: alarm, CCTV, security monitoring contracts.
+unsupported: repairs, mechanical, HVAC, plumbing, cleaning, landscaping, legal, insurance, one-off trades, or unclear.`;
 
 function slugifyServiceToken(raw: string): string {
   return raw.toLowerCase().trim().replace(/[\s-]+/g, "_");
 }
 
-function rationaleSuggestsStrataManagement(classify: Record<string, unknown>): boolean {
-  const rationale = String(classify.rationale ?? classify.reasoning ?? "").toLowerCase();
+function stringifyForKeywordScan(value: unknown, depth = 0): string {
+  if (value == null || depth > 5) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) {
+    return value.map((v) => stringifyForKeywordScan(v, depth + 1)).join("\n");
+  }
+  if (typeof value === "object") {
+    const o = value as Record<string, unknown>;
+    const lineKeys = [
+      "line_items",
+      "lineItems",
+      "items",
+      "lines",
+      "line_item",
+      "description",
+      "description_zh",
+      "description_en",
+      "service_description",
+      "memo",
+      "details",
+    ];
+    const chunks: string[] = [];
+    for (const k of lineKeys) {
+      if (o[k] != null) chunks.push(stringifyForKeywordScan(o[k], depth + 1));
+    }
+    for (const v of Object.values(o)) {
+      chunks.push(stringifyForKeywordScan(v, depth + 1));
+    }
+    return chunks.join("\n");
+  }
+  return "";
+}
+
+function buildInvoiceContentBlob(params: {
+  vendorName: string;
+  invoiceNumber: string | null;
+  category: string | null;
+  notes: string;
+  reviewNotes: string;
+  description: string | null;
+  aiExtracted: unknown;
+  ocrStructured: unknown;
+  ocrRaw: string;
+}): string {
+  return [
+    params.vendorName,
+    params.invoiceNumber ?? "",
+    params.category ?? "",
+    params.notes,
+    params.reviewNotes,
+    params.description ?? "",
+    stringifyForKeywordScan(params.aiExtracted),
+    stringifyForKeywordScan(params.ocrStructured),
+    params.ocrRaw,
+  ]
+    .filter((s) => s.trim().length > 0)
+    .join("\n")
+    .toLowerCase();
+}
+
+function detectKeywordHits(blob: string, keywords: readonly string[]): string[] {
+  const hits: string[] = [];
+  for (const kw of keywords) {
+    const needle = kw.toLowerCase();
+    if (blob.includes(needle)) hits.push(kw);
+  }
+  return hits;
+}
+
+function vendorSuggestsRepairTrade(vendorName: string): boolean {
+  const v = vendorName.toLowerCase();
+  if (/\b(mechanical|hvac|plumbing|heating|cooling|refrigeration|boiler|furnace)\b/.test(v)) {
+    return true;
+  }
+  if (/\b(repair|service)\b/.test(v) && /\b(plumbing|mechanical|hvac|heating)\b/.test(v)) {
+    return true;
+  }
+  return false;
+}
+
+function vendorSuggestsManagementCompany(vendorName: string): boolean {
+  const v = vendorName.toLowerCase();
   return (
-    rationale.includes("property management") ||
-    rationale.includes("strata management") ||
-    rationale.includes("management fee") ||
-    rationale.includes("administrative charges related to property management")
+    /\b(property|strata)\s+management\b/.test(v) ||
+    /\bmanagement\s+(inc|ltd|corp|company|co)\b/.test(v) ||
+    /\bdwell\b/.test(v) && /\bmanagement\b/.test(v)
   );
+}
+
+function isRepairDominatedInvoice(contentBlob: string, vendorName: string): boolean {
+  const repairHits = detectKeywordHits(contentBlob, REPAIR_TRADE_KEYWORDS);
+  if (repairHits.length > 0) return true;
+  const mgmtHits = detectKeywordHits(contentBlob, STRATA_MANAGEMENT_KEYWORDS);
+  if (vendorSuggestsRepairTrade(vendorName) && mgmtHits.length === 0) return true;
+  return false;
+}
+
+function keywordPrefilterServiceType(
+  contentBlob: string,
+  vendorName: string,
+): { serviceType: string | null; repairHits: string[]; managementHits: string[] } {
+  const repairHits = detectKeywordHits(contentBlob, REPAIR_TRADE_KEYWORDS);
+  const managementHits = detectKeywordHits(contentBlob, STRATA_MANAGEMENT_KEYWORDS);
+  const telecomHits = detectKeywordHits(contentBlob, TELECOM_KEYWORDS);
+  const securityHits = detectKeywordHits(contentBlob, SECURITY_KEYWORDS);
+
+  if (repairHits.length > 0) {
+    return { serviceType: "unsupported", repairHits, managementHits };
+  }
+  if (vendorSuggestsRepairTrade(vendorName) && managementHits.length === 0) {
+    return { serviceType: "unsupported", repairHits, managementHits };
+  }
+
+  if (securityHits.length > 0 && repairHits.length === 0) {
+    const hasMgmtConflict = managementHits.length > 0;
+    if (!hasMgmtConflict) return { serviceType: "security_monitoring", repairHits, managementHits };
+  }
+
+  if (telecomHits.length > 0 && repairHits.length === 0) {
+    const strongTelecom = telecomHits.length >= 1 &&
+      !managementHits.some((h) => h.includes("management"));
+    if (strongTelecom) return { serviceType: "telecom", repairHits, managementHits };
+  }
+
+  if (managementHits.length > 0 && repairHits.length === 0) {
+    return { serviceType: "strata_management", repairHits, managementHits };
+  }
+
+  if (vendorSuggestsManagementCompany(vendorName) && repairHits.length === 0) {
+    return { serviceType: "strata_management", repairHits, managementHits };
+  }
+
+  return { serviceType: null, repairHits, managementHits };
 }
 
 function normalizeFieldToken(raw: string): string {
@@ -83,19 +295,34 @@ function normalizeFieldToken(raw: string): string {
   if (MVP_TYPES.has(slug)) return slug;
   const alias = SERVICE_TYPE_ALIASES[slug];
   if (alias && MVP_TYPES.has(alias)) return alias;
-  if (/property|strata|management|council/.test(slug) && /management|admin|strata|council/.test(slug)) {
-    return "strata_management";
-  }
-  if (/telecom|internet|phone|cable|network/.test(slug)) {
+
+  const repairSlugs = [
+    "mechanical",
+    "mechanical_repair",
+    "hvac",
+    "hvac_repair",
+    "plumbing",
+    "plumbing_repair",
+    "repair",
+    "maintenance_repair",
+    "service_call",
+  ];
+  if (repairSlugs.some((r) => slug.includes(r))) return "unsupported";
+
+  if (/^telecom|internet|phone|cable|network/.test(slug) || slug === "telecommunications") {
     return "telecom";
   }
-  if (/security|alarm|cctv|monitoring/.test(slug) && !/strata|property|management/.test(slug)) {
+  if (
+    (slug.includes("security") || slug.includes("alarm") || slug.includes("cctv")) &&
+    !slug.includes("management")
+  ) {
     return "security_monitoring";
   }
   return "unsupported";
 }
 
 function normalizeClassifiedServiceType(classify: Record<string, unknown>): {
+  rawServiceType: string;
   normalizedServiceType: string;
   mvpSupported: boolean;
 } {
@@ -107,25 +334,114 @@ function normalizeClassifiedServiceType(classify: Record<string, unknown>): {
     classify.category,
   ];
 
+  let rawServiceType = "";
   let normalizedServiceType = "unsupported";
 
   for (const value of fieldValues) {
     if (value == null || !String(value).trim()) continue;
-    const candidateNormalized = normalizeFieldToken(String(value).trim());
+    const candidateRaw = String(value).trim();
+    if (!rawServiceType) rawServiceType = candidateRaw;
+    const candidateNormalized = normalizeFieldToken(candidateRaw);
     if (candidateNormalized !== "unsupported") {
       normalizedServiceType = candidateNormalized;
+      rawServiceType = candidateRaw;
       break;
     }
   }
 
-  if (normalizedServiceType === "unsupported" && rationaleSuggestsStrataManagement(classify)) {
-    normalizedServiceType = "strata_management";
+  if (!rawServiceType) {
+    rawServiceType = String(classify.serviceType ?? classify.service_type ?? "unsupported");
   }
 
   return {
+    rawServiceType,
     normalizedServiceType,
     mvpSupported: MVP_TYPES.has(normalizedServiceType),
   };
+}
+
+function finalizeServiceType(params: {
+  contentBlob: string;
+  vendorName: string;
+  invoiceNumber: string | null;
+  classify: Record<string, unknown>;
+  keywordPrefilter: ReturnType<typeof keywordPrefilterServiceType>;
+}): {
+  finalServiceType: string;
+  rawServiceType: string;
+  skippedPricingReason: string | null;
+  repairHits: string[];
+  managementHits: string[];
+} {
+  const { contentBlob, vendorName, classify, keywordPrefilter } = params;
+  const repairHits = keywordPrefilter.repairHits.length > 0
+    ? keywordPrefilter.repairHits
+    : detectKeywordHits(contentBlob, REPAIR_TRADE_KEYWORDS);
+  const managementHits = keywordPrefilter.managementHits.length > 0
+    ? keywordPrefilter.managementHits
+    : detectKeywordHits(contentBlob, STRATA_MANAGEMENT_KEYWORDS);
+
+  const openAiNorm = normalizeClassifiedServiceType(classify);
+  let rawServiceType = openAiNorm.rawServiceType;
+  let finalServiceType = openAiNorm.normalizedServiceType;
+  let skippedPricingReason: string | null = null;
+
+  if (keywordPrefilter.serviceType === "unsupported" || isRepairDominatedInvoice(contentBlob, vendorName)) {
+    return {
+      finalServiceType: "unsupported",
+      rawServiceType: rawServiceType || "repair_trade",
+      skippedPricingReason: "repair_or_mechanical_keywords",
+      repairHits,
+      managementHits,
+    };
+  }
+
+  if (keywordPrefilter.serviceType && MVP_TYPES.has(keywordPrefilter.serviceType)) {
+    finalServiceType = keywordPrefilter.serviceType;
+    rawServiceType = rawServiceType || keywordPrefilter.serviceType;
+  }
+
+  if (finalServiceType === "strata_management") {
+    if (repairHits.length > 0 || isRepairDominatedInvoice(contentBlob, vendorName)) {
+      finalServiceType = "unsupported";
+      skippedPricingReason = "strata_blocked_by_repair_content";
+    } else if (managementHits.length === 0 && !vendorSuggestsManagementCompany(vendorName)) {
+      finalServiceType = "unsupported";
+      skippedPricingReason = "strata_without_management_semantics";
+    }
+  }
+
+  if (!MVP_TYPES.has(finalServiceType)) {
+    skippedPricingReason = skippedPricingReason ?? "not_mvp_service_type";
+  }
+
+  return {
+    finalServiceType,
+    rawServiceType,
+    skippedPricingReason,
+    repairHits,
+    managementHits,
+  };
+}
+
+function logServiceClassify(payload: Record<string, unknown>): void {
+  console.log("HIST_INVOICE_SERVICE_CLASSIFY", payload);
+}
+
+function unsupportedRepairAudit(
+  confidence: number | null,
+  classifyRationale: string,
+  detectedLabel?: string,
+): { reasoning: string } {
+  const extra = classifyRationale.trim();
+  const label = detectedLabel?.trim();
+  let reasoning = REPAIR_UNSUPPORTED_REASONING;
+  if (label && !extra.includes(label)) {
+    reasoning = `${reasoning}（${label}）`;
+  } else if (extra && !extra.includes(REPAIR_UNSUPPORTED_REASONING)) {
+    reasoning = `${REPAIR_UNSUPPORTED_REASONING} ${extra}`.trim();
+  }
+  return { reasoning: reasoning.slice(0, 2000) };
 }
 
 function pricingPayloadForType(
@@ -724,21 +1040,42 @@ export async function runHistoricalAuditAuto(params: {
   const reviewNotesText = String(inv.review_notes ?? "").trim();
   const descriptionText = descriptionFromAiExtracted(inv.ai_extracted_data);
 
+  const invoiceNumber = typeof inv.invoice_number === "string" ? inv.invoice_number : null;
+  const invoiceCategory = typeof inv.category === "string" ? inv.category : null;
+  const ocrRaw = String(ocrRow?.raw_text ?? "");
+
+  const contentBlob = buildInvoiceContentBlob({
+    vendorName,
+    invoiceNumber,
+    category: invoiceCategory,
+    notes: notesText,
+    reviewNotes: reviewNotesText,
+    description: descriptionText,
+    aiExtracted: inv.ai_extracted_data,
+    ocrStructured: ocrRow?.structured_json ?? null,
+    ocrRaw,
+  });
+
+  const keywordPrefilter = keywordPrefilterServiceType(contentBlob, vendorName);
+
   const classifyInput = {
     vendor_name: inv.vendor_name,
+    invoice_number: invoiceNumber,
+    total_amount: amount,
     category: inv.category,
     review_notes: reviewNotesText || null,
     notes: notesText || null,
     description: descriptionText,
     ai_extracted_data: inv.ai_extracted_data,
-    invoice_number: inv.invoice_number,
     ocr_structured: ocrRow?.structured_json ?? null,
-    ocr_raw_excerpt: String(ocrRow?.raw_text ?? "").slice(0, 6000),
+    ocr_raw_excerpt: ocrRaw.slice(0, 6000),
+    keyword_prefilter_hint: keywordPrefilter.serviceType,
+    detected_repair_keywords: keywordPrefilter.repairHits,
+    detected_management_keywords: keywordPrefilter.managementHits,
   };
 
   const invoiceBlob = JSON.stringify({
     ...classifyInput,
-    total_amount: amount,
     property_units: unitCount,
     city,
   });
@@ -749,25 +1086,63 @@ export async function runHistoricalAuditAuto(params: {
   } catch (e) {
     const msg = e instanceof Error ? e.message : "classification failed";
     console.error("[historicalInvoiceAudit] classify failed", msg);
-    return {
+    const failed: HistoricalAuditPayload = {
       candidate: true,
       benchmarkStatus: "unsupported",
       reasoning: msg,
       generatedAt,
     };
+    logHistoricalAuditResult(invoiceId, propertyId, failed);
+    return failed;
   }
 
-  const { normalizedServiceType, mvpSupported } = normalizeClassifiedServiceType(classify);
   const confidence = typeof classify.confidence === "number" ? classify.confidence : null;
   const classifyRationale = String(classify.rationale ?? classify.reasoning ?? "");
+  const detectedLabelZh = String(classify.detectedServiceLabelZh ?? classify.detected_service_label_zh ?? "");
 
-  if (!mvpSupported || normalizedServiceType === "unsupported") {
+  const {
+    finalServiceType,
+    rawServiceType,
+    skippedPricingReason,
+    repairHits,
+    managementHits,
+  } = finalizeServiceType({
+    contentBlob,
+    vendorName,
+    invoiceNumber,
+    classify,
+    keywordPrefilter,
+  });
+
+  logServiceClassify({
+    invoiceId,
+    vendorName,
+    invoiceNumber,
+    rawServiceType,
+    normalizedServiceType: normalizeClassifiedServiceType(classify).normalizedServiceType,
+    detectedRepairKeywords: repairHits,
+    detectedManagementKeywords: managementHits,
+    finalServiceType,
+    skippedPricingReason,
+  });
+
+  if (finalServiceType === "unsupported" || !MVP_TYPES.has(finalServiceType)) {
+    const isRepair = skippedPricingReason?.includes("repair") ||
+      skippedPricingReason?.includes("mechanical") ||
+      repairHits.length > 0 ||
+      isRepairDominatedInvoice(contentBlob, vendorName);
+    const { reasoning } = isRepair
+      ? unsupportedRepairAudit(confidence, classifyRationale, detectedLabelZh)
+      : {
+        reasoning: (classifyRationale ||
+          "Invoice could not be mapped to a supported benchmark category.").slice(0, 2000),
+      };
     const unsupported: HistoricalAuditPayload = {
       candidate: true,
-      serviceType: null,
+      serviceType: "unsupported",
       benchmarkStatus: "unsupported",
       confidence,
-      reasoning: classifyRationale || "Invoice could not be mapped to a supported benchmark category.",
+      reasoning: reasoning,
       generatedAt,
     };
     logHistoricalAuditResult(invoiceId, propertyId, unsupported);
@@ -775,7 +1150,7 @@ export async function runHistoricalAuditAuto(params: {
   }
 
   const pricingIn = pricingPayloadForType(
-    normalizedServiceType,
+    finalServiceType,
     unitCount,
     city,
     vendorName,
@@ -797,7 +1172,7 @@ export async function runHistoricalAuditAuto(params: {
     console.error("[historicalInvoiceAudit] ai-pricing failed", msg);
     const pricingFailed: HistoricalAuditPayload = {
       candidate: true,
-      serviceType: normalizedServiceType,
+      serviceType: finalServiceType,
       benchmarkStatus: "unsupported",
       confidence,
       reasoning: msg,
@@ -815,7 +1190,7 @@ export async function runHistoricalAuditAuto(params: {
 
   const success: HistoricalAuditPayload = {
     candidate: true,
-    serviceType: normalizedServiceType,
+    serviceType: finalServiceType,
     benchmarkLow: low,
     benchmarkHigh: high,
     benchmarkStatus,
