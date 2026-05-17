@@ -63,6 +63,12 @@ import {
   parseHistoricalAuditFromContext,
   partitionReasonsForHistoricalCandidate,
   isVendorHistoryComparisonText,
+  historicalAuditProcurementSuggestLabel,
+  historicalAuditListButtonClass,
+  historicalAuditListPillClass,
+  historicalAuditListTooltip,
+  historicalAuditRowAccentClass,
+  isHistoricalAuditCandidate,
   type HistoricalAuditPayload,
 } from '../../lib/audit/historicalAudit';
 
@@ -389,6 +395,7 @@ function buildMonthlyRiskExplanation(
   sx: MonthlyRiskSignals,
   anomalies: InvoiceAnomalyLite[],
   ledgerMode: 'formal' | 'historical',
+  historicalAudit?: HistoricalAuditPayload | null,
 ): string {
   const seen = new Set<string>();
   const parts: string[] = [];
@@ -408,7 +415,10 @@ function buildMonthlyRiskExplanation(
     const k = c.trim().toLowerCase();
     if (k) codeSet.add(k);
   }
+  const histCandidate = isHistoricalAuditCandidate(historicalAudit);
+
   for (const c of codeSet) {
+    if (histCandidate && c === 'vendor_price_spike') continue;
     if (ledgerMode === 'historical' && c === 'vendor_price_spike') {
       push(l ? HIST_BENCHMARK_REVIEW_EN : HIST_BENCHMARK_REVIEW_ZH);
       continue;
@@ -416,10 +426,16 @@ function buildMonthlyRiskExplanation(
     push(explainRuleCode(l, c, ledgerMode));
   }
 
-  if (sx.noProcurement) {
+  if (sx.noProcurement && !histCandidate) {
     push(explainRuleCode(l, 'no_quote', ledgerMode));
   }
-  if (ledgerMode === 'historical') {
+  if (histCandidate) {
+    push(
+      l
+        ? historicalAuditListTooltip(historicalAudit?.benchmarkStatus, true)
+        : historicalAuditListTooltip(historicalAudit?.benchmarkStatus, false),
+    );
+  } else if (ledgerMode === 'historical') {
     if (sx.benchmarkReviewCandidate && !codeSet.has('vendor_price_spike')) {
       push(l ? HIST_BENCHMARK_REVIEW_EN : HIST_BENCHMARK_REVIEW_ZH);
     }
@@ -534,22 +550,36 @@ function historicalBenchmarkReviewRow(sx: MonthlyRiskSignals): boolean {
   );
 }
 
-function monthlyRowTags(isHistorical: boolean, sx: MonthlyRiskSignals): MonthlyAuditTag[] {
+function monthlyRowTags(
+  isHistorical: boolean,
+  sx: MonthlyRiskSignals,
+  historicalAudit?: HistoricalAuditPayload | null,
+): MonthlyAuditTag[] {
   const tags: MonthlyAuditTag[] = [];
-  if (sx.noProcurement) tags.push('link');
-  if (isHistorical) {
-    if (historicalBenchmarkReviewRow(sx)) tags.push('price');
-  } else if (sx.procurementScope) {
-    tags.push('price');
+  const histCandidate = isHistoricalAuditCandidate(historicalAudit);
+  if (!histCandidate) {
+    if (sx.noProcurement) tags.push('link');
+    if (isHistorical) {
+      if (historicalBenchmarkReviewRow(sx)) tags.push('price');
+    } else if (sx.procurementScope) {
+      tags.push('price');
+    }
   }
   if (sx.duplicate) tags.push('dup');
   if (sx.overBudget) tags.push('budget');
   return tags;
 }
 
-function rowRiskAccentClass(tags: MonthlyAuditTag[], historical: boolean): string {
+function rowRiskAccentClass(
+  tags: MonthlyAuditTag[],
+  historical: boolean,
+  historicalAudit?: HistoricalAuditPayload | null,
+): string {
   if (tags.includes('budget')) return 'border-l-4 border-l-red-500 bg-red-50/45';
   if (tags.includes('dup')) return 'border-l-4 border-l-orange-500 bg-orange-50/40';
+  if (isHistoricalAuditCandidate(historicalAudit)) {
+    return historicalAuditRowAccentClass(historicalAudit?.benchmarkStatus);
+  }
   if (tags.includes('price')) {
     return historical
       ? 'border-l-4 border-l-amber-400 bg-amber-50/45'
@@ -991,6 +1021,7 @@ function MonthlyAutoAuditPanel(props: {
   quoteVarianceByInvoiceId: Record<string, QuoteVarianceResult>;
   aiAuditListMap: Record<string, { risk_level: string; risk_score: number }>;
   anomaliesByInvoiceId: Record<string, InvoiceAnomalyLite[]>;
+  historicalAuditByInvoiceId: Record<string, HistoricalAuditPayload | null>;
 }) {
   const {
     monthKey,
@@ -1009,6 +1040,7 @@ function MonthlyAutoAuditPanel(props: {
     quoteVarianceByInvoiceId,
     aiAuditListMap,
     anomaliesByInvoiceId,
+    historicalAuditByInvoiceId,
   } = props;
 
   const { mode: ledgerMode, governanceUnset } = resolveLedgerGovernanceMode(
@@ -1035,12 +1067,15 @@ function MonthlyAutoAuditPanel(props: {
       typeLabelEn: string;
       detail: string;
       tags: MonthlyAuditTag[];
+      historicalAudit: HistoricalAuditPayload | null;
     };
     const outRows: Row[] = [];
 
     const isHistorical = ledgerMode === 'historical';
 
     for (const inv of monthList) {
+      const ha = historicalAuditByInvoiceId[inv.id] ?? null;
+      const histCand = isHistoricalAuditCandidate(ha);
       const anomalies = anomaliesByInvoiceId[inv.id] ?? [];
       const sx = monthlyRiskSignals(inv, {
         hybrid: hybridAuditByInvoiceId[inv.id],
@@ -1048,7 +1083,7 @@ function MonthlyAutoAuditPanel(props: {
         anomalies,
         ai: aiAuditListMap[inv.id],
       });
-      if (!sx.anyAlert) continue;
+      if (!sx.anyAlert && !histCand) continue;
       anyCount += 1;
       if (isHistorical) {
         if (sx.noProcurement) colA += 1;
@@ -1062,10 +1097,14 @@ function MonthlyAutoAuditPanel(props: {
         if (sx.noProcurement) colB += 1;
       }
 
-      const tags = monthlyRowTags(isHistorical, sx);
+      const tags = monthlyRowTags(isHistorical, sx, ha);
 
       const typeBitsZh: string[] = [];
       const typeBitsEn: string[] = [];
+      if (histCand) {
+        typeBitsZh.push(historicalAuditProcurementSuggestLabel(false));
+        typeBitsEn.push(historicalAuditProcurementSuggestLabel(true));
+      }
       const orderedTags: MonthlyAuditTag[] = ['link', 'price', 'dup', 'budget'];
       for (const tg of orderedTags) {
         if (!tags.includes(tg)) continue;
@@ -1081,8 +1120,9 @@ function MonthlyAutoAuditPanel(props: {
         inv,
         typeLabelZh: typeBitsZh.slice(0, 5).join('、'),
         typeLabelEn: typeBitsEn.slice(0, 5).join(' · '),
-        detail: buildMonthlyRiskExplanation(l, inv, sx, anomalies, ledgerMode),
+        detail: buildMonthlyRiskExplanation(l, inv, sx, anomalies, ledgerMode, ha),
         tags: tags.length ? tags : ([] as MonthlyAuditTag[]),
+        historicalAudit: ha,
       });
     }
 
@@ -1113,6 +1153,7 @@ function MonthlyAutoAuditPanel(props: {
     quoteVarianceByInvoiceId,
     aiAuditListMap,
     anomaliesByInvoiceId,
+    historicalAuditByInvoiceId,
   ]);
 
   const drillFilteredRows = useMemo(() => {
@@ -1355,10 +1396,12 @@ function MonthlyAutoAuditPanel(props: {
               <tbody className="divide-y divide-indigo-50">
                 {drillFilteredRows.map((row) => {
                   const pillTags = row.tags.length ? row.tags : ([] as MonthlyAuditTag[]);
+                  const ha = row.historicalAudit;
+                  const histCandidate = isHistoricalAuditCandidate(ha);
                   return (
                     <tr
                       key={row.inv.id}
-                      className={`hover:opacity-95 ${rowRiskAccentClass(pillTags, historical)}`}
+                      className={`hover:opacity-95 ${rowRiskAccentClass(pillTags, historical, ha)}`}
                     >
                       <td
                         className="max-w-[130px] truncate px-3 py-2 font-medium text-gray-900"
@@ -1371,45 +1414,70 @@ function MonthlyAutoAuditPanel(props: {
                         ${Number(row.inv.total_amount).toFixed(2)}
                       </td>
                       <td className="max-w-[200px] px-2 py-2 align-top text-[11px]">
-                        {pillTags.length ? (
-                          <div className="flex flex-wrap gap-0.5">
-                            {pillTags.map((tg) => (
-                              <span
-                                key={tg}
-                                className={`inline-block max-w-full truncate rounded px-1.5 py-px text-[10px] font-semibold ${monthlyTagPillClass(tg, historical)}`}
-                                title={monthlyTagLabel(tg, l, historical)}
-                              >
-                                {monthlyTagLabel(tg, l, historical)}
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="font-medium text-slate-700">{l ? row.typeLabelEn : row.typeLabelZh}</span>
-                        )}
+                        <div className="flex flex-wrap gap-0.5">
+                          {histCandidate ? (
+                            <span
+                              className={`inline-block max-w-full truncate rounded px-1.5 py-px text-[10px] font-semibold ${historicalAuditListPillClass(ha?.benchmarkStatus)}`}
+                              title={historicalAuditListTooltip(ha?.benchmarkStatus, l)}
+                            >
+                              {historicalAuditProcurementSuggestLabel(l)}
+                            </span>
+                          ) : null}
+                          {pillTags.map((tg) => (
+                            <span
+                              key={tg}
+                              className={`inline-block max-w-full truncate rounded px-1.5 py-px text-[10px] font-semibold ${monthlyTagPillClass(tg, historical)}`}
+                              title={monthlyTagLabel(tg, l, historical)}
+                            >
+                              {monthlyTagLabel(tg, l, historical)}
+                            </span>
+                          ))}
+                          {!histCandidate && pillTags.length === 0 ? (
+                            <span className="font-medium text-slate-700">
+                              {l ? row.typeLabelEn : row.typeLabelZh}
+                            </span>
+                          ) : null}
+                        </div>
                       </td>
                       <td className="max-w-[220px] px-2 py-2 align-top text-[11px] text-gray-700">
                         <span className="line-clamp-3">{row.detail}</span>
                       </td>
                       <td className="whitespace-nowrap px-3 py-2 text-right align-top">
                         <div className="flex flex-col items-end gap-1 sm:flex-row sm:justify-end sm:gap-2">
-                          {historical && canAudit && pillTags.includes('link') ? (
+                          {histCandidate && historical && canAudit ? (
                             <button
                               type="button"
+                              title={historicalAuditListTooltip(ha?.benchmarkStatus, l)}
                               onClick={() => onOpenHistoricalProcDraft(row.inv)}
-                              className="rounded-md px-2 py-1 text-[11px] font-semibold bg-indigo-50 text-indigo-800 hover:bg-indigo-100 ring-1 ring-indigo-200/80"
+                              className={`inline-flex items-center gap-0.5 rounded-md px-2 py-1 text-[11px] font-semibold ${historicalAuditListButtonClass(ha?.benchmarkStatus)}`}
                             >
-                              {l ? 'Create draft' : 'AI补建草稿'}
+                              {historicalAuditProcurementSuggestLabel(l)}
+                              {ha?.benchmarkStatus === 'warning' ? (
+                                <AlertTriangle className="size-3 shrink-0 opacity-90" aria-hidden />
+                              ) : null}
                             </button>
-                          ) : null}
-                          {historical && pillTags.includes('price') ? (
-                            <button
-                              type="button"
-                              onClick={() => onOpenBenchmarkReview(row.inv)}
-                              className="rounded-md px-2 py-1 text-[11px] font-semibold bg-amber-50 text-amber-950 hover:bg-amber-100 ring-1 ring-amber-200/80"
-                            >
-                              {l ? 'Benchmark review' : '历史补询价'}
-                            </button>
-                          ) : null}
+                          ) : (
+                            <>
+                              {historical && canAudit && pillTags.includes('link') ? (
+                                <button
+                                  type="button"
+                                  onClick={() => onOpenHistoricalProcDraft(row.inv)}
+                                  className="rounded-md px-2 py-1 text-[11px] font-semibold bg-indigo-50 text-indigo-800 hover:bg-indigo-100 ring-1 ring-indigo-200/80"
+                                >
+                                  {l ? 'Create draft' : 'AI补建草稿'}
+                                </button>
+                              ) : null}
+                              {historical && pillTags.includes('price') ? (
+                                <button
+                                  type="button"
+                                  onClick={() => onOpenBenchmarkReview(row.inv)}
+                                  className="rounded-md px-2 py-1 text-[11px] font-semibold bg-amber-50 text-amber-950 hover:bg-amber-100 ring-1 ring-amber-200/80"
+                                >
+                                  {l ? 'Benchmark review' : '历史补询价'}
+                                </button>
+                              ) : null}
+                            </>
+                          )}
                           <button
                             type="button"
                             onClick={() => onPickInvoice(row.inv)}
@@ -1858,6 +1926,48 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
           ]),
         ),
       );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [invoices, currentPropertyId]);
+
+  const [historicalAuditByInvoiceId, setHistoricalAuditByInvoiceId] = useState<
+    Record<string, HistoricalAuditPayload | null>
+  >({});
+
+  useEffect(() => {
+    if (!currentPropertyId || invoices.length === 0) {
+      setHistoricalAuditByInvoiceId({});
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const ids = invoices.map((i) => i.id);
+      const CHUNK = 100;
+      const merged: Record<string, HistoricalAuditPayload | null> = {};
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        const slice = ids.slice(i, i + CHUNK);
+        const { data, error } = await supabase
+          .from('invoice_ai_audit_contexts')
+          .select('invoice_id, context_json')
+          .eq('property_id', currentPropertyId)
+          .in('invoice_id', slice);
+        if (cancelled) return;
+        if (error) {
+          setHistoricalAuditByInvoiceId({});
+          return;
+        }
+        for (const row of data ?? []) {
+          const ctx = row.context_json;
+          merged[row.invoice_id] =
+            ctx && typeof ctx === 'object'
+              ? parseHistoricalAuditFromContext(ctx as Record<string, unknown>)
+              : null;
+        }
+      }
+      if (cancelled) return;
+      setHistoricalAuditByInvoiceId(merged);
     })();
     return () => {
       cancelled = true;
@@ -3072,6 +3182,7 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
                                 quoteVarianceByInvoiceId={quoteVarianceByInvoiceId}
                                 aiAuditListMap={aiAuditListMap}
                                 anomaliesByInvoiceId={anomaliesByInvoiceId}
+                                historicalAuditByInvoiceId={historicalAuditByInvoiceId}
                               />
                               <div className="hidden max-w-full overflow-x-auto md:block [scrollbar-width:thin]">
               <table className="w-full min-w-0 max-w-full table-fixed border-collapse text-xs">

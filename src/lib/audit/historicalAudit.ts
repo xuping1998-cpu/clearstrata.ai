@@ -143,3 +143,55 @@ export function partitionReasonsForHistoricalCandidate(
   }
   return { primary, supplemental };
 }
+
+export function historicalAuditProcurementSuggestLabel(languageEn: boolean): string {
+  return languageEn ? 'AI-suggested procurement record' : 'AI建议补建采购记录';
+}
+
+export function historicalAuditListButtonClass(status: HistoricalBenchmarkStatus | undefined): string {
+  if (status === 'normal') {
+    return 'bg-blue-50 text-blue-900 hover:bg-blue-100 ring-1 ring-blue-200/80';
+  }
+  if (status === 'warning') {
+    return 'bg-amber-50 text-amber-950 hover:bg-amber-100 ring-1 ring-amber-200/80';
+  }
+  return 'bg-slate-50 text-slate-800 hover:bg-slate-100 ring-1 ring-slate-200/80';
+}
+
+export function historicalAuditListPillClass(status: HistoricalBenchmarkStatus | undefined): string {
+  if (status === 'normal') return 'bg-blue-100 text-blue-900 ring-1 ring-blue-200';
+  if (status === 'warning') return 'bg-amber-100 text-amber-950 ring-1 ring-amber-200';
+  return 'bg-slate-100 text-slate-800 ring-1 ring-slate-200';
+}
+
+export function historicalAuditListTooltip(
+  status: HistoricalBenchmarkStatus | undefined,
+  languageEn: boolean,
+): string {
+  if (status === 'normal') {
+    return languageEn
+      ? 'Historical bare spend — suggest governance record; amount within market reference.'
+      : '历史裸支出，建议补建治理记录；市场价格在合理区间内。';
+  }
+  if (status === 'warning') {
+    return languageEn
+      ? 'Historical bare spend — suggest governance record; price above market reference — review recommended.'
+      : '历史裸支出，建议补建治理记录；价格高于市场参考，建议核查。';
+  }
+  return languageEn
+    ? 'Historical bare spend — automatic benchmark unavailable; manual review recommended.'
+    : '历史裸支出；暂无法自动市场核价，建议人工复核。';
+}
+
+/** List row left accent when historicalAudit drives procurement suggest (red dup/budget still win). */
+export function historicalAuditRowAccentClass(status: HistoricalBenchmarkStatus | undefined): string {
+  if (status === 'normal') return 'border-l-4 border-l-blue-600 bg-blue-50/40';
+  if (status === 'warning') return 'border-l-4 border-l-amber-400 bg-amber-50/45';
+  return 'border-l-4 border-l-slate-300 bg-slate-50/45';
+}
+
+export function isHistoricalAuditCandidate(
+  audit: HistoricalAuditPayload | null | undefined,
+): boolean {
+  return audit?.candidate === true;
+}
