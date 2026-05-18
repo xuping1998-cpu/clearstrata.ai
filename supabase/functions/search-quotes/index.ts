@@ -12,57 +12,59 @@ const OPENAI_MODEL = "gpt-4o";
 const SEARCH_QUOTES_PROVIDER = "openai_web_search_direct";
 const NO_PRICE_NOTE = "Pricing requires formal quote";
 
-const ANALYST_PROMPT = `You are a procurement market analyst for strata property management in Greater Vancouver, BC.
+const ANALYST_PROMPT = `You are a procurement market analyst for strata property management in Greater Vancouver, BC (Vancouver, Richmond, Burnaby, and surrounding BC).
 
-Principle: OPEN SEARCH, STRICT EVIDENCE, NO HALLUCINATION.
+Core principle: OPEN SEARCH, STRICT EVIDENCE, NO HALLUCINATION.
 
-## Step 1 — Read the attachment fully
+Search openly like a general market research assistant (e.g. broad web discovery). Do NOT require an "official vendor pricing page" or "exact supplier price sheet". B2B services (elevator maintenance, fire safety, HVAC contracts, etc.) often only have pricing on third-party references — that is acceptable if the URL is real and publicly accessible.
 
-When a supplier quote PDF/image is attached, read it completely first. Understand:
+## 1. Read the uploaded PDF / image first
+
+When attached, read the full document and understand:
 - service type
-- frequency (e.g. monthly, annual, per visit)
-- scope
+- frequency (monthly, annual, per visit, per unit, etc.)
+- scope of work
 - location / region
-- comparable service requirements for a strata property
+- current quoted amount from the attachment (reference only — do not list that vendor unless found independently with its own evidence)
 
-Use this only to define what to search for; do not copy the attachment vendor as a search result.
+## 2. Open web search (web_search_preview)
 
-## Step 2 — Open web search
+Search the Greater Vancouver market broadly for up to 3 truly comparable suppliers for the SAME (or closest commercial equivalent) service.
 
-Use web_search_preview broadly across Vancouver, Richmond, Burnaby, and BC.
+Allowed price evidence sources (any publicly verifiable URL):
+- supplier website pricing or service pages
+- published quote examples or case studies
+- industry public reference pricing
+- government / property / strata procurement or tender award examples
+- commercial service price catalogs
+- third-party commercial pricing references
+- publicly accessible market pricing articles or comparison pages
 
-You may use ANY publicly verifiable source, including but not limited to:
-- supplier websites
-- commercial pricing pages
-- public quote examples
-- industry benchmark sources
-- procurement examples
-- public service pricing references
-- rate cards, package pages, published estimates
+price_source_url does NOT need to be the supplier's own website. A third-party page is valid if it publicly documents a defensible range for comparable work in BC.
 
-Do NOT restrict yourself to "official vendor quote pages" only. Do NOT restrict source types artificially.
+Forbidden source types: invented URLs, paywalled content you cannot cite, or guessed "typical market" numbers with no page to point to.
 
-## Step 3 — Return up to 3 truly comparable suppliers
+## 3. Each vendor in vendors[] (only if priced)
 
-Return at most 3 vendors that are genuinely comparable to the attachment/job scope.
+Include a vendor ONLY if you can support price_low and price_high with a non-empty price_source_url.
 
-Prefer strong service match over generic listings.
-
-If an exact match is scarce, use the closest commercial equivalent that still has verifiable public pricing.
-
-## Required fields per vendor (only include vendors you are listing)
-
+For each included vendor provide:
 company_name, phone, website, address, description_en, description_zh,
-price_low, price_high, price_currency, price_unit, price_source_url, price_confidence, price_evidence_note
+price_low, price_high, price_currency ("CAD" unless source says otherwise),
+price_unit (e.g. per month, per visit, per elevator, project total),
+price_source_url (any valid public http/https URL),
+price_confidence (high | medium | low),
+price_evidence_note — MUST explain:
+  (a) where the price came from,
+  (b) why it is usable for comparing this service,
+  (c) whether it is a direct quote, industry reference, procurement/tender case, or general market reference.
 
-## Pricing rules (strict)
+## 4. Count and quality rules
 
-- NEVER invent or guess prices. No typical market ranges, no AI-inferred pricing.
-- Include price_low, price_high, and price_source_url ONLY when a real public URL documents the range.
-- If no publicly verifiable source exists for a candidate vendor, do NOT include that vendor in the JSON array.
-- Do NOT pad the list with vendors that have no price evidence.
-- Return fewer than 3 vendors if open search cannot find enough comparable suppliers with verifiable public pricing.
-- When you include pricing, set price_currency to "CAD" unless the source clearly states otherwise, and set price_confidence to high, medium, or low.
+- Return at most 3 vendors. Prefer true comparability over generic directories.
+- If you only find 1 or 2 vendors with defensible public pricing, return 1 or 2 — do NOT pad to 3.
+- If a candidate has NO public price basis, omit them entirely — do not list them with null prices.
+- NEVER invent prices. No hallucinated ranges, no unstated assumptions.
 
 Return ONLY JSON (no markdown, no code fences, no commentary):
 
@@ -86,7 +88,7 @@ Return ONLY JSON (no markdown, no code fences, no commentary):
   ]
 }
 
-description_zh must be Simplified Chinese. Omit vendors without verifiable public pricing entirely.`;
+description_zh must be Simplified Chinese.`;
 
 const WEB_SEARCH_TOOL = {
   type: "web_search_preview",
@@ -282,14 +284,12 @@ function normalizeVendor(raw: unknown): VendorResult | null {
   let evidenceNote = strField(o.price_evidence_note);
   let confidence = strField(o.price_confidence);
 
+  // Any non-empty public URL is acceptable — not required to be the vendor's official site.
   if ((priceLow != null || priceHigh != null) && !sourceUrl) {
     priceLow = null;
     priceHigh = null;
     evidenceNote = NO_PRICE_NOTE;
     confidence = "";
-  }
-  if (priceLow == null && priceHigh == null && !evidenceNote) {
-    evidenceNote = NO_PRICE_NOTE;
   }
 
   return {
@@ -310,11 +310,19 @@ function normalizeVendor(raw: unknown): VendorResult | null {
   };
 }
 
+function hasRetainedPriceEvidence(v: VendorResult): boolean {
+  return (
+    v.price_low != null &&
+    v.price_high != null &&
+    Boolean(v.price_source_url.trim())
+  );
+}
+
 function normalizeVendors(list: unknown[]): VendorResult[] {
   const out: VendorResult[] = [];
   for (const item of list) {
     const v = normalizeVendor(item);
-    if (v) out.push(v);
+    if (v && hasRetainedPriceEvidence(v)) out.push(v);
   }
   return out;
 }
