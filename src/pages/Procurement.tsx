@@ -466,6 +466,7 @@ function JobCard({
             jobType={job.job_type}
             category={job.category || ''}
             estimatedBudget={job.estimated_budget || 0}
+            parsedQuote={(job as { parsed_quote_json?: Record<string, unknown> | null }).parsed_quote_json ?? null}
             language={language}
             aiEstimateLow={job.ai_estimate_low}
             aiEstimateHigh={job.ai_estimate_high}

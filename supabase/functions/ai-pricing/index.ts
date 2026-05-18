@@ -20,6 +20,10 @@ interface PricingRequest {
   property_id?: string;
   /** When provided with property_id, must match procurement_jobs.property_id. */
   job_id?: string;
+  /** OCR-parsed procurement quote attachment (procurement_jobs.parsed_quote_json). */
+  parsed_quote?: Record<string, unknown> | null;
+  /** Human-readable quote context built on the client from parsed_quote. */
+  quote_context?: string | null;
 }
 
 /** Light vendor name redaction for third-party model prompts (same-property rows only). */
@@ -30,10 +34,34 @@ function redactVendorName(raw: unknown): string {
   return `${s[0]}***${s[s.length - 1]!}`;
 }
 
-function buildSystemPrompt(historyContext: string, hasFloorPlan: boolean): string {
+function buildSystemPrompt(
+  historyContext: string,
+  hasFloorPlan: boolean,
+  hasQuoteContext: boolean,
+): string {
   let prompt = `你是一位专业的物业维修采购定价顾问，专注于加拿大温哥华地区的Strata物业管理。
 
 你的任务是根据工程描述，给出合理的价格区间估计。请特别注意根据实际工作量（面积、单元数量、楼层数等）来调整估价。
+${hasQuoteContext ? `
+## 报价附件 OCR 优先（必须遵守）
+当用户消息中包含「采购报价附件 OCR 解析结果」时：
+1. **优先**依据 OCR 报价内容判断报价性质、计费单位与合理市场区间；
+2. **不要**仅凭项目标题中的关键词套用下方静态价表；
+3. 若 OCR 显示月度维护、单台设备、住宅 strata 等，必须按该计费单位估价；
+4. 若 parsed_quote 中有 total_amount，将其作为**当前供应商报价锚点**进行合理性核验；
+5. 给出的市场区间必须与 OCR 中的计费单位一致（per month / per unit / per visit / project total 等）；
+6. 若无法判断计费单位，必须在 reasoning 中明确说明「计费单位不确定」，不要给出过度精确的区间。
+
+### 电梯维保例外（重要）
+若 OCR 显示：monthly maintenance、单台住宅电梯、one unit、金额约 CAD 711.90 等月度单台维保特征：
+- **禁止**套用下方泛化「电梯维修保养 $2,000-$10,000」区间；
+- 应判断为**月度单台维保价格核验**，区间与 reasoning 须以 monthly / per elevator 为单位说明。
+
+## 静态价表使用顺序
+下方温哥华常见价格参考表**仅作 fallback**：
+- 有 quote_context / parsed_quote 时：quote_context 优先 → 项目描述次之 → 静态价表最后；
+- 无 OCR 报价时：描述 + 静态价表 + 历史成交数据。
+` : ""}
 
 ## 定价参考因素：
 1. 工程类型和复杂度
@@ -183,6 +211,8 @@ Deno.serve(async (req: Request) => {
       estimated_budget,
       floor_plan_base64,
       floor_plan_text,
+      parsed_quote,
+      quote_context,
     } = body;
 
     let resolvedPropertyId = typeof body.property_id === "string" ? body.property_id.trim() : "";
@@ -249,14 +279,34 @@ Deno.serve(async (req: Request) => {
     }
 
     const hasFloorPlan = !!(floor_plan_base64 || floor_plan_text);
-    const systemPrompt = buildSystemPrompt(historyContext, hasFloorPlan);
+    const quoteContextText =
+      typeof quote_context === "string" ? quote_context.trim() : "";
+    const hasQuoteContext = quoteContextText.length > 0;
+    const systemPrompt = buildSystemPrompt(historyContext, hasFloorPlan, hasQuoteContext);
 
     let floorPlanInfo = "";
     if (floor_plan_text) {
       floorPlanInfo = `\n\n## 楼面图/地块提取文字信息：\n${floor_plan_text}`;
     }
 
-    const userMessage = `请为以下工程项目估价：
+    let quoteSection = "";
+    if (hasQuoteContext) {
+      quoteSection = `## 采购报价附件 OCR 解析结果（优先级最高）\n${quoteContextText}\n\n`;
+      const anchor =
+        parsed_quote &&
+        typeof parsed_quote === "object" &&
+        parsed_quote.total_amount != null &&
+        parsed_quote.total_amount !== ""
+          ? `\n当前供应商报价锚点（total_amount）：${parsed_quote.total_amount}${
+              parsed_quote.currency ? ` ${parsed_quote.currency}` : " CAD"
+            }\n`
+          : "";
+      if (anchor) quoteSection += anchor;
+      quoteSection +=
+        "请优先依据以上 OCR 报价内容判断报价性质与计费单位，再给出市场合理区间。\n\n";
+    }
+
+    const userMessage = `${quoteSection}请为以下工程项目估价：
 
 项目标题：${title}
 项目描述：${description}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { TrendingUp, Loader2, RefreshCw, FileUp, FileText, X, Calculator, ChevronDown, ChevronUp } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { buildQuoteContext } from '../../lib/procurement/buildQuoteContext';
 
 interface AiEstimate {
   low: number;
@@ -25,6 +26,8 @@ interface AiPricingPanelProps {
   onEstimateLoaded?: (low: number, high: number, reasoning: string) => void;
   /** 楼面图等辅助上传：业委会/管理员/物业经理；业主仅查看估价 */
   canUploadSupportingDocs?: boolean;
+  /** procurement_jobs.parsed_quote_json from invoice-ocr */
+  parsedQuote?: Record<string, unknown> | null;
 }
 
 export type TrafficLightResult = {
@@ -110,6 +113,7 @@ export function AiPricingPanel({
   aiMaterialCalc,
   onEstimateLoaded,
   canUploadSupportingDocs = true,
+  parsedQuote = null,
 }: AiPricingPanelProps) {
   const l = language === 'en';
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -151,6 +155,8 @@ export function AiPricingPanel({
         }
       }
 
+      const quoteContext = parsedQuote ? buildQuoteContext(parsedQuote) : '';
+
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
@@ -167,6 +173,8 @@ export function AiPricingPanel({
           floor_plan_text: floorPlanTextToSend,
           property_id: propertyId,
           job_id: jobId,
+          parsed_quote: parsedQuote || null,
+          quote_context: quoteContext || null,
         }),
       });
 
@@ -286,6 +294,12 @@ export function AiPricingPanel({
           </button>
         </div>
       </div>
+
+      {parsedQuote && (
+        <p className="text-[11px] text-blue-700/80 mb-2">
+          {l ? 'Estimate uses OCR content from quote attachment' : '已使用报价附件 OCR 内容进行估价'}
+        </p>
+      )}
 
       {showFloorPlanInput && (
         <FloorPlanUploadSection
