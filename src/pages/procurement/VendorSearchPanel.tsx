@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Globe, Phone, ExternalLink, Search, RefreshCw, Loader2, MapPin, DollarSign, Calendar } from 'lucide-react';
+import { Globe, Phone, ExternalLink, Search, RefreshCw, Loader2, MapPin, Calendar } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useProperty } from '../../contexts/PropertyContext';
 
@@ -129,7 +129,7 @@ export function VendorSearchPanel({
       address: v.address || '',
       description_en: v.description_en || '',
       description_zh: v.description_zh || '',
-      price_reference: v.price_reference || '',
+      price_reference: '',
       searched_at: now,
     }));
 
@@ -312,12 +312,11 @@ export function VendorSearchPanel({
                   )}
                 </div>
 
-                {v.price_reference && (
-                  <div className="flex items-center gap-1 text-xs font-medium text-clearstrata-brand-700 bg-clearstrata-ui-soft rounded px-1.5 py-0.5 w-fit mb-1.5">
-                    <DollarSign size={11} />
-                    {v.price_reference}
-                  </div>
-                )}
+                <p className="text-[11px] text-sky-700/70 mb-1.5">
+                  {l
+                    ? 'Supplier listing — formal quote required'
+                    : '供应商资料，价格需正式询价确认'}
+                </p>
 
                 <p className="text-xs text-gray-600 leading-relaxed">
                   {l ? v.description_en : (v.description_zh || v.description_en)}

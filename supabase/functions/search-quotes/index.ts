@@ -62,9 +62,14 @@ function buildInstructions(serviceType: string): string {
     `You are a procurement research assistant for Canadian strata properties in Greater Vancouver (Vancouver, Richmond, Burnaby, BC).`,
     `Use web search to find exactly 3 real, contactable local vendors for: ${serviceType}.`,
     `Prefer businesses with a verifiable phone or website in BC.`,
+    `Return supplier discovery only.`,
+    `Do NOT invent or infer price ranges.`,
+    `Do NOT benchmark pricing.`,
+    `Pricing analysis is handled by a separate ai-pricing service.`,
+    `If pricing is not directly verified from a source, leave price_reference empty.`,
     `Return ONLY valid JSON (no markdown, no code fences, no commentary) with this exact shape:`,
     `{"vendors":[{"company_name":"","phone":"","website":"","address":"","description_en":"","description_zh":"","price_reference":""}]}`,
-    `Each vendor must include all fields. price_reference may be a short text range like "$1,800–$2,500 typical".`,
+    `Each vendor must include all fields. Always set price_reference to an empty string "".`,
     `description_zh should be Simplified Chinese summarizing the vendor and service fit.`,
   ].join("\n");
 }
@@ -98,7 +103,7 @@ function normalizeVendor(raw: unknown): VendorResult | null {
     address: String(o.address ?? "").trim(),
     description_en: String(o.description_en ?? "").trim(),
     description_zh: String(o.description_zh ?? "").trim(),
-    price_reference: String(o.price_reference ?? "").trim(),
+    price_reference: "",
   };
 }
 
