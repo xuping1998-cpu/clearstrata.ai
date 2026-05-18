@@ -12,6 +12,7 @@ import { InvoiceUpload } from '../../components/InvoiceUpload';
 import { VendorRating } from '../../components/VendorRating';
 import { fetchUrlAsInvoiceFile } from '../../lib/invoiceOcrClient';
 import { buildQuoteContext } from '../../lib/procurement/buildQuoteContext';
+import { saveVendorSearchResults } from '../../lib/procurement/saveVendorSearchResults';
 import {
   buildProcurementDescriptionFromParsedQuote,
   mergeProcurementDescriptionsWithOcr,
@@ -365,10 +366,28 @@ export function NewJobModal({
   const sendInvitations = async () => {
     if (!createdJobId || !profile || !currentPropertyId) return;
     setStep('sending');
+    setError('');
     try {
+      const vendorsToSave = searchedVendors.length > 0 ? searchedVendors : [];
+      const { error: saveError } = await saveVendorSearchResults({
+        propertyId: currentPropertyId,
+        jobId: createdJobId,
+        vendors: vendorsToSave,
+      });
+
+      if (saveError) {
+        setError(
+          l
+            ? 'Failed to save vendor search results. Please check the console.'
+            : '供应商搜索结果保存失败，请查看控制台',
+        );
+        setStep('select_vendors');
+        return;
+      }
+
       const selectedVendors = Array.from(selectedVendorIdxs).map(idx => searchedVendors[idx]).filter(Boolean);
       for (const v of selectedVendors) {
-        await supabase.from('procurement_quotes').insert({
+        const { error: quoteError } = await supabase.from('procurement_quotes').insert({
           property_id: currentPropertyId,
           job_id: createdJobId,
           task_id: linkedTaskId.trim() || null,
@@ -379,10 +398,14 @@ export function NewJobModal({
           description_zh: `已向AI实时搜索到的供应商发送询价邀请`,
           submitted_by: profile.id,
         });
+        if (quoteError) {
+          throw quoteError;
+        }
       }
       onClose();
       onCreated();
-    } catch {
+    } catch (err) {
+      console.error('SAVE_VENDOR_SEARCH_RESULTS_ERROR', err);
       setError(l ? 'Failed to send invitations' : '发送询价邀请失败');
       setStep('select_vendors');
     }

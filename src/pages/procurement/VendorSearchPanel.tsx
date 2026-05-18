@@ -3,6 +3,7 @@ import { Globe, Phone, ExternalLink, Search, RefreshCw, Loader2, MapPin, Calenda
 import { supabase } from '../../lib/supabase';
 import { useProperty } from '../../contexts/PropertyContext';
 import { buildQuoteContext } from '../../lib/procurement/buildQuoteContext';
+import { saveVendorSearchResults } from '../../lib/procurement/saveVendorSearchResults';
 
 interface SearchedVendor {
   company_name: string;
@@ -150,40 +151,33 @@ export function VendorSearchPanel({
 
   const saveResults = async (newVendors: SearchedVendor[]) => {
     if (!scopedPropertyId) return;
-    await supabase
-      .from('vendor_search_results')
-      .delete()
-      .eq('property_id', scopedPropertyId)
-      .eq('job_id', jobId);
+    const { count, error: saveError } = await saveVendorSearchResults({
+      propertyId: scopedPropertyId,
+      jobId,
+      vendors: newVendors,
+    });
 
-    const now = new Date().toISOString();
-    const rows = newVendors.map((v) => ({
-      property_id: scopedPropertyId,
-      job_id: jobId,
-      company_name: v.company_name,
-      phone: v.phone || '',
-      website: v.website || '',
-      address: v.address || '',
-      description_en: v.description_en || '',
-      description_zh: v.description_zh || '',
-      price_reference: '',
-      price_low: v.price_low ?? null,
-      price_high: v.price_high ?? null,
-      price_currency: v.price_currency || 'CAD',
-      price_unit: v.price_unit || null,
-      price_source_url: v.price_source_url || null,
-      price_confidence: v.price_confidence || null,
-      price_evidence_note: v.price_evidence_note || null,
-      searched_at: now,
-    }));
+    if (saveError) {
+      console.error('SAVE_VENDOR_SEARCH_RESULTS_ERROR', saveError);
+      setError(
+        l
+          ? 'Failed to save vendor search results. Please check the console.'
+          : '供应商搜索结果保存失败，请查看控制台',
+      );
+      return;
+    }
 
     const { data } = await supabase
       .from('vendor_search_results')
-      .insert(rows)
-      .select('*');
+      .select('*')
+      .eq('property_id', scopedPropertyId)
+      .eq('job_id', jobId)
+      .order('created_at', { ascending: true });
 
-    if (data) {
-      setVendors(data);
+    if (data && data.length > 0) {
+      setVendors(data as SavedVendor[]);
+    } else if (count > 0) {
+      await loadSavedResults();
     }
   };
 
