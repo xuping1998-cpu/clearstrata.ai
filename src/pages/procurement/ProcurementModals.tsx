@@ -10,6 +10,12 @@ import {
 } from '../../components/PhotoUpload';
 import { InvoiceUpload } from '../../components/InvoiceUpload';
 import { VendorRating } from '../../components/VendorRating';
+import { fetchUrlAsInvoiceFile } from '../../lib/invoiceOcrClient';
+import {
+  buildProcurementDescriptionFromParsedQuote,
+  mergeProcurementDescriptionsWithOcr,
+  parseProcurementQuoteAttachment,
+} from '../../lib/procurement/parseProcurementQuoteAttachment';
 import { getTrafficLight, TrafficLightBadge } from './AiPricingPanel';
 import { SERVICE_CATEGORIES } from './VendorRegistry';
 
@@ -229,6 +235,57 @@ export function NewJobModal({
       if (insertError) { setError(l ? `Error: ${insertError.message}` : `错误：${insertError.message}`); return; }
       if (!data) return;
 
+      let searchTitle = finalTitleZh || finalTitleEn;
+      let searchDescription = finalDescriptionZh || finalDescriptionEn;
+
+      if (isProcurement && hasAttachments && requestPhotos[0]) {
+        try {
+          const file = await fetchUrlAsInvoiceFile(
+            requestPhotos[0],
+            requestAttachmentNames[0] ?? 'quote-attachment.pdf',
+          );
+          // TODO: support multiple parsed quote attachments — Phase 1 uses first attachment only.
+          const parsed = await parseProcurementQuoteAttachment(file, l);
+          const ocrSummaries = buildProcurementDescriptionFromParsedQuote(parsed);
+          const merged = mergeProcurementDescriptionsWithOcr({
+            baseDescriptionEn: finalDescriptionEn,
+            baseDescriptionZh: finalDescriptionZh,
+            ocrSummaryEn: ocrSummaries.description_en,
+            ocrSummaryZh: ocrSummaries.description_zh,
+            userEnteredDescription: hasDescription,
+          });
+
+          const parsedBudget =
+            parsed.total_amount != null && parsed.total_amount > 0
+              ? parsed.total_amount
+              : newJob.estimated_budget
+                ? parseFloat(newJob.estimated_budget)
+                : 0;
+
+          const { error: ocrUpdateError } = await supabase
+            .from('procurement_jobs')
+            .update({
+              parsed_quote_json: parsed as unknown as Record<string, unknown>,
+              description_en: merged.description_en,
+              description_zh: merged.description_zh,
+              estimated_budget: parsedBudget,
+            })
+            .eq('property_id', currentPropertyId)
+            .eq('id', data.id);
+
+          if (ocrUpdateError) {
+            console.warn('[procurement] failed to save parsed_quote_json', ocrUpdateError);
+          } else {
+            searchDescription = merged.description_zh || merged.description_en;
+          }
+        } catch (ocrErr) {
+          console.warn(
+            '[procurement] quote attachment OCR failed — keeping fallback description',
+            ocrErr,
+          );
+        }
+      }
+
       setCreatedJobId(data.id);
       setStep('searching');
 
@@ -237,8 +294,8 @@ export function NewJobModal({
         method: 'POST',
         headers: { 'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title: finalTitleZh || finalTitleEn,
-          description: finalDescriptionZh || finalDescriptionEn,
+          title: searchTitle,
+          description: searchDescription,
           category: newJob.category,
         }),
       });

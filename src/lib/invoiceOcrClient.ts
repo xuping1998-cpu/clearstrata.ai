@@ -27,7 +27,18 @@ export type InvoiceOcrInvokeResult = {
     items?: Array<{ description?: string; amount?: string | number }>;
   };
   fiscalYear: number;
+  /** From invoice-ocr extracted.confidence when present. */
+  confidence: number | null;
 };
+
+function normalizeOcrConfidence(v: unknown): number | null {
+  if (typeof v === 'number' && Number.isFinite(v)) return Math.max(0, Math.min(1, v));
+  if (typeof v === 'string' && v.trim() !== '') {
+    const n = parseFloat(v);
+    if (Number.isFinite(n)) return Math.max(0, Math.min(1, n));
+  }
+  return null;
+}
 
 function readFileAsBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -114,7 +125,9 @@ export async function invokeInvoiceOcrFromFile(file: File, langEn: boolean): Pro
     tax_amount?: string;
     currency?: string;
     summary?: string;
+    description?: string;
     raw_text?: string;
+    confidence?: number | string;
     items?: Array<{ description?: string; amount?: string }>;
   };
 
@@ -142,7 +155,7 @@ export async function invokeInvoiceOcrFromFile(file: File, langEn: boolean): Pro
     hst_number: null,
     currency: ex.currency || 'CAD',
     category: 'general',
-    description: ex.summary || null,
+    description: (ex.description ?? ex.summary) || null,
     line_items,
     has_anomalies: false,
     anomaly_notes: '',
@@ -163,6 +176,7 @@ export async function invokeInvoiceOcrFromFile(file: File, langEn: boolean): Pro
         items: line_items.map((x) => ({ description: x.description, amount: x.amount })),
       } as InvoiceOcrInvokeResult['structured']),
     fiscalYear,
+    confidence: normalizeOcrConfidence(ex.confidence),
   };
 }
 
