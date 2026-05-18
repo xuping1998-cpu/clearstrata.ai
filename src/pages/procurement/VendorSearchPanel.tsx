@@ -130,12 +130,23 @@ export function VendorSearchPanel({
         }),
       });
 
-      const result = await response.json();
-      if (result.success && result.vendors) {
-        await saveResults(result.vendors);
-      } else {
-        setError(result.error || (l ? 'Search failed' : '搜索失败'));
+      const json = await response.json();
+      const vendors = Array.isArray(json?.vendors) ? json.vendors : [];
+
+      console.log('SEARCH_QUOTES_RAW_RESPONSE', json);
+      console.log('SEARCH_QUOTES_VENDOR_COUNT', vendors.length);
+
+      if (!response.ok || json?.success === false) {
+        setError(json?.error || (l ? 'Search failed' : '搜索失败'));
+        return;
       }
+
+      if (vendors.length === 0) {
+        setError(l ? 'No comparable suppliers with public pricing found' : '未找到符合条件的公开报价供应商');
+        return;
+      }
+
+      await saveResults(vendors);
     } catch {
       setError(l ? 'Network error' : '网络错误');
     } finally {
