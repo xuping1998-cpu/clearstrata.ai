@@ -481,6 +481,7 @@ function JobCard({
             jobTitle={job.title_zh || job.title_en}
             jobDescription={job.description_zh || job.description_en}
             category={job.category || ''}
+            parsedQuote={(job as { parsed_quote_json?: Record<string, unknown> | null }).parsed_quote_json ?? null}
             language={language}
           />
 

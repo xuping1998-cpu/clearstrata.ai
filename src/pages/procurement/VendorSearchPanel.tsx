@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Globe, Phone, ExternalLink, Search, RefreshCw, Loader2, MapPin, Calendar } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useProperty } from '../../contexts/PropertyContext';
+import { buildQuoteContext } from '../../lib/procurement/buildQuoteContext';
 
 interface SearchedVendor {
   company_name: string;
@@ -10,7 +11,14 @@ interface SearchedVendor {
   address: string;
   description_en: string;
   description_zh: string;
-  price_reference: string;
+  price_reference?: string;
+  price_low?: number | null;
+  price_high?: number | null;
+  price_currency?: string | null;
+  price_unit?: string | null;
+  price_source_url?: string | null;
+  price_confidence?: string | null;
+  price_evidence_note?: string | null;
 }
 
 interface SavedVendor extends SearchedVendor {
@@ -25,6 +33,19 @@ interface VendorSearchPanelProps {
   jobDescription: string;
   category: string;
   language: string;
+  parsedQuote?: Record<string, unknown> | null;
+}
+
+function hasPublicPriceEvidence(v: {
+  price_low?: number | null;
+  price_high?: number | null;
+  price_source_url?: string | null;
+}): boolean {
+  return (
+    v.price_low != null &&
+    v.price_high != null &&
+    Boolean(v.price_source_url?.trim())
+  );
 }
 
 export function VendorSearchPanel({
@@ -34,6 +55,7 @@ export function VendorSearchPanel({
   jobDescription,
   category,
   language,
+  parsedQuote = null,
 }: VendorSearchPanelProps) {
   const { currentPropertyId } = useProperty();
   const l = language === 'en';
@@ -84,6 +106,19 @@ export function VendorSearchPanel({
     setError('');
     setShowConfirm(false);
     try {
+      const { data: photos } = await supabase
+        .from('procurement_photos')
+        .select('photo_url')
+        .eq('property_id', scopedPropertyId)
+        .eq('job_id', jobId)
+        .eq('photo_type', 'request');
+
+      const attachmentUrls = (photos ?? [])
+        .map((p) => p.photo_url)
+        .filter((u): u is string => Boolean(u));
+
+      const quoteContext = parsedQuote ? buildQuoteContext(parsedQuote) : '';
+
       const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/search-quotes`;
       const response = await fetch(apiUrl, {
         method: 'POST',
@@ -95,6 +130,9 @@ export function VendorSearchPanel({
           title: jobTitle,
           description: jobDescription,
           category,
+          attachment_urls: attachmentUrls.length > 0 ? attachmentUrls : undefined,
+          parsed_quote: parsedQuote || null,
+          quote_context: quoteContext || null,
         }),
       });
 
@@ -130,6 +168,13 @@ export function VendorSearchPanel({
       description_en: v.description_en || '',
       description_zh: v.description_zh || '',
       price_reference: '',
+      price_low: v.price_low ?? null,
+      price_high: v.price_high ?? null,
+      price_currency: v.price_currency || 'CAD',
+      price_unit: v.price_unit || null,
+      price_source_url: v.price_source_url || null,
+      price_confidence: v.price_confidence || null,
+      price_evidence_note: v.price_evidence_note || null,
       searched_at: now,
     }));
 
@@ -313,9 +358,13 @@ export function VendorSearchPanel({
                 </div>
 
                 <p className="text-[11px] text-sky-700/70 mb-1.5">
-                  {l
-                    ? 'Supplier listing — formal quote required'
-                    : '供应商资料，价格需正式询价确认'}
+                  {hasPublicPriceEvidence(v)
+                    ? l
+                      ? 'Public price evidence found'
+                      : '已找到价格证据'
+                    : l
+                      ? 'Supplier listing — formal quote required'
+                      : '供应商资料，价格需正式询价确认'}
                 </p>
 
                 <p className="text-xs text-gray-600 leading-relaxed">

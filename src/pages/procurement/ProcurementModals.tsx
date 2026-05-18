@@ -11,6 +11,7 @@ import {
 import { InvoiceUpload } from '../../components/InvoiceUpload';
 import { VendorRating } from '../../components/VendorRating';
 import { fetchUrlAsInvoiceFile } from '../../lib/invoiceOcrClient';
+import { buildQuoteContext } from '../../lib/procurement/buildQuoteContext';
 import {
   buildProcurementDescriptionFromParsedQuote,
   mergeProcurementDescriptionsWithOcr,
@@ -110,7 +111,14 @@ export interface SearchedVendor {
   address: string;
   description_en: string;
   description_zh: string;
-  service_match: string;
+  service_match?: string;
+  price_low?: number | null;
+  price_high?: number | null;
+  price_currency?: string | null;
+  price_unit?: string | null;
+  price_source_url?: string | null;
+  price_confidence?: string | null;
+  price_evidence_note?: string | null;
 }
 
 export function NewJobModal({
@@ -289,6 +297,8 @@ export function NewJobModal({
       setCreatedJobId(data.id);
       setStep('searching');
 
+      const quoteContext = parsedForSearch ? buildQuoteContext(parsedForSearch) : '';
+
       const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/search-quotes`;
       const response = await fetch(apiUrl, {
         method: 'POST',
@@ -297,6 +307,9 @@ export function NewJobModal({
           title: searchTitle,
           description: searchDescription,
           category: newJob.category,
+          attachment_urls: hasAttachments ? requestPhotos : undefined,
+          parsed_quote: parsedForSearch,
+          quote_context: quoteContext || null,
         }),
       });
       const result = await response.json();
@@ -688,6 +701,18 @@ function VendorSearchCard({
               <span className="truncate max-w-[200px]">{vendor.address}</span>
             )}
           </div>
+
+          <p className="text-[11px] text-sky-700/70 mb-1">
+            {vendor.price_low != null &&
+            vendor.price_high != null &&
+            vendor.price_source_url
+              ? l
+                ? 'Public price evidence found'
+                : '已找到价格证据'
+              : l
+                ? 'Supplier listing — formal quote required'
+                : '供应商资料，价格需正式询价确认'}
+          </p>
 
           <p className="text-xs text-gray-600 leading-relaxed">
             {l ? vendor.description_en : vendor.description_zh || vendor.description_en}
