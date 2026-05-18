@@ -176,6 +176,11 @@ export function NewJobModal({
   };
 
   const createJobAndSearch = async () => {
+    console.log('NEW_JOB_SUBMIT_CLICKED', {
+      jobType: newJob.job_type,
+      requestPhotosCount: requestPhotos.length,
+      hasTitle: Boolean(newJob.title_en?.trim() || newJob.title_zh?.trim()),
+    });
     if (!profile || !currentPropertyId) return;
     setError('');
 
@@ -240,13 +245,21 @@ export function NewJobModal({
         task_id: linkedTaskId.trim() || null,
       }).select().single();
 
-      if (insertError) { setError(l ? `Error: ${insertError.message}` : `错误：${insertError.message}`); return; }
+      if (insertError) {
+        console.log('NEW_JOB_SEARCH_QUOTES_ERROR', { stage: 'insert', message: insertError.message });
+        setError(l ? `Error: ${insertError.message}` : `错误：${insertError.message}`);
+        return;
+      }
       if (!data) return;
+
+      console.log('NEW_JOB_CREATED', { jobId: data.id });
 
       let searchTitle = finalTitleZh || finalTitleEn;
       let searchDescription = finalDescriptionZh || finalDescriptionEn;
+      let parsedForSearch: Record<string, unknown> | null = null;
 
       if (isProcurement && hasAttachments && requestPhotos[0]) {
+        console.log('NEW_JOB_OCR_START', { attachmentUrl: requestPhotos[0] });
         try {
           const file = await fetchUrlAsInvoiceFile(
             requestPhotos[0],
@@ -254,6 +267,7 @@ export function NewJobModal({
           );
           // TODO: support multiple parsed quote attachments — Phase 1 uses first attachment only.
           const parsed = await parseProcurementQuoteAttachment(file, l);
+          parsedForSearch = parsed as unknown as Record<string, unknown>;
           const ocrSummaries = buildProcurementDescriptionFromParsedQuote(parsed);
           const merged = mergeProcurementDescriptionsWithOcr({
             baseDescriptionEn: finalDescriptionEn,
@@ -286,7 +300,9 @@ export function NewJobModal({
           } else {
             searchDescription = merged.description_zh || merged.description_en;
           }
+          console.log('NEW_JOB_OCR_DONE', { jobId: data.id, vendor: parsed.vendor_name });
         } catch (ocrErr) {
+          console.log('NEW_JOB_SEARCH_QUOTES_ERROR', { stage: 'ocr', error: ocrErr });
           console.warn(
             '[procurement] quote attachment OCR failed — keeping fallback description',
             ocrErr,
@@ -297,22 +313,35 @@ export function NewJobModal({
       setCreatedJobId(data.id);
       setStep('searching');
 
+      console.log('NEW_JOB_BEFORE_SEARCH_QUOTES', {
+        hasAttachments,
+        requestPhotosCount: requestPhotos.length,
+      });
+
       const quoteContext = parsedForSearch ? buildQuoteContext(parsedForSearch) : '';
+
+      const searchPayload = {
+        title: searchTitle,
+        description: searchDescription,
+        category: newJob.category,
+        attachment_urls: hasAttachments ? requestPhotos : undefined,
+        parsed_quote: parsedForSearch,
+        quote_context: quoteContext || null,
+      };
+      console.log('NEW_JOB_SEARCH_QUOTES_PAYLOAD', searchPayload);
 
       const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/search-quotes`;
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: searchTitle,
-          description: searchDescription,
-          category: newJob.category,
-          attachment_urls: hasAttachments ? requestPhotos : undefined,
-          parsed_quote: parsedForSearch,
-          quote_context: quoteContext || null,
-        }),
+        body: JSON.stringify(searchPayload),
       });
       const result = await response.json();
+      console.log('NEW_JOB_SEARCH_QUOTES_RESPONSE', {
+        success: result.success,
+        vendorCount: result.vendors?.length ?? 0,
+        error: result.error,
+      });
 
       if (result.success && result.vendors) {
         setSearchedVendors(result.vendors);
@@ -321,10 +350,13 @@ export function NewJobModal({
         result.vendors.forEach((_: any, idx: number) => allIdxs.add(idx));
         setSelectedVendorIdxs(allIdxs);
         setStep('select_vendors');
+        console.log('NEW_JOB_OPEN_VENDOR_MODAL', { vendorCount: result.vendors.length });
       } else {
         setStep('select_vendors');
+        console.log('NEW_JOB_OPEN_VENDOR_MODAL', { vendorCount: 0, searchFailed: true });
       }
-    } catch {
+    } catch (err) {
+      console.log('NEW_JOB_SEARCH_QUOTES_ERROR', { stage: 'outer', error: err });
       setError(l ? 'An unexpected error occurred' : '发生意外错误');
       setStep('form');
     }
