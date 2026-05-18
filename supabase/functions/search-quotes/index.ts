@@ -172,34 +172,67 @@ function filenameFromUrl(url: string, index: number): string {
   return `quote-attachment-${index + 1}.pdf`;
 }
 
-async function fetchAttachments(
-  urls: string[],
-): Promise<FetchedAttachment[]> {
+type FetchAttachmentsResult =
+  | { ok: true; attachments: FetchedAttachment[] }
+  | { ok: false; error: string };
+
+async function fetchAttachments(urls: string[]): Promise<FetchAttachmentsResult> {
   const out: FetchedAttachment[] = [];
   for (let i = 0; i < urls.length; i++) {
     const url = urls[i]!.trim();
     if (!url) continue;
+    const filename = filenameFromUrl(url, i);
     try {
       const res = await fetch(url);
-      if (!res.ok) {
-        console.warn("SEARCH_QUOTES_ATTACHMENT_FETCH_FAIL", { url, status: res.status });
-        continue;
-      }
       const buf = await res.arrayBuffer();
-      const mimeType = guessMimeType(url, res.headers.get("content-type"));
+      const byteLength = buf.byteLength;
+      const contentType = guessMimeType(url, res.headers.get("content-type"));
+
+      console.log("SEARCH_QUOTES_ATTACHMENT_FETCHED", {
+        url,
+        status: res.status,
+        contentType,
+        byteLength,
+        filename,
+      });
+
+      if (!res.ok || byteLength === 0) {
+        return { ok: false, error: "Failed to load quote attachment" };
+      }
+
       out.push({
         base64: bytesToBase64(new Uint8Array(buf)),
-        mimeType,
-        filename: filenameFromUrl(url, i),
+        mimeType: contentType,
+        filename,
       });
     } catch (e) {
       console.warn("SEARCH_QUOTES_ATTACHMENT_FETCH_ERROR", {
         url,
         error: e instanceof Error ? e.message : String(e),
       });
+      return { ok: false, error: "Failed to load quote attachment" };
     }
   }
-  return out;
+  return { ok: true, attachments: out };
+}
+
+function logAttachmentContentParts(attachments: FetchedAttachment[]): void {
+  const parts = attachments.map((att) => {
+    if (att.mimeType.startsWith("image/")) {
+      return {
+        type: "input_image",
+        contentType: att.mimeType,
+        base64Length: att.base64.length,
+      };
+    }
+    return {
+      type: "input_file",
+      filename: att.filename || "quote.pdf",
+      contentType: att.mimeType,
+      base64Length: att.base64.length,
+    };
+  });
+  console.log("SEARCH_QUOTES_ATTACHMENT_PARTS", parts);
 }
 
 function buildJobContextBlock(params: {
@@ -505,7 +538,21 @@ Deno.serve(async (req: Request) => {
       ? body.attachment_urls.filter((u): u is string => typeof u === "string" && u.trim().length > 0)
       : [];
 
-    const attachments = await fetchAttachments(attachmentUrls);
+    let attachments: FetchedAttachment[] = [];
+    if (attachmentUrls.length > 0) {
+      const fetchResult = await fetchAttachments(attachmentUrls);
+      if (!fetchResult.ok || fetchResult.attachments.length === 0) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: fetchResult.ok ? "Failed to load quote attachment" : fetchResult.error,
+          }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      attachments = fetchResult.attachments;
+      logAttachmentContentParts(attachments);
+    }
 
     const input = buildResponsesInput({
       property_id,
