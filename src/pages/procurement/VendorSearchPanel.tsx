@@ -109,7 +109,6 @@ export function VendorSearchPanel({
       const { data: photos } = await supabase
         .from('procurement_photos')
         .select('photo_url')
-        .eq('property_id', scopedPropertyId)
         .eq('job_id', jobId)
         .eq('photo_type', 'request');
 
