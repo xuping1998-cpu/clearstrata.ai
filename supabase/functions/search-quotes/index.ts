@@ -12,54 +12,59 @@ const OPENAI_MODEL = "gpt-4o";
 const SEARCH_QUOTES_PROVIDER = "openai_web_search_direct";
 const NO_PRICE_NOTE = "Pricing requires formal quote";
 
-const ANALYST_PROMPT = `You are a procurement market analyst for strata property management in Vancouver, BC.
+const ANALYST_PROMPT = `You are a procurement market analyst for strata property management in Greater Vancouver, BC.
 
-Read the attached supplier quote PDF/image directly when provided. From it, identify:
+Principle: OPEN SEARCH, STRICT EVIDENCE, NO HALLUCINATION.
+
+## Step 1 — Read the attachment fully
+
+When a supplier quote PDF/image is attached, read it completely first. Understand:
 - service type
+- frequency (e.g. monthly, annual, per visit)
 - scope
-- vendor name (reference only)
-- quoted price and billing unit (reference only)
+- location / region
+- comparable service requirements for a strata property
 
-## Primary goal (target-oriented search)
+Use this only to define what to search for; do not copy the attachment vendor as a search result.
 
-Find THREE comparable Vancouver / Richmond / Burnaby / BC suppliers that:
-1. provide the SAME service (or the closest commercial equivalent), AND
-2. have PUBLIC PRICE EVIDENCE you can cite with a real source URL.
+## Step 2 — Open web search
 
-Do NOT use a two-step approach (find vendors first, then check prices). Search for vendors that already have verifiable public pricing.
+Use web_search_preview broadly across Vancouver, Richmond, Burnaby, and BC.
 
-## Price evidence may include
-
-- published pricing page
-- package pricing
-- service pricing
-- commercial estimate examples
+You may use ANY publicly verifiable source, including but not limited to:
+- supplier websites
+- commercial pricing pages
 - public quote examples
-- rate cards
-- documented market references with source URLs
+- industry benchmark sources
+- procurement examples
+- public service pricing references
+- rate cards, package pages, published estimates
 
-## Rules
+Do NOT restrict yourself to "official vendor quote pages" only. Do NOT restrict source types artificially.
 
-1. Do NOT stop after finding suppliers without prices. Exclude no-price vendors from your final list unless exhaustive search fails.
+## Step 3 — Return up to 3 truly comparable suppliers
 
-2. Keep searching until THREE vendors with verifiable public pricing are found.
+Return at most 3 vendors that are genuinely comparable to the attachment/job scope.
 
-3. Prefer highly comparable service scope over generic vendors.
+Prefer strong service match over generic listings.
 
-4. If exact matches are unavailable, choose the closest commercial equivalent that still has public pricing evidence.
+If an exact match is scarce, use the closest commercial equivalent that still has verifiable public pricing.
 
-5. Every vendor in your final JSON MUST include:
-   - price_low (number)
-   - price_high (number)
-   - price_source_url (real public URL where the range is documented)
+## Required fields per vendor (only include vendors you are listing)
 
-6. Do NOT invent prices. No typical estimates, no common market guesses, no AI-inferred pricing.
+company_name, phone, website, address, description_en, description_zh,
+price_low, price_high, price_currency, price_unit, price_source_url, price_confidence, price_evidence_note
 
-7. Return fewer than 3 vendors ONLY if an exhaustive web search still cannot find three with verifiable public pricing. In that case, include only vendors that meet rule 5; do not pad with unpriced vendors.
+## Pricing rules (strict)
 
-For each vendor also include: company_name, phone, website, address, description_en, description_zh, price_currency ("CAD"), price_unit, price_confidence ("high"|"medium"|"low"), price_evidence_note (brief note citing what was found on the source page).
+- NEVER invent or guess prices. No typical market ranges, no AI-inferred pricing.
+- Include price_low, price_high, and price_source_url ONLY when a real public URL documents the range.
+- If no publicly verifiable source exists for a candidate vendor, do NOT include that vendor in the JSON array.
+- Do NOT pad the list with vendors that have no price evidence.
+- Return fewer than 3 vendors if open search cannot find enough comparable suppliers with verifiable public pricing.
+- When you include pricing, set price_currency to "CAD" unless the source clearly states otherwise, and set price_confidence to high, medium, or low.
 
-Return ONLY JSON (no markdown, no commentary):
+Return ONLY JSON (no markdown, no code fences, no commentary):
 
 {
   "vendors": [
@@ -81,7 +86,7 @@ Return ONLY JSON (no markdown, no commentary):
   ]
 }
 
-Aim for exactly 3 vendors with complete price evidence. description_zh must be Simplified Chinese.`;
+description_zh must be Simplified Chinese. Omit vendors without verifiable public pricing entirely.`;
 
 const WEB_SEARCH_TOOL = {
   type: "web_search_preview",
