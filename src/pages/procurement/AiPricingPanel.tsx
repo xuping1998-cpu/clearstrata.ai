@@ -157,6 +157,14 @@ export function AiPricingPanel({
 
       const quoteContext = parsedQuote ? buildQuoteContext(parsedQuote) : '';
 
+      console.log('AI_PRICING_REQUEST_BODY', {
+        title,
+        description,
+        estimated_budget: estimatedBudget || 0,
+        parsedQuote,
+        quoteContext,
+      });
+
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {

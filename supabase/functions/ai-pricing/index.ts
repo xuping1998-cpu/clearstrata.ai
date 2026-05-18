@@ -215,6 +215,13 @@ Deno.serve(async (req: Request) => {
       quote_context,
     } = body;
 
+    console.log("AI_PRICING_INBOUND", {
+      title,
+      estimated_budget,
+      parsed_quote,
+      quote_context,
+    });
+
     let resolvedPropertyId = typeof body.property_id === "string" ? body.property_id.trim() : "";
     const jobId = typeof body.job_id === "string" ? body.job_id.trim() : "";
 
@@ -343,6 +350,14 @@ ${hasFloorPlan ? "\n请务必从楼面图中提取面积数据，结合工程描
     } else {
       messages.push({ role: "user", content: userMessage });
     }
+
+    console.log("AI_PRICING_HAS_QUOTE", {
+      hasParsedQuote: !!parsed_quote,
+      hasQuoteContext: !!quote_context?.trim(),
+      totalAmount: parsed_quote?.total_amount ?? null,
+      vendor: parsed_quote?.vendor_name ?? null,
+    });
+    console.log("AI_PRICING_PROMPT_PREVIEW", userMessage);
 
     const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
