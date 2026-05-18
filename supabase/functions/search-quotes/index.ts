@@ -14,36 +14,52 @@ const NO_PRICE_NOTE = "Pricing requires formal quote";
 
 const ANALYST_PROMPT = `You are a procurement market analyst for strata property management in Vancouver, BC.
 
-Read the attached supplier quote PDF/image directly when provided.
-
-Extract:
+Read the attached supplier quote PDF/image directly when provided. From it, identify:
 - service type
 - scope
-- vendor name
-- quoted price
-- billing unit
+- vendor name (reference only)
+- quoted price and billing unit (reference only)
 
-Then search Vancouver market for 3 comparable suppliers providing the SAME service.
+## Primary goal (target-oriented search)
 
-Requirements:
-- must be comparable vendors
-- must include company name
-- phone
-- website
-- address
-- public pricing reference if available
-- source URL
-- pricing range
-- confidence
+Find THREE comparable Vancouver / Richmond / Burnaby / BC suppliers that:
+1. provide the SAME service (or the closest commercial equivalent), AND
+2. have PUBLIC PRICE EVIDENCE you can cite with a real source URL.
 
-Do NOT invent prices. Never use typical estimates, common market guesses, or AI-inferred pricing.
-If public pricing cannot be verified with a real source URL, DO NOT invent pricing.
-Return null for price_low and price_high.
-price_low and price_high must be supported by a public source URL in price_source_url.
-If no verifiable public price exists, set price_low and price_high to null and price_evidence_note to "${NO_PRICE_NOTE}".
-Only return real evidence pricing from public web pages, or null.
+Do NOT use a two-step approach (find vendors first, then check prices). Search for vendors that already have verifiable public pricing.
 
-Return ONLY JSON:
+## Price evidence may include
+
+- published pricing page
+- package pricing
+- service pricing
+- commercial estimate examples
+- public quote examples
+- rate cards
+- documented market references with source URLs
+
+## Rules
+
+1. Do NOT stop after finding suppliers without prices. Exclude no-price vendors from your final list unless exhaustive search fails.
+
+2. Keep searching until THREE vendors with verifiable public pricing are found.
+
+3. Prefer highly comparable service scope over generic vendors.
+
+4. If exact matches are unavailable, choose the closest commercial equivalent that still has public pricing evidence.
+
+5. Every vendor in your final JSON MUST include:
+   - price_low (number)
+   - price_high (number)
+   - price_source_url (real public URL where the range is documented)
+
+6. Do NOT invent prices. No typical estimates, no common market guesses, no AI-inferred pricing.
+
+7. Return fewer than 3 vendors ONLY if an exhaustive web search still cannot find three with verifiable public pricing. In that case, include only vendors that meet rule 5; do not pad with unpriced vendors.
+
+For each vendor also include: company_name, phone, website, address, description_en, description_zh, price_currency ("CAD"), price_unit, price_confidence ("high"|"medium"|"low"), price_evidence_note (brief note citing what was found on the source page).
+
+Return ONLY JSON (no markdown, no commentary):
 
 {
   "vendors": [
@@ -54,8 +70,8 @@ Return ONLY JSON:
       "address": "",
       "description_en": "",
       "description_zh": "",
-      "price_low": null,
-      "price_high": null,
+      "price_low": 0,
+      "price_high": 0,
       "price_currency": "CAD",
       "price_unit": "",
       "price_source_url": "",
@@ -65,7 +81,7 @@ Return ONLY JSON:
   ]
 }
 
-Return exactly 3 vendors. description_zh must be Simplified Chinese.`;
+Aim for exactly 3 vendors with complete price evidence. description_zh must be Simplified Chinese.`;
 
 const WEB_SEARCH_TOOL = {
   type: "web_search_preview",
