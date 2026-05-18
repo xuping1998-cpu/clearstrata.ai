@@ -319,6 +319,47 @@ function normalizeVendors(list: unknown[]): VendorResult[] {
   return out;
 }
 
+/** Diagnostics only — same JSON extraction paths as parseVendorsFromText, without normalization. */
+function extractParsedJsonForDiagnostics(responseText: string): unknown {
+  const unfenced = stripMarkdownFences(responseText);
+  if (!unfenced) return null;
+
+  try {
+    return JSON.parse(unfenced);
+  } catch {
+    /* try regex fallbacks below */
+  }
+
+  const objectMatch = unfenced.match(/\{[\s\S]*"vendors"\s*:\s*\[[\s\S]*?\]\s*[\s\S]*?\}/);
+  if (objectMatch) {
+    try {
+      return JSON.parse(objectMatch[0]);
+    } catch {
+      /* continue */
+    }
+  }
+
+  const arrayMatch = unfenced.match(/\[[\s\S]*\]/);
+  if (arrayMatch) {
+    try {
+      return JSON.parse(arrayMatch[0]);
+    } catch {
+      /* continue */
+    }
+  }
+
+  return { _diagnostic: "json_parse_failed", preview: unfenced.slice(0, 1200) };
+}
+
+function rawVendorArrayFromParsed(parsed: unknown): unknown[] {
+  if (Array.isArray(parsed)) return parsed;
+  if (parsed && typeof parsed === "object") {
+    const vendors = (parsed as Record<string, unknown>).vendors;
+    if (Array.isArray(vendors)) return vendors;
+  }
+  return [];
+}
+
 function parseVendorsFromText(responseText: string): VendorResult[] {
   const unfenced = stripMarkdownFences(responseText);
   if (!unfenced) return [];
@@ -502,6 +543,16 @@ Deno.serve(async (req: Request) => {
     }
 
     const responseText = extractResponsesOutputText(apiResult.data);
+
+    console.log("SEARCH_QUOTES_MODEL_TEXT", responseText);
+
+    const parsedJson = extractParsedJsonForDiagnostics(responseText);
+    console.log("SEARCH_QUOTES_PARSED_JSON", parsedJson);
+
+    const rawVendorList = rawVendorArrayFromParsed(parsedJson);
+    const normalizedForLog = normalizeVendors(rawVendorList);
+    console.log("SEARCH_QUOTES_NORMALIZED_VENDORS", normalizedForLog);
+
     const vendors = parseVendorsFromText(responseText);
 
     console.log("SEARCH_QUOTES_RESULT_COUNT", vendors.length);
