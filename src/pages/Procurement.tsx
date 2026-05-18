@@ -10,6 +10,7 @@ import {
   InspectionModal, ManagerListModal, AddManagerModal, RatingModal,
 } from './procurement/ProcurementModals';
 import { AiPricingPanel, getTrafficLight, TrafficLightBadge } from './procurement/AiPricingPanel';
+import { computeMarketBenchmark, fetchVendorSearchResults } from '../lib/procurement/vendorMarketBenchmark';
 import { VendorSearchPanel } from './procurement/VendorSearchPanel';
 import { getCategoryLabel } from './procurement/VendorRegistry';
 import { StatusBadge, type StatusTone } from '@/components/status';
@@ -395,7 +396,33 @@ function JobCard({
   onDelete: (id: string) => void;
 }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [marketLow, setMarketLow] = useState<number | null>(null);
+  const [marketHigh, setMarketHigh] = useState<number | null>(null);
   const l = language === 'en';
+
+  useEffect(() => {
+    if (job.status !== 'collecting_quotes') {
+      setMarketLow(null);
+      setMarketHigh(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const rows = await fetchVendorSearchResults(job.id);
+      if (cancelled) return;
+      const b = computeMarketBenchmark(rows);
+      if (b.case === 'priced') {
+        setMarketLow(b.marketLow);
+        setMarketHigh(b.marketHigh);
+      } else {
+        setMarketLow(null);
+        setMarketHigh(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [job.id, job.status]);
   const sc = STATUS_CONFIG[job.status] || STATUS_CONFIG.collecting_quotes;
   const stepIdx = getStepIndex(job.status);
   const selectedQuote = job.quotes?.find(q => q.id === job.selected_quote_id);
@@ -458,30 +485,13 @@ function JobCard({
 
       {job.status === 'collecting_quotes' && (
         <div className="px-6 pb-4">
-          <AiPricingPanel
-            jobId={job.id}
-            propertyId={propertyId}
-            title={job.title_zh || job.title_en}
-            description={job.description_zh || job.description_en}
-            jobType={job.job_type}
-            category={job.category || ''}
-            estimatedBudget={job.estimated_budget || 0}
-            parsedQuote={(job as { parsed_quote_json?: Record<string, unknown> | null }).parsed_quote_json ?? null}
-            language={language}
-            aiEstimateLow={job.ai_estimate_low}
-            aiEstimateHigh={job.ai_estimate_high}
-            aiEstimateReasoning={job.ai_estimate_reasoning}
-            aiMaterialCalc={job.ai_material_calc}
-            canUploadSupportingDocs={canUploadProcurementInquiry}
-          />
+          <AiPricingPanel jobId={job.id} propertyId={propertyId} language={language} />
 
           <VendorSearchPanel
             jobId={job.id}
             propertyId={propertyId}
             jobTitle={job.title_zh || job.title_en}
             jobDescription={job.description_zh || job.description_en}
-            category={job.category || ''}
-            parsedQuote={(job as { parsed_quote_json?: Record<string, unknown> | null }).parsed_quote_json ?? null}
             language={language}
           />
 
@@ -495,9 +505,9 @@ function JobCard({
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 {job.quotes?.map((quote, idx) => {
-                  const hasEstimate = job.ai_estimate_low && job.ai_estimate_high;
-                  const light = hasEstimate
-                    ? getTrafficLight(quote.quoted_amount, job.ai_estimate_low!, job.ai_estimate_high!)
+                  const hasBenchmark = marketLow != null && marketHigh != null;
+                  const light = hasBenchmark
+                    ? getTrafficLight(quote.quoted_amount, marketLow, marketHigh)
                     : null;
 
                   return (

@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { Globe, Phone, ExternalLink, Search, RefreshCw, Loader2, MapPin, Calendar } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useProperty } from '../../contexts/PropertyContext';
-import { buildQuoteContext } from '../../lib/procurement/buildQuoteContext';
 import { saveVendorSearchResults } from '../../lib/procurement/saveVendorSearchResults';
 
 interface SearchedVendor {
@@ -32,9 +31,7 @@ interface VendorSearchPanelProps {
   propertyId: string;
   jobTitle: string;
   jobDescription: string;
-  category: string;
   language: string;
-  parsedQuote?: Record<string, unknown> | null;
 }
 
 function hasPublicPriceEvidence(v: {
@@ -117,8 +114,6 @@ export function VendorSearchPanel({
         .map((p) => p.photo_url)
         .filter((u): u is string => Boolean(u));
 
-      const quoteContext = parsedQuote ? buildQuoteContext(parsedQuote) : '';
-
       const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/search-quotes`;
       const response = await fetch(apiUrl, {
         method: 'POST',
@@ -127,12 +122,11 @@ export function VendorSearchPanel({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          property_id: scopedPropertyId,
+          job_id: jobId,
           title: jobTitle,
           description: jobDescription,
-          category,
           attachment_urls: attachmentUrls.length > 0 ? attachmentUrls : undefined,
-          parsed_quote: parsedQuote || null,
-          quote_context: quoteContext || null,
         }),
       });
 

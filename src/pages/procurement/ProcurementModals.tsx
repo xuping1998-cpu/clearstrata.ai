@@ -11,8 +11,8 @@ import {
 import { InvoiceUpload } from '../../components/InvoiceUpload';
 import { VendorRating } from '../../components/VendorRating';
 import { fetchUrlAsInvoiceFile } from '../../lib/invoiceOcrClient';
-import { buildQuoteContext } from '../../lib/procurement/buildQuoteContext';
 import { saveVendorSearchResults } from '../../lib/procurement/saveVendorSearchResults';
+import { computeMarketBenchmark, fetchVendorSearchResults } from '../../lib/procurement/vendorMarketBenchmark';
 import {
   buildProcurementDescriptionFromParsedQuote,
   mergeProcurementDescriptionsWithOcr,
@@ -257,8 +257,6 @@ export function NewJobModal({
 
       let searchTitle = finalTitleZh || finalTitleEn;
       let searchDescription = finalDescriptionZh || finalDescriptionEn;
-      let parsedForSearch: Record<string, unknown> | null = null;
-
       if (isProcurement && hasAttachments && requestPhotos[0]) {
         console.log('NEW_JOB_OCR_START', { attachmentUrl: requestPhotos[0] });
         try {
@@ -268,7 +266,6 @@ export function NewJobModal({
           );
           // TODO: support multiple parsed quote attachments — Phase 1 uses first attachment only.
           const parsed = await parseProcurementQuoteAttachment(file, l);
-          parsedForSearch = parsed as unknown as Record<string, unknown>;
           const ocrSummaries = buildProcurementDescriptionFromParsedQuote(parsed);
           const merged = mergeProcurementDescriptionsWithOcr({
             baseDescriptionEn: finalDescriptionEn,
@@ -319,15 +316,12 @@ export function NewJobModal({
         requestPhotosCount: requestPhotos.length,
       });
 
-      const quoteContext = parsedForSearch ? buildQuoteContext(parsedForSearch) : '';
-
       const searchPayload = {
+        property_id: currentPropertyId,
+        job_id: data.id,
         title: searchTitle,
         description: searchDescription,
-        category: newJob.category,
         attachment_urls: hasAttachments ? requestPhotos : undefined,
-        parsed_quote: parsedForSearch,
-        quote_context: quoteContext || null,
       };
       console.log('NEW_JOB_SEARCH_QUOTES_PAYLOAD', searchPayload);
 
@@ -860,6 +854,27 @@ export function ApproveQuoteModal({
   const [selectedManagerId, setSelectedManagerId] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
+  const [marketLow, setMarketLow] = useState<number | null>(null);
+  const [marketHigh, setMarketHigh] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const rows = await fetchVendorSearchResults(selectedJob.id);
+      if (cancelled) return;
+      const b = computeMarketBenchmark(rows);
+      if (b.case === 'priced') {
+        setMarketLow(b.marketLow);
+        setMarketHigh(b.marketHigh);
+      } else {
+        setMarketLow(null);
+        setMarketHigh(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedJob.id]);
 
   const missingQuote = !selectedQuoteId;
   const missingManager = !selectedManagerId;
@@ -946,9 +961,9 @@ export function ApproveQuoteModal({
           ) : (
             <div className="space-y-3">
               {selectedJob.quotes.map((quote, idx) => {
-                const hasEstimate = selectedJob.ai_estimate_low && selectedJob.ai_estimate_high;
-                const light = hasEstimate
-                  ? getTrafficLight(quote.quoted_amount, selectedJob.ai_estimate_low!, selectedJob.ai_estimate_high!)
+                const hasBenchmark = marketLow != null && marketHigh != null;
+                const light = hasBenchmark
+                  ? getTrafficLight(quote.quoted_amount, marketLow, marketHigh)
                   : null;
 
                 return (
