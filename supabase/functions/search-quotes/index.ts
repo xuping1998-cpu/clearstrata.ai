@@ -12,104 +12,39 @@ const OPENAI_MODEL = "gpt-4o";
 const SEARCH_QUOTES_PROVIDER = "openai_web_search_direct";
 const NO_PRICE_NOTE = "Pricing requires formal quote";
 
-const ANALYST_PROMPT = `You are a procurement market analyst for strata property management in Greater Vancouver, BC (Vancouver, Richmond, Burnaby, and surrounding BC).
+function buildAnalystPrompt(params: {
+  category: string;
+  description: string;
+  currentPrice: string;
+}): string {
+  const { category, description, currentPrice } = params;
+  return `你是一个物业采购助手。
+请使用网络搜索（use web search），找出温哥华（Vancouver, BC）本地
+提供以下服务的真实供应商公司：
+服务类别：${category}
+服务描述：${description}
+参考现有报价：${currentPrice}
 
-Core principle: OPEN SEARCH, STRICT EVIDENCE, NO HALLUCINATION.
+搜索要求：
+1. 必须使用 web_search 工具搜索真实公司
+2. 搜索关键词示例：'${category} service company Vancouver BC strata'
+3. 找出至少 3 家真实存在的本地供应商
+4. 每家供应商必须提供真实的联系方式（官网或电话）
 
-Search openly like a general market research assistant (e.g. broad web discovery). Do NOT require an "official vendor pricing page" or "exact supplier price sheet". B2B services (elevator maintenance, fire safety, HVAC contracts, etc.) often only have pricing on third-party references — that is acceptable if the URL is real and publicly accessible.
-
-## 1. Read the uploaded PDF / image first
-
-When attached, read the full document and understand:
-- service type
-- frequency (monthly, annual, per visit, per unit, etc.)
-- scope of work
-- location / region
-- current quoted amount from the attachment (reference only — do not list that vendor unless found independently with its own evidence)
-
-## 2. Open web search (web_search_preview)
-
-Search the Greater Vancouver market broadly for up to 3 truly comparable suppliers for the SAME (or closest commercial equivalent) service.
-
-Allowed price evidence sources (any publicly verifiable URL):
-- supplier website pricing or service pages
-- published quote examples or case studies
-- industry public reference pricing
-- government / property / strata procurement or tender award examples
-- commercial service price catalogs
-- third-party commercial pricing references
-- publicly accessible market pricing articles or comparison pages
-
-price_source_url does NOT need to be the supplier's own website. A third-party page is valid if it publicly documents a defensible range for comparable work in BC.
-
-Forbidden source types: invented URLs, paywalled content you cannot cite, or guessed "typical market" numbers with no page to point to.
-
-## 3. Each vendor in vendors[] (only if priced)
-
-Include a vendor ONLY if you can support price_low and price_high with a non-empty price_source_url.
-
-For each included vendor provide:
-company_name, phone, website, address, description_en, description_zh,
-price_low, price_high, price_currency ("CAD" unless source says otherwise),
-price_unit (e.g. per month, per visit, per elevator, project total),
-price_source_url (any valid public http/https URL),
-price_confidence (high | medium | low),
-price_evidence_note — MUST explain:
-  (a) where the price came from,
-  (b) why it is usable for comparing this service,
-  (c) whether it is a direct quote, industry reference, procurement/tender case, or general market reference.
-
-## 4. Count and quality rules
-
-- Return at most 3 vendors. Prefer true comparability over generic directories.
-- If you only find 1 or 2 vendors with defensible public pricing, return 1 or 2 — do NOT pad to 3.
-- If a candidate has NO public price basis, omit them entirely — do not list them with null prices.
-- NEVER invent prices. No hallucinated ranges, no unstated assumptions.
-
-Return ONLY JSON (no markdown, no code fences, no commentary):
-
+返回格式（严格JSON，不要有其他文字）：
 {
   "vendors": [
     {
-      "company_name": "",
-      "phone": "",
-      "website": "",
-      "address": "",
-      "description_en": "",
-      "description_zh": "",
-      "price_low": 0,
-      "price_high": 0,
-      "price_currency": "CAD",
-      "price_unit": "",
-      "price_source_url": "",
-      "price_confidence": "high|medium|low",
-      "price_evidence_note": ""
-    }
-  ]
-}
-
-description_zh must be Simplified Chinese.
-
-请严格以 JSON 格式返回，不要有任何其他文字：
-{
-  "vendors": [
-    {
-      "company_name": "...",
-      "phone": "...",
-      "website": "...",
-      "address": "...",
-      "description_en": "...",
-      "description_zh": "...",
-      "price_low": 0,
-      "price_high": 0,
-      "price_currency": "CAD",
-      "price_unit": "...",
-      "price_source_url": "...",
-      "price_confidence": "high|medium|low",
-      "price_evidence_note": "..."
+      "name": "公司名称",
+      "matchReason": "服务匹配说明",
+      "priceRange": "参考报价（不含税，如 CAD $620-$730/month）",
+      "priceWithTax": "含税总价（如 CAD $670-$790/month，含 5% GST）",
+      "contact": "官网或电话",
+      "advantage": "主要优势（1-2句）"
     }
   ]
 }`;
+}
 
 const WEB_SEARCH_TOOL = {
   type: "web_search_preview",
@@ -126,6 +61,9 @@ interface SearchRequest {
   job_id?: string;
   title: string;
   description: string;
+  category?: string;
+  current_price?: string;
+  currentPrice?: string;
   attachment_urls?: string[];
 }
 
@@ -256,35 +194,26 @@ function logAttachmentContentParts(attachments: FetchedAttachment[]): void {
   console.log("SEARCH_QUOTES_ATTACHMENT_PARTS", parts);
 }
 
-function buildJobContextBlock(params: {
-  property_id: string;
-  job_id: string;
-  title: string;
-  description: string;
-  category?: string;
-}): string {
-  const lines = [
-    "",
-    "Job context:",
-    `property_id: ${params.property_id || "(not provided)"}`,
-    `job_id: ${params.job_id || "(not provided)"}`,
-    `title: ${params.title}`,
-    `description: ${params.description}`,
-  ];
-  if (params.category) lines.push(`category: ${params.category}`);
-  return lines.join("\n");
+function resolveCurrentPrice(description: string, explicit?: string): string {
+  const fromBody = strField(explicit);
+  if (fromBody) return fromBody;
+  const refMatch = description.match(/Reference:\s*([^.]+(?:\.[^.]+)?)/i);
+  if (refMatch?.[1]?.trim()) return refMatch[1].trim();
+  return "(未提供)";
 }
 
 function buildResponsesInput(params: {
-  property_id: string;
-  job_id: string;
   title: string;
   description: string;
-  category?: string;
+  category: string;
+  currentPrice: string;
   attachments: FetchedAttachment[];
 }): string | Array<Record<string, unknown>> {
-  const contextBlock = buildJobContextBlock(params);
-  const promptText = `${ANALYST_PROMPT}${contextBlock}`;
+  const promptText = buildAnalystPrompt({
+    category: params.category,
+    description: params.description,
+    currentPrice: params.currentPrice,
+  });
 
   if (params.attachments.length === 0) {
     return promptText;
@@ -524,7 +453,11 @@ Deno.serve(async (req: Request) => {
     const description = strField(body.description);
     const property_id = strField(body.property_id);
     const job_id = strField(body.job_id);
-    const category = strField(body.category);
+    const category = strField(body.category) || title;
+    const currentPrice = resolveCurrentPrice(
+      description,
+      body.current_price ?? body.currentPrice,
+    );
 
     const attachmentUrls = Array.isArray(body.attachment_urls)
       ? body.attachment_urls.filter((u): u is string => typeof u === "string" && u.trim().length > 0)
@@ -547,11 +480,10 @@ Deno.serve(async (req: Request) => {
     }
 
     const input = buildResponsesInput({
-      property_id,
-      job_id,
       title,
       description,
-      category: category || undefined,
+      category,
+      currentPrice,
       attachments,
     });
 
@@ -560,6 +492,8 @@ Deno.serve(async (req: Request) => {
       property_id,
       job_id,
       title,
+      category,
+      currentPrice,
       attachmentCount: attachments.length,
       attachmentUrls: attachmentUrls.length,
       model: OPENAI_MODEL,
