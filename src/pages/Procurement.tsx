@@ -118,6 +118,8 @@ export function Procurement() {
 
   const [modal, setModal] = useState<string | null>(null);
   const [selectedJob, setSelectedJob] = useState<ProcurementJob | null>(null);
+  const [focusJobId, setFocusJobId] = useState<string | null>(null);
+  const jobCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const l = language === 'en';
   /** 业委会 / 物业管理员 / 系统管理员：审批、验收、删除等 */
