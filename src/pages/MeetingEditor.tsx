@@ -417,7 +417,10 @@ export function MeetingEditor() {
   const agendaCount = useMemo(() => agendaItems.filter(agendaHasMeaningfulContent).length, [agendaItems]);
 
   const meetingKindUi = inferMeetingKindUi(form);
-  const ownerSgmRemoteEditor = meetingKindUi === 'owner_sgm_remote';
+  /** Staff may manually add election agendas on remote written SGM/AGM (not auto-created). */
+  const canAddElectionAgenda =
+    isWrittenRemoteUi(form.meeting_format_ui) &&
+    (form.meeting_type === 'sgm' || form.meeting_type === 'agm');
 
   const staffMayEditMeetings = canManagePropertyMeetings(roleInProperty);
 
@@ -1214,7 +1217,7 @@ export function MeetingEditor() {
                         >
                           <option value="normal">{t('meeting_agenda_type_normal')}</option>
                           <option value="resolution">{t('meeting_agenda_type_resolution')}</option>
-                          {(row.isNew && ownerSgmRemoteEditor) || (!row.isNew && row.kind === 'election') ? (
+                          {(row.isNew && canAddElectionAgenda) || (!row.isNew && row.kind === 'election') ? (
                             <option value="election">{t('meeting_agenda_type_election')}</option>
                           ) : null}
                         </select>
