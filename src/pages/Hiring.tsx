@@ -4,6 +4,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useProperty } from '../contexts/PropertyContext';
 import { supabase } from '../lib/supabase';
+import { fetchPropertyManagersForProperty } from '../lib/fetchPropertyManagersForProperty';
 import { BackButton } from '../components/BackButton';
 
 interface HiringJob {
@@ -248,11 +249,7 @@ export function Hiring() {
 
   const loadPropertyManagers = async () => {
     if (!currentPropertyId) return;
-    const { data, error } = await supabase
-      .from('property_managers')
-      .select('*')
-      .eq('property_id', currentPropertyId)
-      .order('created_at', { ascending: false });
+    const { data, error } = await fetchPropertyManagersForProperty(currentPropertyId);
 
     if (error) {
       console.error('Error loading property managers:', error);

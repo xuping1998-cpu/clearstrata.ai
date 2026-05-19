@@ -13,6 +13,7 @@ import { AiPricingPanel, getTrafficLight, TrafficLightBadge } from './procuremen
 import { computeMarketBenchmark, fetchVendorSearchResults } from '../lib/procurement/vendorMarketBenchmark';
 import { VendorSearchPanel } from './procurement/VendorSearchPanel';
 import { getCategoryLabel } from './procurement/VendorRegistry';
+import { fetchPropertyManagersForProperty } from '../lib/fetchPropertyManagersForProperty';
 import { StatusBadge, type StatusTone } from '@/components/status';
 
 interface ProcurementJob {
@@ -179,13 +180,12 @@ export function Procurement() {
       setPropertyManagers([]);
       return;
     }
-    const { data } = await supabase
-      .from('property_managers')
-      .select('*')
-      .eq('property_id', currentPropertyId)
-      .eq('status', 'active')
-      .order('full_name_en');
-    setPropertyManagers(data || []);
+    const { data, error } = await fetchPropertyManagersForProperty(currentPropertyId);
+    if (error) {
+      setPropertyManagers([]);
+      return;
+    }
+    setPropertyManagers(data);
   };
 
   const markCompleted = async (jobId: string) => {

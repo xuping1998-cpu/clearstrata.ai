@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { X, Plus, AlertCircle, Camera, Send, Mail, Phone, CheckCircle, XCircle, Image as ImageIcon, Search, Globe, Loader2, ExternalLink, FileText } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useProperty } from '../../contexts/PropertyContext';
@@ -10,14 +10,19 @@ import {
 } from '../../components/PhotoUpload';
 import { InvoiceUpload } from '../../components/InvoiceUpload';
 import { VendorRating } from '../../components/VendorRating';
-import { fetchUrlAsInvoiceFile } from '../../lib/invoiceOcrClient';
+import type { ProcurementQuoteAnalysis } from '../../lib/procurement/analyzeProcurementQuotePdf';
+import { callSearchQuotes } from '../../lib/procurement/callSearchQuotes';
+import {
+  formatVendorPriceExclGst,
+  formatVendorPriceInclGst,
+} from '../../lib/procurement/formatVendorPriceDisplay';
+import {
+  analyzeQuoteAttachment,
+  applyAnalysisToJobFields,
+  createJobAndSearchAfterAnalysis,
+} from '../../lib/procurement/newJobPdfAutoFlow';
 import { saveVendorSearchResults } from '../../lib/procurement/saveVendorSearchResults';
 import { computeMarketBenchmark, fetchVendorSearchResults } from '../../lib/procurement/vendorMarketBenchmark';
-import {
-  buildProcurementDescriptionFromParsedQuote,
-  mergeProcurementDescriptionsWithOcr,
-  parseProcurementQuoteAttachment,
-} from '../../lib/procurement/parseProcurementQuoteAttachment';
 import { getTrafficLight, TrafficLightBadge } from './AiPricingPanel';
 import { SERVICE_CATEGORIES } from './VendorRegistry';
 
@@ -138,7 +143,9 @@ export function NewJobModal({
   const [error, setError] = useState('');
   const [requestPhotos, setRequestPhotos] = useState<string[]>([]);
   const [requestAttachmentNames, setRequestAttachmentNames] = useState<string[]>([]);
-  const [step, setStep] = useState<'form' | 'searching' | 'select_vendors' | 'sending'>('form');
+  const [step, setStep] = useState<'form' | 'analyzing' | 'searching' | 'select_vendors' | 'sending'>('form');
+  const [pdfAnalysis, setPdfAnalysis] = useState<ProcurementQuoteAnalysis | null>(null);
+  const pipelineUrlRef = useRef<string | null>(null);
   const [searchedVendors, setSearchedVendors] = useState<SearchedVendor[]>([]);
   const [selectedVendorIdxs, setSelectedVendorIdxs] = useState<Set<number>>(new Set());
   const [createdJobId, setCreatedJobId] = useState<string | null>(null);
@@ -174,6 +181,42 @@ export function NewJobModal({
   const handleQuoteAttachmentsChange = (items: AttachmentItem[]) => {
     setRequestPhotos(items.map((a) => a.url));
     setRequestAttachmentNames(items.map((a) => a.name));
+    const first = items[0];
+    if (first && newJob.job_type === 'procurement' && profile && currentPropertyId) {
+      void startPdfAutoFlow(first.url, first.name);
+    }
+  };
+
+  const startPdfAutoFlow = async (attachmentUrl: string, attachmentName: string) => {
+    if (!profile || !currentPropertyId) return;
+    if (pipelineUrlRef.current === attachmentUrl) return;
+    pipelineUrlRef.current = attachmentUrl;
+    setError('');
+    setStep('analyzing');
+    try {
+      const analysis = await analyzeQuoteAttachment(attachmentUrl, attachmentName);
+      setPdfAnalysis(analysis);
+      setNewJob((prev) => ({ ...prev, ...applyAnalysisToJobFields(analysis) }));
+      setStep('searching');
+      const result = await createJobAndSearchAfterAnalysis({
+        propertyId: currentPropertyId,
+        profileId: profile.id,
+        attachmentUrl,
+        analysis,
+        linkedTaskId,
+        priority: newJob.priority,
+        unitNumber: newJob.unit_number,
+      });
+      setCreatedJobId(result.jobId);
+      setSearchedVendors(result.vendors);
+      setSearchCount(result.searchCount);
+      setSelectedVendorIdxs(new Set(result.vendors.map((_, i) => i)));
+      setStep('select_vendors');
+    } catch (err) {
+      pipelineUrlRef.current = null;
+      setError(err instanceof Error ? err.message : l ? 'PDF flow failed' : 'PDF 流程失败');
+      setStep('form');
+    }
   };
 
   const createJobAndSearch = async () => {
@@ -214,6 +257,15 @@ export function NewJobModal({
       return;
     }
 
+    if (isProcurement && hasAttachments && requestPhotos[0]) {
+      if (createdJobId && pipelineUrlRef.current === requestPhotos[0]) {
+        setStep('select_vendors');
+        return;
+      }
+      await startPdfAutoFlow(requestPhotos[0], requestAttachmentNames[0] ?? 'quote.pdf');
+      return;
+    }
+
     const { titleEn: finalTitleEn, titleZh: finalTitleZh } = resolveProcurementSubmitTitles(
       newJob.title_en,
       newJob.title_zh,
@@ -241,9 +293,12 @@ export function NewJobModal({
         status: 'collecting_quotes',
         job_type: newJob.job_type,
         priority: newJob.priority,
-        category: newJob.category,
+        category: pdfAnalysis?.category || newJob.category,
         unit_number: newJob.unit_number,
         task_id: linkedTaskId.trim() || null,
+        parsed_quote_json: pdfAnalysis
+          ? ({ analysis_source: 'analyze-procurement-quote', ...pdfAnalysis } as Record<string, unknown>)
+          : undefined,
       }).select().single();
 
       if (insertError) {
@@ -254,101 +309,29 @@ export function NewJobModal({
       if (!data) return;
 
       console.log('NEW_JOB_CREATED', { jobId: data.id });
-
-      let searchTitle = finalTitleZh || finalTitleEn;
-      let searchDescription = finalDescriptionZh || finalDescriptionEn;
-      if (isProcurement && hasAttachments && requestPhotos[0]) {
-        console.log('NEW_JOB_OCR_START', { attachmentUrl: requestPhotos[0] });
-        try {
-          const file = await fetchUrlAsInvoiceFile(
-            requestPhotos[0],
-            requestAttachmentNames[0] ?? 'quote-attachment.pdf',
-          );
-          // TODO: support multiple parsed quote attachments — Phase 1 uses first attachment only.
-          const parsed = await parseProcurementQuoteAttachment(file, l);
-          const ocrSummaries = buildProcurementDescriptionFromParsedQuote(parsed);
-          const merged = mergeProcurementDescriptionsWithOcr({
-            baseDescriptionEn: finalDescriptionEn,
-            baseDescriptionZh: finalDescriptionZh,
-            ocrSummaryEn: ocrSummaries.description_en,
-            ocrSummaryZh: ocrSummaries.description_zh,
-            userEnteredDescription: hasDescription,
-          });
-
-          const parsedBudget =
-            parsed.total_amount != null && parsed.total_amount > 0
-              ? parsed.total_amount
-              : newJob.estimated_budget
-                ? parseFloat(newJob.estimated_budget)
-                : 0;
-
-          const { error: ocrUpdateError } = await supabase
-            .from('procurement_jobs')
-            .update({
-              parsed_quote_json: parsed as unknown as Record<string, unknown>,
-              description_en: merged.description_en,
-              description_zh: merged.description_zh,
-              estimated_budget: parsedBudget,
-            })
-            .eq('property_id', currentPropertyId)
-            .eq('id', data.id);
-
-          if (ocrUpdateError) {
-            console.warn('[procurement] failed to save parsed_quote_json', ocrUpdateError);
-          } else {
-            searchDescription = merged.description_zh || merged.description_en;
-          }
-          console.log('NEW_JOB_OCR_DONE', { jobId: data.id, vendor: parsed.vendor_name });
-        } catch (ocrErr) {
-          console.log('NEW_JOB_SEARCH_QUOTES_ERROR', { stage: 'ocr', error: ocrErr });
-          console.warn(
-            '[procurement] quote attachment OCR failed — keeping fallback description',
-            ocrErr,
-          );
-        }
-      }
-
       setCreatedJobId(data.id);
-      setStep('searching');
 
-      console.log('NEW_JOB_BEFORE_SEARCH_QUOTES', {
-        hasAttachments,
-        requestPhotosCount: requestPhotos.length,
-      });
-
-      const searchPayload = {
-        property_id: currentPropertyId,
-        job_id: data.id,
-        title: searchTitle,
-        description: searchDescription,
-        attachment_urls: hasAttachments ? requestPhotos : undefined,
-      };
-      console.log('NEW_JOB_SEARCH_QUOTES_PAYLOAD', searchPayload);
-
-      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/search-quotes`;
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(searchPayload),
-      });
-      const result = await response.json();
-      console.log('NEW_JOB_SEARCH_QUOTES_RESPONSE', {
-        success: result.success,
-        vendorCount: result.vendors?.length ?? 0,
-        error: result.error,
-      });
-
-      if (result.success && result.vendors) {
-        setSearchedVendors(result.vendors);
-        setSearchCount(result.ai_search_count || result.vendors.length);
-        const allIdxs = new Set<number>();
-        result.vendors.forEach((_: any, idx: number) => allIdxs.add(idx));
-        setSelectedVendorIdxs(allIdxs);
+      if (isProcurement) {
+        setStep('searching');
+        const result = await callSearchQuotes({
+          property_id: currentPropertyId,
+          job_id: data.id,
+          title: finalTitleZh || finalTitleEn,
+          description: finalDescriptionZh || finalDescriptionEn,
+          attachment_urls: hasAttachments ? requestPhotos : undefined,
+        });
+        if (result.success && result.vendors) {
+          setSearchedVendors(result.vendors);
+          setSearchCount(result.ai_search_count ?? result.vendors.length);
+          setSelectedVendorIdxs(new Set(result.vendors.map((_, i) => i)));
+        } else {
+          setSearchedVendors([]);
+          setSearchCount(0);
+        }
         setStep('select_vendors');
-        console.log('NEW_JOB_OPEN_VENDOR_MODAL', { vendorCount: result.vendors.length });
       } else {
-        setStep('select_vendors');
-        console.log('NEW_JOB_OPEN_VENDOR_MODAL', { vendorCount: 0, searchFailed: true });
+        onClose();
+        onCreated();
       }
     } catch (err) {
       console.log('NEW_JOB_SEARCH_QUOTES_ERROR', { stage: 'outer', error: err });
@@ -429,6 +412,29 @@ export function NewJobModal({
     }
   };
 
+  if (step === 'analyzing') {
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+        <div className="bg-white rounded-xl p-8 max-w-md w-full text-center">
+          <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <FileText className="text-amber-600 animate-pulse" size={28} />
+          </div>
+          <h3 className="text-lg font-bold text-gray-900 mb-2">
+            {l ? 'AI is analyzing your quote PDF...' : 'AI 正在分析报价单...'}
+          </h3>
+          <p className="text-sm text-gray-500 mb-4">
+            {l ? 'Extracting service category, scope, and current price.' : '正在提取服务类别、范围与现有报价。'}
+          </p>
+          <div className="flex items-center justify-center gap-1.5">
+            <div className="w-2 h-2 bg-amber-500 rounded-full animate-bounce [animation-delay:0ms]" />
+            <div className="w-2 h-2 bg-amber-500 rounded-full animate-bounce [animation-delay:150ms]" />
+            <div className="w-2 h-2 bg-amber-500 rounded-full animate-bounce [animation-delay:300ms]" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (step === 'searching') {
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
@@ -437,10 +443,12 @@ export function NewJobModal({
             <Search className="text-blue-600 animate-pulse" size={28} />
           </div>
           <h3 className="text-lg font-bold text-gray-900 mb-2">
-            {l ? 'AI is Searching for Vendors...' : 'AI 正在搜索供应商...'}
+            {l ? 'Searching Vancouver vendors...' : '正在搜索温哥华供应商...'}
           </h3>
           <p className="text-sm text-gray-500 mb-4">
-            {l ? 'Searching web for local Vancouver/UBC area vendors matching your requirements' : '正在搜索温哥华/UBC区域符合需求的本地供应商'}
+            {l
+              ? 'Finding up to 3 comparable local suppliers with public price evidence.'
+              : '正在搜索最多 3 家具有公开价格证据的可比本地供应商。'}
           </p>
           <div className="flex items-center justify-center gap-1.5">
             <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:0ms]" />
@@ -710,6 +718,11 @@ function VendorSearchCard({
   language: string;
 }) {
   const l = language === 'en';
+  const hasPrice =
+    vendor.price_low != null && vendor.price_high != null && Boolean(vendor.price_source_url?.trim());
+  const priceExcl = hasPrice ? formatVendorPriceExclGst(vendor) : null;
+  const priceIncl = hasPrice ? formatVendorPriceInclGst(vendor) : null;
+  const matchNote = vendor.price_evidence_note || vendor.description_en;
 
   return (
     <label
@@ -751,18 +764,24 @@ function VendorSearchCard({
             )}
           </div>
 
-          <p className="text-[11px] text-sky-700/70 mb-1">
-            {vendor.price_low != null &&
-            vendor.price_high != null &&
-            vendor.price_source_url
-              ? l
-                ? 'Public price evidence found'
-                : '已找到价格证据'
-              : l
-                ? 'Supplier listing — formal quote required'
-                : '供应商资料，价格需正式询价确认'}
-          </p>
-
+          {matchNote && (
+            <p className="text-[11px] text-sky-800/80 mb-1 leading-relaxed">
+              <span className="font-medium">{l ? 'Service match: ' : '服务匹配：'}</span>
+              {matchNote}
+            </p>
+          )}
+          {priceExcl && (
+            <p className="text-xs font-medium text-emerald-800 mb-0.5">
+              {l ? 'Reference (excl. tax): ' : '参考报价（不含税）：'}
+              {priceExcl}
+            </p>
+          )}
+          {priceIncl && (
+            <p className="text-xs text-emerald-700/90 mb-1">
+              {l ? 'Incl. GST: ' : '含税总价：'}
+              {priceIncl}
+            </p>
+          )}
           <p className="text-xs text-gray-600 leading-relaxed">
             {l ? vendor.description_en : vendor.description_zh || vendor.description_en}
           </p>

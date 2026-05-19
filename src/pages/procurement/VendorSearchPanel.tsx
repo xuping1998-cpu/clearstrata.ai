@@ -2,6 +2,11 @@ import { useState, useEffect } from 'react';
 import { Globe, Phone, ExternalLink, Search, RefreshCw, Loader2, MapPin, Calendar } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useProperty } from '../../contexts/PropertyContext';
+import { callSearchQuotes } from '../../lib/procurement/callSearchQuotes';
+import {
+  formatVendorPriceExclGst,
+  formatVendorPriceInclGst,
+} from '../../lib/procurement/formatVendorPriceDisplay';
 import { saveVendorSearchResults } from '../../lib/procurement/saveVendorSearchResults';
 
 interface SearchedVendor {
@@ -44,6 +49,18 @@ function hasPublicPriceEvidence(v: {
     v.price_high != null &&
     Boolean(v.price_source_url?.trim())
   );
+}
+
+function formatVendorPriceRange(v: {
+  price_low?: number | null;
+  price_high?: number | null;
+  price_currency?: string | null;
+  price_unit?: string | null;
+}): string | null {
+  if (v.price_low == null || v.price_high == null) return null;
+  const cur = v.price_currency || 'CAD';
+  const range = `${cur} $${Number(v.price_low).toLocaleString()} – $${Number(v.price_high).toLocaleString()}`;
+  return v.price_unit ? `${range} (${v.price_unit})` : range;
 }
 
 export function VendorSearchPanel({
@@ -114,29 +131,19 @@ export function VendorSearchPanel({
         .map((p) => p.photo_url)
         .filter((u): u is string => Boolean(u));
 
-      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/search-quotes`;
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          property_id: scopedPropertyId,
-          job_id: jobId,
-          title: jobTitle,
-          description: jobDescription,
-          attachment_urls: attachmentUrls.length > 0 ? attachmentUrls : undefined,
-        }),
+      const json = await callSearchQuotes({
+        property_id: scopedPropertyId,
+        job_id: jobId,
+        title: jobTitle,
+        description: jobDescription,
+        attachment_urls: attachmentUrls.length > 0 ? attachmentUrls : undefined,
       });
-
-      const json = await response.json();
       const vendors = Array.isArray(json?.vendors) ? json.vendors : [];
 
       console.log('SEARCH_QUOTES_RAW_RESPONSE', json);
       console.log('SEARCH_QUOTES_VENDOR_COUNT', vendors.length);
 
-      if (!response.ok || json?.success === false) {
+      if (!json?.success) {
         setError(json?.error || (l ? 'Search failed' : '搜索失败'));
         return;
       }
@@ -327,6 +334,11 @@ export function VendorSearchPanel({
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1 flex-wrap">
                   <span className="font-semibold text-gray-900 text-sm">{v.company_name}</span>
+                  {hasPublicPriceEvidence(v) && formatVendorPriceRange(v) && (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                      {formatVendorPriceRange(v)}
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500 mb-1.5">
@@ -355,15 +367,18 @@ export function VendorSearchPanel({
                   )}
                 </div>
 
-                <p className="text-[11px] text-sky-700/70 mb-1.5">
-                  {hasPublicPriceEvidence(v)
-                    ? l
-                      ? 'Public price evidence found'
-                      : '已找到价格证据'
-                    : l
-                      ? 'Supplier listing — formal quote required'
-                      : '供应商资料，价格需正式询价确认'}
-                </p>
+                {hasPublicPriceEvidence(v) && formatVendorPriceExclGst(v) && (
+                  <p className="text-xs font-medium text-emerald-800 mb-0.5">
+                    {l ? 'Reference (excl. tax): ' : '参考报价（不含税）：'}
+                    {formatVendorPriceExclGst(v)}
+                  </p>
+                )}
+                {hasPublicPriceEvidence(v) && formatVendorPriceInclGst(v) && (
+                  <p className="text-xs text-emerald-700/90 mb-1.5">
+                    {l ? 'Incl. GST: ' : '含税总价：'}
+                    {formatVendorPriceInclGst(v)}
+                  </p>
+                )}
 
                 <p className="text-xs text-gray-600 leading-relaxed">
                   {l ? v.description_en : (v.description_zh || v.description_en)}
