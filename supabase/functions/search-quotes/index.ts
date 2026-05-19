@@ -238,12 +238,26 @@ function parsePricesFromRange(priceRange: string): { low: number | null; high: n
   return { low: null, high: null };
 }
 
-function inferPriceUnit(priceRange: string, priceWithTax: string): string {
-  const combined = `${priceRange} ${priceWithTax}`.toLowerCase();
-  if (/\/\s*month|per\s+month|\/mo\b|monthly/.test(combined)) return "month";
-  if (/\/\s*year|per\s+year|annual|yearly/.test(combined)) return "year";
-  if (/\/\s*visit|per\s+visit/.test(combined)) return "visit";
-  return "month";
+/** Infer billing period from priceRange text; defaults to month. Does not scale amounts. */
+function inferPriceUnitFromRange(priceRange: string): string {
+  let price_unit = "month";
+  if (!priceRange.trim()) return price_unit;
+
+  const lower = priceRange.toLowerCase();
+  if (lower.includes("/year") || lower.includes("/ year") || lower.includes("per year")) {
+    price_unit = "year";
+  } else if (
+    lower.includes("/month") ||
+    lower.includes("/ month") ||
+    lower.includes("per month") ||
+    lower.includes("/mo")
+  ) {
+    price_unit = "month";
+  } else if (lower.includes("/visit") || lower.includes("per visit")) {
+    price_unit = "visit";
+  }
+
+  return price_unit;
 }
 
 function splitContactField(contact: string): { phone: string; website: string; sourceUrl: string } {
@@ -282,11 +296,17 @@ function normalizeVendor(raw: unknown): VendorResult | null {
   const evidenceNote = strField(
     o.price_evidence_note ?? o.matchReason ?? o.match_reason,
   );
-  const priceUnit =
-    strField(o.price_unit) ||
-    (priceRangeDisplay || priceWithTaxDisplay
-      ? inferPriceUnit(priceRangeDisplay, priceWithTaxDisplay)
-      : "");
+
+  // Prefer explicit unit in priceRange; do not scale price_low/price_high (no ×12).
+  let priceUnit = "month";
+  if (priceRangeDisplay) {
+    priceUnit = inferPriceUnitFromRange(priceRangeDisplay);
+  } else if (priceWithTaxDisplay) {
+    priceUnit = inferPriceUnitFromRange(priceWithTaxDisplay);
+  } else {
+    const fromApi = strField(o.price_unit);
+    if (fromApi) priceUnit = fromApi;
+  }
 
   return {
     company_name,
@@ -299,7 +319,7 @@ function normalizeVendor(raw: unknown): VendorResult | null {
     price_low: priceLow,
     price_high: priceHigh,
     price_currency: strField(o.price_currency) || "CAD",
-    price_unit: priceUnit || "month",
+    price_unit: priceUnit,
     price_source_url: sourceUrl,
     price_confidence: strField(o.price_confidence),
     price_evidence_note: evidenceNote,
