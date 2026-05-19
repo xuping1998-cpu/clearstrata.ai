@@ -1,10 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { TrendingUp, Loader2, RefreshCw, ExternalLink } from 'lucide-react';
+import { TrendingUp, Loader2, RefreshCw } from 'lucide-react';
 import {
   computeMarketBenchmark,
   fetchVendorSearchResults,
-  hasValidPriceEvidence,
-  type VendorEvidenceRow,
 } from '../../lib/procurement/vendorMarketBenchmark';
 
 interface AiPricingPanelProps {
@@ -69,21 +67,14 @@ export function TrafficLightBadge({
   );
 }
 
-function formatVendorRange(v: VendorEvidenceRow): string {
-  const cur = v.price_currency || 'CAD';
-  return `${cur} $${Number(v.price_low).toLocaleString()} – $${Number(v.price_high).toLocaleString()}`;
-}
-
 export function AiPricingPanel({ jobId, language }: AiPricingPanelProps) {
   const l = language === 'en';
   const [loading, setLoading] = useState(true);
-  const [vendors, setVendors] = useState<VendorEvidenceRow[]>([]);
   const [benchmark, setBenchmark] = useState<ReturnType<typeof computeMarketBenchmark>>({ case: 'none' });
 
   const loadEvidence = useCallback(async () => {
     setLoading(true);
     const rows = await fetchVendorSearchResults(jobId);
-    setVendors(rows);
     setBenchmark(computeMarketBenchmark(rows));
     setLoading(false);
   }, [jobId]);
@@ -188,53 +179,15 @@ export function AiPricingPanel({ jobId, language }: AiPricingPanelProps) {
         </button>
       </div>
 
-      <div className="flex items-baseline gap-2 mb-1">
-        <span className="text-2xl font-bold text-blue-700">
-          CAD ${benchmark.marketLow.toLocaleString()}
-        </span>
-        <span className="text-gray-500 text-lg">–</span>
-        <span className="text-2xl font-bold text-blue-700">
-          ${benchmark.marketHigh.toLocaleString()}
-        </span>
-      </div>
-
-      <p className="text-xs text-blue-800/70 mb-3">
-        {l
-          ? `Based on ${pricedCount} public comparable supplier quote(s) with verifiable source URLs.`
-          : `基于 ${pricedCount} 家具有公开来源 URL 的可比供应商报价。`}
+      <p className="text-2xl font-bold text-blue-700 mb-1">
+        CAD ${benchmark.marketLow.toLocaleString()} – ${benchmark.marketHigh.toLocaleString()} / month
       </p>
 
-      <ul className="space-y-2">
-        {benchmark.pricedVendors.map((v) => (
-          <li
-            key={v.id ?? v.company_name}
-            className="bg-white/80 rounded-md px-3 py-2 border border-blue-200/50 text-xs"
-          >
-            <div className="font-medium text-gray-900">{v.company_name}</div>
-            <div className="text-blue-800 mt-0.5">{formatVendorRange(v)}</div>
-            {v.price_unit && <div className="text-gray-500">{v.price_unit}</div>}
-            {v.price_source_url && (
-              <a
-                href={v.price_source_url.startsWith('http') ? v.price_source_url : `https://${v.price_source_url}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-blue-600 hover:underline mt-1"
-              >
-                <ExternalLink size={11} />
-                {l ? 'Source' : '来源'}
-              </a>
-            )}
-          </li>
-        ))}
-      </ul>
-
-      {vendors.some((v) => !hasValidPriceEvidence(v)) && (
-        <p className="text-[11px] text-blue-700/60 mt-2">
-          {l
-            ? 'Other comparable suppliers on file have no public price evidence (formal RFQ required).'
-            : '其余可比供应商暂无公开价格证据，需正式询价。'}
-        </p>
-      )}
+      <p className="text-xs text-blue-800/70">
+        {l
+          ? `Based on ${pricedCount} supplier market reference quote(s).`
+          : `基于 ${pricedCount} 家供应商的市场参考报价`}
+      </p>
     </div>
   );
 }
