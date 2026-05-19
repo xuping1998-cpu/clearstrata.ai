@@ -88,7 +88,28 @@ Return ONLY JSON (no markdown, no code fences, no commentary):
   ]
 }
 
-description_zh must be Simplified Chinese.`;
+description_zh must be Simplified Chinese.
+
+请严格以 JSON 格式返回，不要有任何其他文字：
+{
+  "vendors": [
+    {
+      "company_name": "...",
+      "phone": "...",
+      "website": "...",
+      "address": "...",
+      "description_en": "...",
+      "description_zh": "...",
+      "price_low": 0,
+      "price_high": 0,
+      "price_currency": "CAD",
+      "price_unit": "...",
+      "price_source_url": "...",
+      "price_confidence": "high|medium|low",
+      "price_evidence_note": "..."
+    }
+  ]
+}`;
 
 const WEB_SEARCH_TOOL = {
   type: "web_search_preview",
@@ -308,13 +329,13 @@ function stripMarkdownFences(text: string): string {
 function normalizeVendor(raw: unknown): VendorResult | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
-  const company_name = String(o.company_name ?? "").trim();
+  const company_name = String(o.company_name ?? o.name ?? "").trim();
   if (!company_name) return null;
 
   const sourceUrl = strField(o.price_source_url);
   let priceLow = numOrNull(o.price_low);
   let priceHigh = numOrNull(o.price_high);
-  let evidenceNote = strField(o.price_evidence_note);
+  let evidenceNote = strField(o.price_evidence_note ?? o.matchReason);
   let confidence = strField(o.price_confidence);
 
   // Any non-empty public URL is acceptable — not required to be the vendor's official site.
@@ -327,10 +348,10 @@ function normalizeVendor(raw: unknown): VendorResult | null {
 
   return {
     company_name,
-    phone: strField(o.phone),
+    phone: strField(o.phone ?? o.contact),
     website: strField(o.website),
     address: strField(o.address),
-    description_en: strField(o.description_en),
+    description_en: strField(o.description_en ?? o.advantage),
     description_zh: strField(o.description_zh),
     price_reference: "",
     price_low: priceLow,
@@ -360,36 +381,23 @@ function normalizeVendors(list: unknown[]): VendorResult[] {
   return out;
 }
 
-/** Diagnostics only — same JSON extraction paths as parseVendorsFromText, without normalization. */
-function extractParsedJsonForDiagnostics(responseText: string): unknown {
-  const unfenced = stripMarkdownFences(responseText);
+function extractJsonBlock(text: string): string | null {
+  const unfenced = stripMarkdownFences(text);
   if (!unfenced) return null;
+  return unfenced.match(/\{[\s\S]*\}/)?.[0] ?? null;
+}
 
+/** Diagnostics only — same JSON extraction as parseVendorsFromText, without normalization. */
+function extractParsedJsonForDiagnostics(responseText: string): unknown {
+  const jsonBlock = extractJsonBlock(responseText);
+  if (!jsonBlock) {
+    return { _diagnostic: "json_block_not_found", preview: responseText.slice(0, 1200) };
+  }
   try {
-    return JSON.parse(unfenced);
+    return JSON.parse(jsonBlock);
   } catch {
-    /* try regex fallbacks below */
+    return { _diagnostic: "json_parse_failed", preview: jsonBlock.slice(0, 1200) };
   }
-
-  const objectMatch = unfenced.match(/\{[\s\S]*"vendors"\s*:\s*\[[\s\S]*?\]\s*[\s\S]*?\}/);
-  if (objectMatch) {
-    try {
-      return JSON.parse(objectMatch[0]);
-    } catch {
-      /* continue */
-    }
-  }
-
-  const arrayMatch = unfenced.match(/\[[\s\S]*\]/);
-  if (arrayMatch) {
-    try {
-      return JSON.parse(arrayMatch[0]);
-    } catch {
-      /* continue */
-    }
-  }
-
-  return { _diagnostic: "json_parse_failed", preview: unfenced.slice(0, 1200) };
 }
 
 function rawVendorArrayFromParsed(parsed: unknown): unknown[] {
@@ -402,41 +410,28 @@ function rawVendorArrayFromParsed(parsed: unknown): unknown[] {
 }
 
 function parseVendorsFromText(responseText: string): VendorResult[] {
-  const unfenced = stripMarkdownFences(responseText);
-  if (!unfenced) return [];
+  const jsonBlock = extractJsonBlock(responseText);
+  if (!jsonBlock) {
+    console.error("SEARCH_QUOTES_PARSE_ERROR", {
+      preview: responseText.slice(0, 1200),
+    });
+    return [];
+  }
 
-  const tryParse = (raw: string): VendorResult[] | null => {
-    try {
-      const parsed = JSON.parse(raw) as unknown;
-      if (Array.isArray(parsed)) return normalizeVendors(parsed);
-      if (parsed && typeof parsed === "object") {
-        const vendors = (parsed as Record<string, unknown>).vendors;
-        if (Array.isArray(vendors)) return normalizeVendors(vendors);
-      }
-    } catch {
-      return null;
+  try {
+    const parsed = JSON.parse(jsonBlock) as unknown;
+    if (Array.isArray(parsed)) return normalizeVendors(parsed);
+    if (parsed && typeof parsed === "object") {
+      const vendors = (parsed as Record<string, unknown>).vendors;
+      if (Array.isArray(vendors)) return normalizeVendors(vendors);
     }
-    return null;
-  };
-
-  const direct = tryParse(unfenced);
-  if (direct && direct.length > 0) return direct;
-
-  const objectMatch = unfenced.match(/\{[\s\S]*"vendors"\s*:\s*\[[\s\S]*?\]\s*[\s\S]*?\}/);
-  if (objectMatch) {
-    const fromObj = tryParse(objectMatch[0]);
-    if (fromObj && fromObj.length > 0) return fromObj;
+  } catch (e) {
+    console.error("SEARCH_QUOTES_PARSE_ERROR", {
+      error: e instanceof Error ? e.message : String(e),
+      preview: jsonBlock.slice(0, 1200),
+    });
   }
 
-  const arrayMatch = unfenced.match(/\[[\s\S]*\]/);
-  if (arrayMatch) {
-    const fromArr = tryParse(arrayMatch[0]);
-    if (fromArr && fromArr.length > 0) return fromArr;
-  }
-
-  console.error("SEARCH_QUOTES_PARSE_ERROR", {
-    preview: unfenced.slice(0, 1200),
-  });
   return [];
 }
 
@@ -470,7 +465,6 @@ function extractResponsesOutputText(data: Record<string, unknown>): string {
 async function callOpenAIResponses(params: {
   apiKey: string;
   input: string | Array<Record<string, unknown>>;
-  useJsonFormat: boolean;
 }): Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; status: number; detail: string }> {
   const body: Record<string, unknown> = {
     model: OPENAI_MODEL,
@@ -480,9 +474,7 @@ async function callOpenAIResponses(params: {
     max_output_tokens: 8192,
   };
 
-  if (params.useJsonFormat) {
-    body.text = { format: { type: "json_object" } };
-  }
+  console.log("SEARCH_QUOTES_REQUEST_MODE", { web_search: true, json_mode: false });
 
   const res = await fetch(OPENAI_RESPONSES_URL, {
     method: "POST",
@@ -574,20 +566,10 @@ Deno.serve(async (req: Request) => {
       multimodal: attachments.length > 0,
     });
 
-    let apiResult = await callOpenAIResponses({
+    const apiResult = await callOpenAIResponses({
       apiKey: openaiApiKey,
       input,
-      useJsonFormat: true,
     });
-
-    if (!apiResult.ok && apiResult.status === 400) {
-      console.warn("SEARCH_QUOTES_JSON_FORMAT_RETRY", apiResult.detail);
-      apiResult = await callOpenAIResponses({
-        apiKey: openaiApiKey,
-        input,
-        useJsonFormat: false,
-      });
-    }
 
     if (!apiResult.ok) {
       console.error("OpenAI Responses API error:", apiResult.detail);
