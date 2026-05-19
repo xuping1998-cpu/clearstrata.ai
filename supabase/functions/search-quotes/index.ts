@@ -56,6 +56,8 @@ interface VendorResult {
   price_source_url: string;
   price_confidence: string;
   price_evidence_note: string;
+  price_range_display?: string;
+  price_with_tax_display?: string;
 }
 
 type FetchedAttachment = {
@@ -227,57 +229,90 @@ function stripMarkdownFences(text: string): string {
     .trim();
 }
 
+function parsePricesFromRange(priceRange: string): { low: number | null; high: number | null } {
+  const nums = priceRange.match(/\d[\d,]*/g);
+  if (!nums || nums.length === 0) return { low: null, high: null };
+  const parsed = nums.map((n) => parseFloat(n.replace(/,/g, ""))).filter(Number.isFinite);
+  if (parsed.length >= 2) return { low: parsed[0]!, high: parsed[1]! };
+  if (parsed.length === 1) return { low: parsed[0]!, high: parsed[0]! };
+  return { low: null, high: null };
+}
+
+function inferPriceUnit(priceRange: string, priceWithTax: string): string {
+  const combined = `${priceRange} ${priceWithTax}`.toLowerCase();
+  if (/\/\s*month|per\s+month|\/mo\b|monthly/.test(combined)) return "month";
+  if (/\/\s*year|per\s+year|annual|yearly/.test(combined)) return "year";
+  if (/\/\s*visit|per\s+visit/.test(combined)) return "visit";
+  return "month";
+}
+
+function splitContactField(contact: string): { phone: string; website: string; sourceUrl: string } {
+  const trimmed = contact.trim();
+  if (!trimmed) return { phone: "", website: "", sourceUrl: "" };
+  if (/^https?:\/\//i.test(trimmed)) {
+    return { phone: "", website: trimmed, sourceUrl: trimmed };
+  }
+  if (/^[\d\s()+-]+$/.test(trimmed) && trimmed.replace(/\D/g, "").length >= 7) {
+    return { phone: trimmed, website: "", sourceUrl: trimmed };
+  }
+  return { phone: trimmed, website: "", sourceUrl: trimmed };
+}
+
 function normalizeVendor(raw: unknown): VendorResult | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
-  const company_name = String(o.company_name ?? o.name ?? "").trim();
+  const company_name = strField(o.company_name ?? o.name);
   if (!company_name) return null;
 
-  const sourceUrl = strField(o.price_source_url);
+  const priceRangeDisplay = strField(o.priceRange ?? o.price_range_display);
+  const priceWithTaxDisplay = strField(o.priceWithTax ?? o.price_with_tax_display);
+  const contactRaw = strField(o.contact ?? o.phone);
+  const contactParts = splitContactField(contactRaw);
+
   let priceLow = numOrNull(o.price_low);
   let priceHigh = numOrNull(o.price_high);
-  let evidenceNote = strField(o.price_evidence_note ?? o.matchReason);
-  let confidence = strField(o.price_confidence);
 
-  // Any non-empty public URL is acceptable — not required to be the vendor's official site.
-  if ((priceLow != null || priceHigh != null) && !sourceUrl) {
-    priceLow = null;
-    priceHigh = null;
-    evidenceNote = NO_PRICE_NOTE;
-    confidence = "";
+  if (priceLow == null && priceHigh == null && priceRangeDisplay) {
+    const fromRange = parsePricesFromRange(priceRangeDisplay);
+    priceLow = fromRange.low;
+    priceHigh = fromRange.high;
   }
+
+  const sourceUrl = strField(o.price_source_url) || contactParts.sourceUrl;
+  const evidenceNote = strField(
+    o.price_evidence_note ?? o.matchReason ?? o.match_reason,
+  );
+  const priceUnit =
+    strField(o.price_unit) ||
+    (priceRangeDisplay || priceWithTaxDisplay
+      ? inferPriceUnit(priceRangeDisplay, priceWithTaxDisplay)
+      : "");
 
   return {
     company_name,
-    phone: strField(o.phone ?? o.contact),
-    website: strField(o.website),
+    phone: strField(o.phone) || contactParts.phone,
+    website: strField(o.website) || contactParts.website,
     address: strField(o.address),
     description_en: strField(o.description_en ?? o.advantage),
     description_zh: strField(o.description_zh),
-    price_reference: "",
+    price_reference: priceRangeDisplay || priceWithTaxDisplay,
     price_low: priceLow,
     price_high: priceHigh,
     price_currency: strField(o.price_currency) || "CAD",
-    price_unit: strField(o.price_unit),
+    price_unit: priceUnit || "month",
     price_source_url: sourceUrl,
-    price_confidence: confidence,
+    price_confidence: strField(o.price_confidence),
     price_evidence_note: evidenceNote,
+    price_range_display: priceRangeDisplay || undefined,
+    price_with_tax_display: priceWithTaxDisplay || undefined,
   };
-}
-
-function hasRetainedPriceEvidence(v: VendorResult): boolean {
-  return (
-    v.price_low != null &&
-    v.price_high != null &&
-    Boolean(v.price_source_url.trim())
-  );
 }
 
 function normalizeVendors(list: unknown[]): VendorResult[] {
   const out: VendorResult[] = [];
   for (const item of list) {
     const v = normalizeVendor(item);
-    if (v && hasRetainedPriceEvidence(v)) out.push(v);
+    if (v) out.push(v);
   }
   return out;
 }
