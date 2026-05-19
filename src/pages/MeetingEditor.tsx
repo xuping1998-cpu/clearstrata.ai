@@ -285,10 +285,32 @@ function agendaHasMeaningfulContent(r: MeetingEditorAgendaRow): boolean {
   return false;
 }
 
-function descriptionZhForPersist(r: MeetingEditorAgendaRow): string | null {
-  if (r.kind === 'election') return r.description_zh ?? null;
-  const peeled = extractElectionAgendaMeta(r.description_zh ?? '').cleanDescriptionZh?.trim();
-  return peeled ? peeled : null;
+function descriptionZhForPersist(
+  r: MeetingEditorAgendaRow,
+  scheduledIso: string | null,
+  useV3ElectionCanon: boolean,
+): string | null {
+  if (r.kind !== 'election') {
+    const peeled = extractElectionAgendaMeta(r.description_zh ?? '').cleanDescriptionZh?.trim();
+    return peeled ? peeled : null;
+  }
+
+  const pair = editorNominationPairFromScheduled(scheduledIso, useV3ElectionCanon);
+  if (!pair) return r.description_zh ?? null;
+
+  const existing = extractElectionAgendaMeta(r.description_zh ?? '').meta;
+
+  const nextMeta = {
+    ...defaultElectionMeta({
+      nomination_opens_at: pair.opens,
+      nomination_closes_at: pair.closes,
+    }),
+    ...(existing ?? {}),
+    nomination_opens_at: pair.opens,
+    nomination_closes_at: pair.closes,
+  };
+
+  return embedElectionAgendaMeta(r.description_zh ?? '', nextMeta);
 }
 
 async function persistMeetingAgendaDrafts(options: {
@@ -316,7 +338,7 @@ async function persistMeetingAgendaDrafts(options: {
     const sortOrder = i + 1;
     const requiresVote = r.kind === 'resolution';
     const voteRule = requiresVote ? r.vote_rule : null;
-    const descZh = descriptionZhForPersist(r);
+    const descZh = descriptionZhForPersist(r, scheduledIso, useV3ElectionCanon);
     const descEn = r.description_en ?? null;
     if (r.serverId) {
       const { error } = await updateMeetingAgendaItem({
