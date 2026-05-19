@@ -222,18 +222,6 @@ export function Procurement() {
 
   const deleteJob = async (jobId: string) => {
     if (!currentPropertyId) return;
-    const { error: auditError } = await supabase
-      .from('procurement_audit_log')
-      .insert({
-        property_id: currentPropertyId!,
-        job_id: jobId,
-        action: 'DELETE',
-        performed_by: profile?.id,
-      });
-    if (auditError) {
-      alert(l ? `Failed to write audit log: ${auditError.message}` : `写入审计日志失败：${auditError.message}`);
-      return;
-    }
 
     const { error } = await supabase
       .from('procurement_jobs')
