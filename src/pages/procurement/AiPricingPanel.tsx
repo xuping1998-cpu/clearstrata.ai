@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { TrendingUp, Loader2, RefreshCw } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 import {
   computeMarketBenchmark,
   fetchVendorSearchResults,
@@ -82,6 +83,28 @@ export function AiPricingPanel({ jobId, language }: AiPricingPanelProps) {
   useEffect(() => {
     void loadEvidence();
   }, [loadEvidence]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel(`vendor_search_results:${jobId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'vendor_search_results',
+          filter: `job_id=eq.${jobId}`,
+        },
+        () => {
+          void loadEvidence();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [jobId, loadEvidence]);
 
   if (loading) {
     return (

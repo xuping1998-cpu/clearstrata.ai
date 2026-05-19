@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Globe, Phone, ExternalLink, Search, RefreshCw, Loader2, MapPin, Calendar } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useProperty } from '../../contexts/PropertyContext';
@@ -8,6 +8,7 @@ import {
   formatVendorPriceInclGst,
 } from '../../lib/procurement/formatVendorPriceDisplay';
 import { saveVendorSearchResults } from '../../lib/procurement/saveVendorSearchResults';
+import { isVendorSearchInflight } from '../../lib/procurement/newJobPdfAutoFlow';
 
 interface SearchedVendor {
   company_name: string;
@@ -36,7 +37,9 @@ interface VendorSearchPanelProps {
   propertyId: string;
   jobTitle: string;
   jobDescription: string;
+  category?: string;
   language: string;
+  autoSearchOnEmpty?: boolean;
 }
 
 function hasPublicPriceEvidence(v: {
@@ -70,7 +73,7 @@ export function VendorSearchPanel({
   jobDescription,
   category,
   language,
-  parsedQuote = null,
+  autoSearchOnEmpty = false,
 }: VendorSearchPanelProps) {
   const { currentPropertyId } = useProperty();
   const l = language === 'en';
@@ -80,15 +83,12 @@ export function VendorSearchPanel({
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState('');
   const [showConfirm, setShowConfirm] = useState(false);
+  const autoSearchAttemptedRef = useRef(false);
 
   const hasSavedResults = vendors.length > 0;
   const searchedAt = hasSavedResults ? vendors[0].searched_at : null;
 
-  useEffect(() => {
-    void loadSavedResults();
-  }, [jobId, scopedPropertyId]);
-
-  const loadSavedResults = async () => {
+  const loadSavedResults = useCallback(async () => {
     setInitialLoading(true);
     try {
       if (!scopedPropertyId) {
@@ -103,65 +103,21 @@ export function VendorSearchPanel({
         .order('created_at', { ascending: true });
 
       if (data && data.length > 0) {
-        setVendors(data);
+        setVendors(data as SavedVendor[]);
       } else {
         setVendors([]);
       }
     } finally {
       setInitialLoading(false);
     }
-  };
+  }, [jobId, scopedPropertyId]);
 
-  const searchVendors = async () => {
-    if (!scopedPropertyId) {
-      setError(l ? 'No property selected.' : '未选择物业。');
-      return;
-    }
-    setLoading(true);
-    setError('');
-    setShowConfirm(false);
-    try {
-      const { data: photos } = await supabase
-        .from('procurement_photos')
-        .select('photo_url')
-        .eq('job_id', jobId)
-        .eq('photo_type', 'request');
+  useEffect(() => {
+    autoSearchAttemptedRef.current = false;
+    void loadSavedResults();
+  }, [loadSavedResults]);
 
-      const attachmentUrls = (photos ?? [])
-        .map((p) => p.photo_url)
-        .filter((u): u is string => Boolean(u));
-
-      const json = await callSearchQuotes({
-        property_id: scopedPropertyId,
-        job_id: jobId,
-        title: jobTitle,
-        description: jobDescription,
-        attachment_urls: attachmentUrls.length > 0 ? attachmentUrls : undefined,
-      });
-      const vendors = Array.isArray(json?.vendors) ? json.vendors : [];
-
-      console.log('SEARCH_QUOTES_RAW_RESPONSE', json);
-      console.log('SEARCH_QUOTES_VENDOR_COUNT', vendors.length);
-
-      if (!json?.success) {
-        setError(json?.error || (l ? 'Search failed' : '搜索失败'));
-        return;
-      }
-
-      if (vendors.length === 0) {
-        setError(l ? 'No comparable suppliers with public pricing found' : '未找到符合条件的公开报价供应商');
-        return;
-      }
-
-      await saveResults(vendors);
-    } catch {
-      setError(l ? 'Network error' : '网络错误');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const saveResults = async (newVendors: SearchedVendor[]) => {
+  const saveResults = useCallback(async (newVendors: SearchedVendor[]) => {
     if (!scopedPropertyId) return;
     const { count, error: saveError } = await saveVendorSearchResults({
       propertyId: scopedPropertyId,
@@ -191,7 +147,89 @@ export function VendorSearchPanel({
     } else if (count > 0) {
       await loadSavedResults();
     }
-  };
+  }, [scopedPropertyId, jobId, l, loadSavedResults]);
+
+  const searchVendors = useCallback(async () => {
+    if (!scopedPropertyId) {
+      setError(l ? 'No property selected.' : '未选择物业。');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    setShowConfirm(false);
+    try {
+      const { data: photos } = await supabase
+        .from('procurement_photos')
+        .select('photo_url')
+        .eq('job_id', jobId)
+        .eq('photo_type', 'request');
+
+      const attachmentUrls = (photos ?? [])
+        .map((p) => p.photo_url)
+        .filter((u): u is string => Boolean(u));
+
+      const json = await callSearchQuotes({
+        property_id: scopedPropertyId,
+        job_id: jobId,
+        title: jobTitle,
+        description: jobDescription,
+        attachment_urls: attachmentUrls.length > 0 ? attachmentUrls : undefined,
+      });
+      const found = Array.isArray(json?.vendors) ? json.vendors : [];
+
+      console.log('SEARCH_QUOTES_RAW_RESPONSE', json);
+      console.log('SEARCH_QUOTES_VENDOR_COUNT', found.length);
+
+      if (!json?.success) {
+        setError(json?.error || (l ? 'Search failed' : '搜索失败'));
+        return;
+      }
+
+      if (found.length === 0) {
+        setError(l ? 'No comparable suppliers with public pricing found' : '未找到符合条件的公开报价供应商');
+        return;
+      }
+
+      await saveResults(found);
+    } catch {
+      setError(l ? 'Network error' : '网络错误');
+    } finally {
+      setLoading(false);
+    }
+  }, [scopedPropertyId, jobId, jobTitle, jobDescription, l, saveResults]);
+
+  useEffect(() => {
+    if (!autoSearchOnEmpty || initialLoading || loading) return;
+    if (autoSearchAttemptedRef.current || hasSavedResults) return;
+
+    const hasDescription = Boolean(jobDescription?.trim());
+    const hasCategory = Boolean(category?.trim());
+    if (!hasDescription && !hasCategory) return;
+
+    autoSearchAttemptedRef.current = true;
+
+    if (isVendorSearchInflight(jobId)) {
+      let attempts = 0;
+      const poll = window.setInterval(() => {
+        attempts += 1;
+        void loadSavedResults();
+        if (attempts >= 60) window.clearInterval(poll);
+      }, 2000);
+      return () => window.clearInterval(poll);
+    }
+
+    void searchVendors();
+  }, [
+    autoSearchOnEmpty,
+    initialLoading,
+    loading,
+    hasSavedResults,
+    jobDescription,
+    category,
+    searchVendors,
+    jobId,
+    loadSavedResults,
+  ]);
 
   const handleResearch = () => {
     if (hasSavedResults) {

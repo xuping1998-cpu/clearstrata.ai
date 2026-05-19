@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Plus, Clock, Eye, ArrowLeft, ShoppingCart, CheckCircle, AlertCircle, Wrench, Camera, FileText, Star, XCircle, Send, Loader2, Trash2 } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -270,6 +270,17 @@ export function Procurement() {
     }
   }, [profile, currentPropertyId]);
 
+  useEffect(() => {
+    if (!focusJobId) return;
+    const el = jobCardRefs.current[focusJobId];
+    if (!el) return;
+    const t = window.setTimeout(() => {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setFocusJobId(null);
+    }, 150);
+    return () => window.clearTimeout(t);
+  }, [focusJobId, jobs]);
+
   const openModal = (name: string, job?: ProcurementJob) => {
     if (job) setSelectedJob(job);
     setModal(name);
@@ -327,21 +338,41 @@ export function Procurement() {
       ) : (
         <div className="space-y-4">
           {jobs.map((job) => (
-            <JobCard
+            <div
               key={job.id}
-              job={job}
-              language={language}
-              isCouncil={isCouncil}
-              canUploadProcurementInquiry={canUploadProcurementInquiry}
-              propertyId={currentPropertyId}
-              onOpenModal={openModal} onMarkCompleted={markCompleted} onResendToPM={resendToPM} onDelete={deleteJob} />
+              ref={(el) => {
+                jobCardRefs.current[job.id] = el;
+              }}
+            >
+              <JobCard
+                job={job}
+                language={language}
+                isCouncil={isCouncil}
+                canUploadProcurementInquiry={canUploadProcurementInquiry}
+                propertyId={currentPropertyId}
+                highlighted={focusJobId === job.id}
+                onOpenModal={openModal}
+                onMarkCompleted={markCompleted}
+                onResendToPM={resendToPM}
+                onDelete={deleteJob}
+              />
+            </div>
           ))}
         </div>
       )}
 
       {modal === 'newJob' && (
-        <NewJobModal language={language} profile={profile}
-          onClose={closeModal} onCreated={loadJobs} />
+        <NewJobModal
+          language={language}
+          profile={profile}
+          onClose={closeModal}
+          onCreated={(jobId) => {
+            closeModal();
+            void loadJobs().then(() => {
+              if (jobId) setFocusJobId(jobId);
+            });
+          }}
+        />
       )}
       {modal === 'addQuote' && selectedJob && (
         <AddQuoteModal language={language} profile={profile} selectedJob={selectedJob}
@@ -380,6 +411,7 @@ function JobCard({
   isCouncil,
   canUploadProcurementInquiry,
   propertyId,
+  highlighted = false,
   onOpenModal,
   onMarkCompleted,
   onResendToPM,
@@ -390,6 +422,7 @@ function JobCard({
   isCouncil: boolean;
   canUploadProcurementInquiry: boolean;
   propertyId: string;
+  highlighted?: boolean;
   onOpenModal: (name: string, job?: ProcurementJob) => void;
   onMarkCompleted: (id: string) => void;
   onResendToPM: (id: string) => void;
@@ -428,7 +461,11 @@ function JobCard({
   const selectedQuote = job.quotes?.find(q => q.id === job.selected_quote_id);
 
   return (
-    <div className={`bg-white rounded-xl shadow-sm border-l-4 ${job.job_type === 'maintenance' ? 'border-orange-500' : 'border-clearstrata-ui-primary'}`}>
+    <div
+      className={`bg-white rounded-xl shadow-sm border-l-4 transition-shadow ${
+        job.job_type === 'maintenance' ? 'border-orange-500' : 'border-clearstrata-ui-primary'
+      } ${highlighted ? 'ring-2 ring-clearstrata-ui-primary ring-offset-2' : ''}`}
+    >
       <div className="p-6">
         <div className="flex items-start justify-between mb-4">
           <div className="flex-1">
@@ -492,7 +529,9 @@ function JobCard({
             propertyId={propertyId}
             jobTitle={job.title_zh || job.title_en}
             jobDescription={job.description_zh || job.description_en}
+            category={job.category}
             language={language}
+            autoSearchOnEmpty
           />
 
           {(job.quotes?.length || 0) > 0 && (

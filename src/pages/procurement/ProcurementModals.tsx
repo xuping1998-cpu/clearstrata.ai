@@ -19,7 +19,9 @@ import {
 import {
   analyzeQuoteAttachment,
   applyAnalysisToJobFields,
-  createJobAndSearchAfterAnalysis,
+  createProcurementJobFromAnalysis,
+  searchAndSaveVendorsForJob,
+  waitForVendorSearchWithTimeout,
 } from '../../lib/procurement/newJobPdfAutoFlow';
 import { saveVendorSearchResults } from '../../lib/procurement/saveVendorSearchResults';
 import { computeMarketBenchmark, fetchVendorSearchResults } from '../../lib/procurement/vendorMarketBenchmark';
@@ -187,6 +189,11 @@ export function NewJobModal({
     }
   };
 
+  const finishPdfFlowAndOpenJob = (jobId: string) => {
+    onClose();
+    onCreated(jobId);
+  };
+
   const startPdfAutoFlow = async (attachmentUrl: string, attachmentName: string) => {
     if (!profile || !currentPropertyId) return;
     if (pipelineUrlRef.current === attachmentUrl) return;
@@ -197,8 +204,8 @@ export function NewJobModal({
       const analysis = await analyzeQuoteAttachment(attachmentUrl, attachmentName);
       setPdfAnalysis(analysis);
       setNewJob((prev) => ({ ...prev, ...applyAnalysisToJobFields(analysis) }));
-      setStep('searching');
-      const result = await createJobAndSearchAfterAnalysis({
+
+      const { jobId } = await createProcurementJobFromAnalysis({
         propertyId: currentPropertyId,
         profileId: profile.id,
         attachmentUrl,
@@ -207,11 +214,24 @@ export function NewJobModal({
         priority: newJob.priority,
         unitNumber: newJob.unit_number,
       });
-      setCreatedJobId(result.jobId);
-      setSearchedVendors(result.vendors);
-      setSearchCount(result.searchCount);
-      setSelectedVendorIdxs(new Set(result.vendors.map((_, i) => i)));
-      setStep('select_vendors');
+      setCreatedJobId(jobId);
+
+      setStep('searching');
+      const searchPromise = searchAndSaveVendorsForJob({
+        propertyId: currentPropertyId,
+        jobId,
+        analysis,
+        attachmentUrl,
+      });
+      const { completed, vendors, searchCount } = await waitForVendorSearchWithTimeout(searchPromise);
+      setSearchedVendors(vendors);
+      setSearchCount(searchCount);
+
+      finishPdfFlowAndOpenJob(jobId);
+
+      if (!completed) {
+        console.log('PDF_AUTO_FLOW_NAVIGATE_BEFORE_SEARCH_DONE', { jobId });
+      }
     } catch (err) {
       pipelineUrlRef.current = null;
       setError(err instanceof Error ? err.message : l ? 'PDF flow failed' : 'PDF 流程失败');
@@ -259,7 +279,7 @@ export function NewJobModal({
 
     if (isProcurement && hasAttachments && requestPhotos[0]) {
       if (createdJobId && pipelineUrlRef.current === requestPhotos[0]) {
-        setStep('select_vendors');
+        finishPdfFlowAndOpenJob(createdJobId);
         return;
       }
       await startPdfAutoFlow(requestPhotos[0], requestAttachmentNames[0] ?? 'quote.pdf');
@@ -447,8 +467,8 @@ export function NewJobModal({
           </h3>
           <p className="text-sm text-gray-500 mb-4">
             {l
-              ? 'Finding up to 3 comparable local suppliers with public price evidence.'
-              : '正在搜索最多 3 家具有公开价格证据的可比本地供应商。'}
+              ? 'Finding comparable local suppliers. You will be taken to the request detail shortly (search may continue in the background).'
+              : '正在搜索可比本地供应商。即将进入申请详情（搜索可能在后台继续）。'}
           </p>
           <div className="flex items-center justify-center gap-1.5">
             <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:0ms]" />
