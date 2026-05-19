@@ -197,6 +197,30 @@ function aggregateInvoiceFoldSummary(rows: Invoice[]) {
   return { total, count: rows.length, pending_review, approved, paid };
 }
 
+function isHistoricalLedgerMonth(
+  ledgerYear: number,
+  ledgerMonth: number,
+  governanceStartIso: string | null | undefined,
+): boolean {
+  return resolveLedgerGovernanceMode(ledgerYear, ledgerMonth, governanceStartIso).mode === 'historical';
+}
+
+/** Year/month fold subtitle — formal months show review stats; historical months show archive-only counts. */
+function formatInvoiceFoldSummaryLine(
+  agg: ReturnType<typeof aggregateInvoiceFoldSummary>,
+  opts: { langEn: boolean; fmtMoney: (n: number) => string; historical: boolean },
+): string {
+  const { langEn: l, fmtMoney, historical } = opts;
+  if (historical) {
+    return l
+      ? `Total ${fmtMoney(agg.total)} | ${agg.count} invoices | Archived ${agg.count}`
+      : `总额 ${fmtMoney(agg.total)}｜发票 ${agg.count} 张｜历史归档 ${agg.count}`;
+  }
+  return l
+    ? `${fmtMoney(agg.total)} · ${agg.count} invoices · pending ${agg.pending_review} · approved ${agg.approved} · paid ${agg.paid}`
+    : `总额 ${fmtMoney(agg.total)}｜发票 ${agg.count} 张｜待审核 ${agg.pending_review}｜已批准 ${agg.approved}｜已付款 ${agg.paid}`;
+}
+
 function statusStyle(status: string): { labelZh: string; labelEn: string; className: string } {
   const map: Record<string, { labelZh: string; labelEn: string; className: string }> = {
     pending_upload: { labelZh: '上传中', labelEn: 'Uploading', className: 'bg-gray-100 text-gray-700' },
@@ -3185,6 +3209,16 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
               const months = monthMap ? [...monthMap.keys()].sort((a, b) => b - a) : [];
               const yearInvoices = filtered.filter((i) => effectiveAccountingYear(i) === accYear);
               const yAgg = aggregateInvoiceFoldSummary(yearInvoices);
+              const yearHistorical =
+                yearInvoices.length === 0
+                  ? isHistoricalLedgerMonth(accYear, 12, governanceStartIso)
+                  : yearInvoices.every((inv) =>
+                      isHistoricalLedgerMonth(
+                        effectiveAccountingYear(inv),
+                        effectiveAccountingMonth(inv),
+                        governanceStartIso,
+                      ),
+                    );
               const yearOpen = expandedYears.has(accYear);
               return (
                 <div key={accYear} className="border-b border-gray-100 last:border-b-0">
@@ -3201,9 +3235,11 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
                     <span className="min-w-0 flex-1">
                       <span className="font-semibold text-gray-900">{l ? String(accYear) : `${accYear}年`}</span>
                       <span className="mt-0.5 block text-xs leading-relaxed text-gray-600">
-                        {l
-                          ? `${fmtAccountingMoney(yAgg.total)} · ${yAgg.count} invoices · pending ${yAgg.pending_review} · approved ${yAgg.approved} · paid ${yAgg.paid}`
-                          : `总额 ${fmtAccountingMoney(yAgg.total)}｜发票 ${yAgg.count} 张｜待审核 ${yAgg.pending_review}｜已批准 ${yAgg.approved}｜已付款 ${yAgg.paid}`}
+                        {formatInvoiceFoldSummaryLine(yAgg, {
+                          langEn: l,
+                          fmtMoney: fmtAccountingMoney,
+                          historical: yearHistorical,
+                        })}
                       </span>
                     </span>
                   </button>
@@ -3211,6 +3247,11 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
                     months.map((accMonth) => {
                       const monthList = monthMap?.get(accMonth) ?? [];
                       const mAgg = aggregateInvoiceFoldSummary(monthList);
+                      const monthHistorical = isHistoricalLedgerMonth(
+                        accYear,
+                        accMonth,
+                        governanceStartIso,
+                      );
                       const mk = `${accYear}-${accMonth}`;
                       const monthOpen = expandedMonths.has(mk);
                       return (
@@ -3232,9 +3273,11 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
                                   : `${accYear}年${accMonth}月`}
                               </span>
                               <span className="mt-0.5 block text-xs leading-relaxed text-gray-600">
-                                {l
-                                  ? `${fmtAccountingMoney(mAgg.total)} · ${mAgg.count} invoices · pending ${mAgg.pending_review} · approved ${mAgg.approved} · paid ${mAgg.paid}`
-                                  : `总额 ${fmtAccountingMoney(mAgg.total)}｜发票 ${mAgg.count} 张｜待审核 ${mAgg.pending_review}｜已批准 ${mAgg.approved}｜已付款 ${mAgg.paid}`}
+                                {formatInvoiceFoldSummaryLine(mAgg, {
+                                  langEn: l,
+                                  fmtMoney: fmtAccountingMoney,
+                                  historical: monthHistorical,
+                                })}
                               </span>
                             </span>
                           </button>

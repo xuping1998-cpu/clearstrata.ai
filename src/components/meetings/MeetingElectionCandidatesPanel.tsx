@@ -101,14 +101,19 @@ export function MeetingElectionCandidatesPanel({
   const nominationOpenPhase = nomStatus === 'open';
   const staffNominationWritesEnabled = !!canEdit && nominationOpenPhase;
 
+  /**
+   * Owner self-nomination eligibility is independent of meeting-admin permissions.
+   * A council / admin / property_admin who is *also* an eligible homeowner (active
+   * voter + unit) must keep the right to self-nominate while nominations are open.
+   * Do NOT gate on `canEdit` here — that mixes staff workflow with owner rights.
+   */
   const canOwnerSelfNom =
     !!ownerVoteMeetingId?.trim() &&
     !!eligibleUnitNo?.trim() &&
     !!metaFinal &&
     metaFinal.allow_self_nomination === true &&
     nominationOpenPhase &&
-    !unitAlreadyCandidate &&
-    !canEdit;
+    !unitAlreadyCandidate;
 
   async function persist(next: ElectionAgendaMetaV1) {
     if (!meta || !staffNominationWritesEnabled) return;
