@@ -145,7 +145,7 @@ export function partitionReasonsForHistoricalCandidate(
 }
 
 export function historicalAuditProcurementSuggestLabel(languageEn: boolean): string {
-  return languageEn ? 'AI-suggested procurement record' : 'AI建议补建采购记录';
+  return languageEn ? 'Procurement linkage' : '采购记录关联';
 }
 
 export function historicalAuditListButtonClass(status: HistoricalBenchmarkStatus | undefined): string {
@@ -170,17 +170,17 @@ export function historicalAuditListTooltip(
 ): string {
   if (status === 'normal') {
     return languageEn
-      ? 'Historical bare spend — suggest governance record; amount within market reference.'
-      : '历史裸支出，建议补建治理记录；市场价格在合理区间内。';
+      ? 'Amount within market reference range.'
+      : '金额位于市场参考区间内。';
   }
   if (status === 'warning') {
     return languageEn
-      ? 'Historical bare spend — suggest governance record; price above market reference — review recommended.'
-      : '历史裸支出，建议补建治理记录；价格高于市场参考，建议核查。';
+      ? 'Price above market reference — review recommended.'
+      : '价格高于市场参考，建议核查。';
   }
   return languageEn
-    ? 'Historical bare spend — automatic benchmark unavailable; manual review recommended.'
-    : '历史裸支出；暂无法自动市场核价，建议人工复核。';
+    ? 'Market benchmark unavailable — manual review recommended.'
+    : '市场参考不可用，建议人工复核。';
 }
 
 /** List row left accent when historicalAudit drives procurement suggest (red dup/budget still win). */

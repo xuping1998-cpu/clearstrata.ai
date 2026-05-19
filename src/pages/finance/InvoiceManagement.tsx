@@ -338,11 +338,11 @@ type MonthlyAuditTag = 'link' | 'price' | 'dup' | 'budget';
 type MonthlyAuditFilter = 'all' | MonthlyAuditTag;
 
 const RULE_CODE_EXPLAIN_ZH: Record<string, string> = {
-  missing_procurement_link: '建议补建采购记录',
-  no_quote: '建议补建采购记录',
-  historical_price_variance: '当前金额高于历史/市场参考范围',
-  amount_gt_quote_110: '当前金额高于历史/市场参考范围',
-  vendor_price_spike: '当前金额高于历史/市场参考范围',
+  missing_procurement_link: '缺少采购记录',
+  no_quote: '缺少采购记录',
+  historical_price_variance: '当前金额高于市场参考范围',
+  amount_gt_quote_110: '当前金额高于市场参考范围',
+  vendor_price_spike: '当前金额高于市场参考范围',
   procurement_out_of_scope: '超出采购批复或报价容差',
   duplicate_invoice: '疑似重复付款',
   budget_overrun: '超预算',
@@ -350,11 +350,11 @@ const RULE_CODE_EXPLAIN_ZH: Record<string, string> = {
 };
 
 const RULE_CODE_EXPLAIN_EN: Record<string, string> = {
-  missing_procurement_link: 'Suggested: add procurement linkage',
-  no_quote: 'Suggested: add procurement linkage',
-  historical_price_variance: 'Amount above historical / market reference range',
-  amount_gt_quote_110: 'Amount above historical / market reference range',
-  vendor_price_spike: 'Amount above historical / market reference range',
+  missing_procurement_link: 'Missing procurement linkage',
+  no_quote: 'Missing procurement linkage',
+  historical_price_variance: 'Amount above market reference range',
+  amount_gt_quote_110: 'Amount above market reference range',
+  vendor_price_spike: 'Amount above market reference range',
   procurement_out_of_scope: 'Outside approved procurement / quote tolerance',
   duplicate_invoice: 'Suspected duplicate payment',
   budget_overrun: 'Over budget',
@@ -1055,6 +1055,39 @@ function MonthlyAutoAuditPanel(props: {
     setAuditDrillFilter('all');
   }, [monthKey]);
 
+  /**
+   * Historical bookkeeping months (and properties without a configured governance
+   * start date) are archive-only: hide audit stats / table / run buttons and show
+   * a lightweight notice instead. Only formal-governance months keep the audit UI.
+   */
+  if (ledgerMode === 'historical') {
+    return (
+      <section
+        className="mx-4 mb-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 shadow-sm sm:mx-8"
+        aria-labelledby={`month-ai-audit-heading-${monthKey.replace(/[^a-zA-Z0-9_-]/g, '-')}`}
+      >
+        <h3
+          id={`month-ai-audit-heading-${monthKey.replace(/[^a-zA-Z0-9_-]/g, '-')}`}
+          className="text-sm font-semibold text-slate-900"
+        >
+          {l ? 'Historical invoices archived' : '历史发票已归档'}
+        </h3>
+        <p className="mt-1 text-xs leading-relaxed text-slate-700">
+          {l
+            ? 'Invoices before the governance start date are kept for records only and are not included in AI audit.'
+            : '治理启动前的历史发票仅用于留档和查看，不进行 AI 自动审计。'}
+        </p>
+        {governanceUnset ? (
+          <p className="mt-2 text-[11px] leading-relaxed text-slate-600">
+            {l
+              ? 'Tip: set the governance start date on the AGM Approved Budget tab to enable monthly AI audit for current periods.'
+              : '提示：在「AGM批准预算」页设置「治理启动日期」后，治理期内的会计月即可启用 AI 月度自动审计。'}
+          </p>
+        ) : null}
+      </section>
+    );
+  }
+
   const { stats, rows } = useMemo(() => {
     let colA = 0;
     let colB = 0;
@@ -1168,7 +1201,7 @@ function MonthlyAutoAuditPanel(props: {
     });
   };
 
-  const historical = ledgerMode === 'historical';
+  const historical = false;
 
   const bust = busyMonthKey === monthKey;
 
@@ -1177,24 +1210,6 @@ function MonthlyAutoAuditPanel(props: {
       className="mx-4 mb-3 rounded-xl border border-indigo-200 bg-indigo-50/75 px-4 py-4 shadow-sm sm:mx-8"
       aria-labelledby={`month-ai-audit-heading-${monthKey.replace(/[^a-zA-Z0-9_-]/g, '-')}`}
     >
-      {governanceUnset ? (
-        <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
-          <p className="font-semibold">
-            {l ? 'Governance start date not configured' : '未设置治理启动日期'}
-          </p>
-          <p className="mt-1 text-amber-900/90">
-            {l
-              ? 'Set Governance Start Date on the AGM Approved Budget tab first.'
-              : '请先在 AGM批准预算 页面设置治理启动日期。'}
-          </p>
-          <p className="mt-1 text-[11px] text-amber-900/85">
-            {l
-              ? 'Until configured, invoices are summarized in Historical Reconstruction mode so legacy months are not all flagged as strict procurement breaches.'
-              : '未设置前，月度审计默认按「历史倒查模式」呈现，避免将历史账本一律标为严格合规违规（如无采购硬性违规）。'}
-          </p>
-        </div>
-      ) : null}
-
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h3
@@ -1204,22 +1219,12 @@ function MonthlyAutoAuditPanel(props: {
             {l ? 'Monthly Auto Audit' : 'AI月度自动审计'}
           </h3>
           <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-800/85">
-            {ledgerMode === 'historical'
-              ? l
-                ? 'Historical Reconstruction Mode'
-                : '历史倒查模式'
-              : l
-                ? 'Governance Enforcement Mode'
-                : '正式治理模式'}
+            {l ? 'Governance Enforcement Mode' : '正式治理模式'}
           </p>
           <p className="mt-1 text-xs leading-relaxed text-indigo-900/80">
             {l
-              ? ledgerMode === 'historical'
-                ? 'Historical months focus on rebuilding context: duplication, budget stress, procurement narrative—without forcing “no-quote” penalties designed for governed operations.'
-                : 'Each invoice month after governance compares approved procurement envelopes, AGM budgets, and posted invoices with full enforcement—including missing-quote alerts.'
-              : ledgerMode === 'historical'
-                ? '治理启动之前的账本月份以重建线索为主：关注补建采购记录、历史补询价、疑似重复及预算偏离；不显式将「无采购记录」作为主违规口径。'
-                : '治理启动日当月及之后的账本，系统将按批复采购范围与 AGM 预算对发票进行全面合规提示（含无采购记录告警）。'}
+              ? 'Each invoice month after governance compares approved procurement envelopes, AGM budgets, and posted invoices with full enforcement—including missing-quote alerts.'
+              : '治理启动日当月及之后的账本，系统将按批复采购范围与 AGM 预算对发票进行全面合规提示（含无采购记录告警）。'}
           </p>
         </div>
         <button
@@ -1527,9 +1532,6 @@ function HistoricalAuditBenchmarkBlock({
       <div id="hist-audit-benchmark-heading" className="flex flex-wrap items-center justify-between gap-2">
         <h4 className="text-sm font-semibold text-gray-900">
           {l ? 'Market benchmark' : 'AI市场核价'}
-          <span className="ml-2 font-normal text-gray-600">
-            {l ? 'Historical bare spend' : '历史裸支出'}
-          </span>
         </h4>
         <span
           className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${historicalAuditStatusBadgeClass(status)}`}
@@ -2238,7 +2240,7 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
       }
       setHistoricalProcDraftConfirmed(true);
       setHistoricalProcDraftFeedback(
-        l ? 'Confirmed as historical reconstruction baseline.' : '已确认为历史倒查比对基线。',
+        l ? 'Confirmed as procurement linkage baseline.' : '已确认为采购记录关联基线。',
       );
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -3628,6 +3630,7 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
           onRefresh={loadInvoicesQuiet}
           canAudit={canAudit}
           profile={profile}
+          governanceStartIso={governanceStartIso}
           onApprove={(id, notes) => void approveInvoice(id, notes)}
           onReject={(inv) => {
             setRejectTarget(inv);
@@ -3785,6 +3788,7 @@ function InvoiceDetailModal({
   onRefresh,
   canAudit,
   profile,
+  governanceStartIso,
   onApprove,
   onReject,
   onMarkPaid,
@@ -3795,6 +3799,7 @@ function InvoiceDetailModal({
   onRefresh: () => Promise<void>;
   canAudit: boolean;
   profile: { id: string } | null;
+  governanceStartIso: string | null;
   onApprove: (id: string, approvalNotes?: string) => void;
   onReject: (inv: Invoice) => void;
   onMarkPaid: (id: string) => void;
@@ -3849,6 +3854,20 @@ function InvoiceDetailModal({
     [aiAuditContextRow],
   );
   const historicalCandidate = historicalAudit?.candidate === true;
+
+  /**
+   * True when this invoice's bookkeeping month is before the property's
+   * governance_start_date (or governance start is not configured). Historical
+   * invoices are archive-only and must not show AI audit / procurement-rebuild UI.
+   */
+  const isHistoricalInvoice = useMemo(() => {
+    const { mode } = resolveLedgerGovernanceMode(
+      effectiveAccountingYear(invoice),
+      effectiveAccountingMonth(invoice),
+      governanceStartIso,
+    );
+    return mode === 'historical';
+  }, [invoice, governanceStartIso]);
 
   const loadAiAuditBundle = useCallback(async () => {
     if (!currentPropertyId) {
@@ -4459,7 +4478,22 @@ function InvoiceDetailModal({
             </div>
           </section>
 
-          {/* AI 审计结论 */}
+          {/* AI 审计结论 — historical invoices are archive-only and skip AI audit UI */}
+          {isHistoricalInvoice ? (
+            <section
+              aria-labelledby="inv-ai-audit-heading"
+              className="rounded-2xl border border-slate-200 bg-slate-50 p-5"
+            >
+              <h3 id="inv-ai-audit-heading" className="text-sm font-semibold text-slate-900">
+                {l ? 'Historical invoice — archive only' : '历史发票 · 仅归档'}
+              </h3>
+              <p className="mt-1 text-xs leading-relaxed text-slate-700">
+                {l
+                  ? 'Invoices before the governance start date are kept for records only and are not included in AI audit.'
+                  : '治理启动前的历史发票仅用于留档和查看，不进行 AI 自动审计。'}
+              </p>
+            </section>
+          ) : (
           <section aria-labelledby="inv-ai-audit-heading">
             {aiAuditLoading ? (
               <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-5">
@@ -4773,6 +4807,7 @@ function InvoiceDetailModal({
               </div>
             ) : null}
           </section>
+          )}
 
           {/* 2. 费用异常提醒（红色预警） */}
           {quoteVarianceResult && isRedAlertVariance(quoteVarianceResult) ? (

@@ -120,7 +120,7 @@ export function HistoricalBenchmarkReviewModal({ open, invoice, propertyId, lang
         <div className="flex items-start justify-between gap-2 border-b border-amber-100 bg-amber-50/80 px-4 py-3">
           <div>
             <h2 className="text-base font-semibold text-amber-950">
-              {l ? 'Historical Benchmark Review' : '历史补询价'}
+              {l ? 'Market benchmark review' : '市场核价复核'}
             </h2>
             <p className="mt-0.5 truncate text-xs text-amber-900/75" title={invoice.vendor_name}>
               {invoice.vendor_name}
