@@ -7,31 +7,16 @@ const corsHeaders = {
     "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
-const OPENAI_MODEL = "gpt-4o";
-const SEARCH_QUOTES_PROVIDER = "openai_web_search_direct";
+const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
+const ANTHROPIC_MODEL = "claude-sonnet-4-20250514";
+const SEARCH_QUOTES_PROVIDER = "anthropic_web_search";
 const NO_PRICE_NOTE = "Pricing requires formal quote";
 
-function buildAnalystPrompt(params: {
-  category: string;
-  description: string;
-  currentPrice: string;
-}): string {
-  const { category, description, currentPrice } = params;
-  return `你是一个物业采购助手。
-请使用网络搜索（use web search），找出温哥华（Vancouver, BC）本地
-提供以下服务的真实供应商公司：
-服务类别：${category}
-服务描述：${description}
-参考现有报价：${currentPrice}
+const ANTHROPIC_SYSTEM_PROMPT = `你是一个物业采购助手。
+使用 web_search 工具搜索温哥华（Vancouver, BC）本地
+提供指定服务的真实供应商公司。
 
-搜索要求：
-1. 必须使用 web_search 工具搜索真实公司
-2. 搜索关键词示例：'${category} service company Vancouver BC strata'
-3. 找出至少 3 家真实存在的本地供应商
-4. 每家供应商必须提供真实的联系方式（官网或电话）
-
-返回格式（严格JSON，不要有其他文字）：
+返回严格 JSON 格式（不要有其他文字）：
 {
   "vendors": [
     {
@@ -44,17 +29,6 @@ function buildAnalystPrompt(params: {
     }
   ]
 }`;
-}
-
-const WEB_SEARCH_TOOL = {
-  type: "web_search_preview",
-  user_location: {
-    type: "approximate",
-    country: "CA",
-    city: "Vancouver",
-    region: "British Columbia",
-  },
-};
 
 interface SearchRequest {
   property_id?: string;
@@ -202,49 +176,47 @@ function resolveCurrentPrice(description: string, explicit?: string): string {
   return "(未提供)";
 }
 
-function buildResponsesInput(params: {
-  title: string;
-  description: string;
+function buildAnthropicUserText(params: {
   category: string;
+  description: string;
+  currentPrice: string;
+}): string {
+  const { category, description, currentPrice } = params;
+  return `请搜索温哥华本地提供以下服务的真实供应商，找出至少3家：
+服务类别：${category}
+服务描述：${description}
+参考现有报价：${currentPrice}
+搜索关键词建议：${category} service company Vancouver BC strata`;
+}
+
+function buildAnthropicUserContent(params: {
+  category: string;
+  description: string;
   currentPrice: string;
   attachments: FetchedAttachment[];
 }): string | Array<Record<string, unknown>> {
-  const promptText = buildAnalystPrompt({
-    category: params.category,
-    description: params.description,
-    currentPrice: params.currentPrice,
-  });
+  const userText = buildAnthropicUserText(params);
+  if (params.attachments.length === 0) return userText;
 
-  if (params.attachments.length === 0) {
-    return promptText;
-  }
-
-  const content: Array<Record<string, unknown>> = [
-    { type: "input_text", text: promptText },
-  ];
-
+  const content: Array<Record<string, unknown>> = [];
   for (const att of params.attachments) {
+    const mediaType = att.mimeType.startsWith("image/")
+      ? (att.mimeType === "image/webp" ? "image/png" : att.mimeType)
+      : "application/pdf";
     if (att.mimeType.startsWith("image/")) {
       content.push({
-        type: "input_image",
-        image_url: `data:${att.mimeType};base64,${att.base64}`,
-      });
-    } else if (att.mimeType.includes("pdf")) {
-      content.push({
-        type: "input_file",
-        filename: att.filename,
-        file_data: `data:application/pdf;base64,${att.base64}`,
+        type: "image",
+        source: { type: "base64", media_type: mediaType, data: att.base64 },
       });
     } else {
       content.push({
-        type: "input_file",
-        filename: att.filename,
-        file_data: `data:${att.mimeType};base64,${att.base64}`,
+        type: "document",
+        source: { type: "base64", media_type: mediaType, data: att.base64 },
       });
     }
   }
-
-  return [{ role: "user", content }];
+  content.push({ type: "text", text: userText });
+  return content;
 }
 
 function stripMarkdownFences(text: string): string {
@@ -364,54 +336,57 @@ function parseVendorsFromText(responseText: string): VendorResult[] {
   return [];
 }
 
-function extractResponsesOutputText(data: Record<string, unknown>): string {
-  if (typeof data.output_text === "string" && data.output_text.trim()) {
-    return data.output_text.trim();
-  }
+function extractAnthropicTextFromContent(data: Record<string, unknown>): string {
+  const content = data.content;
+  if (!Array.isArray(content)) return "";
 
   const chunks: string[] = [];
-  const output = data.output;
-  if (!Array.isArray(output)) return "";
-
-  for (const item of output) {
-    if (!item || typeof item !== "object") continue;
-    const row = item as Record<string, unknown>;
-    if (row.type !== "message" || !Array.isArray(row.content)) continue;
-    for (const part of row.content) {
-      if (!part || typeof part !== "object") continue;
-      const block = part as Record<string, unknown>;
-      if (block.type === "output_text" && typeof block.text === "string") {
-        chunks.push(block.text);
-      } else if (typeof block.text === "string") {
-        chunks.push(block.text);
-      }
+  for (const block of content) {
+    if (!block || typeof block !== "object") continue;
+    const row = block as Record<string, unknown>;
+    if (row.type === "text" && typeof row.text === "string" && row.text.trim()) {
+      chunks.push(row.text.trim());
     }
   }
-
   return chunks.join("\n").trim();
 }
 
-async function callOpenAIResponses(params: {
+async function callAnthropicMessages(params: {
   apiKey: string;
-  input: string | Array<Record<string, unknown>>;
+  category: string;
+  description: string;
+  currentPrice: string;
+  attachments: FetchedAttachment[];
 }): Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; status: number; detail: string }> {
-  const body: Record<string, unknown> = {
-    model: OPENAI_MODEL,
-    input: params.input,
-    tools: [WEB_SEARCH_TOOL],
-    temperature: 0.2,
-    max_output_tokens: 8192,
-  };
+  const userContent = buildAnthropicUserContent({
+    category: params.category,
+    description: params.description,
+    currentPrice: params.currentPrice,
+    attachments: params.attachments,
+  });
 
-  console.log("SEARCH_QUOTES_REQUEST_MODE", { web_search: true, json_mode: false });
+  console.log("SEARCH_QUOTES_REQUEST_MODE", {
+    provider: SEARCH_QUOTES_PROVIDER,
+    web_search: true,
+    model: ANTHROPIC_MODEL,
+    multimodal: params.attachments.length > 0,
+  });
 
-  const res = await fetch(OPENAI_RESPONSES_URL, {
+  const res = await fetch(ANTHROPIC_MESSAGES_URL, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${params.apiKey}`,
       "Content-Type": "application/json",
+      "x-api-key": params.apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-beta": "interleaved-thinking-2025-05-14",
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      model: ANTHROPIC_MODEL,
+      max_tokens: 2000,
+      tools: [{ type: "web_search_20250305", name: "web_search" }],
+      system: ANTHROPIC_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: userContent }],
+    }),
   });
 
   const raw = await res.text();
@@ -440,10 +415,10 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
-    if (!openaiApiKey) {
+    const anthropicApiKey = Deno.env.get("ANTHROPIC_API_KEY");
+    if (!anthropicApiKey) {
       return new Response(
-        JSON.stringify({ success: false, error: "OPENAI_API_KEY not configured" }),
+        JSON.stringify({ success: false, error: "ANTHROPIC_API_KEY not configured" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -479,14 +454,6 @@ Deno.serve(async (req: Request) => {
       logAttachmentContentParts(attachments);
     }
 
-    const input = buildResponsesInput({
-      title,
-      description,
-      category,
-      currentPrice,
-      attachments,
-    });
-
     console.log("SEARCH_QUOTES_PROVIDER", SEARCH_QUOTES_PROVIDER);
     console.log("SEARCH_QUOTES_QUERY", {
       property_id,
@@ -496,24 +463,27 @@ Deno.serve(async (req: Request) => {
       currentPrice,
       attachmentCount: attachments.length,
       attachmentUrls: attachmentUrls.length,
-      model: OPENAI_MODEL,
+      model: ANTHROPIC_MODEL,
       multimodal: attachments.length > 0,
     });
 
-    const apiResult = await callOpenAIResponses({
-      apiKey: openaiApiKey,
-      input,
+    const apiResult = await callAnthropicMessages({
+      apiKey: anthropicApiKey,
+      category,
+      description,
+      currentPrice,
+      attachments,
     });
 
     if (!apiResult.ok) {
-      console.error("OpenAI Responses API error:", apiResult.detail);
+      console.error("Anthropic Messages API error:", apiResult.detail);
       return new Response(
         JSON.stringify({ success: false, error: apiResult.detail }),
         { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    const responseText = extractResponsesOutputText(apiResult.data);
+    const responseText = extractAnthropicTextFromContent(apiResult.data);
 
     console.log("SEARCH_QUOTES_MODEL_TEXT", responseText);
 
