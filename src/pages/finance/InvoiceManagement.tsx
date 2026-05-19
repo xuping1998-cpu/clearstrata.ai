@@ -744,8 +744,24 @@ function buildHistoricalProcAiReasonPayload(inv: Invoice): string | null {
   }
   try {
     const j = JSON.stringify(base);
-    if (j.length > 8000) return `${j.slice(0, 7997)}…`;
-    return j;
+    if (j.length <= 8000) return j;
+    // Never slice stringified JSON: a cut can land inside a "\\uXXXX" escape and
+    // produce invalid JSON / "unsupported Unicode escape sequence" when parsed or stored as jsonb.
+    const minimal: Record<string, unknown> = {
+      invoice_id: base.invoice_id,
+      inference_type: base.inference_type,
+      reconstruction_source: base.reconstruction_source,
+      vendor_name: String(base.vendor_name ?? '').slice(0, 500),
+      invoice_number: base.invoice_number,
+      invoice_date: base.invoice_date,
+      amount: base.amount,
+      category: base.category,
+      fiscal_year: base.fiscal_year,
+      fiscal_month_hint: base.fiscal_month_hint,
+      truncated: true,
+      original_json_length: j.length,
+    };
+    return JSON.stringify(minimal);
   } catch {
     return null;
   }
@@ -2055,6 +2071,22 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
   /** `YYYY-MM-DD` from DB, or null if unset */
   const [governanceStartIso, setGovernanceStartIso] = useState<string | null>(null);
 
+  /**
+   * Historical ledger month invoices are archive-only — never offer approve/reject in lists.
+   * Detail modal has its own `isHistoricalInvoice` check that gates the approval section.
+   */
+  const isHistoricalRow = useCallback(
+    (inv: Invoice): boolean => {
+      const { mode } = resolveLedgerGovernanceMode(
+        effectiveAccountingYear(inv),
+        effectiveAccountingMonth(inv),
+        governanceStartIso,
+      );
+      return mode === 'historical';
+    },
+    [governanceStartIso],
+  );
+
   useEffect(() => {
     if (!currentPropertyId) {
       setGovernanceStartIso(null);
@@ -2340,9 +2372,13 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
         onProgress: (p) => setUploadProgress(l ? p.messageEn : p.messageZh),
       });
       setPayablePackageSummary(summary);
-      setUploadProgress(l ? 'Package import finished.' : '发票包导入完成。');
+      setUploadProgress(
+        l
+          ? `Processed ${summary.totalPages} pages · imported ${summary.recognizedInvoices} · skipped ${summary.skippedPages}.`
+          : `已处理 ${summary.totalPages} 页，成功导入 ${summary.recognizedInvoices} 张，跳过 ${summary.skippedPages} 页。`,
+      );
       await loadInvoices();
-      setTimeout(() => setUploadProgress(''), 2400);
+      setTimeout(() => setUploadProgress(''), 4000);
     } catch (err: unknown) {
       const msg =
         err instanceof Error
@@ -3012,41 +3048,81 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
           onClick={() => setPayablePackageSummary(null)}
         >
           <div
-            className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-6 shadow-xl"
+            className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-xl border border-gray-200 bg-white shadow-xl"
             role="dialog"
             aria-modal="true"
             aria-labelledby="payable-package-summary-title"
             onClick={(ev) => ev.stopPropagation()}
           >
-            <h2 id="payable-package-summary-title" className="text-lg font-bold text-gray-900">
-              {l ? 'PDF upload complete' : 'PDF 上传完成'}
-            </h2>
-            <ul className="mt-4 space-y-2 text-sm text-gray-800">
-              <li className="flex justify-between gap-3 border-b border-gray-100 pb-2">
-                <span className="text-gray-600">{l ? 'Total pages' : '总页数'}</span>
-                <span className="font-semibold tabular-nums">{payablePackageSummary.totalPages}</span>
-              </li>
-              <li className="flex justify-between gap-3 border-b border-gray-100 pb-2">
-                <span className="text-gray-600">{l ? 'Invoices recognized' : '识别发票'}</span>
-                <span className="font-semibold tabular-nums">{payablePackageSummary.recognizedInvoices}</span>
-              </li>
-              <li className="flex justify-between gap-3 pb-1">
-                <span className="text-gray-600">{l ? 'Skipped' : '跳过'}</span>
-                <span className="font-semibold tabular-nums">{payablePackageSummary.skippedPages}</span>
-              </li>
-            </ul>
-            <p className="mt-3 text-xs leading-relaxed text-gray-500">
-              {l
-                ? 'Pages with a long text layer but no invoice-like keywords are skipped. Short or empty text layers are sent to OCR (typical scans). OCR failures or weak extraction are skipped. Credit notes use wording or negative totals. AI Review is optional.'
-                : '文本层较长但不包含发票类关键词的页面会跳过；文本层很短或无可选文本会直接进入 OCR（常见于扫描件）；OCR 失败或提取字段不足则跳过。Credit Note 可依措辞或负金额识别。「AI审核」为可选辅助。'}
-            </p>
-            <button
-              type="button"
-              className="mt-6 w-full rounded-lg bg-clearstrata-ui-primary py-2.5 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive"
-              onClick={() => setPayablePackageSummary(null)}
-            >
-              {l ? 'Open pending review' : '进入待审核'}
-            </button>
+            <div className="p-6 pb-3">
+              <h2 id="payable-package-summary-title" className="text-lg font-bold text-gray-900">
+                {l ? 'PDF upload complete' : 'PDF 上传完成'}
+              </h2>
+              <p className="mt-2 text-sm font-medium text-gray-800">
+                {l
+                  ? `Processed ${payablePackageSummary.totalPages} pages · imported ${payablePackageSummary.recognizedInvoices} · skipped ${payablePackageSummary.skippedPages}.`
+                  : `已处理 ${payablePackageSummary.totalPages} 页，成功导入 ${payablePackageSummary.recognizedInvoices} 张，跳过 ${payablePackageSummary.skippedPages} 页。`}
+              </p>
+              <ul className="mt-3 space-y-2 text-sm text-gray-800">
+                <li className="flex justify-between gap-3 border-b border-gray-100 pb-2">
+                  <span className="text-gray-600">{l ? 'Total pages' : '总页数'}</span>
+                  <span className="font-semibold tabular-nums">{payablePackageSummary.totalPages}</span>
+                </li>
+                <li className="flex justify-between gap-3 border-b border-gray-100 pb-2">
+                  <span className="text-gray-600">{l ? 'Imported' : '成功入库'}</span>
+                  <span className="font-semibold tabular-nums text-clearstrata-brand-700">
+                    {payablePackageSummary.recognizedInvoices}
+                  </span>
+                </li>
+                <li className="flex justify-between gap-3 pb-1">
+                  <span className="text-gray-600">{l ? 'Skipped' : '跳过'}</span>
+                  <span className="font-semibold tabular-nums text-amber-800">
+                    {payablePackageSummary.skippedPages}
+                  </span>
+                </li>
+              </ul>
+            </div>
+            {payablePackageSummary.skipped.length > 0 ? (
+              <div className="flex-1 overflow-y-auto border-t border-gray-100 px-6 py-3">
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  {l ? 'Skipped pages' : '跳过页清单'}
+                </h3>
+                <ul className="space-y-2">
+                  {payablePackageSummary.skipped.map((sk) => (
+                    <li
+                      key={`${sk.pageIndex}-${sk.reason}`}
+                      className="rounded-lg border border-amber-100 bg-amber-50/60 px-3 py-2 text-xs"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-md bg-white px-1.5 py-0.5 font-semibold text-amber-900 ring-1 ring-amber-200">
+                          {l ? `Page ${sk.pageIndex}` : `第 ${sk.pageIndex} 页`}
+                        </span>
+                        <span className="font-medium text-amber-950">{l ? sk.reasonEn : sk.reasonZh}</span>
+                      </div>
+                      {sk.excerpt ? (
+                        <p className="mt-1 line-clamp-2 break-words text-[11px] leading-relaxed text-gray-600">
+                          {sk.excerpt}
+                        </p>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            <div className="border-t border-gray-100 p-6 pt-4">
+              <p className="text-xs leading-relaxed text-gray-500">
+                {l
+                  ? 'Skipped pages stay out of pending review by design (no forced weak-OCR rows). Re-upload individual pages via “Single-file supplement” if needed.'
+                  : '跳过页不会强行进入待审核，避免引入弱 OCR 数据。如需补录，请用「单张补录」单独上传该页。'}
+              </p>
+              <button
+                type="button"
+                className="mt-4 w-full rounded-lg bg-clearstrata-ui-primary py-2.5 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive"
+                onClick={() => setPayablePackageSummary(null)}
+              >
+                {l ? 'Open pending review' : '进入待审核'}
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
@@ -3252,7 +3328,16 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {monthList.map((inv) => {
-                    const st = statusStyle(inv.status);
+                    const baseSt = statusStyle(inv.status);
+                    const archivedHistorical = isHistoricalRow(inv);
+                    const st = archivedHistorical
+                      ? {
+                          ...baseSt,
+                          labelZh: '历史归档',
+                          labelEn: 'Archived',
+                          className: 'bg-slate-100 text-slate-700 ring-1 ring-slate-200',
+                        }
+                      : baseSt;
                     const qv = quoteVarianceByInvoiceId[inv.id];
                     return (
                       <tr
@@ -3399,7 +3484,7 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
                                 </button>
                               )}
                             </div>
-                            {canAudit && inv.status === 'pending_review' && (
+                            {canAudit && inv.status === 'pending_review' && !isHistoricalRow(inv) && (
                               <div className="flex flex-col gap-1">
                                 <button
                                   type="button"
@@ -3420,7 +3505,7 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
                                 </button>
                               </div>
                             )}
-                            {canAudit && inv.status === 'approved' && (
+                            {canAudit && inv.status === 'approved' && !isHistoricalRow(inv) && (
                               <button
                                 type="button"
                                 onClick={() => void markPaid(inv.id)}
@@ -3441,7 +3526,16 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
 
             <div className="md:hidden p-4 space-y-3">
               {monthList.map((inv) => {
-                const st = statusStyle(inv.status);
+                const baseSt = statusStyle(inv.status);
+                const archivedHistorical = isHistoricalRow(inv);
+                const st = archivedHistorical
+                  ? {
+                      ...baseSt,
+                      labelZh: '历史归档',
+                      labelEn: 'Archived',
+                      className: 'bg-slate-100 text-slate-700 ring-1 ring-slate-200',
+                    }
+                  : baseSt;
                 const qv = quoteVarianceByInvoiceId[inv.id];
                 return (
                   <button
@@ -3536,7 +3630,7 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
                         </button>
                       )}
                     </div>
-                    {canAudit && inv.status === 'pending_review' && (
+                    {canAudit && inv.status === 'pending_review' && !isHistoricalRow(inv) && (
                       <div className="flex gap-2 mt-3" onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
@@ -3557,7 +3651,7 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
                         </button>
                       </div>
                     )}
-                    {canAudit && inv.status === 'approved' && (
+                    {canAudit && inv.status === 'approved' && !isHistoricalRow(inv) && (
                       <div className="mt-3" onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
@@ -3846,7 +3940,6 @@ function InvoiceDetailModal({
   const [draftTotal, setDraftTotal] = useState('');
   const [draftSubmitSaving, setDraftSubmitSaving] = useState(false);
 
-  const st = statusStyle(invoice.status);
   const aiData = invoice.ai_extracted_data as Record<string, unknown> | null;
 
   const historicalAudit = useMemo(
@@ -3868,6 +3961,17 @@ function InvoiceDetailModal({
     );
     return mode === 'historical';
   }, [invoice, governanceStartIso]);
+
+  const st = useMemo(() => {
+    const base = statusStyle(invoice.status);
+    if (!isHistoricalInvoice) return base;
+    return {
+      ...base,
+      labelZh: '历史归档',
+      labelEn: 'Archived',
+      className: 'bg-slate-100 text-slate-700 ring-1 ring-slate-200',
+    };
+  }, [invoice.status, isHistoricalInvoice]);
 
   const loadAiAuditBundle = useCallback(async () => {
     if (!currentPropertyId) {
@@ -4870,8 +4974,8 @@ function InvoiceDetailModal({
             </section>
           ) : null}
 
-          {/* 5. 审批区 */}
-          {canAudit && invoice.status === 'pending_review' ? (
+          {/* 5. 审批区（历史归档月份不进入审核流程，仅作查看） */}
+          {canAudit && invoice.status === 'pending_review' && !isHistoricalInvoice ? (
             <section className="rounded-xl border border-gray-200 bg-gray-50/80 p-4">
               <h3 className="text-sm font-semibold text-gray-900 mb-3">{l ? 'Approval' : '审批'}</h3>
               {(() => {
@@ -5193,7 +5297,7 @@ function InvoiceDetailModal({
                 {l ? 'Edit' : '编辑'}
               </button>
             )}
-            {canAudit && invoice.status === 'approved' && (
+            {canAudit && invoice.status === 'approved' && !isHistoricalInvoice && (
               <button
                 type="button"
                 onClick={() => onMarkPaid(invoice.id)}

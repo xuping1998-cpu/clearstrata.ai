@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import { invokeInvoiceOcrFromFile, type InvoiceOcrInvokeResult } from './invoiceOcrClient';
 import { CREDIT_NOTE_OR_MEMO_TEXT_RE, ocrPrefillCredibility } from './invoiceSingleUploadCredibility';
+import { deepSanitizeJsonStrings, stripUnpairedSurrogates } from './invoiceJsonSanitize';
 
 const ALLOWED_EXT = /\.(pdf|jpe?g|png)$/i;
 
@@ -31,8 +32,10 @@ async function insertInvoiceOcrRawSafe(opts: {
     await supabase.from('invoice_ocr_raw').insert({
       invoice_id: invoiceId,
       property_id: propertyId,
-      structured_json: ocr.structured as Record<string, unknown>,
-      raw_text: typeof ex.raw_text === 'string' ? ex.raw_text : rawTextFallback.slice(0, 8000),
+      structured_json: deepSanitizeJsonStrings(ocr.structured) as Record<string, unknown>,
+      raw_text: stripUnpairedSurrogates(
+        typeof ex.raw_text === 'string' ? ex.raw_text : rawTextFallback.slice(0, 8000),
+      ),
       ocr_model: 'claude-sonnet-4-20250514',
     });
   } catch (e) {
@@ -105,17 +108,22 @@ export async function uploadInvoiceDocumentDirect(opts: {
       const fiscalYear =
         ocr.fiscalYear ?? (parseInt(String(ex.invoice_date).slice(0, 4), 10) || new Date().getFullYear());
       const aiPayload: Record<string, unknown> = {
-        ...ex,
+        ...deepSanitizeJsonStrings(ex),
         single_upload_ocr_prefill: true,
         invoice_type: isCreditNote ? 'credit_note' : 'invoice',
       };
 
       insertBody = {
         property_id: propertyId,
-        file_name: file.name,
+        file_name: stripUnpairedSurrogates(file.name),
         document_url: docUrl,
-        vendor_name: ex.vendor_name?.trim() || (langEn ? 'Unknown vendor' : '未知供应商'),
-        invoice_number: ex.invoice_number ?? null,
+        vendor_name: stripUnpairedSurrogates(
+          ex.vendor_name?.trim() || (langEn ? 'Unknown vendor' : '未知供应商'),
+        ),
+        invoice_number:
+          ex.invoice_number != null && ex.invoice_number !== ''
+            ? stripUnpairedSurrogates(String(ex.invoice_number))
+            : null,
         invoice_date: ex.invoice_date || today,
         due_date: ex.due_date ?? null,
         subtotal: ex.subtotal ?? 0,
@@ -124,7 +132,10 @@ export async function uploadInvoiceDocumentDirect(opts: {
         hst_number: ex.hst_number ?? null,
         currency: ex.currency || 'CAD',
         category: ex.category || 'general',
-        notes: ex.description ?? null,
+        notes:
+          typeof ex.description === 'string'
+            ? stripUnpairedSurrogates(ex.description)
+            : (ex.description ?? null),
         has_anomalies: false,
         ai_extracted_data: aiPayload,
         ai_confidence_score: 0.85,
@@ -137,7 +148,7 @@ export async function uploadInvoiceDocumentDirect(opts: {
     } else {
       insertBody = {
         property_id: propertyId,
-        file_name: file.name,
+        file_name: stripUnpairedSurrogates(file.name),
         document_url: docUrl,
         vendor_name: draftNeedsDetailsVendor(langEn),
         invoice_number: null,
@@ -149,12 +160,15 @@ export async function uploadInvoiceDocumentDirect(opts: {
         hst_number: null,
         currency: ex.currency || 'CAD',
         category: ex.category || 'general',
-        notes: ex.description ?? null,
+        notes:
+          typeof ex.description === 'string'
+            ? stripUnpairedSurrogates(ex.description)
+            : (ex.description ?? null),
         has_anomalies: false,
         ai_extracted_data: {
           single_upload_weak_ocr: true,
-          ocr_attempt: ex,
-          structured: ocr.structured,
+          ocr_attempt: deepSanitizeJsonStrings(ex),
+          structured: deepSanitizeJsonStrings(ocr.structured),
           invoice_type: isCreditNote ? 'credit_note' : 'invoice',
         } as Record<string, unknown>,
         ai_confidence_score: null,
@@ -168,7 +182,7 @@ export async function uploadInvoiceDocumentDirect(opts: {
   } else {
     insertBody = {
       property_id: propertyId,
-      file_name: file.name,
+      file_name: stripUnpairedSurrogates(file.name),
       document_url: docUrl,
       vendor_name: draftNeedsDetailsVendor(langEn),
       invoice_number: null,
