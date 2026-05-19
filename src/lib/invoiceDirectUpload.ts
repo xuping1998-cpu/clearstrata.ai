@@ -1,7 +1,7 @@
 import { supabase } from './supabase';
 import { invokeInvoiceOcrFromFile, type InvoiceOcrInvokeResult } from './invoiceOcrClient';
 import { CREDIT_NOTE_OR_MEMO_TEXT_RE, ocrPrefillCredibility } from './invoiceSingleUploadCredibility';
-import { deepSanitizeJsonStrings, stripUnpairedSurrogates } from './invoiceJsonSanitize';
+import { deepSanitizeJsonStrings, sanitizeDbText } from './invoiceJsonSanitize';
 
 const ALLOWED_EXT = /\.(pdf|jpe?g|png)$/i;
 
@@ -33,7 +33,7 @@ async function insertInvoiceOcrRawSafe(opts: {
       invoice_id: invoiceId,
       property_id: propertyId,
       structured_json: deepSanitizeJsonStrings(ocr.structured) as Record<string, unknown>,
-      raw_text: stripUnpairedSurrogates(
+      raw_text: sanitizeDbText(
         typeof ex.raw_text === 'string' ? ex.raw_text : rawTextFallback.slice(0, 8000),
       ),
       ocr_model: 'claude-sonnet-4-20250514',
@@ -107,34 +107,34 @@ export async function uploadInvoiceDocumentDirect(opts: {
     if (credible) {
       const fiscalYear =
         ocr.fiscalYear ?? (parseInt(String(ex.invoice_date).slice(0, 4), 10) || new Date().getFullYear());
-      const aiPayload: Record<string, unknown> = {
-        ...deepSanitizeJsonStrings(ex),
+      const aiPayload: Record<string, unknown> = deepSanitizeJsonStrings({
+        ...ex,
         single_upload_ocr_prefill: true,
         invoice_type: isCreditNote ? 'credit_note' : 'invoice',
-      };
+      }) as Record<string, unknown>;
 
       insertBody = {
         property_id: propertyId,
-        file_name: stripUnpairedSurrogates(file.name),
-        document_url: docUrl,
-        vendor_name: stripUnpairedSurrogates(
+        file_name: sanitizeDbText(file.name),
+        document_url: sanitizeDbText(docUrl),
+        vendor_name: sanitizeDbText(
           ex.vendor_name?.trim() || (langEn ? 'Unknown vendor' : '未知供应商'),
         ),
         invoice_number:
           ex.invoice_number != null && ex.invoice_number !== ''
-            ? stripUnpairedSurrogates(String(ex.invoice_number))
+            ? sanitizeDbText(String(ex.invoice_number))
             : null,
         invoice_date: ex.invoice_date || today,
         due_date: ex.due_date ?? null,
         subtotal: ex.subtotal ?? 0,
         tax_amount: ex.tax_amount ?? 0,
         total_amount: ex.total_amount ?? 0,
-        hst_number: ex.hst_number ?? null,
-        currency: ex.currency || 'CAD',
-        category: ex.category || 'general',
+        hst_number: ex.hst_number != null ? sanitizeDbText(String(ex.hst_number)) : null,
+        currency: sanitizeDbText(ex.currency || 'CAD'),
+        category: sanitizeDbText(ex.category || 'general'),
         notes:
           typeof ex.description === 'string'
-            ? stripUnpairedSurrogates(ex.description)
+            ? sanitizeDbText(ex.description)
             : (ex.description ?? null),
         has_anomalies: false,
         ai_extracted_data: aiPayload,
@@ -148,9 +148,9 @@ export async function uploadInvoiceDocumentDirect(opts: {
     } else {
       insertBody = {
         property_id: propertyId,
-        file_name: stripUnpairedSurrogates(file.name),
-        document_url: docUrl,
-        vendor_name: draftNeedsDetailsVendor(langEn),
+        file_name: sanitizeDbText(file.name),
+        document_url: sanitizeDbText(docUrl),
+        vendor_name: sanitizeDbText(draftNeedsDetailsVendor(langEn)),
         invoice_number: null,
         invoice_date: today,
         due_date: null,
@@ -158,19 +158,19 @@ export async function uploadInvoiceDocumentDirect(opts: {
         tax_amount: 0,
         total_amount: 0,
         hst_number: null,
-        currency: ex.currency || 'CAD',
-        category: ex.category || 'general',
+        currency: sanitizeDbText(ex.currency || 'CAD'),
+        category: sanitizeDbText(ex.category || 'general'),
         notes:
           typeof ex.description === 'string'
-            ? stripUnpairedSurrogates(ex.description)
+            ? sanitizeDbText(ex.description)
             : (ex.description ?? null),
         has_anomalies: false,
-        ai_extracted_data: {
+        ai_extracted_data: deepSanitizeJsonStrings({
           single_upload_weak_ocr: true,
-          ocr_attempt: deepSanitizeJsonStrings(ex),
-          structured: deepSanitizeJsonStrings(ocr.structured),
+          ocr_attempt: ex,
+          structured: ocr.structured,
           invoice_type: isCreditNote ? 'credit_note' : 'invoice',
-        } as Record<string, unknown>,
+        }) as Record<string, unknown>,
         ai_confidence_score: null,
         uploaded_by: profileId,
         status: 'draft_manual',
@@ -182,9 +182,9 @@ export async function uploadInvoiceDocumentDirect(opts: {
   } else {
     insertBody = {
       property_id: propertyId,
-      file_name: stripUnpairedSurrogates(file.name),
-      document_url: docUrl,
-      vendor_name: draftNeedsDetailsVendor(langEn),
+      file_name: sanitizeDbText(file.name),
+      document_url: sanitizeDbText(docUrl),
+      vendor_name: sanitizeDbText(draftNeedsDetailsVendor(langEn)),
       invoice_number: null,
       invoice_date: today,
       due_date: null,

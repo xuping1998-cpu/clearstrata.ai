@@ -53,6 +53,7 @@ import {
 import { runInvoiceAudit } from '../../lib/invoiceAudit';
 import { INVOICE_AUDIT_RULE_CODES, type InvoiceAuditSummary } from '../../lib/audit/invoiceAuditRules';
 import { resolveLedgerGovernanceMode } from '../../lib/invoiceGovernanceLedgerMode';
+import { sanitizeDbText } from '../../lib/invoiceJsonSanitize';
 import { HistoricalBenchmarkReviewModal } from '../../components/finance/HistoricalBenchmarkReviewModal';
 import {
   formatHistoricalBenchmarkRange,
@@ -2314,12 +2315,13 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
     opts?: { notes?: string; oldStatus?: string; newStatus?: string }
   ) => {
     if (!profile || !canAudit || !currentPropertyId) return;
+    const safeNotes = typeof opts?.notes === 'string' ? sanitizeDbText(opts.notes) : null;
     await supabase.from('invoice_audit_log').insert({
       property_id: currentPropertyId,
       invoice_id: invoiceId,
       actor_id: profile.id,
       action,
-      notes: opts?.notes ?? null,
+      notes: safeNotes,
       old_status: opts?.oldStatus ?? null,
       new_status: opts?.newStatus ?? null,
     });
@@ -2529,6 +2531,7 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
       alert(l ? 'Please enter an approval reason.' : '必须填写审批理由');
       return;
     }
+    const safeApprovalNote = trimmed ? sanitizeDbText(trimmed) : null;
     await applyInvoiceUpdate(
       id,
       {
@@ -2536,11 +2539,11 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
         approved: true,
         verified_by: profile.id,
         verified_at: new Date().toISOString(),
-        approval_note: trimmed || null,
+        approval_note: safeApprovalNote,
         review_notes: null,
         updated_at: new Date().toISOString(),
       },
-      { action: 'approve', notes: trimmed || undefined, oldStatus: inv.status, newStatus: 'approved' }
+      { action: 'approve', notes: safeApprovalNote || undefined, oldStatus: inv.status, newStatus: 'approved' }
     );
   };
 
@@ -2577,18 +2580,19 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
     if (!rejectTarget || !profile) return;
     setRejectSubmitting(true);
     try {
+      const safeRejectNote = rejectNote.trim() ? sanitizeDbText(rejectNote.trim()) : null;
       await applyInvoiceUpdate(
         rejectTarget.id,
         {
           status: 'flagged',
-          review_notes: rejectNote.trim() || null,
+          review_notes: safeRejectNote,
           verified_by: profile.id,
           verified_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         },
         {
           action: 'reject',
-          notes: rejectNote.trim() || undefined,
+          notes: safeRejectNote || undefined,
           oldStatus: rejectTarget.status,
           newStatus: 'flagged',
         }
@@ -3112,15 +3116,15 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
             <div className="border-t border-gray-100 p-6 pt-4">
               <p className="text-xs leading-relaxed text-gray-500">
                 {l
-                  ? 'Skipped pages stay out of pending review by design (no forced weak-OCR rows). Re-upload individual pages via “Single-file supplement” if needed.'
-                  : '跳过页不会强行进入待审核，避免引入弱 OCR 数据。如需补录，请用「单张补录」单独上传该页。'}
+                  ? 'Skipped pages are not force-imported to avoid weak OCR data. To add one manually, upload that page with Single invoice upload.'
+                  : '跳过页不会强行入库，避免引入弱 OCR 数据。如需补录，请用「单张补录」单独上传该页。'}
               </p>
               <button
                 type="button"
                 className="mt-4 w-full rounded-lg bg-clearstrata-ui-primary py-2.5 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive"
                 onClick={() => setPayablePackageSummary(null)}
               >
-                {l ? 'Open pending review' : '进入待审核'}
+                {l ? 'View invoices' : '查看发票列表'}
               </button>
             </div>
           </div>
@@ -4260,12 +4264,16 @@ function InvoiceDetailModal({
         aid && typeof aid === 'object' ? ({ ...(aid as Record<string, unknown>) } as Record<string, unknown>) : {};
       aiBase.draft_submitted_for_review_at = new Date().toISOString();
 
+      const safeDraftVendor = sanitizeDbText(draftVendor.trim() || invoice.vendor_name);
+      const safeDraftInvoiceNumber = draftInvoiceNumber.trim()
+        ? sanitizeDbText(draftInvoiceNumber.trim())
+        : null;
       const { error } = await supabase
         .from('invoices')
         .update({
           property_id: currentPropertyId,
-          vendor_name: draftVendor.trim() || invoice.vendor_name,
-          invoice_number: draftInvoiceNumber.trim() || null,
+          vendor_name: safeDraftVendor,
+          invoice_number: safeDraftInvoiceNumber,
           invoice_date: invoiceDateTrim,
           subtotal: subNum,
           tax_amount: taxNum,
@@ -4302,12 +4310,13 @@ function InvoiceDetailModal({
     if (!profile || !canAudit || !currentPropertyId) return;
     setSaving(true);
     try {
+      const safeEditNotes = editNotes ? sanitizeDbText(editNotes) : null;
       const { error } = await supabase
         .from('invoices')
         .update({
           property_id: currentPropertyId,
-          category: editCategory,
-          notes: editNotes || null,
+          category: sanitizeDbText(editCategory),
+          notes: safeEditNotes,
           accounting_year: editAccountingYear,
           accounting_month: editAccountingMonth,
           updated_at: new Date().toISOString(),

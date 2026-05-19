@@ -2,7 +2,7 @@ import { PDFDocument } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist';
 import { supabase } from './supabase';
 import { invokeInvoiceOcrFromFile } from './invoiceOcrClient';
-import { deepSanitizeJsonStrings, stripUnpairedSurrogates } from './invoiceJsonSanitize';
+import { deepSanitizeJsonStrings, sanitizeDbText } from './invoiceJsonSanitize';
 
 const MAX_PACKAGE_PAGES = 120;
 
@@ -124,7 +124,7 @@ function buildSkipEntry(opts: {
   excerpt?: string;
 }): SkippedPageEntry {
   const m = SKIP_REASON_TEXT[opts.reason];
-  const excerpt = opts.excerpt ? stripUnpairedSurrogates(opts.excerpt).slice(0, 80) : undefined;
+  const excerpt = opts.excerpt ? sanitizeDbText(opts.excerpt).slice(0, 80) : undefined;
   return {
     pageIndex: opts.pageIndex,
     reason: opts.reason,
@@ -396,33 +396,33 @@ export async function processPayablePdfPackage(opts: {
 
     const { publicUrl, storagePath } = await uploadPdfPageBytes(bytes, `p${pageIndex}`);
 
-    const aiPayload: Record<string, unknown> = {
-      ...deepSanitizeJsonStrings(ex),
+    const aiPayload: Record<string, unknown> = deepSanitizeJsonStrings({
+      ...ex,
       batch_package: true,
-      package_source_file: stripUnpairedSurrogates(file.name),
+      package_source_file: file.name,
       package_page: pageIndex,
       package_storage_path: storagePath,
       invoice_type: isCreditNote ? 'credit_note' : 'invoice',
-      raw_page_text_excerpt: stripUnpairedSurrogates(collapsed.slice(0, 1200)),
-    };
+      raw_page_text_excerpt: collapsed.slice(0, 1200),
+    }) as Record<string, unknown>;
 
     const { data: inserted, error: insErr } = await supabase
       .from('invoices')
       .insert({
         property_id: propertyId,
-        file_name: fileLabel,
-        document_url: publicUrl,
-        vendor_name: vendor || (langEn ? 'Unknown vendor' : '未知供应商'),
-        invoice_number: invoiceNumber,
+        file_name: sanitizeDbText(fileLabel),
+        document_url: sanitizeDbText(publicUrl),
+        vendor_name: sanitizeDbText(vendor || (langEn ? 'Unknown vendor' : '未知供应商')),
+        invoice_number: invoiceNumber != null ? sanitizeDbText(invoiceNumber) : null,
         invoice_date: invoiceDate,
         due_date: dueDate,
         subtotal,
         tax_amount: taxAmount,
         total_amount: totalAmount,
-        hst_number: ex.hst_number ?? null,
-        currency: ex.currency || 'CAD',
-        category,
-        notes,
+        hst_number: ex.hst_number != null ? sanitizeDbText(String(ex.hst_number)) : null,
+        currency: sanitizeDbText(ex.currency || 'CAD'),
+        category: sanitizeDbText(category),
+        notes: typeof notes === 'string' ? sanitizeDbText(notes) : notes,
         has_anomalies: false,
         ai_extracted_data: aiPayload,
         ai_confidence_score: 0.85,
@@ -441,7 +441,7 @@ export async function processPayablePdfPackage(opts: {
         buildSkipEntry({
           pageIndex,
           reason: 'insert_failed',
-          excerpt: `${insErr.message} | ${ocrExcerpt}`.slice(0, 200),
+          excerpt: sanitizeDbText(`${insErr.message} | ${ocrExcerpt}`).slice(0, 200),
         }),
       );
       continue;
@@ -471,7 +471,7 @@ export async function processPayablePdfPackage(opts: {
         invoice_id: id,
         property_id: propertyId,
         structured_json: deepSanitizeJsonStrings(ocr.structured) as Record<string, unknown>,
-        raw_text: stripUnpairedSurrogates(
+        raw_text: sanitizeDbText(
           typeof ex.raw_text === 'string' ? ex.raw_text : collapsed.slice(0, 8000),
         ),
         ocr_model: 'claude-sonnet-4-20250514',
