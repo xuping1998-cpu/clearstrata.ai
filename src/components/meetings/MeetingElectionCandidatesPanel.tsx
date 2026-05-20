@@ -115,6 +115,16 @@ export function MeetingElectionCandidatesPanel({
     nominationOpenPhase &&
     !unitAlreadyCandidate;
 
+  console.log('[ElectionNominationDebug]', {
+    ownerVoteMeetingId,
+    eligibleUnitNo,
+    hasMeta: !!metaFinal,
+    allowSelfNomination: metaFinal?.allow_self_nomination,
+    nominationOpenPhase,
+    unitAlreadyCandidate,
+    canOwnerSelfNom,
+  });
+
   async function persist(next: ElectionAgendaMetaV1) {
     if (!meta || !staffNominationWritesEnabled) return;
     const visible = displayAgendaZhWithoutElection(agenda.description_zh);
