@@ -7,9 +7,9 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers":
-    "Content-Type, Authorization, X-Client-Info, Apikey",
+    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -56,7 +56,7 @@ function jsonResponse(body: Record<string, unknown>, status: number): Response {
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { status: 200, headers: corsHeaders });
+    return new Response("ok", { status: 200, headers: corsHeaders });
   }
 
   try {
@@ -167,89 +167,124 @@ Deno.serve(async (req: Request) => {
     const propertyName = (prop?.name as string) || (locale === "en" ? "Property" : "物业");
 
     const hasName = typeof jr.full_name === "string" && jr.full_name.trim();
-    const displayName = hasName
-      ? jr.full_name!.trim()
-      : locale === "en"
-        ? "there"
-        : "";
-    const zhGreetingLine = hasName
-      ? `${escapeHtml(jr.full_name!.trim())}，您好：`
-      : "您好：";
-    const enGreetingLine = hasName ? `Hello ${escapeHtml(displayName)},` : "Hello,";
+    const safeName = hasName ? escapeHtml(jr.full_name!.trim()) : "";
+    const zhGreetingLine = hasName ? `${safeName}，您好：` : "您好：";
+    const enGreetingLine = hasName ? `Hello ${safeName},` : "Hello,";
 
     const appBase =
       Deno.env.get("APP_BASE_URL")?.replace(/\/$/, "") || "https://www.clearstrata.ai";
-    const signInUrl = `${appBase}/`;
+    const logoUrl = `${appBase}/logo-email.png`;
+    const enterUrl = `${appBase}/?propertyId=${encodeURIComponent(jr.property_id as string)}`;
+    const reapplyUrl = `${appBase}/entry?propertyId=${encodeURIComponent(jr.property_id as string)}`;
 
-    let subject: string;
-    let html: string;
+    const approved = decision === "approved";
+    const reason =
+      !approved && typeof jr.rejection_reason === "string" && jr.rejection_reason.trim()
+        ? jr.rejection_reason.trim()
+        : "";
 
-    if (decision === "approved") {
-      if (locale === "en") {
-        subject = "Your property access request has been approved";
-        html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/></head>
-<body style="margin:0;padding:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-<div style="max-width:560px;margin:32px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
-<div style="background:linear-gradient(135deg,#1D9E75,#178a66);padding:28px 24px;">
-<h1 style="margin:0;color:#fff;font-size:20px;">Request approved</h1></div>
-<div style="padding:24px;color:#374151;font-size:15px;line-height:1.6;">
-<p>${enGreetingLine}</p>
-<p>Your request to join <strong>${escapeHtml(propertyName)}</strong> has been approved.</p>
-<p>You can now sign in to ClearStrata and access this property.</p>
-<p><a href="${signInUrl}" style="display:inline-block;background:#1D9E75;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">Open ClearStrata</a></p>
-<p style="color:#9ca3af;font-size:12px;margin-top:24px;">— ClearStrata</p>
-</div></div></body></html>`;
-      } else {
-        subject = "您的物业加入申请已通过";
-        html = `<!DOCTYPE html><html lang="zh"><head><meta charset="UTF-8"/></head>
-<body style="margin:0;padding:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-<div style="max-width:560px;margin:32px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
-<div style="background:linear-gradient(135deg,#1D9E75,#178a66);padding:28px 24px;">
-<h1 style="margin:0;color:#fff;font-size:20px;">申请已通过</h1></div>
-<div style="padding:24px;color:#374151;font-size:15px;line-height:1.7;">
-<p>${zhGreetingLine}</p>
-<p>您加入 <strong>${escapeHtml(propertyName)}</strong> 的申请已通过审核。</p>
-<p>您现在可以登录 ClearStrata，进入该物业的专属空间。</p>
-<p>如您已登录，请刷新页面后重试。<br/>如尚未登录，请使用申请时的邮箱登录。</p>
-<p><a href="${signInUrl}" style="display:inline-block;background:#1D9E75;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">前往登录</a></p>
-<p style="color:#9ca3af;font-size:12px;margin-top:24px;">—— ClearStrata</p>
-</div></div></body></html>`;
-      }
-    } else {
-      const reason =
-        typeof jr.rejection_reason === "string" && jr.rejection_reason.trim()
-          ? jr.rejection_reason.trim()
-          : "";
-      if (locale === "en") {
-        subject = "Your property access request was not approved";
-        html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/></head>
-<body style="margin:0;padding:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-<div style="max-width:560px;margin:32px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
-<div style="background:#f3f4f6;padding:16px 24px;border-bottom:1px solid #e5e7eb;">
-<h1 style="margin:0;color:#111827;font-size:18px;">Request not approved</h1></div>
-<div style="padding:24px;color:#374151;font-size:15px;line-height:1.6;">
-<p>${enGreetingLine}</p>
-<p>Your request to join <strong>${escapeHtml(propertyName)}</strong> was not approved.</p>
-${reason ? `<p style="background:#fef2f2;border:1px solid #fecaca;padding:12px;border-radius:8px;">${escapeHtml(reason)}</p>` : ""}
-<p>If you have questions, please contact your property administrator.</p>
-<p style="color:#9ca3af;font-size:12px;margin-top:24px;">— ClearStrata</p>
-</div></div></body></html>`;
-      } else {
-        subject = "您的物业加入申请未通过";
-        html = `<!DOCTYPE html><html lang="zh"><head><meta charset="UTF-8"/></head>
-<body style="margin:0;padding:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-<div style="max-width:560px;margin:32px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
-<div style="background:#f3f4f6;padding:16px 24px;border-bottom:1px solid #e5e7eb;">
-<h1 style="margin:0;color:#111827;font-size:18px;">申请未通过</h1></div>
-<div style="padding:24px;color:#374151;font-size:15px;line-height:1.7;">
-<p>${zhGreetingLine}</p>
-<p>很抱歉，您加入 <strong>${escapeHtml(propertyName)}</strong> 的申请未通过审核。</p>
-${reason ? `<p style="background:#fef2f2;border:1px solid #fecaca;padding:12px;border-radius:8px;">原因：${escapeHtml(reason)}</p>` : ""}
-<p>如有疑问，请联系物业管理员。</p>
-<p style="color:#9ca3af;font-size:12px;margin-top:24px;">—— ClearStrata</p>
-</div></div></body></html>`;
-      }
-    }
+    const safeProperty = escapeHtml(propertyName);
+    const titleZh = approved ? "申请已通过" : "申请未通过";
+    const titleEn = approved ? "Application Approved" : "Application Not Approved";
+    const introZh = approved
+      ? `恭喜！您已获准加入 <strong>${safeProperty}</strong>。`
+      : `很抱歉，您加入 <strong>${safeProperty}</strong> 的申请未通过审核。`;
+    const introEn = approved
+      ? `Congratulations! Your request to join <strong>${safeProperty}</strong> has been approved.`
+      : `We&rsquo;re sorry. Your request to join <strong>${safeProperty}</strong> was not approved.`;
+    const ctaZh = approved ? "进入物业" : "重新提交申请";
+    const ctaEn = approved ? "Enter Property" : "Reapply";
+    const ctaUrl = approved ? enterUrl : reapplyUrl;
+    const reasonBlock = reason
+      ? `<tr><td style="padding:0 32px 4px;">
+                <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:14px 16px;color:#991b1b;font-size:14px;line-height:1.6;">
+                  <p style="margin:0 0 4px;font-weight:600;">原因 / Reason</p>
+                  <p style="margin:0;white-space:pre-wrap;">${escapeHtml(reason)}</p>
+                </div>
+              </td></tr>`
+      : "";
+
+    const subject = approved
+      ? "申请已通过 / Application Approved"
+      : "申请未通过 / Application Not Approved";
+
+    const htmlLang = locale === "en" ? "en" : "zh";
+    const html = `<!DOCTYPE html>
+<html lang="${htmlLang}">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${titleZh} / ${titleEn}</title>
+</head>
+<body style="margin:0;padding:0;background:#f6f9fc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,'PingFang SC','Microsoft YaHei',sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f9fc;padding:40px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06),0 4px 12px rgba(0,0,0,0.04);">
+          <tr>
+            <td style="background:#28C7D9;padding:24px 20px;text-align:center;">
+              <div style="margin-bottom:12px;">
+                <img
+                  src="${escapeHtml(logoUrl)}"
+                  alt="ClearStrata"
+                  style="height:48px;object-fit:contain;display:block;margin:0 auto;"
+                />
+              </div>
+              <div style="font-size:20px;font-weight:600;color:#ffffff;letter-spacing:0.02em;">
+                加入申请结果 / Join Request Update
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:32px 32px 8px;">
+              <p style="margin:0 0 16px;color:#111827;font-size:18px;font-weight:600;line-height:1.4;">
+                ${titleZh} / ${titleEn}
+              </p>
+              <p style="margin:0 0 18px;color:#374151;font-size:15px;line-height:1.7;">
+                ${zhGreetingLine}<br />${enGreetingLine}
+              </p>
+              <p style="margin:0 0 12px;color:#374151;font-size:15px;line-height:1.7;">
+                ${introZh}
+              </p>
+              <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.7;">
+                ${introEn}
+              </p>
+            </td>
+          </tr>
+          ${reasonBlock}
+          <tr>
+            <td style="padding:18px 32px 8px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                <tr>
+                  <td align="center">
+                    <a href="${ctaUrl}" style="display:inline-block;background:#28C7D9;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;padding:14px 28px;border-radius:8px;">${ctaZh} / ${ctaEn}</a>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:18px 0 0;color:#6b7280;font-size:12px;line-height:1.6;text-align:center;">
+                <a href="${ctaUrl}" style="color:#0e8ea0;word-break:break-all;">${ctaUrl}</a>
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px 32px 28px;border-top:1px solid #f3f4f6;background:#fafafa;">
+              <p style="margin:0 0 6px;color:#6b7280;font-size:13px;line-height:1.6;">
+                如有疑问，请联系物业管理员。
+              </p>
+              <p style="margin:0;color:#6b7280;font-size:13px;line-height:1.6;">
+                Questions? Please contact your property administrator.
+              </p>
+              <p style="margin:12px 0 0;color:#9ca3af;font-size:11px;line-height:1.5;">
+                此邮件由 ClearStrata 系统自动发送，请勿直接回复。 / This is an automated message from ClearStrata. Please do not reply.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
 
     const resendRes = await fetch("https://api.resend.com/emails", {
       method: "POST",

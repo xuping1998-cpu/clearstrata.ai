@@ -69,8 +69,8 @@ export function PropertyPeoplePage() {
 
   const staffTabs = [
     { key: 'members' as const, zh: '成员管理', en: 'Members' },
-    { key: 'review' as const, zh: '加入申请', en: 'Join requests' },
-    { key: 'anomaly' as const, zh: '待审核人员', en: 'Exception queue' },
+    { key: 'review' as const, zh: '待审核人员', en: 'Pending Reviews' },
+    { key: 'anomaly' as const, zh: '职员邀请', en: 'Staff Invitations' },
   ];
 
   return (
@@ -84,8 +84,8 @@ export function PropertyPeoplePage() {
               ? 'External contacts for home-services partners. Member tools require property staff access.'
               : '居家服务合作方联系人。成员/申请等功能需具备本物业职员权限。'
             : en
-              ? 'Members, join requests, and the exception review queue for this property.'
-              : '本物业成员、加入申请与待审核人员。'}
+              ? 'Members, pending reviews, and staff invitations for this property.'
+              : '本物业成员、待审核人员与职员邀请。'}
         </p>
       </div>
 

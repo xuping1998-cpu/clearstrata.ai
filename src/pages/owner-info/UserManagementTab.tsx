@@ -716,7 +716,7 @@ export function UserManagementTab({
                         : 'text-gray-600 hover:text-gray-900'
                     }`}
                   >
-                    {language === 'en' ? 'Join requests' : '加入申请'}
+                    {language === 'en' ? 'Pending Reviews' : '待审核人员'}
                   </button>
                   <button
                     type="button"
@@ -729,7 +729,7 @@ export function UserManagementTab({
                         : 'text-gray-600 hover:text-gray-900'
                     }`}
                   >
-                    {language === 'en' ? 'Exception queue' : '待审核人员'}
+                    {language === 'en' ? 'Staff Invitations' : '职员邀请'}
                   </button>
                   <button
                     type="button"
