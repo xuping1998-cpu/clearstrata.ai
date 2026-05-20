@@ -7,6 +7,8 @@ import { useLanguage } from '../contexts/LanguageContext';
 import {
   createAgendaItem,
   createMeeting,
+  editorAgendaRowsHaveElectionAgenda,
+  ensureOwnerVoteMeetingAfterEditorElectionSave,
   fetchOwnerVoteMeetingMetaForCouncilMeeting,
   getMeetingDetail,
   noticeReadiness,
@@ -14,6 +16,7 @@ import {
   updateMeetingAgendaItem,
   type MeetingAgendaRow,
   type MeetingBallotRow,
+  type MeetingFormat,
   type MeetingRow,
   type MeetingStatus,
   type MeetingType,
@@ -391,6 +394,49 @@ async function persistMeetingAgendaDrafts(options: {
   return { error: null };
 }
 
+/** Council `meetings` row as saved — used to idempotently ensure `owner_vote_meetings` after election agendas persist. */
+function buildCouncilMeetingRowAfterEditorSave(params: {
+  meetingId: string;
+  propertyId: string;
+  fiscalYear: number;
+  form: {
+    meeting_type: MeetingType;
+    title_en: string;
+    title_zh: string;
+    description_en: string;
+    status: MeetingStatus;
+  };
+  descriptionZhFinal: string;
+  scheduledIso: string | null;
+  dbFormat: MeetingFormat;
+  votingOpenIso: string | null;
+  votingCloseIso: string | null;
+  createdBy: string;
+  prior: MeetingRow | null;
+}): MeetingRow {
+  const now = new Date().toISOString();
+  const { prior } = params;
+  return {
+    id: params.meetingId,
+    property_id: params.propertyId,
+    fiscal_year: prior?.fiscal_year ?? params.fiscalYear,
+    meeting_type: params.form.meeting_type,
+    title_en: params.form.title_en || null,
+    title_zh: params.form.title_zh || null,
+    description_en: params.form.description_en || null,
+    description_zh: params.descriptionZhFinal,
+    scheduled_at: params.scheduledIso,
+    meeting_format: params.dbFormat,
+    status: params.form.status,
+    notice_sent_at: prior?.notice_sent_at ?? null,
+    voting_open_at: params.votingOpenIso,
+    voting_close_at: params.votingCloseIso,
+    created_by: prior?.created_by ?? params.createdBy,
+    created_at: prior?.created_at ?? now,
+    updated_at: now,
+  };
+}
+
 export function MeetingEditor() {
   const { meetingId } = useParams<{ meetingId?: string }>();
   const isEdit = Boolean(meetingId);
@@ -759,6 +805,36 @@ export function MeetingEditor() {
     setErr(null);
     setSaving(true);
 
+    const hasElectionAgenda = editorAgendaRowsHaveElectionAgenda(meaningful);
+
+    const runOwnerVoteEnsureAfterAgendaSave = async (savedMeetingId: string): Promise<string | null> => {
+      if (!written || !hasElectionAgenda) return null;
+      const meetingRow = buildCouncilMeetingRowAfterEditorSave({
+        meetingId: savedMeetingId,
+        propertyId: currentPropertyId,
+        fiscalYear,
+        form,
+        descriptionZhFinal,
+        scheduledIso,
+        dbFormat,
+        votingOpenIso: written ? votingOpenIso : null,
+        votingCloseIso: written ? votingCloseIso : null,
+        createdBy: user.id,
+        prior: detailMeeting,
+      });
+      const { error } = await ensureOwnerVoteMeetingAfterEditorElectionSave({
+        propertyId: currentPropertyId,
+        userId: user.id,
+        meeting: meetingRow,
+        remoteWritten: written,
+        hasElectionAgenda,
+      });
+      if (!error) return null;
+      return en
+        ? `Meeting saved, but owner vote meeting could not be linked: ${error.message}`
+        : `会议已保存，但未能自动关联业主表决会议：${error.message}`;
+    };
+
     if (!isEdit) {
       const { id, error } = await createMeeting({
         propertyId: currentPropertyId,
@@ -789,8 +865,8 @@ export function MeetingEditor() {
         scheduledIso,
         useV3ElectionCanon: isWrittenRemoteUi(form.meeting_format_ui),
       });
-      setSaving(false);
       if (persistResult.error) {
+        setSaving(false);
         setErr(
           en
             ? `Meeting created, but agendas did not save: ${persistResult.error}`
@@ -799,6 +875,9 @@ export function MeetingEditor() {
         navigate(`/meetings/${id}`);
         return;
       }
+      const ovWarnCreate = await runOwnerVoteEnsureAfterAgendaSave(id);
+      setSaving(false);
+      if (ovWarnCreate) setErr(ovWarnCreate);
       navigate(`/meetings/${id}`);
       return;
     }
@@ -830,16 +909,19 @@ export function MeetingEditor() {
       scheduledIso,
       useV3ElectionCanon: written && !useLegacyWrittenEmbed,
     });
-    setSaving(false);
     if (persistResult.error) {
+      setSaving(false);
       setErr(
         en ? `Meeting saved, but agendas: ${persistResult.error}` : `会议已保存，议程同步失败：${persistResult.error}`,
       );
       return;
     }
+    const ovWarnEdit = await runOwnerVoteEnsureAfterAgendaSave(meetingId!);
+    setSaving(false);
     setPendingDeleteServerIds([]);
     setAgendaItems(meaningful);
     setEditingClientId(null);
+    if (ovWarnEdit) setErr(ovWarnEdit);
     navigate(`/meetings/${meetingId}`);
   }
 

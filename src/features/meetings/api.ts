@@ -1315,6 +1315,35 @@ export async function ensureOwnerVoteMeetingForCouncilMeeting(params: {
   }
 }
 
+/** True when editor agenda rows include a council election item (not resolution-only). */
+export function editorAgendaRowsHaveElectionAgenda(
+  rows: ReadonlyArray<{ kind?: string }>,
+): boolean {
+  return rows.some((r) => r.kind === 'election');
+}
+
+/**
+ * After MeetingEditor save: remote-written AGM/SGM with ≥1 election agenda → ensure
+ * `owner_vote_meetings` (reuses binding marker; existing row is returned, not duplicated).
+ * No-op for in-person meetings or resolution-only agendas.
+ */
+export async function ensureOwnerVoteMeetingAfterEditorElectionSave(params: {
+  propertyId: string;
+  userId: string;
+  meeting: MeetingRow;
+  remoteWritten: boolean;
+  hasElectionAgenda: boolean;
+}): Promise<{ id: string | null; error: Error | null }> {
+  const { propertyId, userId, meeting, remoteWritten, hasElectionAgenda } = params;
+  if (!remoteWritten || !hasElectionAgenda) {
+    return { id: null, error: null };
+  }
+  if (!isOwnerVotingMeeting(meeting)) {
+    return { id: null, error: null };
+  }
+  return ensureOwnerVoteMeetingForCouncilMeeting({ propertyId, meeting, userId });
+}
+
 /** Slim row for council meeting ↔ owner_vote_meetings binding (no auto-create). */
 export type OwnerVoteMeetingLite = {
   id: string;
