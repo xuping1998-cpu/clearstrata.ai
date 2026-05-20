@@ -97,7 +97,7 @@ export function PropertySettingsPage() {
   );
 }
 
-function InviteManagerSection({ propertyId }: { propertyId: string }) {
+export function InviteManagerSection({ propertyId }: { propertyId: string }) {
   const [managerName, setManagerName] = useState('');
   const [managerEmail, setManagerEmail] = useState('');
   const [busy, setBusy] = useState(false);

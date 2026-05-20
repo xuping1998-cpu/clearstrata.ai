@@ -3,11 +3,15 @@ import { Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useProperty } from '../../contexts/PropertyContext';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { canAccessPropertyPeoplePage } from '../../lib/propertyPermissions';
+import {
+  canAccessPropertyPeoplePage,
+  canInvitePropertyManager,
+} from '../../lib/propertyPermissions';
 import { isPlatformAdmin } from '../../lib/permissions';
 import { BackButton } from '../../components/BackButton';
 import { UserManagementTab, type StaffTab } from '../owner-info/UserManagementTab';
 import { ExternalContactsAdminTab } from './ExternalContactsAdminTab';
+import { InviteManagerSection } from './PropertyAdminHub';
 
 function staffFromTabParam(raw: string | null): StaffTab | null {
   if (raw === 'invites') return 'review';
@@ -127,7 +131,19 @@ export function PropertyPeoplePage() {
 
       {section === 'external' && platformAdmin ? <ExternalContactsAdminTab /> : null}
 
-      {staffPeopleAccess && section !== 'external' && currentPropertyId ? (
+      {staffPeopleAccess && section === 'anomaly' && currentPropertyId ? (
+        canInvitePropertyManager(currentRole) && !isDemoPropertyMock ? (
+          <InviteManagerSection propertyId={currentPropertyId} />
+        ) : (
+          <div className="rounded-xl border border-gray-200 bg-white p-6 text-sm text-gray-600">
+            {en
+              ? 'You do not have permission to invite staff for this property.'
+              : '您没有权限邀请本物业职员。'}
+          </div>
+        )
+      ) : null}
+
+      {staffPeopleAccess && section !== 'external' && section !== 'anomaly' && currentPropertyId ? (
         <UserManagementTab
           readOnly={false}
           controlledStaffTab={section as StaffTab}
