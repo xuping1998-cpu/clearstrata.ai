@@ -243,7 +243,7 @@ export async function approveJoinRequest(
     p_unit_no: effectiveUnit,
   });
 
-  const { data, error } = await client.rpc('approve_join_request', {
+  const { data, error } = await client.rpc('approve_join_request_final', {
     p_request_id: input.joinRequestId,
     p_property_id: input.propertyId,
     p_unit_no: effectiveUnit,
