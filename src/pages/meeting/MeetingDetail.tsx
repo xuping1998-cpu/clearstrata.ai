@@ -686,6 +686,8 @@ export function MeetingDetail() {
       setOwnerElectionBallots([]);
       return;
     }
+
+    void refreshOwnerVoteMeta();
   }, [meeting, currentPropertyId, refreshOwnerVoteMeta]);
 
   useEffect(() => {
