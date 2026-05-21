@@ -65,7 +65,17 @@ export function AdminLoginPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-sm bg-white rounded-2xl border border-gray-200 shadow-md p-8 space-y-6">
-        {/* Logo */}
+        <div className="flex justify-start">
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="text-xs text-gray-500 hover:text-gray-700 hover:underline transition-colors text-left leading-snug"
+          >
+            <span className="block">← 返回首页</span>
+            <span className="block">← Back to Home</span>
+          </button>
+        </div>
+
         <div className="flex justify-center">
           <img src="/clearstrata-hero-logo.png" alt="ClearStrata" className="h-10 w-auto" />
         </div>
@@ -135,9 +145,15 @@ export function AdminLoginPage() {
           </button>
         </form>
 
-        <div className="text-center text-xs text-gray-400 space-y-2">
-          <p>业主请返回首页使用「进入物业」入口</p>
-          <p>物业经理账号请联系理事会或管理员开通</p>
+        <div className="text-center text-xs text-gray-400 space-y-3">
+          <div className="space-y-1">
+            <p>业主入口：返回首页后点击【进入物业】</p>
+            <p>物业经理/职员：请联系理事会发送职员邀请</p>
+          </div>
+          <div className="space-y-1">
+            <p>Owners: return home and use “Join Property”</p>
+            <p>Staff/Managers: contact council for an invitation</p>
+          </div>
         </div>
       </div>
     </div>
