@@ -351,6 +351,8 @@ export function MeetingDetail() {
   const [ownerElectionBallots, setOwnerElectionBallots] = useState<OwnerElectionBallotLite[]>([]);
   const [viewerOvUnitNo, setViewerOvUnitNo] = useState<string | null>(null);
   const openedTrackedRef = useRef<string | null>(null);
+  /** Guard: V3 auto-freeze fires at most once per OV meeting id within a session. */
+  const v3AutoFreezeAttemptedRef = useRef<string | null>(null);
 
   const canManageCouncilMeetings = canManagePropertyMeetings(roleInProperty);
   const platformAdmin = isPlatformAdmin(profile);
@@ -699,6 +701,33 @@ export function MeetingDetail() {
     document.addEventListener('visibilitychange', onVis);
     return () => document.removeEventListener('visibilitychange', onVis);
   }, [meeting, refreshOwnerVoteMeta]);
+
+  /**
+   * V3 remote-written: no manual freeze button is rendered (hideStaffOvManualLifecycle),
+   * but `submit_owner_election_nomination` + `eligibleUnitNo` still require a frozen
+   * `owner_vote_voter_snapshot`. After meeting.scheduled_at, freeze once via the existing
+   * RPC so owner self-nomination becomes possible. AGM/legacy flows are unaffected.
+   */
+  useEffect(() => {
+    if (!meeting || !isWrittenRemoteV3Meeting(meeting)) return;
+    const ovId = ovMeta.meeting?.id?.trim();
+    if (!ovId) return;
+    if (ovMeta.meeting?.snapshot_frozen_at?.trim()) return;
+    const scheduled = meeting.scheduled_at?.trim();
+    if (!scheduled) return;
+    const startMs = new Date(scheduled).getTime();
+    if (Number.isNaN(startMs) || Date.now() < startMs) return;
+    if (v3AutoFreezeAttemptedRef.current === ovId) return;
+    v3AutoFreezeAttemptedRef.current = ovId;
+    void (async () => {
+      const { error } = await supabase.rpc('freeze_owner_vote_snapshot', { p_meeting_id: ovId });
+      if (error) {
+        console.error('[MeetingDetail] v3 auto freeze_owner_vote_snapshot', error);
+        return;
+      }
+      await refreshOwnerVoteMeta();
+    })();
+  }, [meeting, ovMeta.meeting?.id, ovMeta.meeting?.snapshot_frozen_at, refreshOwnerVoteMeta]);
 
   useEffect(() => {
     if (!evToast) return;

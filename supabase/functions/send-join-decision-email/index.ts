@@ -173,7 +173,6 @@ Deno.serve(async (req: Request) => {
 
     const appBase =
       Deno.env.get("APP_BASE_URL")?.replace(/\/$/, "") || "https://www.clearstrata.ai";
-    const logoUrl = `${appBase}/logo-email.png`;
     const enterUrl = `${appBase}/?propertyId=${encodeURIComponent(jr.property_id as string)}`;
     const reapplyUrl = `${appBase}/entry?propertyId=${encodeURIComponent(jr.property_id as string)}`;
 
@@ -222,12 +221,13 @@ Deno.serve(async (req: Request) => {
       <td align="center">
         <table role="presentation" width="100%" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06),0 4px 12px rgba(0,0,0,0.04);">
           <tr>
-            <td style="background:#28C7D9;padding:24px 20px;text-align:center;">
+            <td style="background:#28C7D9;padding:36px 32px 28px 32px;text-align:center;">
               <div style="margin-bottom:12px;">
                 <img
-                  src="${escapeHtml(logoUrl)}"
+                  src="https://clearstrataaiserena.vercel.app/logo-email.png"
                   alt="ClearStrata"
-                  style="height:48px;object-fit:contain;display:block;margin:0 auto;"
+                  width="180"
+                  style="display:block;margin:0 auto 20px auto;border:0;outline:none;text-decoration:none;height:auto;max-width:180px;"
                 />
               </div>
               <div style="font-size:20px;font-weight:600;color:#ffffff;letter-spacing:0.02em;">

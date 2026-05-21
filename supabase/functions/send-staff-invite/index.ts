@@ -147,7 +147,6 @@ function buildStaffInviteHtml(params: {
   staffType: StaffType;
   logoUrl: string;
   acceptLink: string;
-  signInUrl: string;
 }): string {
   const labels = STAFF_TYPE_LABELS[params.staffType];
   const title = STAFF_TYPE_TITLES[params.staffType];
@@ -206,11 +205,8 @@ function buildStaffInviteHtml(params: {
           <p style="margin:18px 0 8px;color:#374151;font-size:14px;">有效期 Valid for: <strong>7 天 · 7 days</strong></p>
 
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:18px;">
-            <tr><td align="center" style="padding:0 0 12px;">
-              <a href="${params.acceptLink}" style="display:inline-block;background:#1D9E75;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;padding:14px 28px;border-radius:8px;">接受职员邀请 / Accept Staff Invitation</a>
-            </td></tr>
             <tr><td align="center" style="padding:0 0 8px;">
-              <a href="${params.signInUrl}" style="display:inline-block;background:#ffffff;color:#374151;font-size:14px;font-weight:600;text-decoration:none;padding:12px 24px;border-radius:8px;border:1px solid #d1d5db;">仅登录 Continue to sign in</a>
+              <a href="${params.acceptLink}" style="display:inline-block;background:#1D9E75;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;padding:14px 28px;border-radius:8px;">接受职员邀请 / Accept Staff Invitation</a>
             </td></tr>
           </table>
 
@@ -549,7 +545,6 @@ Deno.serve(async (req: Request) => {
     const normalizedBaseUrl = normalizeAppBaseUrl(Deno.env.get("APP_BASE_URL"));
     const logoUrl = `${normalizedBaseUrl}/logo-email.png`;
     const acceptLink = `${normalizedBaseUrl}/staff-invite?token=${encodeURIComponent(token)}`;
-    const signInUrl = `${normalizedBaseUrl}/login?redirect=${encodeURIComponent(`/staff-invite?token=${token}`)}`;
 
     const displayName = staffName || staffEmail.split("@")[0] || "Staff";
 
@@ -560,7 +555,6 @@ Deno.serve(async (req: Request) => {
       staffType,
       logoUrl,
       acceptLink,
-      signInUrl,
     });
 
     const resend = new Resend(Deno.env.get("RESEND_API_KEY")!.trim());

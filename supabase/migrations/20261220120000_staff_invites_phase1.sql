@@ -168,12 +168,8 @@ CREATE POLICY "staff_invites_select_staff"
       FROM public.property_members pm
       WHERE pm.property_id = staff_invites.property_id
         AND pm.user_id = auth.uid()
-        AND pm.status = 'active'::public.member_status
-        AND pm.role IN (
-          'council'::public.user_role,
-          'admin'::public.user_role,
-          'property_admin'::public.user_role
-        )
+        AND pm.status::text = 'active'
+        AND pm.role::text IN ('council', 'admin', 'property_admin')
     )
   );
 
@@ -188,12 +184,8 @@ CREATE POLICY "staff_invites_insert_staff"
       FROM public.property_members pm
       WHERE pm.property_id = staff_invites.property_id
         AND pm.user_id = auth.uid()
-        AND pm.status = 'active'::public.member_status
-        AND pm.role IN (
-          'council'::public.user_role,
-          'admin'::public.user_role,
-          'property_admin'::public.user_role
-        )
+        AND pm.status::text = 'active'
+        AND pm.role::text IN ('council', 'admin', 'property_admin')
     )
   );
 
@@ -208,12 +200,8 @@ CREATE POLICY "staff_invites_update_staff"
       FROM public.property_members pm
       WHERE pm.property_id = staff_invites.property_id
         AND pm.user_id = auth.uid()
-        AND pm.status = 'active'::public.member_status
-        AND pm.role IN (
-          'council'::public.user_role,
-          'admin'::public.user_role,
-          'property_admin'::public.user_role
-        )
+        AND pm.status::text = 'active'
+        AND pm.role::text IN ('council', 'admin', 'property_admin')
     )
   )
   WITH CHECK (
@@ -222,12 +210,8 @@ CREATE POLICY "staff_invites_update_staff"
       FROM public.property_members pm
       WHERE pm.property_id = staff_invites.property_id
         AND pm.user_id = auth.uid()
-        AND pm.status = 'active'::public.member_status
-        AND pm.role IN (
-          'council'::public.user_role,
-          'admin'::public.user_role,
-          'property_admin'::public.user_role
-        )
+        AND pm.status::text = 'active'
+        AND pm.role::text IN ('council', 'admin', 'property_admin')
     )
   );
 

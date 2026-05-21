@@ -45,10 +45,26 @@ export function applyAnalysisToJobFields(analysis: ProcurementQuoteAnalysis) {
     .filter(Boolean)
     .join(' ');
   const budgetMatch = analysis.currentPrice?.match(/[\d,]+(?:\.\d+)?/);
+
+  const descriptionTrimmed = (analysis.description ?? '').trim();
+  const priceTrimmed = (analysis.currentPrice ?? '').trim();
+  const truncatedDescription =
+    descriptionTrimmed.length > 40
+      ? `${descriptionTrimmed.slice(0, 40)}…`
+      : descriptionTrimmed;
+  const priceSuffix = priceTrimmed ? ` - ${priceTrimmed}` : '';
+
+  const title_en = truncatedDescription
+    ? `${truncatedDescription}${priceSuffix}`
+    : `${categoryLabel} — vendor quote review`;
+  const title_zh = truncatedDescription
+    ? `${truncatedDescription}${priceSuffix}`
+    : `${categoryLabel} 报价审核`;
+
   return {
     category: analysis.category,
-    title_en: `${categoryLabel} — vendor quote review`,
-    title_zh: `${categoryLabel} 报价审核`,
+    title_en,
+    title_zh,
     description_en: descEn,
     description_zh: analysis.description,
     estimated_budget: budgetMatch ? budgetMatch[0].replace(/,/g, '') : '',
