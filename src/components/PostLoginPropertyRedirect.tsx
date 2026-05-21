@@ -21,7 +21,13 @@ export function PostLoginPropertyRedirect() {
   useEffect(() => {
     const path = location.pathname;
     /** Password recovery establishes a temporary session; do not hijack to select-property / join. */
-    if (path === '/reset-password' || path === '/login' || path === '/entry' || path === '/manager-invite') return;
+    if (
+      path === '/reset-password' ||
+      path === '/login' ||
+      path === '/entry' ||
+      path === '/manager-invite' ||
+      path === '/staff-invite'
+    ) return;
     /** Hash/query still carry Supabase tokens — wait until client finishes (may be wrong pathname). */
     if (shouldDeferAutoPropertyRedirects()) return;
 
@@ -46,7 +52,8 @@ export function PostLoginPropertyRedirect() {
         pathNow === '/reset-password' ||
         pathNow === '/login' ||
         pathNow === '/entry' ||
-        pathNow === '/manager-invite'
+        pathNow === '/manager-invite' ||
+        pathNow === '/staff-invite'
       ) return;
       if (shouldDeferAutoPropertyRedirects()) return;
 

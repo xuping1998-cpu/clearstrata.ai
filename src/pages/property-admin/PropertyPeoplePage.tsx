@@ -11,7 +11,7 @@ import { isPlatformAdmin } from '../../lib/permissions';
 import { BackButton } from '../../components/BackButton';
 import { UserManagementTab, type StaffTab } from '../owner-info/UserManagementTab';
 import { ExternalContactsAdminTab } from './ExternalContactsAdminTab';
-import { InviteManagerSection } from './PropertyAdminHub';
+import { StaffInviteSection } from '../../components/property/StaffInviteSection';
 
 function staffFromTabParam(raw: string | null): StaffTab | null {
   if (raw === 'invites') return 'review';
@@ -133,7 +133,7 @@ export function PropertyPeoplePage() {
 
       {staffPeopleAccess && section === 'anomaly' && currentPropertyId ? (
         canInvitePropertyManager(currentRole) && !isDemoPropertyMock ? (
-          <InviteManagerSection propertyId={currentPropertyId} />
+          <StaffInviteSection propertyId={currentPropertyId} />
         ) : (
           <div className="rounded-xl border border-gray-200 bg-white p-6 text-sm text-gray-600">
             {en

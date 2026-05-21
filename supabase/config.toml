@@ -18,3 +18,9 @@ verify_jwt = false
 
 [functions.consume-invite-token]
 verify_jwt = false
+
+[functions.send-staff-invite]
+verify_jwt = false
+
+[functions.accept-staff-invite]
+verify_jwt = false

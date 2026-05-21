@@ -70,6 +70,7 @@ import { QrPropertyEntryPage } from './pages/entry/QrPropertyEntryPage';
 import { AuthCallback } from './pages/auth/AuthCallback';
 import { EntryAutoLogin } from './pages/entry/EntryAutoLogin';
 import { ManagerInviteAcceptPage } from './pages/ManagerInviteAcceptPage';
+import { StaffInviteAcceptPage } from './pages/StaffInviteAcceptPage';
 import {
   canAccessPropertyPeoplePage,
   canAccessPropertySettingsPage,
@@ -93,6 +94,7 @@ const PUBLIC_PATH_PREFIXES = [
   '/invite',
   '/join',
   '/manager-invite',
+  '/staff-invite',
 ];
 
 function isPublicPath(pathname: string) {
@@ -508,6 +510,7 @@ function AppContent() {
       <Routes>
       <Route path="/entry" element={<QrPropertyEntryPage />} />
       <Route path="/manager-invite" element={<ManagerInviteAcceptPage />} />
+      <Route path="/staff-invite" element={<StaffInviteAcceptPage />} />
       <Route path="/entry/auto-login" element={<EntryAutoLogin />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/demo" element={<DemoFallbackPage />} />
