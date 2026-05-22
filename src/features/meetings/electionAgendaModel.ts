@@ -723,17 +723,63 @@ export function isRemoveCouncilResolutionAgenda(descriptionZh?: string | null): 
   return extractResolutionAgendaMeta(descriptionZh ?? '').meta?.resolution_kind === 'remove_council';
 }
 
+const FORMAL_REMOVE_COUNCIL_TITLE_MARKERS_ZH = [
+  '罢免',
+  '罢免业委会',
+  '罢免现任业委会',
+  '罢免现有业委会',
+] as const;
+
+const FORMAL_REMOVE_COUNCIL_TITLE_MARKERS_EN = [
+  'remove council',
+  'remove current council',
+] as const;
+
+/** Formal `requires_vote` agenda whose title indicates remove-council (no embedded meta). */
+export function isFormalRemoveCouncilResolutionByTitle(
+  titleZh?: string | null,
+  titleEn?: string | null,
+): boolean {
+  const zh = String(titleZh ?? '').trim();
+  const en = String(titleEn ?? '').trim().toLowerCase();
+  if (FORMAL_REMOVE_COUNCIL_TITLE_MARKERS_ZH.some((m) => zh.includes(m))) return true;
+  if (FORMAL_REMOVE_COUNCIL_TITLE_MARKERS_EN.some((m) => en.includes(m))) return true;
+  return false;
+}
+
+export type RemoveCouncilAgendaRow = {
+  description_zh?: string | null;
+  requires_vote?: boolean | null;
+  title_zh?: string | null;
+  title_en?: string | null;
+};
+
+/** Embedded remove_council meta, or formal resolution with remove-council title heuristics. */
+export function isRemoveCouncilGovernanceAgenda(row: RemoveCouncilAgendaRow): boolean {
+  if (isRemoveCouncilResolutionAgenda(row.description_zh)) return true;
+  if (!!row.requires_vote && isFormalRemoveCouncilResolutionByTitle(row.title_zh, row.title_en)) {
+    return true;
+  }
+  return false;
+}
+
 export function electionDependsOnRemoveCouncil(descriptionZh?: string | null): boolean {
   const m = extractElectionAgendaMeta(descriptionZh ?? '').meta;
   return m?.depends_on_resolution_kind === 'remove_council';
 }
 
-type AgendaSortRow = { sort_order?: number | null; description_zh?: string | null; requires_vote?: boolean | null };
+type AgendaSortRow = {
+  sort_order?: number | null;
+  description_zh?: string | null;
+  requires_vote?: boolean | null;
+  title_zh?: string | null;
+  title_en?: string | null;
+};
 
 /** Order: remove_council resolution → linked election → other agendas (stable by sort_order). */
 export function sortGovernanceAgendaItems<T extends AgendaSortRow>(items: T[]): T[] {
   const rank = (a: T): number => {
-    if (isRemoveCouncilResolutionAgenda(a.description_zh)) return 0;
+    if (isRemoveCouncilGovernanceAgenda(a)) return 0;
     if (electionDependsOnRemoveCouncil(a.description_zh)) return 1;
     if (extractElectionAgendaMeta(a.description_zh ?? '').meta?.agenda_type === 'council_election') return 2;
     if (extractResolutionAgendaMeta(a.description_zh ?? '').meta?.agenda_type === 'resolution') return 3;

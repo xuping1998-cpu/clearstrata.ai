@@ -67,7 +67,7 @@ import {
   extractElectionAgendaMeta,
   finalizeElectionMeta,
   fromDatetimeLocalValue,
-  isRemoveCouncilResolutionAgenda,
+  isRemoveCouncilGovernanceAgenda,
   isStrictAgmOrSgmMeeting,
   sortGovernanceAgendaItems,
   toDatetimeLocalValue,
@@ -164,7 +164,7 @@ function initiationTypeLabel(type: MeetingInitiationType, t: (key: string) => st
 type AgendaKindUi = 'normal' | 'resolution' | 'election' | 'removal_resolution';
 
 function agendaKindFromRow(a: MeetingAgendaRow): AgendaKindUi {
-  if (isRemoveCouncilResolutionAgenda(a.description_zh)) return 'removal_resolution';
+  if (isRemoveCouncilGovernanceAgenda(a)) return 'removal_resolution';
   const meta = extractElectionAgendaMeta(a.description_zh ?? '').meta;
   if (meta?.agenda_type === 'council_election') return 'election';
   return a.requires_vote ? 'resolution' : 'normal';
@@ -1949,8 +1949,9 @@ export function MeetingDetail() {
                 </>
               ) : null}
               <div className="space-y-6">
-                {sortedAgendaItems.map((agenda) => {
+                {sortedAgendaItems.map((agenda, idx) => {
                   const agendaKindUi = agendaKindFromRow(agenda);
+                  const isRemoveCouncilAgenda = isRemoveCouncilGovernanceAgenda(agenda);
                   const vote = voteByAgendaId.get(agenda.id);
                   const legacyCouncilVoteUi =
                     !writtenRemoteV3Meeting &&
@@ -1966,7 +1967,7 @@ export function MeetingDetail() {
                     <div key={agenda.id} className="border border-gray-100 rounded-lg p-4 bg-gray-50/50">
                       <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-xs text-gray-500">#{agenda.sort_order}</span>
+                          <span className="text-xs text-gray-500">#{idx + 1}</span>
                           {agendaEdit?.agendaId !== agenda.id && agendaKindUi === 'removal_resolution' ? (
                             <StatusBadge tone="neutral" size="sm">
                               {en ? 'Removal resolution' : '罢免决议'}
@@ -2230,7 +2231,7 @@ export function MeetingDetail() {
                             </p>
                           )}
 
-                          {agendaKindUi === 'removal_resolution' ? (
+                          {isRemoveCouncilAgenda ? (
                             <div className="mt-3 rounded-md border border-blue-100 bg-blue-50/60 px-3 py-3 text-sm text-gray-800 space-y-1">
                               <p className="font-medium text-gray-900">
                                 {en ? 'Removal Resolution' : '罢免决议'}
