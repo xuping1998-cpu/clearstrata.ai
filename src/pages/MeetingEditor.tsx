@@ -245,17 +245,7 @@ function editorKindFromAgendaRow(row: MeetingAgendaRow): AgendaKindUi {
   return row.requires_vote ? 'resolution' : 'normal';
 }
 
-function rowHasRemoveCouncilResolution(r: MeetingEditorAgendaRow): boolean {
-  if (r.kind === 'removal_resolution') return true;
-  return isRemoveCouncilResolutionAgenda(r.description_zh);
-}
-
-function rowHasCouncilElection(r: MeetingEditorAgendaRow): boolean {
-  if (r.kind === 'election') return true;
-  return extractElectionAgendaMeta(r.description_zh ?? '').meta?.agenda_type === 'council_election';
-}
-
-/** New owner-requisitioned written-remote SGM: prepend removal resolution + linked election when missing. */
+/** New owner-requisitioned written-remote SGM: seed dual agendas only when agenda draft is empty. */
 function seedRemovalDualAgendasForNewMeeting(
   rows: MeetingEditorAgendaRow[],
   form: typeof defaultForm,
@@ -272,24 +262,16 @@ function seedRemovalDualAgendasForNewMeeting(
     return rows;
   }
 
-  const hasResolution = rows.some(rowHasRemoveCouncilResolution);
-  const hasElection = rows.some(rowHasCouncilElection);
-  if (hasResolution && hasElection) return rows;
-
-  const hasLegacyElectionOnly =
-    hasElection &&
-    !hasResolution &&
-    rows.some((r) => {
-      const m = extractElectionAgendaMeta(r.description_zh ?? '').meta;
-      return m?.agenda_type === 'council_election' && m.depends_on_resolution_kind !== 'remove_council';
-    });
-  if (hasLegacyElectionOnly) return rows;
+  /** User already drafted agendas — do not prepend Phase 4A template rows. */
+  if (rows.length > 0) return rows;
 
   const pair = editorNominationPairFromScheduled(scheduledIso, useV3ElectionCanon);
-  const additions: MeetingEditorAgendaRow[] = [];
+  const electionMeta = defaultRemovalLinkedElectionMeta(
+    pair ? { nomination_opens_at: pair.opens, nomination_closes_at: pair.closes } : undefined,
+  );
 
-  if (!hasResolution) {
-    additions.push({
+  return [
+    {
       clientId: `seed_res_${crypto.randomUUID()}`,
       serverId: null,
       isNew: true,
@@ -299,14 +281,8 @@ function seedRemovalDualAgendasForNewMeeting(
       vote_rule: 'simple_majority',
       description_zh: embedResolutionAgendaMeta('', defaultRemoveCouncilResolutionMeta()),
       description_en: null,
-    });
-  }
-
-  if (!hasElection) {
-    const electionMeta = defaultRemovalLinkedElectionMeta(
-      pair ? { nomination_opens_at: pair.opens, nomination_closes_at: pair.closes } : undefined,
-    );
-    additions.push({
+    },
+    {
       clientId: `seed_elec_${crypto.randomUUID()}`,
       serverId: null,
       isNew: true,
@@ -316,14 +292,8 @@ function seedRemovalDualAgendasForNewMeeting(
       vote_rule: 'simple_majority',
       description_zh: pair ? embedElectionAgendaMeta('', electionMeta) : null,
       description_en: null,
-    });
-  }
-
-  if (!additions.length) return rows;
-
-  const resolutionRows = additions.filter((a) => a.kind === 'removal_resolution');
-  const electionRows = additions.filter((a) => a.kind === 'election');
-  return [...resolutionRows, ...electionRows, ...rows];
+    },
+  ];
 }
 
 function editorRowFromAgendaItem(row: MeetingAgendaRow): MeetingEditorAgendaRow {
