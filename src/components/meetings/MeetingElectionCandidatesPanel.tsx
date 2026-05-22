@@ -130,14 +130,18 @@ function reviewErrorAlert(code: string, en: boolean): void {
   }
 }
 
-function ballotErrorAlert(code: string, en: boolean, t: (key: string) => string, maxChoices: number): void {
+function extractRpcErrCode(err: unknown): string {
+  if (typeof err === 'object' && err !== null) {
+    const o = err as Record<string, unknown>;
+    return String(o.code ?? o.message ?? o.error ?? JSON.stringify(err));
+  }
+  return String(err);
+}
+
+function ballotErrorAlert(code: string, en: boolean, t: (key: string) => string, _maxChoices: number): void {
   const lc = code.toLowerCase();
-  if (lc.includes('too_many') || lc === 'selected_too_many') {
-    alert(
-      en
-        ? `You may select at most ${maxChoices} candidate(s).`
-        : `最多只能选择 ${maxChoices} 名候选人`,
-    );
+  if (lc.includes('selected_too_many') || lc.includes('too_many_candidates') || lc === 'too_many') {
+    alert(t('meeting_election_selected_too_many'));
     return;
   }
   if (
@@ -145,11 +149,11 @@ function ballotErrorAlert(code: string, en: boolean, t: (key: string) => string,
     lc.includes('invalid_candidate') ||
     lc.includes('candidate_not_accepted')
   ) {
-    alert(en ? 'One or more selected candidates cannot be voted for.' : '候选人不可投');
+    alert(en ? 'Candidate is not eligible' : '候选人不可投');
     return;
   }
-  if (lc.includes('not_eligible')) {
-    alert(en ? 'You are not an eligible voter for this meeting.' : '您不是本次会议的合资格投票人');
+  if (lc.includes('not_eligible_to_vote') || lc.includes('not_eligible')) {
+    alert(en ? 'You are not eligible to vote' : '您不是本次会议的合资格投票人');
     return;
   }
   if (
@@ -157,20 +161,18 @@ function ballotErrorAlert(code: string, en: boolean, t: (key: string) => string,
     lc.includes('duplicate_vote') ||
     lc.includes('ballots_exist_locked')
   ) {
-    alert(en ? 'You have already submitted your ballot.' : '您已提交过选票');
+    alert(en ? 'You have already submitted a ballot' : '您已提交过选票');
     return;
   }
   if (
     lc.includes('voting_not_open') ||
     lc.includes('too_early') ||
+    lc.includes('voting_closed') ||
     lc.includes('nomination_still_open') ||
-    lc.includes('nomination_not_started')
+    lc.includes('nomination_not_started') ||
+    lc.includes('past_close')
   ) {
-    alert(en ? 'Voting is not open yet.' : '当前不在投票时间内');
-    return;
-  }
-  if (lc.includes('voting_closed') || lc.includes('past_close')) {
-    alert(en ? 'Voting has closed.' : '投票已截止');
+    alert(en ? 'Voting is not open' : '当前不在投票时间内');
     return;
   }
   alert(code || (en ? 'Ballot submission failed' : '提交选票失败'));
@@ -298,14 +300,14 @@ export function MeetingElectionCandidatesPanel({
       if (error) throw error;
       const payload = data as RpcPayload;
       if (payload && typeof payload === 'object' && payload.ok === false) {
-        ballotErrorAlert(String(payload.error ?? ''), en, t, maxBallotChoices);
+        ballotErrorAlert(extractRpcErrCode(payload.error), en, t, maxBallotChoices);
         return;
       }
       setSelectedBallotIds([]);
       await onUpdated();
-    } catch (e) {
-      const raw = e instanceof Error ? e.message : String(e);
-      ballotErrorAlert(raw, en, t, maxBallotChoices);
+    } catch (err) {
+      console.error('submit_owner_election_ballot failed', err);
+      ballotErrorAlert(extractRpcErrCode(err), en, t, maxBallotChoices);
     } finally {
       setBallotBusy(false);
     }
