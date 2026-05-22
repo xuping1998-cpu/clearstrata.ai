@@ -14,6 +14,12 @@ type Props = {
   ballots: OwnerElectionBallotLite[];
   languageEn: boolean;
   t: (key: string) => string;
+  /**
+   * Voting has finished (canonical close passed for V3 / `status` in
+   * `closed`/`archived` for legacy). Required to show the "Elected" pill;
+   * during active voting the pill must read "Tentative" or be hidden.
+   */
+  resultsFinalized?: boolean;
 };
 
 function parseCandidateIds(raw: unknown): string[] {
@@ -32,6 +38,7 @@ export function CouncilElectionResultsBlock({
   ballots,
   languageEn,
   t,
+  resultsFinalized = false,
 }: Props) {
   const en = languageEn;
 
@@ -47,7 +54,14 @@ export function CouncilElectionResultsBlock({
   }, [ballots]);
 
   const st = ownerVoteStatus.trim().toLowerCase();
-  const tentative = st === 'open';
+  /**
+   * "Elected" must only render after voting has actually finished. While voting
+   * is in progress show "Tentative"; before voting opens (no `open` status and
+   * not finalized) hide the pill entirely to avoid implying any winner.
+   */
+  const finalized = resultsFinalized;
+  const tentative = !finalized && st === 'open';
+  const showPill = finalized || tentative;
 
   if (electionAgendas.length === 0) return null;
 
@@ -131,7 +145,7 @@ export function CouncilElectionResultsBlock({
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="rounded-full bg-gray-900 px-2.5 py-0.5 text-xs font-semibold text-white">{votes}</span>
-                        {isTop ? (
+                        {isTop && showPill ? (
                           <span className="rounded-full bg-clearstrata-ui-primary px-2.5 py-0.5 text-xs font-semibold text-white">{label}</span>
                         ) : null}
                       </div>

@@ -45,6 +45,13 @@ export type OwnerVotingInlineControlBarProps = {
   electionNomRibbon?: ElectionNominationRibbonModel | null;
   councilFormalResolutionAgendaCount?: number;
   electionAgendaCount?: number;
+  /**
+   * Viewer is an eligible voter for this meeting (resolved from
+   * `owner_vote_voter_snapshot.is_eligible` for `auth.uid()`). Council members
+   * who also own a unit must keep voting access — gate the "Go vote" button on
+   * snapshot eligibility, not on `isStaff` / role.
+   */
+  viewerIsEligibleVoter?: boolean;
 };
 
 function fmtTs(iso: string | null | undefined, en: boolean): string {
@@ -81,6 +88,7 @@ export function OwnerVotingInlineControlBar({
   electionNomRibbon = null,
   councilFormalResolutionAgendaCount = 0,
   electionAgendaCount = 0,
+  viewerIsEligibleVoter = false,
 }: OwnerVotingInlineControlBarProps) {
   const en = languageEn;
   const now = new Date();
@@ -384,7 +392,7 @@ export function OwnerVotingInlineControlBar({
               <p className="text-sm text-gray-800 rounded-md border border-blue-100 bg-blue-50/70 px-3 py-2">
                 {v3AutoParticipationCopy}
               </p>
-              {!isStaff ? (
+              {!isStaff || viewerIsEligibleVoter ? (
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -446,7 +454,8 @@ export function OwnerVotingInlineControlBar({
                       </button>
                     ) : null}
                   </>
-                ) : (
+                ) : null}
+                {(!isStaff || viewerIsEligibleVoter) ? (
                   <button
                     type="button"
                     onClick={onNavigateOwnerVoting}
@@ -454,7 +463,7 @@ export function OwnerVotingInlineControlBar({
                   >
                     {t('meeting_ov_go_vote')}
                   </button>
-                )}
+                ) : null}
               </div>
             </>
           )}

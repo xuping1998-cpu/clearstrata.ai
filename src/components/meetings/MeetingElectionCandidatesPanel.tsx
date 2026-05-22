@@ -92,7 +92,14 @@ export function MeetingElectionCandidatesPanel({
 
   const v3RemoteCouncil = !!(councilElectionMeeting && isWrittenRemoteV3Meeting(councilElectionMeeting));
 
-  const unitAlreadyCandidate = useMemo(() => {
+  /**
+   * Informational only: another candidate already exists on the same unit.
+   * Per joint-ownership rules, this MUST NOT block self-nomination — multiple
+   * owners of the same unit are still allowed to stand individually. Duplicate
+   * detection (same person nominated twice) is enforced server-side by
+   * `submit_owner_election_nomination` → `duplicate_candidate`.
+   */
+  const unitAlreadyHasCandidate = useMemo(() => {
     const u = eligibleUnitNo?.trim().toLowerCase();
     if (!u || !metaFinal) return false;
     return metaFinal.candidates.some((c) => String(c.unit_no ?? '').trim().toLowerCase() === u);
@@ -102,28 +109,19 @@ export function MeetingElectionCandidatesPanel({
   const staffNominationWritesEnabled = !!canEdit && nominationOpenPhase;
 
   /**
-   * Owner self-nomination eligibility is independent of meeting-admin permissions.
-   * A council / admin / property_admin who is *also* an eligible homeowner (active
-   * voter + unit) must keep the right to self-nominate while nominations are open.
-   * Do NOT gate on `canEdit` here — that mixes staff workflow with owner rights.
+   * Self-nomination eligibility (Bug 4): only checks that the viewer is an
+   * eligible voter (frozen snapshot unit) and that nominations are open. It
+   * does NOT consider whether some other person on the same unit was already
+   * nominated by staff or by a co-owner — that is a *nominating-others*
+   * restriction, not a self-nomination restriction. Duplicate self-attempts
+   * are caught by the RPC's `duplicate_candidate` reply.
    */
   const canOwnerSelfNom =
     !!ownerVoteMeetingId?.trim() &&
     !!eligibleUnitNo?.trim() &&
     !!metaFinal &&
     metaFinal.allow_self_nomination === true &&
-    nominationOpenPhase &&
-    !unitAlreadyCandidate;
-
-  console.log('[ElectionNominationDebug]', {
-    ownerVoteMeetingId,
-    eligibleUnitNo,
-    hasMeta: !!metaFinal,
-    allowSelfNomination: metaFinal?.allow_self_nomination,
-    nominationOpenPhase,
-    unitAlreadyCandidate,
-    canOwnerSelfNom,
-  });
+    nominationOpenPhase;
 
   async function persist(next: ElectionAgendaMetaV1) {
     if (!meta || !staffNominationWritesEnabled) return;
@@ -470,8 +468,12 @@ export function MeetingElectionCandidatesPanel({
         <p className="text-xs text-gray-600">{t('meeting_election_self_nomination_closed')}</p>
       ) : null}
 
-      {!canEdit && meta.allow_self_nomination && nominationOpenPhase && unitAlreadyCandidate ? (
-        <p className="text-xs text-gray-600">{t('meeting_election_duplicate_candidate')}</p>
+      {!canEdit && meta.allow_self_nomination && nominationOpenPhase && unitAlreadyHasCandidate ? (
+        <p className="text-xs text-gray-500">
+          {en
+            ? 'Another candidate from your unit is already listed. You may still self-nominate; duplicate identical nominations will be rejected.'
+            : '本单位已有其他候选人。您仍可自荐，重复提名将被拒绝。'}
+        </p>
       ) : null}
 
       {staffNominationWritesEnabled ? (

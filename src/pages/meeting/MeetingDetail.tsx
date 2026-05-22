@@ -550,6 +550,40 @@ export function MeetingDetail() {
   }, [bundle.agendaItems]);
 
   const handleNavigateOwnerVotingForOwner = useCallback(() => {
+    /**
+     * Bug 2: V3 remote-written SGM has no staff "open voting" button — the
+     * participation window is governed entirely by the canonical 14-day
+     * timeline (`scheduled_at` → `+14d`). The legacy navigation gate requires
+     * `owner_vote_meetings.status === 'open'`, which never flips for V3 and
+     * produces a misleading "not open" error while the UI shows "Voting open".
+     *
+     * For V3: use the canonical timeline as the single source of truth, and
+     * still require the same data-readiness checks (frozen snapshot, eligible
+     * voters, and at least one agenda) used by the resolution gate.
+     */
+    if (meeting && isWrittenRemoteV3Meeting(meeting)) {
+      const v3 = deriveRemoteWrittenV3CanonFromScheduledAt(meeting.scheduled_at);
+      const ov = ovMeta.meeting;
+      const openMs = v3?.votingOpenIso ? Date.parse(v3.votingOpenIso) : NaN;
+      const closeMs = v3?.votingCloseIso ? Date.parse(v3.votingCloseIso) : NaN;
+      const nowMs = Date.now();
+      if (
+        v3 &&
+        !Number.isNaN(openMs) &&
+        !Number.isNaN(closeMs) &&
+        nowMs >= openMs &&
+        nowMs < closeMs &&
+        ov?.id &&
+        String(ov.snapshot_frozen_at ?? '').trim() &&
+        ovMeta.eligibleCount > 0 &&
+        (ovMeta.resolutionCount > 0 || electionBundles.length > 0) &&
+        !electionTimelineBlocksOwnerVote
+      ) {
+        const pid = currentPropertyId?.trim() || meeting?.property_id?.trim();
+        navigate(pid ? `/voting?${new URLSearchParams({ propertyId: pid }).toString()}` : '/voting');
+        return;
+      }
+    }
     const gate = evaluateOwnerVoteOwnerNavigationGate({
       ov: ovMeta.meeting,
       eligibleCount: ovMeta.eligibleCount,
@@ -587,6 +621,7 @@ export function MeetingDetail() {
     const pid = currentPropertyId?.trim() || meeting?.property_id?.trim();
     navigate(pid ? `/voting?${new URLSearchParams({ propertyId: pid }).toString()}` : '/voting');
   }, [
+    meeting,
     ovMeta.meeting,
     ovMeta.eligibleCount,
     ovMeta.resolutionCount,
@@ -1884,6 +1919,7 @@ export function MeetingDetail() {
                     electionNomRibbon={electionNomRibbonModel}
                     councilFormalResolutionAgendaCount={councilFormalResolutionAgendaCount}
                     electionAgendaCount={electionBundles.length}
+                    viewerIsEligibleVoter={!!viewerOvUnitNo?.trim()}
                     onEnableElectronicVoting={() => void handleEnableElectronicVoting()}
                     onFreezeSnapshot={() => void handleFreezeOwnerVoteSnapshot()}
                     onOpenVoting={() => void handleOpenOwnerVoteMeeting()}
@@ -2462,6 +2498,22 @@ export function MeetingDetail() {
                   ballots={ownerElectionBallots}
                   languageEn={en}
                   t={t}
+                  resultsFinalized={(() => {
+                    /**
+                     * Bug 3: only mark winners as "Elected" once voting is
+                     * truly over. V3 has no manual "close" step — the 14-day
+                     * canonical close is authoritative. Legacy flows rely on
+                     * `owner_vote_meetings.status` flipping to `closed`/
+                     * `archived`.
+                     */
+                    if (meeting && isWrittenRemoteV3Meeting(meeting)) {
+                      const v3 = deriveRemoteWrittenV3CanonFromScheduledAt(meeting.scheduled_at);
+                      const closeMs = v3?.votingCloseIso ? Date.parse(v3.votingCloseIso) : NaN;
+                      if (!Number.isNaN(closeMs) && Date.now() >= closeMs) return true;
+                    }
+                    const st = (ovMeta.meeting?.status ?? '').trim().toLowerCase();
+                    return st === 'closed' || st === 'archived';
+                  })()}
                 />
               ) : null}
             </>
