@@ -50,8 +50,16 @@ import {
 import { isOwnerVotingMeeting } from '../features/meetings/ownerVotingCouncil';
 import {
   defaultElectionMeta,
+  defaultRemoveCouncilResolutionMeta,
+  defaultRemovalLinkedElectionMeta,
   embedElectionAgendaMeta,
+  embedResolutionAgendaMeta,
   extractElectionAgendaMeta,
+  extractResolutionAgendaMeta,
+  isOwnerRequisitionedRemovalSgmMeeting,
+  isRemoveCouncilResolutionAgenda,
+  stripElectionCommentFromZh,
+  stripResolutionCommentFromZh,
 } from '../features/meetings/electionAgendaModel';
 import { canManagePropertyMeetings } from '@/lib/meetingPermissions';
 import { supabase } from '../lib/supabase';
@@ -216,7 +224,7 @@ function buildGovernanceMetaForSave(form: typeof defaultForm): MeetingGovernance
   };
 }
 
-type AgendaKindUi = 'normal' | 'resolution' | 'election';
+type AgendaKindUi = 'normal' | 'resolution' | 'election' | 'removal_resolution';
 
 type MeetingEditorAgendaRow = {
   clientId: string;
@@ -231,9 +239,91 @@ type MeetingEditorAgendaRow = {
 };
 
 function editorKindFromAgendaRow(row: MeetingAgendaRow): AgendaKindUi {
+  if (isRemoveCouncilResolutionAgenda(row.description_zh)) return 'removal_resolution';
   const meta = extractElectionAgendaMeta(row.description_zh ?? '').meta;
   if (meta?.agenda_type === 'council_election') return 'election';
   return row.requires_vote ? 'resolution' : 'normal';
+}
+
+function rowHasRemoveCouncilResolution(r: MeetingEditorAgendaRow): boolean {
+  if (r.kind === 'removal_resolution') return true;
+  return isRemoveCouncilResolutionAgenda(r.description_zh);
+}
+
+function rowHasCouncilElection(r: MeetingEditorAgendaRow): boolean {
+  if (r.kind === 'election') return true;
+  return extractElectionAgendaMeta(r.description_zh ?? '').meta?.agenda_type === 'council_election';
+}
+
+/** New owner-requisitioned written-remote SGM: prepend removal resolution + linked election when missing. */
+function seedRemovalDualAgendasForNewMeeting(
+  rows: MeetingEditorAgendaRow[],
+  form: typeof defaultForm,
+  scheduledIso: string | null,
+  useV3ElectionCanon: boolean,
+): MeetingEditorAgendaRow[] {
+  if (
+    !isOwnerRequisitionedRemovalSgmMeeting({
+      meeting_type: form.meeting_type,
+      initiation_type: form.initiation_type,
+      meeting_format_ui: form.meeting_format_ui,
+    })
+  ) {
+    return rows;
+  }
+
+  const hasResolution = rows.some(rowHasRemoveCouncilResolution);
+  const hasElection = rows.some(rowHasCouncilElection);
+  if (hasResolution && hasElection) return rows;
+
+  const hasLegacyElectionOnly =
+    hasElection &&
+    !hasResolution &&
+    rows.some((r) => {
+      const m = extractElectionAgendaMeta(r.description_zh ?? '').meta;
+      return m?.agenda_type === 'council_election' && m.depends_on_resolution_kind !== 'remove_council';
+    });
+  if (hasLegacyElectionOnly) return rows;
+
+  const pair = editorNominationPairFromScheduled(scheduledIso, useV3ElectionCanon);
+  const additions: MeetingEditorAgendaRow[] = [];
+
+  if (!hasResolution) {
+    additions.push({
+      clientId: `seed_res_${crypto.randomUUID()}`,
+      serverId: null,
+      isNew: true,
+      title_zh: '是否罢免现任业委会',
+      title_en: 'Resolution to remove the current council',
+      kind: 'removal_resolution',
+      vote_rule: 'simple_majority',
+      description_zh: embedResolutionAgendaMeta('', defaultRemoveCouncilResolutionMeta()),
+      description_en: null,
+    });
+  }
+
+  if (!hasElection) {
+    const electionMeta = defaultRemovalLinkedElectionMeta(
+      pair ? { nomination_opens_at: pair.opens, nomination_closes_at: pair.closes } : undefined,
+    );
+    additions.push({
+      clientId: `seed_elec_${crypto.randomUUID()}`,
+      serverId: null,
+      isNew: true,
+      title_zh: '选举新业委会',
+      title_en: 'Election of new council',
+      kind: 'election',
+      vote_rule: 'simple_majority',
+      description_zh: pair ? embedElectionAgendaMeta('', electionMeta) : null,
+      description_en: null,
+    });
+  }
+
+  if (!additions.length) return rows;
+
+  const resolutionRows = additions.filter((a) => a.kind === 'removal_resolution');
+  const electionRows = additions.filter((a) => a.kind === 'election');
+  return [...resolutionRows, ...electionRows, ...rows];
 }
 
 function editorRowFromAgendaItem(row: MeetingAgendaRow): MeetingEditorAgendaRow {
@@ -293,6 +383,12 @@ function descriptionZhForPersist(
   scheduledIso: string | null,
   useV3ElectionCanon: boolean,
 ): string | null {
+  if (r.kind === 'removal_resolution') {
+    const visible = stripResolutionCommentFromZh(stripElectionCommentFromZh(r.description_zh ?? ''));
+    const existing = extractResolutionAgendaMeta(r.description_zh ?? '').meta;
+    return embedResolutionAgendaMeta(visible, existing ?? defaultRemoveCouncilResolutionMeta());
+  }
+
   if (r.kind !== 'election') {
     const peeled = extractElectionAgendaMeta(r.description_zh ?? '').cleanDescriptionZh?.trim();
     return peeled ? peeled : null;
@@ -358,7 +454,11 @@ async function persistMeetingAgendaDrafts(options: {
       if (error) return { error: error.message };
     } else {
       let createDescZh = descZh;
-      if (r.kind === 'election') {
+      if (r.kind === 'removal_resolution') {
+        if (!createDescZh || !extractResolutionAgendaMeta(createDescZh).meta) {
+          createDescZh = embedResolutionAgendaMeta('', defaultRemoveCouncilResolutionMeta());
+        }
+      } else if (r.kind === 'election') {
         if (!createDescZh || !extractElectionAgendaMeta(createDescZh).meta) {
           const pair = editorNominationPairFromScheduled(scheduledIso, useV3ElectionCanon);
           if (!pair) {
@@ -384,7 +484,7 @@ async function persistMeetingAgendaDrafts(options: {
         titleZh: String(r.title_zh).trim() || null,
         titleEn: String(r.title_en).trim() || null,
         descriptionEn: descEn,
-        descriptionZh: r.kind === 'election' ? createDescZh : descZh,
+        descriptionZh: r.kind === 'election' || r.kind === 'removal_resolution' ? createDescZh : descZh,
         requiresVote,
         voteRule: requiresVote ? voteRule : null,
       });
@@ -639,8 +739,12 @@ export function MeetingEditor() {
   function handleDeleteExisting(clientId: string) {
     const row = agendaItems.find((r) => r.clientId === clientId);
     if (!row?.serverId || row.isNew) return;
-    if (row.kind === 'election') {
-      setErr(en ? 'Remove election agendas on the meeting detail page.' : '请在会议详情页处理选举议程。');
+    if (row.kind === 'election' || row.kind === 'removal_resolution') {
+      setErr(
+        en
+          ? 'Remove election or removal-resolution agendas on the meeting detail page.'
+          : '请在会议详情页处理选举或罢免决议议程。',
+      );
       return;
     }
     if (agendaIdsWithCouncilBallots.has(row.serverId)) {
@@ -797,6 +901,14 @@ export function MeetingEditor() {
     const rowsSnapshot = agendaItems;
     const pendingDeletesSnapshot = [...pendingDeleteServerIds];
     const meaningful = rowsSnapshot.filter(agendaHasMeaningfulContent);
+    const meaningfulWithSeed = !isEdit
+      ? seedRemovalDualAgendasForNewMeeting(
+          meaningful,
+          form,
+          scheduledIso,
+          isWrittenRemoteUi(form.meeting_format_ui),
+        )
+      : meaningful;
     const blankServerIds = rowsSnapshot
       .filter((r) => r.serverId && !agendaHasMeaningfulContent(r))
       .map((r) => r.serverId as string);
@@ -805,7 +917,7 @@ export function MeetingEditor() {
     setErr(null);
     setSaving(true);
 
-    const hasElectionAgenda = editorAgendaRowsHaveElectionAgenda(meaningful);
+    const hasElectionAgenda = editorAgendaRowsHaveElectionAgenda(meaningfulWithSeed);
 
     const runOwnerVoteEnsureAfterAgendaSave = async (savedMeetingId: string): Promise<string | null> => {
       if (!written || !hasElectionAgenda) return null;
@@ -859,7 +971,7 @@ export function MeetingEditor() {
       const persistResult = await persistMeetingAgendaDrafts({
         propertyId: currentPropertyId,
         meetingId: id,
-        rows: meaningful,
+        rows: meaningfulWithSeed,
         deleteServerIds: [],
         languageEn: en,
         scheduledIso,
@@ -1258,7 +1370,11 @@ export function MeetingEditor() {
                   ? t('meeting_agenda_type_normal')
                   : row.kind === 'resolution'
                     ? t('meeting_agenda_type_resolution')
-                    : t('meeting_agenda_type_election');
+                    : row.kind === 'removal_resolution'
+                      ? en
+                        ? 'Removal resolution'
+                        : '罢免决议'
+                      : t('meeting_agenda_type_election');
               return (
                 <div key={row.clientId} className="rounded-lg border border-gray-200 bg-gray-50/80 p-3 space-y-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1290,7 +1406,7 @@ export function MeetingEditor() {
                         <span className="font-medium text-gray-800">{t('meeting_agenda_type')}</span>
                         <select
                           value={row.kind}
-                          disabled={!row.isNew && row.kind === 'election'}
+                          disabled={!row.isNew && (row.kind === 'election' || row.kind === 'removal_resolution')}
                           onChange={(e) => {
                             const nk = e.target.value as AgendaKindUi;
                             patchAgendaRow(row.clientId, { kind: nk });

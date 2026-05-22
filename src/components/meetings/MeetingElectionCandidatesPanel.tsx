@@ -43,6 +43,8 @@ export type MeetingElectionCandidatesPanelProps = {
   t: (key: string) => string;
   /** Council meeting row (AGM/SGM) — drives nomination phase from auto 7+7+7 schedule. */
   councilElectionMeeting?: MeetingRow | null;
+  /** Election agenda linked to a preceding remove_council resolution (Phase 4A display only). */
+  linkedRemovalResolution?: boolean;
   onUpdated: () => void | Promise<void>;
 };
 
@@ -195,6 +197,7 @@ export function MeetingElectionCandidatesPanel({
   languageEn,
   t,
   councilElectionMeeting = null,
+  linkedRemovalResolution = false,
   onUpdated,
 }: MeetingElectionCandidatesPanelProps) {
   const parsed = extractElectionAgendaMeta(agenda.description_zh ?? '');
@@ -524,6 +527,13 @@ export function MeetingElectionCandidatesPanel({
 
   return (
     <div className="mt-4 space-y-4 border-t border-amber-200/80 pt-4">
+      {linkedRemovalResolution ? (
+        <p className="rounded-md border border-blue-100 bg-blue-50/60 px-3 py-2 text-xs text-gray-700">
+          {languageEn
+            ? 'This election agenda is linked to the preceding removal resolution.'
+            : '本选举议程关联前置罢免决议。'}
+        </p>
+      ) : null}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h4 className="text-sm font-semibold text-gray-900">{t('meeting_election_nomination')}</h4>
       </div>

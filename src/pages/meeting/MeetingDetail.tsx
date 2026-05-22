@@ -61,12 +61,15 @@ import {
   analyzeCouncilElectionTimeline,
   buildElectionNominationRibbon,
   defaultElectionMeta,
-  displayAgendaZhWithoutElection,
+  displayAgendaZhWithoutEmbeddedMeta,
+  electionDependsOnRemoveCouncil,
   embedElectionAgendaMeta,
   extractElectionAgendaMeta,
   finalizeElectionMeta,
   fromDatetimeLocalValue,
+  isRemoveCouncilResolutionAgenda,
   isStrictAgmOrSgmMeeting,
+  sortGovernanceAgendaItems,
   toDatetimeLocalValue,
   type ElectionAgendaMetaV1,
 } from '@/features/meetings/electionAgendaModel';
@@ -157,9 +160,10 @@ function initiationTypeLabel(type: MeetingInitiationType, t: (key: string) => st
   }
 }
 
-type AgendaKindUi = 'normal' | 'resolution' | 'election';
+type AgendaKindUi = 'normal' | 'resolution' | 'election' | 'removal_resolution';
 
 function agendaKindFromRow(a: MeetingAgendaRow): AgendaKindUi {
+  if (isRemoveCouncilResolutionAgenda(a.description_zh)) return 'removal_resolution';
   const meta = extractElectionAgendaMeta(a.description_zh ?? '').meta;
   if (meta?.agenda_type === 'council_election') return 'election';
   return a.requires_vote ? 'resolution' : 'normal';
@@ -509,6 +513,11 @@ export function MeetingDetail() {
       return [{ agenda: a, meta: finalizeElectionMeta(m) }];
     });
   }, [bundle.agendaItems]);
+
+  const sortedAgendaItems = useMemo(
+    () => sortGovernanceAgendaItems(bundle.agendaItems),
+    [bundle.agendaItems],
+  );
 
   const electionBallotsByAgenda = useMemo(() => {
     const m = new Map<string, number>();
@@ -1939,23 +1948,29 @@ export function MeetingDetail() {
                 </>
               ) : null}
               <div className="space-y-6">
-                {bundle.agendaItems.map((agenda) => {
+                {sortedAgendaItems.map((agenda) => {
                   const agendaKindUi = agendaKindFromRow(agenda);
                   const vote = voteByAgendaId.get(agenda.id);
                   const legacyCouncilVoteUi =
                     !writtenRemoteV3Meeting &&
                     !showCouncilOwnerVoteUi &&
                     agendaKindUi !== 'election' &&
+                    agendaKindUi !== 'removal_resolution' &&
                     vote;
                   const ballots = legacyCouncilVoteUi ? bundle.ballotsByVoteId[vote!.id] ?? [] : [];
                   const tallies = legacyCouncilVoteUi ? ballotTallies(ballots) : {};
                   const my = legacyCouncilVoteUi ? bundle.myBallotsByVoteId[vote!.id] : undefined;
-                  const descShowZh = displayAgendaZhWithoutElection(agenda.description_zh);
+                  const descShowZh = displayAgendaZhWithoutEmbeddedMeta(agenda.description_zh);
                   return (
                     <div key={agenda.id} className="border border-gray-100 rounded-lg p-4 bg-gray-50/50">
                       <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-xs text-gray-500">#{agenda.sort_order}</span>
+                          {agendaEdit?.agendaId !== agenda.id && agendaKindUi === 'removal_resolution' ? (
+                            <StatusBadge tone="neutral" size="sm">
+                              {en ? 'Removal resolution' : '罢免决议'}
+                            </StatusBadge>
+                          ) : null}
                           {agendaEdit?.agendaId !== agenda.id && agendaKindUi === 'election' ? (
                             <StatusBadge tone="warning" size="sm">
                               {t('meeting_agenda_type_election')}
@@ -2207,13 +2222,29 @@ export function MeetingDetail() {
                               (en ? meetingUiStrings.untitled.en : meetingUiStrings.untitled.zh)}
                           </h3>
                           {(descShowZh || agenda.description_en) &&
+                          agendaKindUi !== 'removal_resolution' &&
                           !(showCouncilOwnerVoteUi && agendaKindUi === 'resolution') && (
                             <p className="text-sm text-gray-600 mt-1 whitespace-pre-wrap">
                               {descShowZh || agenda.description_en}
                             </p>
                           )}
 
-                          {agendaKindUi !== 'election' && agenda.requires_vote ? (
+                          {agendaKindUi === 'removal_resolution' ? (
+                            <div className="mt-3 rounded-md border border-blue-100 bg-blue-50/60 px-3 py-3 text-sm text-gray-800 space-y-1">
+                              <p className="font-medium text-gray-900">
+                                {en ? 'Removal Resolution' : '罢免决议'}
+                              </p>
+                              <p className="text-gray-700">
+                                {en
+                                  ? 'This agenda records whether owners approve removing the current council. The following council election becomes meaningful only if this resolution passes.'
+                                  : '本议程用于表决是否罢免现任业委会。决议表决通过后，后续业委会选举结果才具备治理意义。'}
+                              </p>
+                            </div>
+                          ) : null}
+
+                          {agendaKindUi !== 'election' &&
+                          agendaKindUi !== 'removal_resolution' &&
+                          agenda.requires_vote ? (
                             writtenRemoteV3Meeting ? (
                               <p className="mt-3 text-sm text-gray-700 rounded-md border border-blue-100 bg-blue-50/60 px-3 py-2">
                                 {writtenRemoteV3ResolutionVotingCopy(en)}
@@ -2325,6 +2356,7 @@ export function MeetingDetail() {
                               currentUserId={user?.id ?? null}
                               meetingCreatedBy={meeting.created_by ?? null}
                               governanceInitiationType={governanceMeta?.initiation_type ?? null}
+                              linkedRemovalResolution={electionDependsOnRemoveCouncil(agenda.description_zh)}
                               canModerateCandidates={
                                 governanceMeta?.initiation_type === 'owner_requisitioned'
                                   ? meeting.created_by === user?.id || canManageCouncilMeetings

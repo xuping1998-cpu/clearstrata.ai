@@ -4,6 +4,7 @@ import type { MeetingRow } from './api';
 import {
   councilMeetingVotingWindowFallback,
   councilWrittenRemoteWindows,
+  extractGovernanceMeta,
   extractWrittenRemoteMeta,
   isWrittenRemoteUi,
   isWrittenRemoteV3Meeting,
@@ -46,8 +47,24 @@ export type ElectionAgendaMetaV1 = {
   /** ISO 8601; optional for legacy agendas without a nominal window */
   nomination_opens_at?: string;
   nomination_closes_at?: string;
+  title_zh?: string;
+  title_en?: string;
+  depends_on_resolution_kind?: string;
   candidates: ElectionCandidateDraft[];
 };
+
+export type ResolutionKind = 'remove_council';
+
+export type ResolutionAgendaMetaV1 = {
+  v: 1;
+  agenda_type: 'resolution';
+  resolution_kind: ResolutionKind;
+  title_zh?: string;
+  title_en?: string;
+  requires_pass_before_election?: boolean;
+};
+
+export const RESOLUTION_AGENDA_MARKER = '<!--clearstrata-resolution-agenda';
 
 export type ElectionNominationPhase = 'before_open' | 'collecting' | 'ended' | 'legacy_no_deadline';
 
@@ -365,6 +382,9 @@ export function defaultElectionMeta(overrides?: Partial<Omit<ElectionAgendaMetaV
     nomination_status: overrides?.nomination_status ?? 'open',
     nomination_opens_at: overrides?.nomination_opens_at,
     nomination_closes_at: overrides?.nomination_closes_at,
+    title_zh: overrides?.title_zh,
+    title_en: overrides?.title_en,
+    depends_on_resolution_kind: overrides?.depends_on_resolution_kind,
     candidates: [],
   };
 }
@@ -554,6 +574,155 @@ function coerceElectionMeta(o: Partial<ElectionAgendaMetaV1> | Record<string, un
     nomination_status,
     nomination_opens_at,
     nomination_closes_at,
+    title_zh: optStrField((o as ElectionAgendaMetaV1).title_zh),
+    title_en: optStrField((o as ElectionAgendaMetaV1).title_en),
+    depends_on_resolution_kind: optStrField((o as ElectionAgendaMetaV1).depends_on_resolution_kind),
     candidates,
   };
+}
+
+function optStrField(v: unknown): string | undefined {
+  if (typeof v !== 'string') return undefined;
+  const t = v.trim();
+  return t.length ? t : undefined;
+}
+
+function coerceResolutionMeta(o: Partial<ResolutionAgendaMetaV1> | Record<string, unknown>): ResolutionAgendaMetaV1 | null {
+  if (!o || (o as ResolutionAgendaMetaV1).v !== 1 || (o as ResolutionAgendaMetaV1).agenda_type !== 'resolution') {
+    return null;
+  }
+  const kind = String((o as ResolutionAgendaMetaV1).resolution_kind ?? '').trim() as ResolutionKind;
+  if (kind !== 'remove_council') return null;
+  return {
+    v: 1,
+    agenda_type: 'resolution',
+    resolution_kind: kind,
+    title_zh: optStrField((o as ResolutionAgendaMetaV1).title_zh),
+    title_en: optStrField((o as ResolutionAgendaMetaV1).title_en),
+    requires_pass_before_election:
+      typeof (o as ResolutionAgendaMetaV1).requires_pass_before_election === 'boolean'
+        ? (o as ResolutionAgendaMetaV1).requires_pass_before_election
+        : true,
+  };
+}
+
+export function defaultRemoveCouncilResolutionMeta(
+  overrides?: Partial<Omit<ResolutionAgendaMetaV1, 'v' | 'agenda_type' | 'resolution_kind'>>,
+): ResolutionAgendaMetaV1 {
+  return {
+    v: 1,
+    agenda_type: 'resolution',
+    resolution_kind: 'remove_council',
+    title_zh: overrides?.title_zh ?? '是否罢免现任业委会',
+    title_en: overrides?.title_en ?? 'Resolution to remove the current council',
+    requires_pass_before_election: overrides?.requires_pass_before_election ?? true,
+  };
+}
+
+export function defaultRemovalLinkedElectionMeta(
+  overrides?: Partial<Omit<ElectionAgendaMetaV1, 'v' | 'agenda_type' | 'candidates'>>,
+): ElectionAgendaMetaV1 {
+  return defaultElectionMeta({
+    seats: overrides?.seats ?? 3,
+    max_choices_per_unit: overrides?.max_choices_per_unit ?? 3,
+    allow_self_nomination: overrides?.allow_self_nomination ?? true,
+    nomination_opens_at: overrides?.nomination_opens_at,
+    nomination_closes_at: overrides?.nomination_closes_at,
+    title_zh: overrides?.title_zh ?? '选举新业委会',
+    title_en: overrides?.title_en ?? 'Election of new council',
+    depends_on_resolution_kind: 'remove_council',
+  });
+}
+
+export function extractResolutionAgendaMeta(descriptionZh: string | null | undefined): {
+  cleanDescriptionZh: string;
+  meta: ResolutionAgendaMetaV1 | null;
+} {
+  const s = descriptionZh ?? '';
+  const i = s.indexOf(RESOLUTION_AGENDA_MARKER);
+  if (i < 0) return { cleanDescriptionZh: s.replace(/\s+$/u, '').trimEnd(), meta: null };
+
+  const afterMarker = i + RESOLUTION_AGENDA_MARKER.length;
+  let j = afterMarker;
+  while (j < s.length && (s[j] === ' ' || s[j] === '\t' || s[j] === '\r')) j++;
+  if (s[j] === '\n') j++;
+
+  const endRel = s.indexOf('\n-->', j);
+  if (endRel < 0) {
+    const clean = s.slice(0, i).replace(/\s+$/u, '').trimEnd();
+    return { cleanDescriptionZh: clean, meta: null };
+  }
+
+  const raw = s.slice(j, endRel).trim();
+  let meta: ResolutionAgendaMetaV1 | null = null;
+  try {
+    meta = coerceResolutionMeta(JSON.parse(raw) as Record<string, unknown>);
+  } catch {
+    /* ignore */
+  }
+  const clean = `${s.slice(0, i)}${s.slice(endRel + '\n-->'.length)}`.replace(/\s+$/u, '').trimEnd();
+  return { cleanDescriptionZh: clean, meta };
+}
+
+export function stripResolutionCommentFromZh(text?: string | null): string {
+  return extractResolutionAgendaMeta(text).cleanDescriptionZh.replace(/\s+$/u, '').trim();
+}
+
+export function embedResolutionAgendaMeta(
+  visibleZh: string | null | undefined,
+  meta: ResolutionAgendaMetaV1,
+): string {
+  const base = stripResolutionCommentFromZh(stripElectionCommentFromZh(visibleZh ?? '')).replace(/\s+$/u, '');
+  const safe = coerceResolutionMeta(meta) ?? defaultRemoveCouncilResolutionMeta();
+  const block = `${RESOLUTION_AGENDA_MARKER}\n${JSON.stringify(safe)}\n-->`;
+  return base ? `${base}\n\n${block}` : block;
+}
+
+/** Strip both election and resolution HTML comment blobs. */
+export function displayAgendaZhWithoutEmbeddedMeta(descriptionZh?: string | null): string {
+  return stripResolutionCommentFromZh(stripElectionCommentFromZh(descriptionZh ?? ''));
+}
+
+export function isRemoveCouncilResolutionAgenda(descriptionZh?: string | null): boolean {
+  return extractResolutionAgendaMeta(descriptionZh ?? '').meta?.resolution_kind === 'remove_council';
+}
+
+export function electionDependsOnRemoveCouncil(descriptionZh?: string | null): boolean {
+  const m = extractElectionAgendaMeta(descriptionZh ?? '').meta;
+  return m?.depends_on_resolution_kind === 'remove_council';
+}
+
+type AgendaSortRow = { sort_order?: number | null; description_zh?: string | null; requires_vote?: boolean | null };
+
+/** Order: remove_council resolution → linked election → other agendas (stable by sort_order). */
+export function sortGovernanceAgendaItems<T extends AgendaSortRow>(items: T[]): T[] {
+  const rank = (a: T): number => {
+    if (isRemoveCouncilResolutionAgenda(a.description_zh)) return 0;
+    if (electionDependsOnRemoveCouncil(a.description_zh)) return 1;
+    if (extractElectionAgendaMeta(a.description_zh ?? '').meta?.agenda_type === 'council_election') return 2;
+    if (extractResolutionAgendaMeta(a.description_zh ?? '').meta?.agenda_type === 'resolution') return 3;
+    if (a.requires_vote) return 4;
+    return 5;
+  };
+  return [...items].sort((a, b) => {
+    const ra = rank(a);
+    const rb = rank(b);
+    if (ra !== rb) return ra - rb;
+    return (a.sort_order ?? 0) - (b.sort_order ?? 0);
+  });
+}
+
+export function isOwnerRequisitionedRemovalSgmMeeting(input: {
+  meeting_type?: string | null;
+  initiation_type?: string | null;
+  meeting_format_ui?: string | null;
+  description_zh?: string | null;
+}): boolean {
+  const mt = String(input.meeting_type ?? '').trim().toLowerCase();
+  if (mt !== 'sgm') return false;
+  const initFromGov = extractGovernanceMeta(input.description_zh ?? '').meta?.initiation_type;
+  const init = String(input.initiation_type ?? initFromGov ?? '').trim();
+  if (init !== 'owner_requisitioned') return false;
+  const fmt = String(input.meeting_format_ui ?? '').trim().toLowerCase();
+  return fmt === 'written_remote' || fmt === 'remote_written';
 }
