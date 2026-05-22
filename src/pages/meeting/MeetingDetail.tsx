@@ -2322,6 +2322,15 @@ export function MeetingDetail() {
                               meetingId={meeting.id}
                               ownerVoteMeetingId={showCouncilOwnerVoteUi ? ovMeta.meeting?.id : null}
                               eligibleUnitNo={viewerOvUnitNo}
+                              currentUserId={user?.id ?? null}
+                              meetingCreatedBy={meeting.created_by ?? null}
+                              governanceInitiationType={governanceMeta?.initiation_type ?? null}
+                              canModerateCandidates={
+                                governanceMeta?.initiation_type === 'owner_requisitioned'
+                                  ? meeting.created_by === user?.id || canManageCouncilMeetings
+                                  : canManageCouncilMeetings
+                              }
+                              resultsLocked={(electionBallotsByAgenda.get(agenda.id) ?? 0) > 0}
                               canEdit={canManageCouncilMeetings && !agendaStructureEditLocked}
                               electionBallotCount={electionBallotsByAgenda.get(agenda.id) ?? 0}
                               languageEn={en}

@@ -27,6 +27,11 @@ export type ElectionCandidateDraft = {
   unit_no: string | null | undefined;
   statement: string | null | undefined;
   nominated_by: string | null | undefined;
+  nominated_by_user_id?: string | null;
+  nominated_by_unit?: string | null;
+  nomination_source?: string | null;
+  reviewed_by_user_id?: string | null;
+  reviewed_at?: string | null;
   accepted: boolean;
   created_at: string | null | undefined;
 };
@@ -516,12 +521,22 @@ function coerceElectionMeta(o: Partial<ElectionAgendaMetaV1> | Record<string, un
     const r = c as Record<string, unknown>;
     const id = String(r.id ?? '').trim();
     if (!id) continue;
+    const optStr = (v: unknown): string | null | undefined => {
+      if (v == null) return v as null | undefined;
+      const s = String(v).trim();
+      return s.length ? s : null;
+    };
     candidates.push({
       id,
       name: String(r.name ?? ''),
       unit_no: r.unit_no != null ? String(r.unit_no) : '',
       statement: r.statement != null ? String(r.statement) : '',
       nominated_by: r.nominated_by != null ? String(r.nominated_by) : '',
+      nominated_by_user_id: optStr(r.nominated_by_user_id),
+      nominated_by_unit: optStr(r.nominated_by_unit),
+      nomination_source: optStr(r.nomination_source),
+      reviewed_by_user_id: optStr(r.reviewed_by_user_id),
+      reviewed_at: optStr(r.reviewed_at),
       accepted:
         typeof r.accepted === 'boolean'
           ? r.accepted
