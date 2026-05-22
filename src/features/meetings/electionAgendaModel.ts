@@ -372,6 +372,42 @@ export function isFormalElectionVotingAllowed(
   return s === 'closed' || s === 'legacy_no_deadline';
 }
 
+/** Owner yes/no/abstain on embedded remove_council resolution; mirrors `submit_owner_vote` V3 / legacy windows. */
+export function isRemoveCouncilResolutionVotingAllowed(
+  now: Date,
+  councilMeeting: Pick<MeetingRow, 'scheduled_at' | 'status' | 'description_zh' | 'meeting_format'>,
+  ownerVoteMeeting?: {
+    status?: string | null;
+    voting_opens_at?: string | null;
+    voting_closes_at?: string | null;
+  } | null,
+): boolean {
+  const cmStatus = String(councilMeeting.status ?? '').trim().toLowerCase();
+  if (cmStatus === 'closed' || cmStatus === 'ended' || cmStatus === 'archived') return false;
+
+  if (isWrittenRemoteV3Meeting(councilMeeting)) {
+    const v3c = deriveRemoteWrittenV3CanonFromScheduledAt(councilMeeting.scheduled_at);
+    if (!v3c) return false;
+    const n = now.getTime();
+    const openMs = msIsoUtc(v3c.votingOpenIso);
+    const closeMs = msIsoUtc(v3c.votingCloseIso);
+    if (openMs === null || closeMs === null) return false;
+    return n >= openMs && n < closeMs;
+  }
+
+  if (cmStatus === 'draft') return false;
+
+  const ovSt = String(ownerVoteMeeting?.status ?? '').trim().toLowerCase();
+  if (ovSt !== 'open') return false;
+
+  const n = now.getTime();
+  const vo = parseIsoFlexible(ownerVoteMeeting?.voting_opens_at);
+  const vc = parseIsoFlexible(ownerVoteMeeting?.voting_closes_at);
+  if (vo !== null && n < vo.getTime()) return false;
+  if (vc !== null && n >= vc.getTime()) return false;
+  return true;
+}
+
 export function defaultElectionMeta(overrides?: Partial<Omit<ElectionAgendaMetaV1, 'v' | 'agenda_type' | 'candidates'>>): ElectionAgendaMetaV1 {
   return {
     v: 1,

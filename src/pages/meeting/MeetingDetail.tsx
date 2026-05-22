@@ -82,6 +82,7 @@ import {
   type OwnerElectionBallotLite,
 } from '@/components/meetings/CouncilElectionResultsBlock';
 import { MeetingElectionCandidatesPanel } from '@/components/meetings/MeetingElectionCandidatesPanel';
+import { MeetingResolutionVotePanel } from '@/components/meetings/MeetingResolutionVotePanel';
 import {
   councilMeetingVotingWindowFallback,
   extractGovernanceMeta,
@@ -2239,6 +2240,34 @@ export function MeetingDetail() {
                                   ? 'This agenda records whether owners approve removing the current council. The following council election becomes meaningful only if this resolution passes.'
                                   : '本议程用于表决是否罢免现任业委会。决议表决通过后，后续业委会选举结果才具备治理意义。'}
                               </p>
+                              {showCouncilOwnerVoteUi && meeting ? (
+                                <MeetingResolutionVotePanel
+                                  agenda={agenda}
+                                  councilMeeting={meeting}
+                                  ownerVoteMeeting={ovMeta.meeting}
+                                  resolutionId={
+                                    findOwnerVoteResolutionForAgenda(
+                                      {
+                                        sort_order: agenda.sort_order,
+                                        title_zh: agenda.title_zh,
+                                        title_en: agenda.title_en,
+                                      },
+                                      ovMeta.resolutions.map((r) => ({
+                                        id: r.id,
+                                        title: r.title,
+                                        display_order: r.display_order ?? null,
+                                      })),
+                                    )?.id ?? null
+                                  }
+                                  eligibleUnitNo={viewerOvUnitNo}
+                                  userId={user?.id ?? null}
+                                  canEnsureResolution={canManageCouncilMeetings}
+                                  languageEn={en}
+                                  onUpdated={async () => {
+                                    await refreshOwnerVoteMeta();
+                                  }}
+                                />
+                              ) : null}
                             </div>
                           ) : null}
 
