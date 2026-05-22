@@ -148,6 +148,9 @@ export function OwnerVotingInlineControlBar({
   const fallbackVoting = councilMeetingVotingWindowFallback(meeting);
   const hasElectionAgenda = electionNomRibbon != null;
 
+  /** Inline election ballot lives on the meeting detail page; skip list navigation. */
+  const hideNavigateGoVote = electionAgendaCount > 0;
+
   let displayVotingOpens: string | null = null;
   let displayVotingCloses: string | null = null;
   if (agmSgmStrict) {
@@ -392,7 +395,7 @@ export function OwnerVotingInlineControlBar({
               <p className="text-sm text-gray-800 rounded-md border border-blue-100 bg-blue-50/70 px-3 py-2">
                 {v3AutoParticipationCopy}
               </p>
-              {!isStaff || viewerIsEligibleVoter ? (
+              {!hideNavigateGoVote && (!isStaff || viewerIsEligibleVoter) ? (
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -455,7 +458,7 @@ export function OwnerVotingInlineControlBar({
                     ) : null}
                   </>
                 ) : null}
-                {(!isStaff || viewerIsEligibleVoter) ? (
+                {!hideNavigateGoVote && (!isStaff || viewerIsEligibleVoter) ? (
                   <button
                     type="button"
                     onClick={onNavigateOwnerVoting}
