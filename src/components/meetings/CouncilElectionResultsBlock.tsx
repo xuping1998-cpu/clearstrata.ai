@@ -5,6 +5,7 @@ import { finalizeElectionMeta, type ElectionAgendaMetaV1 } from '@/features/meet
 export type OwnerElectionBallotLite = {
   agenda_item_id: string;
   selected_candidate_ids: unknown;
+  unit_no?: string | null;
 };
 
 type Props = {

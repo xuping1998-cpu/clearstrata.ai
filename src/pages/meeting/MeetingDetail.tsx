@@ -700,7 +700,7 @@ export function MeetingDetail() {
     if (r.meeting?.id) {
       const eb = await supabase
         .from('owner_election_ballots')
-        .select('agenda_item_id, selected_candidate_ids')
+        .select('agenda_item_id, selected_candidate_ids, unit_no')
         .eq('meeting_id', r.meeting.id);
       if (eb.error) {
         console.error('[MeetingDetail] owner_election_ballots', eb.error.message);
@@ -2331,6 +2331,29 @@ export function MeetingDetail() {
                                   : canManageCouncilMeetings
                               }
                               resultsLocked={(electionBallotsByAgenda.get(agenda.id) ?? 0) > 0}
+                              hasSubmittedElectionBallot={(() => {
+                                const unit = viewerOvUnitNo?.trim().toLowerCase();
+                                if (!unit) return false;
+                                return ownerElectionBallots.some(
+                                  (b) =>
+                                    b.agenda_item_id === agenda.id &&
+                                    String(b.unit_no ?? '').trim().toLowerCase() === unit,
+                                );
+                              })()}
+                              submittedSelectedCandidateIds={(() => {
+                                const unit = viewerOvUnitNo?.trim().toLowerCase();
+                                if (!unit) return [];
+                                const ballot = ownerElectionBallots.find(
+                                  (b) =>
+                                    b.agenda_item_id === agenda.id &&
+                                    String(b.unit_no ?? '').trim().toLowerCase() === unit,
+                                );
+                                if (!ballot || !Array.isArray(ballot.selected_candidate_ids)) return [];
+                                return ballot.selected_candidate_ids
+                                  .filter((x): x is string => typeof x === 'string' && !!x.trim())
+                                  .map((x) => x.trim());
+                              })()}
+                              ownerVoteMeetingStatus={ovMeta.meeting?.status ?? null}
                               canEdit={canManageCouncilMeetings && !agendaStructureEditLocked}
                               electionBallotCount={electionBallotsByAgenda.get(agenda.id) ?? 0}
                               languageEn={en}

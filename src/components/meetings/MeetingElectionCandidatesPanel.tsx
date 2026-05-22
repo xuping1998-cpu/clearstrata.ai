@@ -9,6 +9,7 @@ import {
   displayAgendaZhWithoutElection,
   formatElectionNominationUiStatus,
   getElectionNominationStatus,
+  isFormalElectionVotingAllowed,
   councilAgmSgmNominationWindowDisplayIso,
   agmSgmScheduledNotSetLabel,
   type ElectionAgendaMetaV1,
@@ -33,6 +34,9 @@ export type MeetingElectionCandidatesPanelProps = {
   governanceInitiationType?: string | null;
   canModerateCandidates?: boolean;
   resultsLocked?: boolean;
+  hasSubmittedElectionBallot?: boolean;
+  submittedSelectedCandidateIds?: string[];
+  ownerVoteMeetingStatus?: string | null;
   canEdit: boolean;
   electionBallotCount: number;
   languageEn: boolean;
@@ -126,6 +130,52 @@ function reviewErrorAlert(code: string, en: boolean): void {
   }
 }
 
+function ballotErrorAlert(code: string, en: boolean, t: (key: string) => string, maxChoices: number): void {
+  const lc = code.toLowerCase();
+  if (lc.includes('too_many') || lc === 'selected_too_many') {
+    alert(
+      en
+        ? `You may select at most ${maxChoices} candidate(s).`
+        : `最多只能选择 ${maxChoices} 名候选人`,
+    );
+    return;
+  }
+  if (
+    lc.includes('no_candidates') ||
+    lc.includes('invalid_candidate') ||
+    lc.includes('candidate_not_accepted')
+  ) {
+    alert(en ? 'One or more selected candidates cannot be voted for.' : '候选人不可投');
+    return;
+  }
+  if (lc.includes('not_eligible')) {
+    alert(en ? 'You are not an eligible voter for this meeting.' : '您不是本次会议的合资格投票人');
+    return;
+  }
+  if (
+    lc.includes('already_voted') ||
+    lc.includes('duplicate_vote') ||
+    lc.includes('ballots_exist_locked')
+  ) {
+    alert(en ? 'You have already submitted your ballot.' : '您已提交过选票');
+    return;
+  }
+  if (
+    lc.includes('voting_not_open') ||
+    lc.includes('too_early') ||
+    lc.includes('nomination_still_open') ||
+    lc.includes('nomination_not_started')
+  ) {
+    alert(en ? 'Voting is not open yet.' : '当前不在投票时间内');
+    return;
+  }
+  if (lc.includes('voting_closed') || lc.includes('past_close')) {
+    alert(en ? 'Voting has closed.' : '投票已截止');
+    return;
+  }
+  alert(code || (en ? 'Ballot submission failed' : '提交选票失败'));
+}
+
 export function MeetingElectionCandidatesPanel({
   agenda,
   propertyId,
@@ -135,6 +185,9 @@ export function MeetingElectionCandidatesPanel({
   currentUserId = null,
   canModerateCandidates = false,
   resultsLocked = false,
+  hasSubmittedElectionBallot = false,
+  submittedSelectedCandidateIds = [],
+  ownerVoteMeetingStatus = null,
   canEdit,
   electionBallotCount,
   languageEn,
@@ -157,6 +210,9 @@ export function MeetingElectionCandidatesPanel({
   const [nomBusy, setNomBusy] = useState(false);
   const [showNomForm, setShowNomForm] = useState(false);
   const [nomForm, setNomForm] = useState({ name: '', unit: '', statement: '' });
+  const [ballotBusy, setBallotBusy] = useState(false);
+  const [selectedBallotIds, setSelectedBallotIds] = useState<string[]>([]);
+  const [ballotSelectErr, setBallotSelectErr] = useState<string | null>(null);
 
   const meta = meta0 ?? null;
   const candidatesSorted = useMemo(() => [...(meta?.candidates ?? [])].sort((a, b) => a.name.localeCompare(b.name)), [meta]);
@@ -184,6 +240,76 @@ export function MeetingElectionCandidatesPanel({
     !!metaFinal &&
     metaFinal.allow_self_nomination === true &&
     nominationOpenPhase;
+
+  const acceptedCandidates = useMemo(
+    () => candidatesSorted.filter((c) => c.accepted === true),
+    [candidatesSorted],
+  );
+
+  const maxBallotChoices = metaFinal?.max_choices_per_unit ?? 1;
+
+  const formalVotingAllowed =
+    !!metaFinal && isFormalElectionVotingAllowed(now, metaFinal, councilElectionMeeting ?? null);
+
+  const legacyOvVotingOpen =
+    v3RemoteCouncil || String(ownerVoteMeetingStatus ?? '').trim().toLowerCase() === 'open';
+
+  const canShowBallotForm =
+    governanceRpcEnabled &&
+    !!eligibleUnitNo?.trim() &&
+    formalVotingAllowed &&
+    legacyOvVotingOpen &&
+    acceptedCandidates.length > 0 &&
+    !hasSubmittedElectionBallot;
+
+  const submittedCandidateNames = useMemo(() => {
+    if (!submittedSelectedCandidateIds.length || !metaFinal) return [];
+    const byId = new Map(metaFinal.candidates.map((c) => [c.id, c]));
+    return submittedSelectedCandidateIds
+      .map((id) => byId.get(id))
+      .filter((c): c is ElectionCandidateDraft => !!c)
+      .map((c) => c.name);
+  }, [submittedSelectedCandidateIds, metaFinal]);
+
+  function toggleBallotSelection(candidateId: string) {
+    setBallotSelectErr(null);
+    setSelectedBallotIds((prev) => {
+      if (prev.includes(candidateId)) {
+        return prev.filter((id) => id !== candidateId);
+      }
+      if (prev.length >= maxBallotChoices) {
+        setBallotSelectErr(t('meeting_election_selected_too_many'));
+        return prev;
+      }
+      return [...prev, candidateId];
+    });
+  }
+
+  async function submitElectionBallot() {
+    if (!ownerVoteMeetingId || selectedBallotIds.length === 0 || hasSubmittedElectionBallot) return;
+    setBallotBusy(true);
+    setBallotSelectErr(null);
+    try {
+      const { data, error } = await supabase.rpc('submit_owner_election_ballot', {
+        p_meeting_id: ownerVoteMeetingId,
+        p_agenda_item_id: agenda.id,
+        p_selected_candidate_ids: selectedBallotIds,
+      });
+      if (error) throw error;
+      const payload = data as RpcPayload;
+      if (payload && typeof payload === 'object' && payload.ok === false) {
+        ballotErrorAlert(String(payload.error ?? ''), en, t, maxBallotChoices);
+        return;
+      }
+      setSelectedBallotIds([]);
+      await onUpdated();
+    } catch (e) {
+      const raw = e instanceof Error ? e.message : String(e);
+      ballotErrorAlert(raw, en, t, maxBallotChoices);
+    } finally {
+      setBallotBusy(false);
+    }
+  }
 
   async function persist(next: ElectionAgendaMetaV1) {
     if (!meta || !staffNominationWritesEnabled) return;
@@ -392,7 +518,7 @@ export function MeetingElectionCandidatesPanel({
     return null;
   }
 
-  const actionBusy = busy || governanceBusy;
+  const actionBusy = busy || governanceBusy || ballotBusy;
 
   return (
     <div className="mt-4 space-y-4 border-t border-amber-200/80 pt-4">
@@ -630,6 +756,69 @@ export function MeetingElectionCandidatesPanel({
               </div>
             </div>
           )}
+        </div>
+      ) : null}
+
+      {hasSubmittedElectionBallot ? (
+        <div className="rounded-lg border border-clearstrata-state-success-border bg-clearstrata-state-success-surface/40 px-3 py-3 space-y-2">
+          <p className="text-sm font-semibold text-gray-900">
+            {en ? 'You have submitted your ballot' : '您已提交选票'}
+          </p>
+          {submittedCandidateNames.length > 0 ? (
+            <ul className="list-disc pl-5 text-sm text-gray-800">
+              {submittedCandidateNames.map((name) => (
+                <li key={name}>{name}</li>
+              ))}
+            </ul>
+          ) : submittedSelectedCandidateIds.length > 0 ? (
+            <p className="text-xs text-gray-600">{submittedSelectedCandidateIds.join(', ')}</p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {canShowBallotForm ? (
+        <div className="rounded-lg border border-blue-200/80 bg-blue-50/30 px-3 py-3 space-y-3">
+          <h5 className="text-sm font-semibold text-gray-900">{en ? 'Cast election ballot' : '选举投票'}</h5>
+          <p className="text-xs text-gray-600">
+            {en
+              ? `Select up to ${maxBallotChoices} approved candidate(s) for your unit.`
+              : `请为您所在单位选择最多 ${maxBallotChoices} 名已通过审核的候选人。`}
+          </p>
+          <ul className="space-y-2">
+            {acceptedCandidates.map((c) => {
+              const checked = selectedBallotIds.includes(c.id);
+              const atMax = selectedBallotIds.length >= maxBallotChoices;
+              return (
+                <li key={c.id} className="rounded-lg bg-white px-3 py-2 ring-1 ring-gray-100">
+                  <label className="flex cursor-pointer items-start gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={checked}
+                      disabled={ballotBusy || (!checked && atMax)}
+                      onChange={() => toggleBallotSelection(c.id)}
+                    />
+                    <span className="min-w-0">
+                      <span className="font-medium text-gray-900">{c.name}</span>
+                      <span className="ml-1 text-xs text-gray-500">· {unitDisplay(c)}</span>
+                      {c.statement ? (
+                        <span className="mt-0.5 block text-xs text-gray-600">{c.statement}</span>
+                      ) : null}
+                    </span>
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+          {ballotSelectErr ? <p className="text-xs text-amber-800">{ballotSelectErr}</p> : null}
+          <button
+            type="button"
+            disabled={ballotBusy || selectedBallotIds.length === 0}
+            onClick={() => void submitElectionBallot()}
+            className="rounded-lg bg-clearstrata-ui-primary px-4 py-2 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover disabled:opacity-50"
+          >
+            {t('meeting_election_submit_ballot')}
+          </button>
         </div>
       ) : null}
 
