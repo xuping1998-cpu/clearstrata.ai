@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FileText, X } from 'lucide-react';
 import {
   MEETING_VOTE_ARCHIVE_GUIDE_ZH,
@@ -6,8 +6,39 @@ import {
   MEETING_VOTE_ARCHIVE_FORMAL_NOTICE,
   MEETING_VOTE_ARCHIVE_CARD_CLASSIFICATION_NOTE,
 } from '@/components/meetings/meetingVoteArchiveConstants';
-import type { MeetingSupportingDocumentRow } from '@/features/meetings/meetingDocumentsRead';
+import {
+  decodeDataTextUrl,
+  fetchMeetingArchiveDocuments,
+  isGeneratedArchiveSnapshot,
+  type MeetingArchiveDocumentRow,
+  type MeetingSupportingDocumentRow,
+} from '@/features/meetings/meetingDocumentsRead';
 import { meetingTitleZhFirst, type MeetingRow, type OwnerVoteMeetingLite } from '@/features/meetings/api';
+import { labelMeetingFormatUiDisplay, labelMeetingType, meetingUiStrings } from '@/features/meetings/labels';
+import {
+  councilMeetingVotingWindowFallback,
+  councilWrittenRemoteWindows,
+  stripWrittenRemoteMeta,
+} from '@/features/meetings/meetingFormatModel';
+import { isStrictAgmOrSgmMeeting } from '@/features/meetings/electionAgendaModel';
+import { deriveAgmSgmCanonDisplayWindows, deriveCouncilElectionCanonFromScheduledAt } from '@/features/meetings/electionTimelineMath';
+import { MeetingDocumentsSection } from '@/pages/meeting/MeetingDocumentsSection';
+import { supabase } from '@/lib/supabase';
+
+type ArchiveSlotId = '03' | '04' | '05';
+
+const ARCHIVE_SLOT_LABELS: Record<ArchiveSlotId, { zh: string; en: string }> = {
+  '03': { zh: '03 讨论记录', en: '03 Discussion Record' },
+  '04': { zh: '04 投票记录', en: '04 Voting Record' },
+  '05': { zh: '05 决议结果', en: '05 Resolution Results' },
+};
+
+type GenerateFeedback = { kind: 'success' | 'error'; text: string } | null;
+
+type SnapshotViewer = {
+  title: string;
+  body: string;
+} | null;
 import { labelMeetingFormatUiDisplay, labelMeetingType, meetingUiStrings } from '@/features/meetings/labels';
 import {
   councilMeetingVotingWindowFallback,
@@ -59,13 +90,58 @@ export function MeetingVoteArchiveCard({
   const [guideOpen, setGuideOpen] = useState(false);
   const [noticeOpen, setNoticeOpen] = useState(false);
   const [docsOpen, setDocsOpen] = useState(false);
+  const [archiveDocs, setArchiveDocs] = useState<MeetingArchiveDocumentRow[]>([]);
+  const [generateBusy, setGenerateBusy] = useState(false);
+  const [generateFeedback, setGenerateFeedback] = useState<GenerateFeedback>(null);
+  const [snapshotViewer, setSnapshotViewer] = useState<SnapshotViewer>(null);
   const g = MEETING_VOTE_ARCHIVE_GUIDE_ZH;
   const fc = MEETING_VOTE_ARCHIVE_FORMAL_NOTICE;
   const sup = MEETING_VOTE_ARCHIVE_SUPPORTING_DOCUMENTS;
   const supCopy = en ? sup.en : sup.zh;
   const c = en ? fc.en : fc.zh;
-  const docCount = supportingDocuments.length;
+
+  const loadArchiveDocs = useCallback(async () => {
+    const pid = meeting.property_id?.trim();
+    const mid = meeting.id?.trim();
+    if (!pid || !mid) {
+      setArchiveDocs([]);
+      return;
+    }
+    const { rows, error } = await fetchMeetingArchiveDocuments(pid, mid);
+    if (error) {
+      console.error('[MeetingVoteArchiveCard] load archive documents', error);
+      return;
+    }
+    setArchiveDocs(rows);
+  }, [meeting.id, meeting.property_id]);
+
+  useEffect(() => {
+    void loadArchiveDocs();
+  }, [loadArchiveDocs]);
+
+  const generated03 = useMemo(
+    () => archiveDocs.find((d) => d.title_en?.startsWith('03 ')),
+    [archiveDocs],
+  );
+  const generated04 = useMemo(
+    () => archiveDocs.find((d) => d.title_en?.startsWith('04 ')),
+    [archiveDocs],
+  );
+  const generated05 = useMemo(
+    () => archiveDocs.find((d) => d.title_en?.startsWith('05 ')),
+    [archiveDocs],
+  );
+
+  const supportingOnly = useMemo(() => {
+    if (archiveDocs.length > 0) {
+      return archiveDocs.filter((d) => !isGeneratedArchiveSnapshot(d.title_en));
+    }
+    return supportingDocuments.filter((d) => !isGeneratedArchiveSnapshot(d.title_en));
+  }, [archiveDocs, supportingDocuments]);
+
+  const docCount = supportingOnly.length;
   const hasSupportingAttachments = docCount > 0;
+  const allGeneratedSnapshotsReady = !!(generated03 && generated04 && generated05);
   const showSupportingDocsAction = hasSupportingAttachments || canManageDocuments;
   const supportingDocsActionLabel = canManageDocuments ? (en ? 'Manage' : '管理') : en ? 'View' : '查看';
 
@@ -149,6 +225,95 @@ export function MeetingVoteArchiveCard({
     };
   }, [meeting, ownerVoteMeeting, en, electionAgendaCount]);
 
+  async function handleGenerateArchive() {
+    if (!meeting.id?.trim() || generateBusy) return;
+    setGenerateFeedback(null);
+    setGenerateBusy(true);
+    try {
+      const { data, error } = await supabase.rpc('generate_meeting_archive_snapshots', {
+        p_meeting_id: meeting.id,
+      });
+      if (error) throw error;
+      const payload = data as { ok?: boolean; error?: string } | null;
+      if (payload && payload.ok === false) {
+        console.error('[MeetingVoteArchiveCard] generate_meeting_archive_snapshots', payload.error);
+        setGenerateFeedback({
+          kind: 'error',
+          text: en ? 'Failed to generate archive. Please try again.' : '生成失败，请稍后重试。',
+        });
+        return;
+      }
+      setGenerateFeedback({
+        kind: 'success',
+        text: en ? 'Meeting archive generated.' : '会议档案已生成。',
+      });
+      await loadArchiveDocs();
+      onSupportingDocumentsChanged();
+    } catch (e) {
+      console.error('[MeetingVoteArchiveCard] generate_meeting_archive_snapshots', e);
+      setGenerateFeedback({
+        kind: 'error',
+        text: en ? 'Failed to generate archive. Please try again.' : '生成失败，请稍后重试。',
+      });
+    } finally {
+      setGenerateBusy(false);
+    }
+  }
+
+  function openGeneratedSnapshot(slot: ArchiveSlotId, doc: MeetingArchiveDocumentRow) {
+    const url = doc.document_url?.trim() ?? '';
+    const title = en ? ARCHIVE_SLOT_LABELS[slot].en : ARCHIVE_SLOT_LABELS[slot].zh;
+    if (url.startsWith('data:text/plain')) {
+      setSnapshotViewer({ title, body: decodeDataTextUrl(url) });
+      return;
+    }
+    if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  }
+
+  function renderGeneratedSnapshotRow(slot: ArchiveSlotId, doc: MeetingArchiveDocumentRow | undefined) {
+    const label = en ? ARCHIVE_SLOT_LABELS[slot].en : ARCHIVE_SLOT_LABELS[slot].zh;
+    const generated = !!doc;
+    return (
+      <li
+        key={slot}
+        className={`flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2 ${
+          generated ? 'border-teal-200/80 bg-white' : 'border-gray-100 bg-white/80 text-gray-500'
+        }`}
+      >
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span
+            className={`font-mono text-xs font-semibold ${generated ? 'text-teal-900' : 'text-gray-500'}`}
+          >
+            {slot}
+          </span>
+          <span className={`font-medium ${generated ? 'text-gray-900' : 'text-gray-700'}`}>{label}</span>
+          <span
+            className={`shrink-0 text-[10px] font-semibold ${
+              generated
+                ? 'rounded border border-teal-300 bg-teal-50 px-1.5 py-px text-teal-950'
+                : 'text-xs text-gray-500'
+            }`}
+          >
+            {generated ? (en ? 'Generated' : '已生成') : en ? 'Pending · No file yet' : '待生成 · 暂无文件'}
+          </span>
+        </div>
+        {generated && doc ? (
+          <button
+            type="button"
+            onClick={() => openGeneratedSnapshot(slot, doc)}
+            className="shrink-0 rounded-lg border border-teal-600 bg-teal-700 px-3 py-1 text-xs font-semibold text-white hover:bg-teal-800"
+          >
+            {en ? 'View' : '查看'}
+          </button>
+        ) : null}
+      </li>
+    );
+  }
+
+  const minutesPlaceholder = fc.placeholderRows.find((row) => row.id === '06');
+
   return (
     <>
       <div className="mb-6 rounded-lg border border-slate-200 bg-slate-50/70 px-4 py-3 text-sm shadow-sm">
@@ -174,7 +339,39 @@ export function MeetingVoteArchiveCard({
         </p>
 
         {expanded ? (
-          <ul className="mt-3 space-y-2 border-t border-slate-200/80 pt-3">
+          <div className="mt-3 space-y-3 border-t border-slate-200/80 pt-3">
+            {canManageDocuments ? (
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  disabled={generateBusy}
+                  onClick={() => void handleGenerateArchive()}
+                  className="rounded-lg border border-slate-600 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-900 disabled:opacity-50"
+                >
+                  {generateBusy
+                    ? en
+                      ? 'Generating…'
+                      : '生成中…'
+                    : allGeneratedSnapshotsReady
+                      ? en
+                        ? 'Regenerate archive'
+                        : '重新生成会议档案'
+                      : en
+                        ? 'Generate archive'
+                        : '生成会议档案'}
+                </button>
+                {generateFeedback ? (
+                  <p
+                    className={`text-xs ${
+                      generateFeedback.kind === 'success' ? 'text-emerald-700' : 'text-red-700'
+                    }`}
+                  >
+                    {generateFeedback.text}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+            <ul className="space-y-2">
             <li className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-emerald-200/70 bg-white/90 px-3 py-2">
               <div className="flex min-w-0 items-center gap-2">
                 <span className="font-mono text-xs font-semibold text-emerald-800">00</span>
@@ -252,19 +449,24 @@ export function MeetingVoteArchiveCard({
               ) : null}
             </li>
 
-            {fc.placeholderRows.map((row) => (
+            {renderGeneratedSnapshotRow('03', generated03)}
+            {renderGeneratedSnapshotRow('04', generated04)}
+            {renderGeneratedSnapshotRow('05', generated05)}
+
+            {minutesPlaceholder ? (
               <li
-                key={row.id}
+                key={minutesPlaceholder.id}
                 className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-gray-100 bg-white/80 px-3 py-2 text-gray-500"
               >
                 <span className="font-medium text-gray-700">
-                  <span className="mr-2 font-mono text-xs">{row.id}</span>
-                  {en ? row.en : row.zh}
+                  <span className="mr-2 font-mono text-xs">{minutesPlaceholder.id}</span>
+                  {en ? minutesPlaceholder.en : minutesPlaceholder.zh}
                 </span>
                 <span className="text-xs">{en ? 'Pending · No file yet' : '待生成 · 暂无文件'}</span>
               </li>
-            ))}
-          </ul>
+            ) : null}
+            </ul>
+          </div>
         ) : null}
       </div>
 
@@ -496,6 +698,7 @@ export function MeetingVoteArchiveCard({
                 titleZh={sup.row02.zh}
                 omitOuterTitle
                 onDocumentsChanged={() => {
+                  void loadArchiveDocs();
                   void onSupportingDocumentsChanged();
                 }}
               />
@@ -504,6 +707,51 @@ export function MeetingVoteArchiveCard({
               <button
                 type="button"
                 onClick={() => setDocsOpen(false)}
+                className="rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200/60"
+              >
+                {en ? 'Close' : '关闭'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {snapshotViewer ? (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-3 sm:p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="meeting-vote-archive-snapshot-title"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setSnapshotViewer(null);
+          }}
+        >
+          <div
+            className="max-h-[min(92vh,720px)] w-full max-w-2xl overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl"
+            onMouseDown={(ev) => ev.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-2 border-b border-gray-100 bg-gray-50 px-4 py-3">
+              <h2 id="meeting-vote-archive-snapshot-title" className="text-base font-semibold text-gray-900">
+                {snapshotViewer.title}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setSnapshotViewer(null)}
+                className="shrink-0 rounded-lg p-1 text-gray-500 hover:bg-gray-200/80 hover:text-gray-800"
+                aria-label={en ? 'Close' : '关闭'}
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+            <div className="max-h-[min(78vh,600px)] overflow-y-auto px-4 py-4">
+              <pre className="whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-800 font-sans">
+                {snapshotViewer.body}
+              </pre>
+            </div>
+            <div className="border-t border-gray-100 bg-gray-50 px-4 py-2">
+              <button
+                type="button"
+                onClick={() => setSnapshotViewer(null)}
                 className="rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200/60"
               >
                 {en ? 'Close' : '关闭'}
