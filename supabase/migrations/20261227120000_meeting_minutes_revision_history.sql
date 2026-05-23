@@ -555,7 +555,7 @@ DECLARE
   v_body text;
   v_url text;
   v_size int;
-  v_version int := 1;
+  v_version int;
   v_title_en text;
   v_existing_doc_id uuid;
   v_doc_id uuid;
@@ -602,9 +602,11 @@ BEGIN
     v_version := coalesce(public._minutes_latest_finalized_version(p_meeting_id), 0) + 1;
   END IF;
 
-  v_version := greatest(v_version, 1);
-
-  v_title_en := public._minutes_version_title_en(v_version);
+  IF v_version = 1 THEN
+    v_title_en := '06 Meeting Minutes';
+  ELSE
+    v_title_en := '06 Meeting Minutes v' || v_version::text;
+  END IF;
   v_url := public._archive_plain_text_data_url(v_body);
   v_size := octet_length(convert_to(v_body, 'UTF8'));
 
