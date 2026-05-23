@@ -32,16 +32,61 @@ export function isGeneratedArchiveSnapshot(titleEn: string | null | undefined): 
 
 export const FINALIZED_MINUTES_TITLE_EN = '06 Meeting Minutes';
 
-export function isFinalizedMeetingMinutesDocument(titleEn: string | null | undefined): boolean {
+const MINUTES_VERSION_TITLE_RE = /^06 Meeting Minutes(?: v(\d+))?$/;
+
+/** Extract version from slot 06 title; legacy unversioned title = v1. */
+export function extractMeetingMinutesVersion(titleEn: string | null | undefined): number | null {
   const t = titleEn?.trim() ?? '';
-  return t === FINALIZED_MINUTES_TITLE_EN || t.startsWith('06 ');
+  if (!t) return null;
+  const m = t.match(MINUTES_VERSION_TITLE_RE);
+  if (!m) return null;
+  if (!m[1]) return 1;
+  const v = Number.parseInt(m[1], 10);
+  return Number.isFinite(v) && v > 0 ? v : null;
 }
 
-/** Locate slot 06 finalized minutes in an archive document list. */
+export function isMeetingMinutesDocument(titleEn: string | null | undefined): boolean {
+  return extractMeetingMinutesVersion(titleEn) !== null;
+}
+
+/** @deprecated use isMeetingMinutesDocument */
+export function isFinalizedMeetingMinutesDocument(titleEn: string | null | undefined): boolean {
+  return isMeetingMinutesDocument(titleEn);
+}
+
+function compareMeetingMinutesDocuments<T extends { title_en?: string | null; uploaded_at?: string | null }>(
+  a: T,
+  b: T,
+): number {
+  const va = extractMeetingMinutesVersion(a.title_en) ?? 0;
+  const vb = extractMeetingMinutesVersion(b.title_en) ?? 0;
+  if (vb !== va) return vb - va;
+  const ta = a.uploaded_at ? Date.parse(a.uploaded_at) : 0;
+  const tb = b.uploaded_at ? Date.parse(b.uploaded_at) : 0;
+  return tb - ta;
+}
+
+/** Latest finalized minutes document (highest version). */
+export function findLatestMeetingMinutesDocument(
+  rows: MeetingArchiveDocumentRow[],
+): MeetingArchiveDocumentRow | undefined {
+  return rows
+    .filter((d) => isMeetingMinutesDocument(d.title_en))
+    .sort(compareMeetingMinutesDocuments)[0];
+}
+
+/** All minutes versions for a meeting, newest first. */
+export function listMeetingMinutesDocuments(
+  rows: MeetingArchiveDocumentRow[],
+): MeetingArchiveDocumentRow[] {
+  return rows.filter((d) => isMeetingMinutesDocument(d.title_en)).sort(compareMeetingMinutesDocuments);
+}
+
+/** @deprecated use findLatestMeetingMinutesDocument */
 export function findFinalizedMinutesDocument(
   rows: MeetingArchiveDocumentRow[],
 ): MeetingArchiveDocumentRow | undefined {
-  return rows.find((d) => isFinalizedMeetingMinutesDocument(d.title_en));
+  return findLatestMeetingMinutesDocument(rows);
 }
 
 /** Archive folder slots 03–06 — excluded from 02 supporting documents only. */
@@ -144,14 +189,15 @@ export async function fetchMeetingArchiveDocuments(
   return { rows: (data ?? []) as MeetingArchiveDocumentRow[], error: null };
 }
 
-/** Slot 06 finalized minutes — explicit fetch so owners reliably see View when archived. */
-export async function fetchFinalizedMeetingMinutesDocument(
+/** Latest finalized slot 06 minutes document (highest version). */
+export async function fetchLatestMeetingMinutesDocument(
   propertyId: string,
   meetingId: string,
 ): Promise<{ row: MeetingArchiveDocumentRow | null; error: Error | null }> {
   const pid = propertyId.trim();
   const mid = meetingId.trim();
   if (!pid || !mid) return { row: null, error: null };
+
   const { data, error } = await supabase
     .from('meeting_documents')
     .select(
@@ -159,12 +205,20 @@ export async function fetchFinalizedMeetingMinutesDocument(
     )
     .eq('property_id', pid)
     .eq('meeting_id', mid)
-    .eq('title_en', FINALIZED_MINUTES_TITLE_EN)
-    .order('uploaded_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .or(`title_en.eq.${FINALIZED_MINUTES_TITLE_EN},title_en.like.06 Meeting Minutes v%`)
+    .order('uploaded_at', { ascending: false });
+
   if (error) return { row: null, error: new Error(error.message) };
-  return { row: (data as MeetingArchiveDocumentRow | null) ?? null, error: null };
+  const row = findLatestMeetingMinutesDocument((data ?? []) as MeetingArchiveDocumentRow[]) ?? null;
+  return { row, error: null };
+}
+
+/** @deprecated use fetchLatestMeetingMinutesDocument */
+export async function fetchFinalizedMeetingMinutesDocument(
+  propertyId: string,
+  meetingId: string,
+): Promise<{ row: MeetingArchiveDocumentRow | null; error: Error | null }> {
+  return fetchLatestMeetingMinutesDocument(propertyId, meetingId);
 }
 
 export type MeetingAgendaNoticeRow = {
