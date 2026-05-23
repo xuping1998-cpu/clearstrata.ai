@@ -728,6 +728,10 @@ const FORMAL_REMOVE_COUNCIL_TITLE_MARKERS_ZH = [
   '罢免业委会',
   '罢免现任业委会',
   '罢免现有业委会',
+  '罷免',
+  '罷免業委會',
+  '罷免現任業委會',
+  '罷免現有業委會',
 ] as const;
 
 const FORMAL_REMOVE_COUNCIL_TITLE_MARKERS_EN = [
