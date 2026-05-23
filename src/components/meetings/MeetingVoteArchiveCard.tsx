@@ -8,6 +8,7 @@ import {
 } from '@/components/meetings/meetingVoteArchiveConstants';
 import {
   decodeDataTextUrl,
+  displayArchiveSnapshotTitle,
   extractMeetingMinutesVersion,
   fetchLatestMeetingMinutesDocument,
   fetchMeetingAgendaNoticeRows,
@@ -15,7 +16,7 @@ import {
   filterSupportingDocumentsOnly,
   findLatestMeetingMinutesDocument,
   formatArchiveSnapshotViewerBody,
-  listMeetingMinutesDocuments,
+  listMeetingMinutesFinalizedVersions,
   type MeetingAgendaNoticeRow,
   type MeetingArchiveDocumentRow,
   type MeetingSupportingDocumentRow,
@@ -55,6 +56,7 @@ type MinutesDraftPayload = {
   latest_finalized_title?: string | null;
   is_final?: boolean;
   version?: number;
+  reused_existing_draft?: boolean;
 };
 
 type FormalNoticeAgendaItem = {
@@ -71,6 +73,32 @@ function getMinutesDisplayTitle(version: number, language: ArchiveSlotLanguage):
     return v > 1 ? `06 Meeting Minutes v${v}` : '06 Meeting Minutes';
   }
   return v > 1 ? `06 会议纪要 v${v}` : '06 会议纪要';
+}
+
+function formatMinutesVersionHistoryLabel(
+  finalizedVersions: number[],
+  draftVersion: number | null,
+  hasOpenDraft: boolean,
+  languageEn: boolean,
+): string | null {
+  const draftV = hasOpenDraft && draftVersion != null ? draftVersion : null;
+  const finalizedSet = new Set(finalizedVersions);
+
+  if (finalizedVersions.length === 0 && draftV == null) return null;
+  if (finalizedVersions.length <= 1 && draftV == null) return null;
+
+  const ordered = [...new Set([...finalizedVersions, ...(draftV != null ? [draftV] : [])])].sort(
+    (a, b) => a - b,
+  );
+
+  return ordered
+    .map((v) => {
+      if (draftV === v && !finalizedSet.has(v)) {
+        return languageEn ? `draft v${v}` : `草稿 v${v}`;
+      }
+      return `v${v}`;
+    })
+    .join(', ');
 }
 
 function getArchiveSlotDisplayTitle(slot: ArchiveSlotId, language: ArchiveSlotLanguage): string {
@@ -299,12 +327,20 @@ export function MeetingVoteArchiveCard({
     [minutesDoc],
   );
   const minutesHasLatestFinalized = minutesLatestVersion != null;
-  const minutesVersionHistory = useMemo(() => {
-    return listMeetingMinutesDocuments(archiveDocs)
-      .map((d) => extractMeetingMinutesVersion(d.title_en))
-      .filter((v): v is number => v != null)
-      .sort((a, b) => a - b);
-  }, [archiveDocs]);
+  const minutesFinalizedVersions = useMemo(
+    () => listMeetingMinutesFinalizedVersions(archiveDocs),
+    [archiveDocs],
+  );
+  const minutesVersionHistoryLabel = useMemo(
+    () =>
+      formatMinutesVersionHistoryLabel(
+        minutesFinalizedVersions,
+        minutesDraftVersion,
+        minutesOpenDraft,
+        en,
+      ),
+    [minutesFinalizedVersions, minutesDraftVersion, minutesOpenDraft, en],
+  );
 
   const formalNoticeAgendaItems = useMemo(
     () => buildFormalNoticeAgendaItems(agendaNoticeRows, en),
@@ -475,7 +511,10 @@ export function MeetingVoteArchiveCard({
       return;
     }
     const url = doc.document_url?.trim() ?? '';
-    const title = getArchiveSlotDisplayTitle(slot, en ? 'en' : 'zh');
+    const title =
+      slot === '03' || slot === '04' || slot === '05'
+        ? displayArchiveSnapshotTitle(doc.title_en) || getArchiveSlotDisplayTitle(slot, en ? 'en' : 'zh')
+        : getArchiveSlotDisplayTitle(slot, en ? 'en' : 'zh');
     if (url.startsWith('data:text/plain')) {
       const raw = decodeDataTextUrl(url);
       setSnapshotViewer({ title, body: formatArchiveSnapshotViewerBody(raw, en) });
@@ -487,7 +526,16 @@ export function MeetingVoteArchiveCard({
   }
 
   function openGeneratedSnapshot(slot: '03' | '04' | '05', doc: MeetingArchiveDocumentRow) {
-    openArchiveTextDocument(slot, doc);
+    const url = doc.document_url?.trim() ?? '';
+    const title = displayArchiveSnapshotTitle(doc.title_en) || getArchiveSlotDisplayTitle(slot, en ? 'en' : 'zh');
+    if (url.startsWith('data:text/plain')) {
+      const raw = decodeDataTextUrl(url);
+      setSnapshotViewer({ title, body: formatArchiveSnapshotViewerBody(raw, en) });
+      return;
+    }
+    if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
   }
 
   async function openMinutesEditor() {
@@ -528,12 +576,14 @@ export function MeetingVoteArchiveCard({
 
   async function handleReviseMinutes() {
     if (!meeting.id?.trim() || minutesReviseBusy || !canManageDocuments) return;
-    const confirmed = window.confirm(
-      en
-        ? 'This will create a new draft from the current finalized minutes. Owners will continue to see the current finalized version until the revision is finalized.'
-        : '将基于当前正式版创建新的修订草稿。业主仍只能看到当前正式版，直到新版本归档。',
-    );
-    if (!confirmed) return;
+    if (!minutesOpenDraft) {
+      const confirmed = window.confirm(
+        en
+          ? 'This will create a new draft from the current finalized minutes. Owners will continue to see the current finalized version until the revision is finalized.'
+          : '将基于当前正式版创建新的修订草稿。业主仍只能看到当前正式版，直到新版本归档。',
+      );
+      if (!confirmed) return;
+    }
     setMinutesError(null);
     setMinutesReviseBusy(true);
     try {
@@ -553,6 +603,11 @@ export function MeetingVoteArchiveCard({
               : '创建修订草稿失败。',
         );
         return;
+      }
+      if (typeof payload?.version === 'number') {
+        setMinutesDraftVersion(payload.version);
+        setMinutesOpenDraft(true);
+        setMinutesHasDraft(true);
       }
       await loadMinutesDraftMeta();
       await openMinutesEditor();
@@ -662,7 +717,9 @@ export function MeetingVoteArchiveCard({
   }
 
   function renderGeneratedSnapshotRow(slot: '03' | '04' | '05', doc: MeetingArchiveDocumentRow | undefined) {
-    const displayTitle = getArchiveSlotDisplayTitle(slot, en ? 'en' : 'zh');
+    const displayTitle = doc?.title_en
+      ? displayArchiveSnapshotTitle(doc.title_en)
+      : getArchiveSlotDisplayTitle(slot, en ? 'en' : 'zh');
     const generated = !!doc;
     return (
       <li
@@ -775,10 +832,10 @@ export function MeetingVoteArchiveCard({
             ) : null}
           </div>
         </div>
-        {canManageDocuments && minutesVersionHistory.length > 1 ? (
+        {canManageDocuments && minutesVersionHistoryLabel ? (
           <p className="text-[11px] text-slate-500">
             {en ? 'Version history: ' : '版本历史：'}
-            {minutesVersionHistory.map((v) => `v${v}`).join(', ')}
+            {minutesVersionHistoryLabel}
           </p>
         ) : null}
       </li>

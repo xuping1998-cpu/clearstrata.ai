@@ -25,22 +25,36 @@ export type MeetingArchiveDocumentRow = {
   uploaded_by: string | null;
 };
 
-export function isGeneratedArchiveSnapshot(titleEn: string | null | undefined): boolean {
-  const t = titleEn?.trim() ?? '';
-  return t.startsWith('03 ') || t.startsWith('04 ') || t.startsWith('05 ');
+const GENERATED_SNAPSHOT_TITLES = new Set([
+  '03 Discussion Record',
+  '04 Voting Record',
+  '05 Resolution Results',
+]);
+
+export function isGeneratedArchiveSnapshot(
+  titleEn: string | null | undefined,
+  titleZh?: string | null | undefined,
+): boolean {
+  const check = (raw: string | null | undefined): boolean => {
+    const t = raw?.trim() ?? '';
+    if (!t) return false;
+    if (GENERATED_SNAPSHOT_TITLES.has(t)) return true;
+    return t.startsWith('03 ') || t.startsWith('04 ') || t.startsWith('05 ');
+  };
+  return check(titleEn) || check(titleZh);
 }
 
 export const FINALIZED_MINUTES_TITLE_EN = '06 Meeting Minutes';
 
-const MINUTES_VERSION_TITLE_RE = /^06 Meeting Minutes(?: v(\d+))?$/;
+const MINUTES_VERSION_TITLE_VN_RE = /^06 Meeting Minutes v(\d+)$/;
 
 /** Extract version from slot 06 title; legacy unversioned title = v1. */
 export function extractMeetingMinutesVersion(titleEn: string | null | undefined): number | null {
   const t = titleEn?.trim() ?? '';
   if (!t) return null;
-  const m = t.match(MINUTES_VERSION_TITLE_RE);
+  if (t === FINALIZED_MINUTES_TITLE_EN) return 1;
+  const m = t.match(MINUTES_VERSION_TITLE_VN_RE);
   if (!m) return null;
-  if (!m[1]) return 1;
   const v = Number.parseInt(m[1], 10);
   return Number.isFinite(v) && v > 0 ? v : null;
 }
@@ -75,11 +89,27 @@ export function findLatestMeetingMinutesDocument(
     .sort(compareMeetingMinutesDocuments)[0];
 }
 
-/** All minutes versions for a meeting, newest first. */
+/** All finalized minutes documents for a meeting, ascending by version. */
 export function listMeetingMinutesDocuments(
   rows: MeetingArchiveDocumentRow[],
 ): MeetingArchiveDocumentRow[] {
-  return rows.filter((d) => isMeetingMinutesDocument(d.title_en)).sort(compareMeetingMinutesDocuments);
+  return rows
+    .filter((d) => isMeetingMinutesDocument(d.title_en))
+    .sort((a, b) => {
+      const va = extractMeetingMinutesVersion(a.title_en) ?? 0;
+      const vb = extractMeetingMinutesVersion(b.title_en) ?? 0;
+      if (va !== vb) return va - vb;
+      const ta = a.uploaded_at ? Date.parse(a.uploaded_at) : 0;
+      const tb = b.uploaded_at ? Date.parse(b.uploaded_at) : 0;
+      return ta - tb;
+    });
+}
+
+/** Finalized version numbers only (actual existing versions, ascending; gaps preserved). */
+export function listMeetingMinutesFinalizedVersions(rows: MeetingArchiveDocumentRow[]): number[] {
+  return listMeetingMinutesDocuments(rows)
+    .map((d) => extractMeetingMinutesVersion(d.title_en))
+    .filter((v): v is number => v != null);
 }
 
 /** @deprecated use findLatestMeetingMinutesDocument */
@@ -90,38 +120,67 @@ export function findFinalizedMinutesDocument(
 }
 
 /** Archive folder slots 03–06 — excluded from 02 supporting documents only. */
-export function isArchiveFolderDocument(titleEn: string | null | undefined): boolean {
-  const t = titleEn?.trim() ?? '';
+export function isArchiveFolderDocument(
+  doc: { title_en?: string | null; title_zh?: string | null } | string | null | undefined,
+): boolean {
+  if (typeof doc === 'string' || doc == null) {
+    const t = typeof doc === 'string' ? doc : '';
+    return isGeneratedArchiveSnapshot(t) || isMeetingMinutesDocument(t);
+  }
   return (
-    t.startsWith('03 ') ||
-    t.startsWith('04 ') ||
-    t.startsWith('05 ') ||
-    isFinalizedMeetingMinutesDocument(t)
+    isGeneratedArchiveSnapshot(doc.title_en, doc.title_zh) ||
+    isMeetingMinutesDocument(doc.title_en) ||
+    isMeetingMinutesDocument(doc.title_zh)
   );
 }
 
 /** Real uploads only — excludes auto-generated archive folder documents. */
-export function filterSupportingDocumentsOnly<T extends { title_en?: string | null }>(
+export function filterSupportingDocumentsOnly<T extends { title_en?: string | null; title_zh?: string | null }>(
   rows: T[],
 ): T[] {
-  return rows.filter((d) => !isArchiveFolderDocument(d.title_en));
+  return rows.filter((d) => !isArchiveFolderDocument(d));
 }
 
 /** Display title for generated snapshot rows — avoids duplicated slot prefix in UI. */
 export function displayArchiveSnapshotTitle(titleEn: string | null | undefined): string {
   const t = titleEn?.trim() ?? '';
   const m = t.match(/^(0[345])\s+(.*)$/);
-  if (m) return `${m[1]} ${m[2]}`.trim();
-  return t;
+  if (!m) return t;
+  let rest = m[2].trim();
+  const dup = rest.match(/^(0[345])\s+(.*)$/);
+  if (dup && dup[1] === m[1]) {
+    rest = dup[2].trim();
+  }
+  return `${m[1]} ${rest}`.trim();
 }
 
 const GENERATED_AT_LINE = /^Generated at:\s*(.+)$/m;
 
-/** Prettier viewer body — reformats ISO `Generated at:` lines only; storage unchanged. */
+/** Known Chinese structural labels → English (archive viewer labels stay English-only). */
+const ARCHIVE_VIEWER_LABEL_REPLACEMENTS: ReadonlyArray<[RegExp, string]> = [
+  [/^会议[：:]\s*/gm, 'Meeting: '],
+  [/^议程\s*#\s*(\d+)\s*[：:]/gm, 'Agenda #$1:'],
+  [/^议程[：:]\s*/gm, 'Agenda: '],
+  [/^生成时间[：:]\s*/gm, 'Generated: '],
+  [/^生成于[：:]\s*/gm, 'Generated: '],
+  [/^决议投票[：:]\s*/gm, 'Resolution votes: '],
+  [/^选举投票[：:]\s*/gm, 'Election votes: '],
+];
+
+function normalizeArchiveViewerLabels(body: string): string {
+  let out = body;
+  for (const [pattern, replacement] of ARCHIVE_VIEWER_LABEL_REPLACEMENTS) {
+    out = out.replace(pattern, replacement);
+  }
+  return out;
+}
+
+/** Prettier viewer body — English structural labels; reformats ISO `Generated at:` lines only. */
 export function formatArchiveSnapshotViewerBody(body: string, languageEn: boolean): string {
   if (!body.trim()) return body;
+  let out = normalizeArchiveViewerLabels(body);
   const locale = languageEn ? 'en-US' : 'zh-CN';
-  return body.replace(GENERATED_AT_LINE, (_line, iso: string) => {
+  out = out.replace(GENERATED_AT_LINE, (_line, iso: string) => {
     const d = new Date(iso.trim());
     if (Number.isNaN(d.getTime())) return `Generated: ${iso.trim()}`;
     const formatted = new Intl.DateTimeFormat(locale, {
@@ -133,6 +192,7 @@ export function formatArchiveSnapshotViewerBody(body: string, languageEn: boolea
     }).format(d);
     return `Generated: ${formatted}`;
   });
+  return out;
 }
 
 export function decodeDataTextUrl(url: string): string {

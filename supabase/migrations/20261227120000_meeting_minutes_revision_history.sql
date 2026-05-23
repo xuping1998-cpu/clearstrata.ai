@@ -212,8 +212,9 @@ DECLARE
   v_actor uuid;
   v_property_id uuid;
   v_latest record;
+  v_existing_minutes record;
   v_body text;
-  v_latest_version int;
+  v_latest_finalized_version int;
   v_new_version int;
   v_minutes_id uuid;
 BEGIN
@@ -243,6 +244,24 @@ BEGIN
   END IF;
 
   SELECT *
+  INTO v_existing_minutes
+  FROM public.meeting_minutes mm
+  WHERE mm.meeting_id = p_meeting_id
+    AND coalesce(mm.is_final, false) = false
+  ORDER BY mm.updated_at DESC NULLS LAST, mm.created_at DESC
+  LIMIT 1;
+
+  IF FOUND AND v_existing_minutes.id IS NOT NULL THEN
+    RETURN jsonb_build_object(
+      'ok', true,
+      'draft', true,
+      'version', coalesce(v_existing_minutes.current_version, 1),
+      'minutes_id', v_existing_minutes.id,
+      'reused_existing_draft', true
+    );
+  END IF;
+
+  SELECT *
   INTO v_latest
   FROM public._minutes_latest_finalized_document(p_meeting_id) lf
   LIMIT 1;
@@ -256,8 +275,8 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'error', 'minutes_decode_failed');
   END IF;
 
-  v_latest_version := greatest(coalesce(v_latest.version, 1), 1);
-  v_new_version := v_latest_version + 1;
+  v_latest_finalized_version := public._minutes_latest_finalized_version(p_meeting_id);
+  v_new_version := coalesce(v_latest_finalized_version, 0) + 1;
 
   SELECT m.property_id
   INTO v_property_id
@@ -316,7 +335,8 @@ BEGIN
     'ok', true,
     'draft', true,
     'version', v_new_version,
-    'minutes_id', v_minutes_id
+    'minutes_id', v_minutes_id,
+    'reused_existing_draft', false
   );
 END;
 $$;
@@ -562,7 +582,7 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'error', 'meeting_not_found');
   END IF;
 
-  SELECT mm.id, mm.draft_content, greatest(coalesce(mm.current_version, 1), 1)
+  SELECT mm.id, mm.draft_content, mm.current_version
   INTO v_minutes_id, v_body, v_version
   FROM public.meeting_minutes mm
   WHERE mm.meeting_id = p_meeting_id
@@ -577,6 +597,12 @@ BEGIN
   IF char_length(v_body) > 20000 THEN
     RETURN jsonb_build_object('ok', false, 'error', 'invalid_body');
   END IF;
+
+  IF v_version IS NULL THEN
+    v_version := coalesce(public._minutes_latest_finalized_version(p_meeting_id), 0) + 1;
+  END IF;
+
+  v_version := greatest(v_version, 1);
 
   v_title_en := public._minutes_version_title_en(v_version);
   v_url := public._archive_plain_text_data_url(v_body);
