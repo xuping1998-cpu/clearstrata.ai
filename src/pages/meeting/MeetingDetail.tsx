@@ -355,6 +355,8 @@ export function MeetingDetail() {
   const [ovResolutionResults, setOvResolutionResults] = useState<OwnerVoteResolutionResultNormalized[]>([]);
   const [ownerElectionBallots, setOwnerElectionBallots] = useState<OwnerElectionBallotLite[]>([]);
   const [viewerOvUnitNo, setViewerOvUnitNo] = useState<string | null>(null);
+  const [showMeetingInfo, setShowMeetingInfo] = useState(false);
+  const [showVotingFlow, setShowVotingFlow] = useState(true);
   const openedTrackedRef = useRef<string | null>(null);
   /** Guard: V3 auto-freeze fires at most once per OV meeting id within a session. */
   const v3AutoFreezeAttemptedRef = useRef<string | null>(null);
@@ -1821,132 +1823,160 @@ export function MeetingDetail() {
         ) : null}
 
         {/* Layer 1 — meeting core */}
-        <section className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4 border-b pb-2">
-                {en ? meetingUiStrings.sectionInfo.en : meetingUiStrings.sectionInfo.zh}
-              </h2>
-              <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                <div>
-                  <dt className="text-gray-500">{en ? 'Description (EN)' : '说明（英）'}</dt>
-                  <dd className="text-gray-900 whitespace-pre-wrap">{meeting.description_en || '—'}</dd>
-                </div>
-                <div>
-                  <dt className="text-gray-500">{en ? 'Description (ZH)' : '说明（中）'}</dt>
-                  <dd className="text-gray-900 whitespace-pre-wrap">
-                    {stripWrittenRemoteMeta(meeting.description_zh) || '—'}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-gray-500">{t('meeting_initiation_type')}</dt>
-                  <dd className="text-gray-900">
-                    {governanceMeta
-                      ? initiationTypeLabel(governanceMeta.initiation_type, t)
-                      : t('meeting_initiation_council')}
-                  </dd>
-                </div>
-                {governanceMeta?.initiation_type === 'owner_requisitioned' ? (
-                  <div className="sm:col-span-2 rounded-lg border border-gray-100 bg-gray-50/90 p-4 space-y-2 text-sm">
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div>
-                        <span className="text-gray-500">{t('meeting_total_voting_units')}: </span>
-                        <span className="font-medium text-gray-900">{governanceMeta.total_voting_units ?? '—'}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">{t('meeting_required_percent')}: </span>
-                        <span className="font-medium text-gray-900">
-                          {governanceMeta.required_percent ?? MEETING_SGM_REQUISITION_PERCENT_DEFAULT}%
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">{t('meeting_required_units')}: </span>
-                        <span className="font-medium text-gray-900">
-                          {governanceMeta.required_units ??
-                            meetingSgmRequisitionRequiredUnits(
-                              governanceMeta.total_voting_units ?? 0,
-                              governanceMeta.required_percent ?? MEETING_SGM_REQUISITION_PERCENT_DEFAULT,
-                            )}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">{t('meeting_signed_units')}: </span>
-                        <span className="font-medium text-gray-900">{governanceMeta.signed_units ?? '—'}</span>
-                      </div>
+        <section className="rounded-lg border border-slate-200 bg-slate-50/70 px-4 py-3 text-sm shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-base font-semibold text-gray-900">
+              {en ? meetingUiStrings.sectionInfo.en : meetingUiStrings.sectionInfo.zh}
+            </h2>
+            <button
+              type="button"
+              aria-expanded={showMeetingInfo}
+              onClick={() => setShowMeetingInfo((v) => !v)}
+              className="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-100"
+            >
+              {showMeetingInfo ? (en ? 'Collapse' : '收起') : en ? 'Expand' : '展开'}
+            </button>
+          </div>
+          {showMeetingInfo ? (
+            <dl className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-slate-200/80 pt-3">
+              <div>
+                <dt className="text-gray-500">{en ? 'Description (EN)' : '说明（英）'}</dt>
+                <dd className="text-gray-900 whitespace-pre-wrap">{meeting.description_en || '—'}</dd>
+              </div>
+              <div>
+                <dt className="text-gray-500">{en ? 'Description (ZH)' : '说明（中）'}</dt>
+                <dd className="text-gray-900 whitespace-pre-wrap">
+                  {stripWrittenRemoteMeta(meeting.description_zh) || '—'}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-gray-500">{t('meeting_initiation_type')}</dt>
+                <dd className="text-gray-900">
+                  {governanceMeta
+                    ? initiationTypeLabel(governanceMeta.initiation_type, t)
+                    : t('meeting_initiation_council')}
+                </dd>
+              </div>
+              {governanceMeta?.initiation_type === 'owner_requisitioned' ? (
+                <div className="sm:col-span-2 rounded-lg border border-gray-100 bg-white/90 px-3 py-3 space-y-2">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <span className="text-gray-500">{t('meeting_total_voting_units')}: </span>
+                      <span className="font-medium text-gray-900">{governanceMeta.total_voting_units ?? '—'}</span>
                     </div>
-                    <div className="pt-2 border-t border-gray-200">
-                      <span className="text-gray-500">{en ? 'Status' : '状态'}: </span>
-                      <span className="font-semibold text-gray-900">
-                        {(governanceMeta.signed_units ?? 0) >=
-                        (governanceMeta.required_units ??
+                    <div>
+                      <span className="text-gray-500">{t('meeting_required_percent')}: </span>
+                      <span className="font-medium text-gray-900">
+                        {governanceMeta.required_percent ?? MEETING_SGM_REQUISITION_PERCENT_DEFAULT}%
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">{t('meeting_required_units')}: </span>
+                      <span className="font-medium text-gray-900">
+                        {governanceMeta.required_units ??
                           meetingSgmRequisitionRequiredUnits(
                             governanceMeta.total_voting_units ?? 0,
                             governanceMeta.required_percent ?? MEETING_SGM_REQUISITION_PERCENT_DEFAULT,
-                          ))
-                          ? t('meeting_requisition_met')
-                          : t('meeting_requisition_not_met')}
+                          )}
                       </span>
                     </div>
+                    <div>
+                      <span className="text-gray-500">{t('meeting_signed_units')}: </span>
+                      <span className="font-medium text-gray-900">{governanceMeta.signed_units ?? '—'}</span>
+                    </div>
                   </div>
-                ) : null}
-                <div>
-                  <dt className="text-gray-500">
-                    {en ? 'Latest meeting notification email sent at' : '会议最新通知电子邮件发出时间'}
-                  </dt>
-                  <dd>{meeting.notice_sent_at ? new Date(meeting.notice_sent_at).toLocaleString() : '—'}</dd>
+                  <div className="pt-2 border-t border-gray-200">
+                    <span className="text-gray-500">{en ? 'Status' : '状态'}: </span>
+                    <span className="font-semibold text-gray-900">
+                      {(governanceMeta.signed_units ?? 0) >=
+                      (governanceMeta.required_units ??
+                        meetingSgmRequisitionRequiredUnits(
+                          governanceMeta.total_voting_units ?? 0,
+                          governanceMeta.required_percent ?? MEETING_SGM_REQUISITION_PERCENT_DEFAULT,
+                        ))
+                        ? t('meeting_requisition_met')
+                        : t('meeting_requisition_not_met')}
+                    </span>
+                  </div>
                 </div>
-              </dl>
+              ) : null}
+              <div>
+                <dt className="text-gray-500">
+                  {en ? 'Latest meeting notification email sent at' : '会议最新通知电子邮件发出时间'}
+                </dt>
+                <dd>{meeting.notice_sent_at ? new Date(meeting.notice_sent_at).toLocaleString() : '—'}</dd>
+              </div>
+            </dl>
+          ) : null}
         </section>
 
         {/* Layer 2 — agenda & voting */}
-        <section className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4 border-b pb-2">
-                {en ? meetingUiStrings.sectionAgenda.en : meetingUiStrings.sectionAgenda.zh}
-              </h2>
-              {remoteWrittenV3NoticeStartedLock ? (
-                <p className="mb-4 text-sm text-amber-800 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
-                  {en ? REMOTE_WRITTEN_V3_DETAIL_EDIT_LOCKED.en : REMOTE_WRITTEN_V3_DETAIL_EDIT_LOCKED.zh}
-                </p>
-              ) : meetingAgendaLocked ? (
-                <p className="mb-4 text-sm text-amber-800 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
-                  {en ? 'This meeting has ended. The agenda is locked.' : '会议已结束，议程已锁定。'}
-                </p>
-              ) : null}
+        <section className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm space-y-4">
+              <div className="rounded-lg border border-slate-200 bg-slate-50/70 px-4 py-3 text-sm shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="text-base font-semibold text-gray-900">
+                    {en ? meetingUiStrings.sectionAgenda.en : meetingUiStrings.sectionAgenda.zh}
+                  </h2>
+                  <button
+                    type="button"
+                    aria-expanded={showVotingFlow}
+                    onClick={() => setShowVotingFlow((v) => !v)}
+                    className="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-100"
+                  >
+                    {showVotingFlow ? (en ? 'Collapse' : '收起') : en ? 'Expand' : '展开'}
+                  </button>
+                </div>
+                {showVotingFlow ? (
+                  <div className="mt-3 space-y-4 border-t border-slate-200/80 pt-3">
+                    {remoteWrittenV3NoticeStartedLock ? (
+                      <p className="text-sm text-amber-800 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                        {en ? REMOTE_WRITTEN_V3_DETAIL_EDIT_LOCKED.en : REMOTE_WRITTEN_V3_DETAIL_EDIT_LOCKED.zh}
+                      </p>
+                    ) : meetingAgendaLocked ? (
+                      <p className="text-sm text-amber-800 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                        {en ? 'This meeting has ended. The agenda is locked.' : '会议已结束，议程已锁定。'}
+                      </p>
+                    ) : null}
+                    {showCouncilOwnerVoteUi ? (
+                      <OwnerVotingInlineControlBar
+                        meeting={meeting}
+                        isCouncilMeetingEnded={isMeetingClosedForVoting(meeting.status)}
+                        isStaff={canManageCouncilMeetings}
+                        userId={user?.id}
+                        languageEn={en}
+                        t={t}
+                        onNavigateOwnerVoting={() => handleNavigateOwnerVotingForOwner()}
+                        meta={ovMeta}
+                        ovBusy={ovBusy}
+                        canEnableBinding={
+                          Boolean(councilMeetingTitleForOwnerVoteBinding(meeting).trim()) &&
+                          !electionTimelineBlocksOwnerVote
+                        }
+                        electionNomRibbon={electionNomRibbonModel}
+                        councilFormalResolutionAgendaCount={councilFormalResolutionAgendaCount}
+                        electionAgendaCount={electionBundles.length}
+                        viewerIsEligibleVoter={!!viewerOvUnitNo?.trim()}
+                        onEnableElectronicVoting={() => void handleEnableElectronicVoting()}
+                        onFreezeSnapshot={() => void handleFreezeOwnerVoteSnapshot()}
+                        onOpenVoting={() => void handleOpenOwnerVoteMeeting()}
+                        onCloseVoting={() => void handleCloseOwnerVoteMeeting()}
+                      />
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
               {showCouncilOwnerVoteUi ? (
-                <>
-                  <OwnerVotingInlineControlBar
-                    meeting={meeting}
-                    isCouncilMeetingEnded={isMeetingClosedForVoting(meeting.status)}
-                    isStaff={canManageCouncilMeetings}
-                    userId={user?.id}
-                    languageEn={en}
-                    t={t}
-                    onNavigateOwnerVoting={() => handleNavigateOwnerVotingForOwner()}
-                    meta={ovMeta}
-                    ovBusy={ovBusy}
-                    canEnableBinding={
-                      Boolean(councilMeetingTitleForOwnerVoteBinding(meeting).trim()) &&
-                      !electionTimelineBlocksOwnerVote
-                    }
-                    electionNomRibbon={electionNomRibbonModel}
-                    councilFormalResolutionAgendaCount={councilFormalResolutionAgendaCount}
-                    electionAgendaCount={electionBundles.length}
-                    viewerIsEligibleVoter={!!viewerOvUnitNo?.trim()}
-                    onEnableElectronicVoting={() => void handleEnableElectronicVoting()}
-                    onFreezeSnapshot={() => void handleFreezeOwnerVoteSnapshot()}
-                    onOpenVoting={() => void handleOpenOwnerVoteMeeting()}
-                    onCloseVoting={() => void handleCloseOwnerVoteMeeting()}
-                  />
-                  <MeetingVoteArchiveCard
-                    languageEn={en}
-                    meeting={meeting}
-                    meetingId={String(meeting.id)}
-                    canManageDocuments={canManageCouncilMeetings}
-                    onSupportingDocumentsChanged={() => void refreshSupportingDocumentsArchive()}
-                    ownerVoteMeeting={ovMeta.meeting}
-                    resolutionAgendaCount={councilFormalResolutionAgendaCount}
-                    electionAgendaCount={electionBundles.length}
-                    supportingDocuments={supportingDocumentsArchive}
-                  />
-                </>
+                <MeetingVoteArchiveCard
+                  languageEn={en}
+                  meeting={meeting}
+                  meetingId={String(meeting.id)}
+                  canManageDocuments={canManageCouncilMeetings}
+                  onSupportingDocumentsChanged={() => void refreshSupportingDocumentsArchive()}
+                  ownerVoteMeeting={ovMeta.meeting}
+                  resolutionAgendaCount={councilFormalResolutionAgendaCount}
+                  electionAgendaCount={electionBundles.length}
+                  supportingDocuments={supportingDocumentsArchive}
+                />
               ) : null}
               <div className="space-y-6">
                 {sortedAgendaItems.map((agenda, idx) => {
