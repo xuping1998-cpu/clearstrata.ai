@@ -2241,40 +2241,45 @@ export function MeetingDetail() {
                                   ? 'This agenda records whether owners approve removing the current council. The following council election becomes meaningful only if this resolution passes.'
                                   : '本议程用于表决是否罢免现任业委会。决议表决通过后，后续业委会选举结果才具备治理意义。'}
                               </p>
-                              {showCouncilOwnerVoteUi && meeting ? (
-                                <MeetingResolutionVotePanel
-                                  agenda={agenda}
-                                  councilMeeting={meeting}
-                                  ownerVoteMeeting={ovMeta.meeting}
-                                  resolutionId={
-                                    findOwnerVoteResolutionForAgenda(
-                                      {
-                                        sort_order: agenda.sort_order,
-                                        title_zh: agenda.title_zh,
-                                        title_en: agenda.title_en,
-                                      },
-                                      ovMeta.resolutions.map((r) => ({
-                                        id: r.id,
-                                        title: r.title,
-                                        display_order: r.display_order ?? null,
-                                      })),
-                                    )?.id ?? null
-                                  }
-                                  eligibleUnitNo={viewerOvUnitNo}
-                                  userId={user?.id ?? null}
-                                  canEnsureResolution={canManageCouncilMeetings}
-                                  languageEn={en}
-                                  onUpdated={async () => {
-                                    await refreshOwnerVoteMeta();
-                                  }}
-                                />
-                              ) : null}
                             </div>
+                          ) : null}
+
+                          {agenda.requires_vote &&
+                          agendaKindUi !== 'election' &&
+                          showCouncilOwnerVoteUi &&
+                          meeting ? (
+                            <MeetingResolutionVotePanel
+                              agenda={agenda}
+                              councilMeeting={meeting}
+                              ownerVoteMeeting={ovMeta.meeting}
+                              resolutionId={
+                                findOwnerVoteResolutionForAgenda(
+                                  {
+                                    sort_order: agenda.sort_order,
+                                    title_zh: agenda.title_zh,
+                                    title_en: agenda.title_en,
+                                  },
+                                  ovMeta.resolutions.map((r) => ({
+                                    id: r.id,
+                                    title: r.title,
+                                    display_order: r.display_order ?? null,
+                                  })),
+                                )?.id ?? null
+                              }
+                              eligibleUnitNo={viewerOvUnitNo}
+                              userId={user?.id ?? null}
+                              canEnsureResolution={canManageCouncilMeetings}
+                              languageEn={en}
+                              onUpdated={async () => {
+                                await refreshOwnerVoteMeta();
+                              }}
+                            />
                           ) : null}
 
                           {agendaKindUi !== 'election' &&
                           agendaKindUi !== 'removal_resolution' &&
-                          agenda.requires_vote ? (
+                          agenda.requires_vote &&
+                          !showCouncilOwnerVoteUi ? (
                             writtenRemoteV3Meeting ? (
                               <p className="mt-3 text-sm text-gray-700 rounded-md border border-blue-100 bg-blue-50/60 px-3 py-2">
                                 {writtenRemoteV3ResolutionVotingCopy(en)}
