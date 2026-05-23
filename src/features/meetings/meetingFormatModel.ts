@@ -230,6 +230,26 @@ export function isWrittenRemoteV3Meeting(meeting: Pick<MeetingRow, 'description_
   return isWrittenRemoteV3Meta(meta);
 }
 
+/** UI-only lifecycle for V3 remote-written meetings (does not read `meetings.status`). */
+export type WrittenRemoteV3DisplayStatus = 'draft' | 'open' | 'closed';
+
+/** Derive list/detail badge phase from `scheduled_at` + 14-day participation window. */
+export function getWrittenRemoteV3DisplayStatus(
+  meeting: Pick<MeetingRow, 'description_zh' | 'scheduled_at'>,
+  now: Date = new Date(),
+): WrittenRemoteV3DisplayStatus | null {
+  if (!isWrittenRemoteV3Meeting(meeting)) return null;
+  const t0 = meeting.scheduled_at?.trim();
+  if (!t0) return null;
+  const startMs = new Date(t0).getTime();
+  if (Number.isNaN(startMs)) return null;
+  const endMs = startMs + REMOTE_WRITTEN_V3_PARTICIPATION_DAYS * 24 * 60 * 60 * 1000;
+  const n = now.getTime();
+  if (n < startMs) return 'draft';
+  if (n < endMs) return 'open';
+  return 'closed';
+}
+
 /** Read-only copy: V3 participation is system-scheduled (no manual enable/freeze/open/close). */
 export function writtenRemoteV3AutoParticipationCopy(languageEn: boolean): string {
   return languageEn

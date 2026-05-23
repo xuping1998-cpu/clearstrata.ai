@@ -1,5 +1,5 @@
 import type { MeetingFormat, MeetingRow, MeetingStatus, MeetingType, VoteRule, VoteStatus } from './api';
-import { meetingFormatUiFromRow } from './meetingFormatModel';
+import { getWrittenRemoteV3DisplayStatus, meetingFormatUiFromRow } from './meetingFormatModel';
 
 const meetingTypeZh: Record<MeetingType, string> = {
   agm: 'AGM',
@@ -122,6 +122,18 @@ export function labelStatus(t: string, en: boolean): string {
   const k = t as MeetingStatus;
   if (k in statusZh) return en ? statusEn[k] : statusZh[k];
   return t;
+}
+
+/** List/detail badge: V3 remote-written uses scheduled_at + 14d; legacy uses DB status. */
+export function labelMeetingDisplayStatus(
+  meeting: Pick<MeetingRow, 'status' | 'description_zh' | 'scheduled_at'>,
+  en: boolean,
+): string {
+  const v3Status = getWrittenRemoteV3DisplayStatus(meeting);
+  if (v3Status === 'draft') return en ? 'Draft' : '草稿';
+  if (v3Status === 'open') return en ? 'Open' : '进行中';
+  if (v3Status === 'closed') return en ? 'Closed' : '已结束';
+  return labelStatus(meeting.status, en);
 }
 
 export function labelVoteRule(t: string, en: boolean): string {

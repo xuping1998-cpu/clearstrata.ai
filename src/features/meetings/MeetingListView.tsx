@@ -14,10 +14,17 @@ import {
   type MeetingAgendaItemsListLiteRow,
   type MeetingRow,
 } from './api';
-import { labelMeetingFormatUiDisplay, labelMeetingType, labelStatus, meetingUiStrings } from './labels';
+import {
+  labelMeetingDisplayStatus,
+  labelMeetingFormatUiDisplay,
+  labelMeetingType,
+  meetingUiStrings,
+} from './labels';
 import {
   councilMeetingVotingWindowFallback,
   councilWrittenRemoteWindows,
+  getWrittenRemoteV3DisplayStatus,
+  isWrittenRemoteV3Meeting,
   stripWrittenRemoteMeta,
 } from './meetingFormatModel';
 import { councilMeetingTitleForOwnerVoteBinding, isOwnerVotingMeeting } from './ownerVotingCouncil';
@@ -130,6 +137,13 @@ function councilVotePhaseLabelFromLite(
   translate: (k: string) => string,
 ): string {
   if (!isOwnerVotingMeeting(m) || !councilBindingTitle) return '';
+
+  if (isWrittenRemoteV3Meeting(m)) {
+    const v3Status = getWrittenRemoteV3DisplayStatus(m);
+    if (v3Status === 'draft') return translate('vote_draft');
+    if (v3Status === 'open') return translate('vote_open');
+    if (v3Status === 'closed') return translate('meeting_status_closed');
+  }
 
   const mst = String(m.status ?? '').trim().toLowerCase();
   if (mst === 'closed' || mst === 'ended' || mst === 'archived') return translate('meeting_status_closed');
@@ -434,7 +448,7 @@ export function MeetingListView({ variant }: Props) {
                         {formatUiDisp.primary}
                       </span>
                       <span className="px-2 py-0.5 rounded-full text-xs font-semibold border border-clearstrata-ui-softBorder bg-clearstrata-brand-100 text-clearstrata-brand-800">
-                        {labelStatus(m.status, en)}
+                        {labelMeetingDisplayStatus(m, en)}
                       </span>
                     </div>
                     {formatUiDisp.secondary ? (

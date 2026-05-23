@@ -52,7 +52,7 @@ import { isPlatformAdmin } from '@/lib/permissions';
 import {
   labelMeetingFormatUiPrimary,
   labelMeetingType,
-  labelStatus,
+  labelMeetingDisplayStatus,
   labelVoteRule,
   labelVoteStatus,
   meetingUiStrings,
@@ -1739,7 +1739,7 @@ export function MeetingDetail() {
                 <dl className="mt-4 space-y-2 text-sm text-white/95 border-t border-white/25 pt-4">
                   <div className="flex flex-wrap gap-x-2 gap-y-1">
                     <dt className="text-white/75 shrink-0">{en ? 'Status' : '状态'}</dt>
-                    <dd className="font-semibold text-white">{labelStatus(meeting.status, en)}</dd>
+                    <dd className="font-semibold text-white">{labelMeetingDisplayStatus(meeting, en)}</dd>
                   </div>
                   <div className="flex flex-wrap gap-x-2 gap-y-1">
                     <dt className="text-white/75 shrink-0">{en ? 'Time' : '时间'}</dt>
