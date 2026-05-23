@@ -26,9 +26,19 @@ import { deriveAgmSgmCanonDisplayWindows, deriveCouncilElectionCanonFromSchedule
 import { MeetingDocumentsSection } from '@/pages/meeting/MeetingDocumentsSection';
 import { supabase } from '@/lib/supabase';
 
-type ArchiveSlotId = '03' | '04' | '05';
+type ArchiveSlotId = '03' | '04' | '05' | '06';
 
 type ArchiveSlotLanguage = 'en' | 'zh';
+
+type MinutesDraftPayload = {
+  ok?: boolean;
+  error?: string;
+  finalized?: boolean;
+  has_draft?: boolean;
+  body?: string;
+  is_template?: boolean;
+  document_id?: string;
+};
 
 function getArchiveSlotDisplayTitle(slot: ArchiveSlotId, language: ArchiveSlotLanguage): string {
   switch (slot) {
@@ -38,6 +48,8 @@ function getArchiveSlotDisplayTitle(slot: ArchiveSlotId, language: ArchiveSlotLa
       return language === 'en' ? '04 Voting Record' : '04 投票记录';
     case '05':
       return language === 'en' ? '05 Resolution Results' : '05 决议结果';
+    case '06':
+      return language === 'en' ? '06 Meeting Minutes' : '06 会议纪要';
   }
 }
 
@@ -93,6 +105,13 @@ export function MeetingVoteArchiveCard({
   const [generateBusy, setGenerateBusy] = useState(false);
   const [generateFeedback, setGenerateFeedback] = useState<GenerateFeedback>(null);
   const [snapshotViewer, setSnapshotViewer] = useState<SnapshotViewer>(null);
+  const [minutesHasDraft, setMinutesHasDraft] = useState(false);
+  const [minutesEditorOpen, setMinutesEditorOpen] = useState(false);
+  const [minutesBody, setMinutesBody] = useState('');
+  const [minutesLoadBusy, setMinutesLoadBusy] = useState(false);
+  const [minutesSaveBusy, setMinutesSaveBusy] = useState(false);
+  const [minutesFinalizeBusy, setMinutesFinalizeBusy] = useState(false);
+  const [minutesError, setMinutesError] = useState<string | null>(null);
   const g = MEETING_VOTE_ARCHIVE_GUIDE_ZH;
   const fc = MEETING_VOTE_ARCHIVE_FORMAL_NOTICE;
   const sup = MEETING_VOTE_ARCHIVE_SUPPORTING_DOCUMENTS;
@@ -130,6 +149,33 @@ export function MeetingVoteArchiveCard({
     () => archiveDocs.find((d) => d.title_en?.startsWith('05 ')),
     [archiveDocs],
   );
+  const generated06 = useMemo(
+    () => archiveDocs.find((d) => d.title_en?.startsWith('06 ') || d.title_en === '06 Meeting Minutes'),
+    [archiveDocs],
+  );
+  const minutesFinalized = !!generated06;
+
+  const loadMinutesDraftMeta = useCallback(async () => {
+    if (!canManageDocuments || !meeting.id?.trim() || minutesFinalized) {
+      setMinutesHasDraft(false);
+      return;
+    }
+    try {
+      const { data, error } = await supabase.rpc('get_meeting_minutes_draft', {
+        p_meeting_id: meeting.id,
+      });
+      if (error) throw error;
+      const payload = data as MinutesDraftPayload | null;
+      if (payload?.ok === false) return;
+      setMinutesHasDraft(!!payload?.has_draft);
+    } catch (e) {
+      console.error('[MeetingVoteArchiveCard] get_meeting_minutes_draft (meta)', e);
+    }
+  }, [canManageDocuments, meeting.id, minutesFinalized]);
+
+  useEffect(() => {
+    if (expanded) void loadMinutesDraftMeta();
+  }, [expanded, loadMinutesDraftMeta]);
 
   const supportingOnly = useMemo(() => {
     if (archiveDocs.length > 0) {
@@ -258,7 +304,7 @@ export function MeetingVoteArchiveCard({
     }
   }
 
-  function openGeneratedSnapshot(slot: ArchiveSlotId, doc: MeetingArchiveDocumentRow) {
+  function openArchiveTextDocument(slot: ArchiveSlotId, doc: MeetingArchiveDocumentRow) {
     const url = doc.document_url?.trim() ?? '';
     const title = getArchiveSlotDisplayTitle(slot, en ? 'en' : 'zh');
     if (url.startsWith('data:text/plain')) {
@@ -271,7 +317,131 @@ export function MeetingVoteArchiveCard({
     }
   }
 
-  function renderGeneratedSnapshotRow(slot: ArchiveSlotId, doc: MeetingArchiveDocumentRow | undefined) {
+  function openGeneratedSnapshot(slot: '03' | '04' | '05', doc: MeetingArchiveDocumentRow) {
+    openArchiveTextDocument(slot, doc);
+  }
+
+  async function openMinutesEditor() {
+    if (!meeting.id?.trim() || minutesFinalized) return;
+    setMinutesError(null);
+    setMinutesEditorOpen(true);
+    setMinutesLoadBusy(true);
+    try {
+      const { data, error } = await supabase.rpc('get_meeting_minutes_draft', {
+        p_meeting_id: meeting.id,
+      });
+      if (error) throw error;
+      const payload = data as MinutesDraftPayload | null;
+      if (payload?.ok === false) {
+        setMinutesError(
+          en ? 'Unable to load minutes draft.' : '无法加载会议纪要草稿。',
+        );
+        return;
+      }
+      if (payload?.finalized) {
+        setMinutesEditorOpen(false);
+        await loadArchiveDocs();
+        return;
+      }
+      setMinutesBody(typeof payload?.body === 'string' ? payload.body : '');
+      setMinutesHasDraft(!!payload?.has_draft && !payload?.is_template);
+    } catch (e) {
+      console.error('[MeetingVoteArchiveCard] get_meeting_minutes_draft', e);
+      setMinutesError(en ? 'Unable to load minutes draft.' : '无法加载会议纪要草稿。');
+    } finally {
+      setMinutesLoadBusy(false);
+    }
+  }
+
+  async function handleSaveMinutesDraft() {
+    if (!meeting.id?.trim() || minutesSaveBusy || minutesFinalizeBusy) return;
+    const body = minutesBody.trim();
+    if (!body) {
+      setMinutesError(en ? 'Minutes cannot be empty.' : '纪要内容不能为空。');
+      return;
+    }
+    setMinutesError(null);
+    setMinutesSaveBusy(true);
+    try {
+      const { data, error } = await supabase.rpc('create_or_update_meeting_minutes_draft', {
+        p_meeting_id: meeting.id,
+        p_body: minutesBody,
+      });
+      if (error) throw error;
+      const payload = data as MinutesDraftPayload | null;
+      if (payload?.ok === false) {
+        const err = payload.error;
+        setMinutesError(
+          err === 'already_finalized'
+            ? en
+              ? 'Minutes are already finalized.'
+              : '会议纪要已归档，无法编辑。'
+            : en
+              ? 'Failed to save draft.'
+              : '保存草稿失败。',
+        );
+        return;
+      }
+      setMinutesHasDraft(true);
+    } catch (e) {
+      console.error('[MeetingVoteArchiveCard] create_or_update_meeting_minutes_draft', e);
+      setMinutesError(en ? 'Failed to save draft.' : '保存草稿失败。');
+    } finally {
+      setMinutesSaveBusy(false);
+    }
+  }
+
+  async function handleFinalizeMinutes() {
+    if (!meeting.id?.trim() || minutesSaveBusy || minutesFinalizeBusy) return;
+    const body = minutesBody.trim();
+    if (!body) {
+      setMinutesError(en ? 'Minutes cannot be empty.' : '纪要内容不能为空。');
+      return;
+    }
+    setMinutesError(null);
+    setMinutesFinalizeBusy(true);
+    try {
+      const { data: saveData, error: saveError } = await supabase.rpc(
+        'create_or_update_meeting_minutes_draft',
+        { p_meeting_id: meeting.id, p_body: minutesBody },
+      );
+      if (saveError) throw saveError;
+      const savePayload = saveData as MinutesDraftPayload | null;
+      if (savePayload?.ok === false && savePayload.error !== 'already_finalized') {
+        setMinutesError(en ? 'Failed to save draft before finalize.' : '归档前保存草稿失败。');
+        return;
+      }
+
+      const { data, error } = await supabase.rpc('finalize_meeting_minutes', {
+        p_meeting_id: meeting.id,
+      });
+      if (error) throw error;
+      const payload = data as MinutesDraftPayload | null;
+      if (payload?.ok === false) {
+        setMinutesError(
+          payload.error === 'no_draft'
+            ? en
+              ? 'Save a draft before finalizing.'
+              : '请先保存草稿再归档。'
+            : en
+              ? 'Failed to finalize minutes.'
+              : '归档失败。',
+        );
+        return;
+      }
+      setMinutesEditorOpen(false);
+      setMinutesHasDraft(false);
+      await loadArchiveDocs();
+      onSupportingDocumentsChanged();
+    } catch (e) {
+      console.error('[MeetingVoteArchiveCard] finalize_meeting_minutes', e);
+      setMinutesError(en ? 'Failed to finalize minutes.' : '归档失败。');
+    } finally {
+      setMinutesFinalizeBusy(false);
+    }
+  }
+
+  function renderGeneratedSnapshotRow(slot: '03' | '04' | '05', doc: MeetingArchiveDocumentRow | undefined) {
     const displayTitle = getArchiveSlotDisplayTitle(slot, en ? 'en' : 'zh');
     const generated = !!doc;
     return (
@@ -308,7 +478,66 @@ export function MeetingVoteArchiveCard({
     );
   }
 
-  const minutesPlaceholder = fc.placeholderRows.find((row) => row.id === '06');
+  function renderMinutesRow() {
+    const displayTitle = getArchiveSlotDisplayTitle('06', en ? 'en' : 'zh');
+    const showView = minutesFinalized && !!generated06;
+    const showEdit = canManageDocuments && !minutesFinalized;
+
+    return (
+      <li
+        className={`flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2 ${
+          showView ? 'border-teal-200/80 bg-white' : 'border-gray-100 bg-white/80 text-gray-500'
+        }`}
+      >
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className={`font-medium ${showView ? 'text-gray-900' : 'text-gray-700'}`}>
+            {displayTitle}
+          </span>
+          <span
+            className={`shrink-0 text-[10px] font-semibold ${
+              showView
+                ? 'rounded border border-teal-300 bg-teal-50 px-1.5 py-px text-teal-950'
+                : 'text-xs text-gray-500'
+            }`}
+          >
+            {showView
+              ? en
+                ? 'Generated'
+                : '已生成'
+              : en
+                ? 'Pending · No file yet'
+                : '待生成 · 暂无文件'}
+          </span>
+        </div>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {showEdit ? (
+            <button
+              type="button"
+              onClick={() => void openMinutesEditor()}
+              className="rounded-lg border border-slate-400 bg-white px-3 py-1 text-xs font-semibold text-slate-800 hover:bg-slate-50"
+            >
+              {minutesHasDraft
+                ? en
+                  ? 'Continue editing'
+                  : '继续编辑'
+                : en
+                  ? 'Edit minutes'
+                  : '编辑纪要'}
+            </button>
+          ) : null}
+          {showView && generated06 ? (
+            <button
+              type="button"
+              onClick={() => openArchiveTextDocument('06', generated06)}
+              className="rounded-lg border border-teal-600 bg-teal-700 px-3 py-1 text-xs font-semibold text-white hover:bg-teal-800"
+            >
+              {en ? 'View' : '查看'}
+            </button>
+          ) : null}
+        </div>
+      </li>
+    );
+  }
 
   return (
     <>
@@ -439,18 +668,7 @@ export function MeetingVoteArchiveCard({
             {renderGeneratedSnapshotRow('04', generated04)}
             {renderGeneratedSnapshotRow('05', generated05)}
 
-            {minutesPlaceholder ? (
-              <li
-                key={minutesPlaceholder.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-gray-100 bg-white/80 px-3 py-2 text-gray-500"
-              >
-                <span className="font-medium text-gray-700">
-                  <span className="mr-2 font-mono text-xs">{minutesPlaceholder.id}</span>
-                  {en ? minutesPlaceholder.en : minutesPlaceholder.zh}
-                </span>
-                <span className="text-xs">{en ? 'Pending · No file yet' : '待生成 · 暂无文件'}</span>
-              </li>
-            ) : null}
+            {renderMinutesRow()}
             </ul>
           </div>
         ) : null}
@@ -696,6 +914,82 @@ export function MeetingVoteArchiveCard({
                 className="rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200/60"
               >
                 {en ? 'Close' : '关闭'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {minutesEditorOpen ? (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-3 sm:p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="meeting-vote-archive-minutes-editor-title"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget && !minutesSaveBusy && !minutesFinalizeBusy) {
+              setMinutesEditorOpen(false);
+            }
+          }}
+        >
+          <div
+            className="max-h-[min(92vh,720px)] w-full max-w-2xl overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl"
+            onMouseDown={(ev) => ev.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-2 border-b border-gray-100 bg-gray-50 px-4 py-3">
+              <h2 id="meeting-vote-archive-minutes-editor-title" className="text-base font-semibold text-gray-900">
+                {getArchiveSlotDisplayTitle('06', en ? 'en' : 'zh')}
+              </h2>
+              <button
+                type="button"
+                disabled={minutesSaveBusy || minutesFinalizeBusy}
+                onClick={() => setMinutesEditorOpen(false)}
+                className="shrink-0 rounded-lg p-1 text-gray-500 hover:bg-gray-200/80 hover:text-gray-800 disabled:opacity-50"
+                aria-label={en ? 'Close' : '关闭'}
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+            <div className="max-h-[min(60vh,520px)] overflow-y-auto px-4 py-4">
+              {minutesLoadBusy ? (
+                <p className="text-sm text-gray-500">{en ? 'Loading…' : '加载中…'}</p>
+              ) : (
+                <textarea
+                  value={minutesBody}
+                  onChange={(e) => setMinutesBody(e.target.value)}
+                  rows={18}
+                  maxLength={20000}
+                  disabled={minutesSaveBusy || minutesFinalizeBusy}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm leading-relaxed text-gray-800 focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-600/20 disabled:opacity-60"
+                  placeholder={en ? 'Enter meeting minutes…' : '输入会议纪要…'}
+                />
+              )}
+              {minutesError ? <p className="mt-2 text-xs text-red-700">{minutesError}</p> : null}
+            </div>
+            <div className="flex flex-wrap items-center justify-end gap-2 border-t border-gray-100 bg-gray-50 px-4 py-3">
+              <button
+                type="button"
+                disabled={minutesLoadBusy || minutesSaveBusy || minutesFinalizeBusy}
+                onClick={() => setMinutesEditorOpen(false)}
+                className="rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200/60 disabled:opacity-50"
+              >
+                {en ? 'Close' : '关闭'}
+              </button>
+              <button
+                type="button"
+                disabled={minutesLoadBusy || minutesSaveBusy || minutesFinalizeBusy}
+                onClick={() => void handleSaveMinutesDraft()}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+              >
+                {minutesSaveBusy ? (en ? 'Saving…' : '保存中…') : en ? 'Save draft' : '保存草稿'}
+              </button>
+              <button
+                type="button"
+                disabled={minutesLoadBusy || minutesSaveBusy || minutesFinalizeBusy}
+                onClick={() => void handleFinalizeMinutes()}
+                className="rounded-lg border border-teal-600 bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-800 disabled:opacity-50"
+              >
+                {minutesFinalizeBusy ? (en ? 'Finalizing…' : '生成中…') : en ? 'Finalize' : '归档生成'}
               </button>
             </div>
           </div>

@@ -30,11 +30,23 @@ export function isGeneratedArchiveSnapshot(titleEn: string | null | undefined): 
   return t.startsWith('03 ') || t.startsWith('04 ') || t.startsWith('05 ');
 }
 
-/** Real uploads only — excludes auto-generated 03/04/05 archive snapshots. */
+/** Archive folder slots 03–06 — excluded from 02 supporting documents. */
+export function isArchiveFolderDocument(titleEn: string | null | undefined): boolean {
+  const t = titleEn?.trim() ?? '';
+  return (
+    t.startsWith('03 ') ||
+    t.startsWith('04 ') ||
+    t.startsWith('05 ') ||
+    t === '06 Meeting Minutes' ||
+    t.startsWith('06 ')
+  );
+}
+
+/** Real uploads only — excludes auto-generated archive folder documents. */
 export function filterSupportingDocumentsOnly<T extends { title_en?: string | null }>(
   rows: T[],
 ): T[] {
-  return rows.filter((d) => !isGeneratedArchiveSnapshot(d.title_en));
+  return rows.filter((d) => !isArchiveFolderDocument(d.title_en));
 }
 
 /** Display title for generated snapshot rows — avoids duplicated slot prefix in UI. */
