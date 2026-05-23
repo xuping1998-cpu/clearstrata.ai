@@ -8,25 +8,34 @@ import {
 } from '@/components/meetings/meetingVoteArchiveConstants';
 import {
   decodeDataTextUrl,
+  fetchFinalizedMeetingMinutesDocument,
+  fetchMeetingAgendaNoticeRows,
   fetchMeetingArchiveDocuments,
   filterSupportingDocumentsOnly,
+  findFinalizedMinutesDocument,
   formatArchiveSnapshotViewerBody,
+  type MeetingAgendaNoticeRow,
   type MeetingArchiveDocumentRow,
   type MeetingSupportingDocumentRow,
 } from '@/features/meetings/meetingDocumentsRead';
 import { meetingTitleZhFirst, type MeetingRow, type OwnerVoteMeetingLite } from '@/features/meetings/api';
+import {
+  extractElectionAgendaMeta,
+  isRemoveCouncilGovernanceAgenda,
+  isStrictAgmOrSgmMeeting,
+} from '@/features/meetings/electionAgendaModel';
 import { labelMeetingFormatUiDisplay, labelMeetingType, meetingUiStrings } from '@/features/meetings/labels';
 import {
   councilMeetingVotingWindowFallback,
   councilWrittenRemoteWindows,
+  isWrittenRemoteV3Meeting,
   stripWrittenRemoteMeta,
 } from '@/features/meetings/meetingFormatModel';
-import { isStrictAgmOrSgmMeeting } from '@/features/meetings/electionAgendaModel';
-import { deriveAgmSgmCanonDisplayWindows, deriveCouncilElectionCanonFromScheduledAt } from '@/features/meetings/electionTimelineMath';
+import { deriveAgmSgmCanonDisplayWindows, deriveCouncilElectionCanonFromScheduledAt, deriveRemoteWrittenV3CanonFromScheduledAt } from '@/features/meetings/electionTimelineMath';
 import { MeetingDocumentsSection } from '@/pages/meeting/MeetingDocumentsSection';
 import { supabase } from '@/lib/supabase';
 
-type ArchiveSlotId = '03' | '04' | '05' | '06';
+type ArchiveSlotId = '01' | '03' | '04' | '05' | '06';
 
 type ArchiveSlotLanguage = 'en' | 'zh';
 
@@ -40,8 +49,18 @@ type MinutesDraftPayload = {
   document_id?: string;
 };
 
+type FormalNoticeAgendaItem = {
+  id: string;
+  order: number;
+  kind: 'removal' | 'election' | 'resolution' | 'normal';
+  kindLabel: string;
+  title: string;
+};
+
 function getArchiveSlotDisplayTitle(slot: ArchiveSlotId, language: ArchiveSlotLanguage): string {
   switch (slot) {
+    case '01':
+      return language === 'en' ? '01 Formal Notice' : '01 正式会议通知';
     case '03':
       return language === 'en' ? '03 Discussion Record' : '03 讨论记录';
     case '04':
@@ -51,6 +70,44 @@ function getArchiveSlotDisplayTitle(slot: ArchiveSlotId, language: ArchiveSlotLa
     case '06':
       return language === 'en' ? '06 Meeting Minutes' : '06 会议纪要';
   }
+}
+
+function buildFormalNoticeAgendaItems(
+  rows: MeetingAgendaNoticeRow[],
+  languageEn: boolean,
+): FormalNoticeAgendaItem[] {
+  return rows.map((row, idx) => {
+    let kind: 'removal' | 'election' | 'resolution' | 'normal' = 'normal';
+    if (isRemoveCouncilGovernanceAgenda(row)) kind = 'removal';
+    else if (extractElectionAgendaMeta(row.description_zh).meta?.agenda_type === 'council_election') {
+      kind = 'election';
+    } else if (row.requires_vote) kind = 'resolution';
+
+    const title = languageEn
+      ? row.title_en?.trim() || row.title_zh?.trim() || `Agenda item ${idx + 1}`
+      : row.title_zh?.trim() || row.title_en?.trim() || `议程 ${idx + 1}`;
+
+    const kindLabel = (() => {
+      switch (kind) {
+        case 'removal':
+          return languageEn ? 'Removal resolution' : '罢免决议';
+        case 'election':
+          return languageEn ? 'Council election' : '选举';
+        case 'resolution':
+          return languageEn ? 'Resolution' : '决议';
+        default:
+          return languageEn ? 'Agenda' : '议程';
+      }
+    })();
+
+    return {
+      id: row.id,
+      order: row.sort_order ?? idx + 1,
+      kind,
+      kindLabel,
+      title,
+    };
+  });
 }
 
 type GenerateFeedback = { kind: 'success' | 'error'; text: string } | null;
@@ -102,6 +159,8 @@ export function MeetingVoteArchiveCard({
   const [noticeOpen, setNoticeOpen] = useState(false);
   const [docsOpen, setDocsOpen] = useState(false);
   const [archiveDocs, setArchiveDocs] = useState<MeetingArchiveDocumentRow[]>([]);
+  const [agendaNoticeRows, setAgendaNoticeRows] = useState<MeetingAgendaNoticeRow[]>([]);
+  const [finalizedMinutesDoc, setFinalizedMinutesDoc] = useState<MeetingArchiveDocumentRow | null>(null);
   const [generateBusy, setGenerateBusy] = useState(false);
   const [generateFeedback, setGenerateFeedback] = useState<GenerateFeedback>(null);
   const [snapshotViewer, setSnapshotViewer] = useState<SnapshotViewer>(null);
@@ -133,9 +192,44 @@ export function MeetingVoteArchiveCard({
     setArchiveDocs(rows);
   }, [meeting.id, meeting.property_id]);
 
+  const loadFinalizedMinutesDoc = useCallback(async () => {
+    const pid = meeting.property_id?.trim();
+    const mid = meeting.id?.trim();
+    if (!pid || !mid) {
+      setFinalizedMinutesDoc(null);
+      return;
+    }
+    const { row, error } = await fetchFinalizedMeetingMinutesDocument(pid, mid);
+    if (error) {
+      console.error('[MeetingVoteArchiveCard] load finalized minutes', error);
+      return;
+    }
+    setFinalizedMinutesDoc(row);
+  }, [meeting.id, meeting.property_id]);
+
+  const loadAgendaNoticeRows = useCallback(async () => {
+    const mid = meeting.id?.trim();
+    if (!mid) {
+      setAgendaNoticeRows([]);
+      return;
+    }
+    const { rows, error } = await fetchMeetingAgendaNoticeRows(mid);
+    if (error) {
+      console.error('[MeetingVoteArchiveCard] load agenda notice rows', error);
+      return;
+    }
+    setAgendaNoticeRows(rows);
+  }, [meeting.id]);
+
   useEffect(() => {
     void loadArchiveDocs();
-  }, [loadArchiveDocs]);
+    void loadFinalizedMinutesDoc();
+    void loadAgendaNoticeRows();
+  }, [loadArchiveDocs, loadFinalizedMinutesDoc, loadAgendaNoticeRows]);
+
+  useEffect(() => {
+    if (expanded) void loadFinalizedMinutesDoc();
+  }, [expanded, loadFinalizedMinutesDoc]);
 
   const generated03 = useMemo(
     () => archiveDocs.find((d) => d.title_en?.startsWith('03 ')),
@@ -149,11 +243,16 @@ export function MeetingVoteArchiveCard({
     () => archiveDocs.find((d) => d.title_en?.startsWith('05 ')),
     [archiveDocs],
   );
-  const generated06 = useMemo(
-    () => archiveDocs.find((d) => d.title_en?.startsWith('06 ') || d.title_en === '06 Meeting Minutes'),
-    [archiveDocs],
+  const minutesDoc = useMemo(
+    () => finalizedMinutesDoc ?? findFinalizedMinutesDocument(archiveDocs) ?? null,
+    [finalizedMinutesDoc, archiveDocs],
   );
-  const minutesFinalized = !!generated06;
+  const minutesFinalized = !!minutesDoc;
+
+  const formalNoticeAgendaItems = useMemo(
+    () => buildFormalNoticeAgendaItems(agendaNoticeRows, en),
+    [agendaNoticeRows, en],
+  );
 
   const loadMinutesDraftMeta = useCallback(async () => {
     if (!canManageDocuments || !meeting.id?.trim() || minutesFinalized) {
@@ -200,7 +299,15 @@ export function MeetingVoteArchiveCard({
     let vOpenDisp: string | null = null;
     let vCloseDisp: string | null = null;
 
-    if (agmSgmStrict) {
+    if (isWrittenRemoteV3Meeting(meeting)) {
+      const v3 = deriveRemoteWrittenV3CanonFromScheduledAt(meeting.scheduled_at);
+      if (v3) {
+        noticeOpenIso = v3.publicNoticeOpenIso;
+        noticeCloseIso = v3.publicNoticeCloseIso;
+        vOpenDisp = v3.votingOpenIso;
+        vCloseDisp = v3.votingCloseIso;
+      }
+    } else if (agmSgmStrict) {
       if (disp) {
         noticeOpenIso = disp.publicNoticeOpenIso;
         noticeCloseIso = disp.publicNoticeCloseIso;
@@ -258,6 +365,11 @@ export function MeetingVoteArchiveCard({
 
     const descDisplay = descCombined ? descCombined : notSet;
 
+    const electionCountListed = formalNoticeAgendaItems.filter((a) => a.kind === 'election').length;
+    const resolutionCountListed = formalNoticeAgendaItems.filter(
+      (a) => a.kind === 'resolution' || a.kind === 'removal',
+    ).length;
+
     return {
       title,
       typeLabel,
@@ -266,8 +378,11 @@ export function MeetingVoteArchiveCard({
       noticeSpan,
       voteSpan,
       descDisplay,
+      agendaItems: formalNoticeAgendaItems,
+      electionCount: electionCountListed || electionAgendaCount,
+      resolutionCount: resolutionCountListed || resolutionAgendaCount,
     };
-  }, [meeting, ownerVoteMeeting, en, electionAgendaCount]);
+  }, [meeting, ownerVoteMeeting, en, electionAgendaCount, resolutionAgendaCount, formalNoticeAgendaItems]);
 
   async function handleGenerateArchive() {
     if (!meeting.id?.trim() || generateBusy) return;
@@ -292,6 +407,7 @@ export function MeetingVoteArchiveCard({
         text: en ? 'Meeting archive generated.' : '会议档案已生成。',
       });
       await loadArchiveDocs();
+      await loadFinalizedMinutesDoc();
       onSupportingDocumentsChanged();
     } catch (e) {
       console.error('[MeetingVoteArchiveCard] generate_meeting_archive_snapshots', e);
@@ -432,6 +548,7 @@ export function MeetingVoteArchiveCard({
       setMinutesEditorOpen(false);
       setMinutesHasDraft(false);
       await loadArchiveDocs();
+      await loadFinalizedMinutesDoc();
       onSupportingDocumentsChanged();
     } catch (e) {
       console.error('[MeetingVoteArchiveCard] finalize_meeting_minutes', e);
@@ -480,7 +597,7 @@ export function MeetingVoteArchiveCard({
 
   function renderMinutesRow() {
     const displayTitle = getArchiveSlotDisplayTitle('06', en ? 'en' : 'zh');
-    const showView = minutesFinalized && !!generated06;
+    const showView = minutesFinalized && !!minutesDoc;
     const showEdit = canManageDocuments && !minutesFinalized;
 
     return (
@@ -525,10 +642,10 @@ export function MeetingVoteArchiveCard({
                   : '编辑纪要'}
             </button>
           ) : null}
-          {showView && generated06 ? (
+          {showView && minutesDoc ? (
             <button
               type="button"
-              onClick={() => openArchiveTextDocument('06', generated06)}
+              onClick={() => openArchiveTextDocument('06', minutesDoc)}
               className="rounded-lg border border-teal-600 bg-teal-700 px-3 py-1 text-xs font-semibold text-white hover:bg-teal-800"
             >
               {en ? 'View' : '查看'}
@@ -606,15 +723,19 @@ export function MeetingVoteArchiveCard({
 
             <li className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-sky-200/80 bg-white px-3 py-2">
               <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <span className="font-mono text-xs font-semibold text-sky-900">{fc.row01.id}</span>
-                <span className="font-medium text-gray-900">{en ? fc.row01.en : fc.row01.zh}</span>
+                <span className="font-medium text-gray-900">
+                  {getArchiveSlotDisplayTitle('01', en ? 'en' : 'zh')}
+                </span>
                 <span className="shrink-0 rounded border border-sky-300 bg-sky-50 px-1.5 py-px text-[10px] font-semibold text-sky-950">
                   {en ? fc.status.en : fc.status.zh}
                 </span>
               </div>
               <button
                 type="button"
-                onClick={() => setNoticeOpen(true)}
+                onClick={() => {
+                  void loadAgendaNoticeRows();
+                  setNoticeOpen(true);
+                }}
                 className="shrink-0 rounded-lg border border-sky-600 bg-sky-700 px-3 py-1 text-xs font-semibold text-white hover:bg-sky-800"
               >
                 {en ? 'View' : '查看'}
@@ -787,7 +908,7 @@ export function MeetingVoteArchiveCard({
           >
             <div className="flex items-start justify-between gap-2 border-b border-gray-100 bg-gray-50 px-4 py-3">
               <h2 id="meeting-vote-archive-formal-notice-title" className="text-base font-semibold text-gray-900">
-                {c.modalTitle}
+                {getArchiveSlotDisplayTitle('01', en ? 'en' : 'zh')}
               </h2>
               <button
                 type="button"
@@ -799,7 +920,9 @@ export function MeetingVoteArchiveCard({
               </button>
             </div>
             <div className="max-h-[min(78vh,600px)] space-y-3 overflow-y-auto px-4 py-4 text-sm leading-relaxed text-gray-800">
-              <p className="text-center text-base font-semibold text-gray-900">{c.docTitle}</p>
+              <p className="text-center text-base font-semibold text-gray-900">
+                {getArchiveSlotDisplayTitle('01', en ? 'en' : 'zh')}
+              </p>
               <p>{c.intro}</p>
               <p>
                 <span className="font-medium text-gray-900">{c.meetingName}</span>
@@ -838,11 +961,25 @@ export function MeetingVoteArchiveCard({
               </p>
               <p>
                 <span className="font-medium text-gray-900">{c.topics}</span>
-                <br />
-                {c.resolutionCount}：{resolutionAgendaCount}
-                <br />
-                {c.electionCount}：{electionAgendaCount}
               </p>
+              {noticePayload.agendaItems.length > 0 ? (
+                <ul className="list-none space-y-2 pl-0">
+                  {noticePayload.agendaItems.map((item) => (
+                    <li key={item.id} className="rounded-md border border-slate-100 bg-slate-50/80 px-3 py-2">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                        #{item.order} · {item.kindLabel}
+                      </span>
+                      <p className="mt-1 whitespace-pre-wrap text-gray-900">{item.title}</p>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-gray-700">
+                  {c.resolutionCount}：{noticePayload.resolutionCount ?? resolutionAgendaCount}
+                  <br />
+                  {c.electionCount}：{noticePayload.electionCount ?? electionAgendaCount}
+                </p>
+              )}
               <p className="pt-2 border-t border-gray-100">
                 <span className="font-medium text-gray-900">{c.participation}</span>
                 <br />
