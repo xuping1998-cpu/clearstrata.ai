@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useProperty } from '../../contexts/PropertyContext';
 import { supabase } from '../../lib/supabase';
+import { fetchMeetingSupportingDocuments } from '@/features/meetings/meetingDocumentsRead';
 
 interface MeetingDocument {
   id: string;
@@ -76,14 +77,9 @@ export function MeetingDocumentsSection({
     }
     try {
       setLoading(true);
-      const { data } = await supabase
-        .from('meeting_documents')
-        .select('*')
-        .eq('property_id', currentPropertyId)
-        .eq('meeting_id', meetingId)
-        .order('uploaded_at', { ascending: false });
-
-      if (data) setDocuments(data);
+      const { rows, error } = await fetchMeetingSupportingDocuments(currentPropertyId, meetingId);
+      if (error) throw error;
+      setDocuments(rows as MeetingDocument[]);
     } catch (error) {
       console.error('Error loading documents:', error);
     } finally {

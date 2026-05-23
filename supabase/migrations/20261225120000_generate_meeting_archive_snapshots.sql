@@ -307,7 +307,7 @@ BEGIN
   v_out := v_out || 'Generated at: ' || to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') || E'\n\n';
 
   IF p_ov_meeting_id IS NOT NULL THEN
-    v_out := v_out || '=== A. Resolution votes (aggregate) ===' || E'\n';
+    v_out := v_out || '=== Resolution votes ===' || E'\n';
 
     FOR v_rec IN
       SELECT
@@ -326,20 +326,25 @@ BEGIN
     LOOP
       v_has_resolution := true;
       v_out := v_out
-        || E'\n- ' || coalesce(nullif(trim(v_rec.title), ''), 'Resolution')
-        || E'\n  Yes: ' || coalesce(v_rec.yes_count::text, '0')
-        || ' | No: ' || coalesce(v_rec.no_count::text, '0')
-        || ' | Abstain: ' || coalesce(v_rec.abstain_count::text, '0')
-        || ' | Total cast: ' || coalesce(v_rec.total_cast::text, '0')
-        || ' | Eligible: ' || coalesce(v_rec.eligible_count::text, '0')
-        || E'\n';
+        || E'\n- ' || coalesce(nullif(trim(v_rec.title), ''), 'Resolution');
+      IF coalesce(v_rec.total_cast, 0) = 0 THEN
+        v_out := v_out || E'\n  No votes cast yet.' || E'\n';
+      ELSE
+        v_out := v_out
+          || E'\n  Yes: ' || coalesce(v_rec.yes_count::text, '0')
+          || ' | No: ' || coalesce(v_rec.no_count::text, '0')
+          || ' | Abstain: ' || coalesce(v_rec.abstain_count::text, '0')
+          || ' | Total cast: ' || coalesce(v_rec.total_cast::text, '0')
+          || ' | Eligible: ' || coalesce(v_rec.eligible_count::text, '0')
+          || E'\n';
+      END IF;
     END LOOP;
 
     IF NOT v_has_resolution THEN
       v_out := v_out || 'No resolution vote records available.' || E'\n';
     END IF;
 
-    v_out := v_out || E'\n=== B. Election votes (aggregate) ===' || E'\n';
+    v_out := v_out || E'\n=== Election votes ===' || E'\n';
 
     FOR v_agenda IN
       SELECT
@@ -369,10 +374,14 @@ BEGIN
       v_out := v_out
         || E'\nAgenda #' || coalesce(v_agenda.sort_order::text, 'n/a')
         || ': ' || v_agenda.agenda_title
-        || E'\n  Ballots cast (units): ' || coalesce(v_ballot_count::text, '0')
         || E'\n';
+      IF coalesce(v_ballot_count, 0) = 0 THEN
+        v_out := v_out || '  No election ballots cast yet.' || E'\n';
+      ELSE
+        v_out := v_out
+          || '  Ballots cast (units): ' || coalesce(v_ballot_count::text, '0')
+          || E'\n';
 
-      IF v_ballot_count > 0 THEN
         FOR v_cand IN
           SELECT
             cand_id AS candidate_id,
@@ -395,7 +404,7 @@ BEGIN
 
     IF NOT v_has_election THEN
       v_out := v_out
-        || 'No election ballots available.'
+        || 'No election ballots cast yet.'
         || E'\n';
     END IF;
   ELSE
@@ -489,21 +498,26 @@ BEGIN
     ORDER BY r.title NULLS LAST, r.resolution_id
   LOOP
     v_has_any := true;
-    v_participation := CASE
-      WHEN coalesce(v_rec.eligible_count, 0) > 0 THEN
-        round((coalesce(v_rec.total_cast, 0)::numeric / v_rec.eligible_count::numeric) * 100, 1)
-      ELSE NULL
-    END;
-
     v_out := v_out
-      || E'\n- ' || coalesce(nullif(trim(v_rec.title), ''), 'Resolution')
-      || E'\n  Outcome: ' || CASE WHEN v_rec.passed IS TRUE THEN 'Passed' WHEN v_rec.passed IS FALSE THEN 'Not passed' ELSE 'Pending' END
-      || E'\n  Yes: ' || coalesce(v_rec.yes_count::text, '0')
-      || ' | No: ' || coalesce(v_rec.no_count::text, '0')
-      || ' | Abstain: ' || coalesce(v_rec.abstain_count::text, '0')
-      || ' | Total: ' || coalesce(v_rec.total_cast::text, '0')
-      || CASE WHEN v_participation IS NOT NULL THEN ' | Participation: ' || v_participation::text || '%' ELSE '' END
-      || E'\n';
+      || E'\n- ' || coalesce(nullif(trim(v_rec.title), ''), 'Resolution');
+    IF coalesce(v_rec.total_cast, 0) = 0 THEN
+      v_out := v_out || E'\n  Voting not finalized yet.' || E'\n';
+    ELSE
+      v_participation := CASE
+        WHEN coalesce(v_rec.eligible_count, 0) > 0 THEN
+          round((coalesce(v_rec.total_cast, 0)::numeric / v_rec.eligible_count::numeric) * 100, 1)
+        ELSE NULL
+      END;
+
+      v_out := v_out
+        || E'\n  Outcome: ' || CASE WHEN v_rec.passed IS TRUE THEN 'Passed' WHEN v_rec.passed IS FALSE THEN 'Not passed' ELSE 'Pending' END
+        || E'\n  Yes: ' || coalesce(v_rec.yes_count::text, '0')
+        || ' | No: ' || coalesce(v_rec.no_count::text, '0')
+        || ' | Abstain: ' || coalesce(v_rec.abstain_count::text, '0')
+        || ' | Total: ' || coalesce(v_rec.total_cast::text, '0')
+        || CASE WHEN v_participation IS NOT NULL THEN ' | Participation: ' || v_participation::text || '%' ELSE '' END
+        || E'\n';
+    END IF;
   END LOOP;
 
   IF NOT v_has_any THEN
@@ -573,7 +587,7 @@ BEGIN
     END LOOP;
 
     IF v_rank = 0 THEN
-      v_out := v_out || '  No finalized result available yet.' || E'\n';
+      v_out := v_out || '  No finalized election result available yet.' || E'\n';
     END IF;
   END LOOP;
 

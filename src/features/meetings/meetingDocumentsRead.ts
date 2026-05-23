@@ -30,6 +30,41 @@ export function isGeneratedArchiveSnapshot(titleEn: string | null | undefined): 
   return t.startsWith('03 ') || t.startsWith('04 ') || t.startsWith('05 ');
 }
 
+/** Real uploads only — excludes auto-generated 03/04/05 archive snapshots. */
+export function filterSupportingDocumentsOnly<T extends { title_en?: string | null }>(
+  rows: T[],
+): T[] {
+  return rows.filter((d) => !isGeneratedArchiveSnapshot(d.title_en));
+}
+
+/** Display title for generated snapshot rows — avoids duplicated slot prefix in UI. */
+export function displayArchiveSnapshotTitle(titleEn: string | null | undefined): string {
+  const t = titleEn?.trim() ?? '';
+  const m = t.match(/^(0[345])\s+(.*)$/);
+  if (m) return `${m[1]} ${m[2]}`.trim();
+  return t;
+}
+
+const GENERATED_AT_LINE = /^Generated at:\s*(.+)$/m;
+
+/** Prettier viewer body — reformats ISO `Generated at:` lines only; storage unchanged. */
+export function formatArchiveSnapshotViewerBody(body: string, languageEn: boolean): string {
+  if (!body.trim()) return body;
+  const locale = languageEn ? 'en-US' : 'zh-CN';
+  return body.replace(GENERATED_AT_LINE, (_line, iso: string) => {
+    const d = new Date(iso.trim());
+    if (Number.isNaN(d.getTime())) return `Generated: ${iso.trim()}`;
+    const formatted = new Intl.DateTimeFormat(locale, {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    }).format(d);
+    return `Generated: ${formatted}`;
+  });
+}
+
 export function decodeDataTextUrl(url: string): string {
   const comma = url.indexOf(',');
   if (comma < 0) return '';
@@ -59,7 +94,10 @@ export async function fetchMeetingSupportingDocuments(
     .eq('meeting_id', mid)
     .order('uploaded_at', { ascending: false });
   if (error) return { rows: [], error: new Error(error.message) };
-  return { rows: (data ?? []) as MeetingSupportingDocumentRow[], error: null };
+  return {
+    rows: filterSupportingDocumentsOnly((data ?? []) as MeetingSupportingDocumentRow[]),
+    error: null,
+  };
 }
 
 export async function fetchMeetingArchiveDocuments(

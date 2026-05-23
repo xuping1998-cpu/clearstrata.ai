@@ -8,8 +8,10 @@ import {
 } from '@/components/meetings/meetingVoteArchiveConstants';
 import {
   decodeDataTextUrl,
+  displayArchiveSnapshotTitle,
   fetchMeetingArchiveDocuments,
-  isGeneratedArchiveSnapshot,
+  filterSupportingDocumentsOnly,
+  formatArchiveSnapshotViewerBody,
   type MeetingArchiveDocumentRow,
   type MeetingSupportingDocumentRow,
 } from '@/features/meetings/meetingDocumentsRead';
@@ -39,15 +41,6 @@ type SnapshotViewer = {
   title: string;
   body: string;
 } | null;
-import { labelMeetingFormatUiDisplay, labelMeetingType, meetingUiStrings } from '@/features/meetings/labels';
-import {
-  councilMeetingVotingWindowFallback,
-  councilWrittenRemoteWindows,
-  stripWrittenRemoteMeta,
-} from '@/features/meetings/meetingFormatModel';
-import { isStrictAgmOrSgmMeeting } from '@/features/meetings/electionAgendaModel';
-import { deriveAgmSgmCanonDisplayWindows, deriveCouncilElectionCanonFromScheduledAt } from '@/features/meetings/electionTimelineMath';
-import { MeetingDocumentsSection } from '@/pages/meeting/MeetingDocumentsSection';
 
 type Props = {
   languageEn: boolean;
@@ -134,14 +127,13 @@ export function MeetingVoteArchiveCard({
 
   const supportingOnly = useMemo(() => {
     if (archiveDocs.length > 0) {
-      return archiveDocs.filter((d) => !isGeneratedArchiveSnapshot(d.title_en));
+      return filterSupportingDocumentsOnly(archiveDocs);
     }
-    return supportingDocuments.filter((d) => !isGeneratedArchiveSnapshot(d.title_en));
+    return filterSupportingDocumentsOnly(supportingDocuments);
   }, [archiveDocs, supportingDocuments]);
 
   const docCount = supportingOnly.length;
   const hasSupportingAttachments = docCount > 0;
-  const allGeneratedSnapshotsReady = !!(generated03 && generated04 && generated05);
   const showSupportingDocsAction = hasSupportingAttachments || canManageDocuments;
   const supportingDocsActionLabel = canManageDocuments ? (en ? 'Manage' : '管理') : en ? 'View' : '查看';
 
@@ -264,7 +256,8 @@ export function MeetingVoteArchiveCard({
     const url = doc.document_url?.trim() ?? '';
     const title = en ? ARCHIVE_SLOT_LABELS[slot].en : ARCHIVE_SLOT_LABELS[slot].zh;
     if (url.startsWith('data:text/plain')) {
-      setSnapshotViewer({ title, body: decodeDataTextUrl(url) });
+      const raw = decodeDataTextUrl(url);
+      setSnapshotViewer({ title, body: formatArchiveSnapshotViewerBody(raw, en) });
       return;
     }
     if (url) {
@@ -274,6 +267,7 @@ export function MeetingVoteArchiveCard({
 
   function renderGeneratedSnapshotRow(slot: ArchiveSlotId, doc: MeetingArchiveDocumentRow | undefined) {
     const label = en ? ARCHIVE_SLOT_LABELS[slot].en : ARCHIVE_SLOT_LABELS[slot].zh;
+    const displayTitle = doc?.title_en ? displayArchiveSnapshotTitle(doc.title_en) : label;
     const generated = !!doc;
     return (
       <li
@@ -283,12 +277,9 @@ export function MeetingVoteArchiveCard({
         }`}
       >
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <span
-            className={`font-mono text-xs font-semibold ${generated ? 'text-teal-900' : 'text-gray-500'}`}
-          >
-            {slot}
+          <span className={`font-medium ${generated ? 'text-gray-900' : 'text-gray-700'}`}>
+            {displayTitle}
           </span>
-          <span className={`font-medium ${generated ? 'text-gray-900' : 'text-gray-700'}`}>{label}</span>
           <span
             className={`shrink-0 text-[10px] font-semibold ${
               generated
@@ -325,52 +316,42 @@ export function MeetingVoteArchiveCard({
               {en ? 'Fixed folders' : '固定目录'}
             </span>
           </div>
-          <button
-            type="button"
-            aria-expanded={expanded}
-            onClick={() => setExpanded((v) => !v)}
-            className="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-100"
-          >
-            {expanded ? (en ? 'Collapse' : '收起') : en ? 'Expand' : '展开'}
-          </button>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {canManageDocuments ? (
+              <button
+                type="button"
+                disabled={generateBusy}
+                onClick={() => void handleGenerateArchive()}
+                className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                {generateBusy ? (en ? 'Generating…' : '生成中…') : en ? 'Regenerate' : '重新生成'}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              aria-expanded={expanded}
+              onClick={() => setExpanded((v) => !v)}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-100"
+            >
+              {expanded ? (en ? 'Collapse' : '收起') : en ? 'Expand' : '展开'}
+            </button>
+          </div>
         </div>
+        {canManageDocuments && generateFeedback ? (
+          <p
+            className={`mt-2 text-xs ${
+              generateFeedback.kind === 'success' ? 'text-emerald-700' : 'text-red-700'
+            }`}
+          >
+            {generateFeedback.text}
+          </p>
+        ) : null}
         <p className="mt-2 text-xs leading-relaxed text-slate-600">
           {en ? MEETING_VOTE_ARCHIVE_CARD_CLASSIFICATION_NOTE.en : MEETING_VOTE_ARCHIVE_CARD_CLASSIFICATION_NOTE.zh}
         </p>
 
         {expanded ? (
           <div className="mt-3 space-y-3 border-t border-slate-200/80 pt-3">
-            {canManageDocuments ? (
-              <div className="space-y-2">
-                <button
-                  type="button"
-                  disabled={generateBusy}
-                  onClick={() => void handleGenerateArchive()}
-                  className="rounded-lg border border-slate-600 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-900 disabled:opacity-50"
-                >
-                  {generateBusy
-                    ? en
-                      ? 'Generating…'
-                      : '生成中…'
-                    : allGeneratedSnapshotsReady
-                      ? en
-                        ? 'Regenerate archive'
-                        : '重新生成会议档案'
-                      : en
-                        ? 'Generate archive'
-                        : '生成会议档案'}
-                </button>
-                {generateFeedback ? (
-                  <p
-                    className={`text-xs ${
-                      generateFeedback.kind === 'success' ? 'text-emerald-700' : 'text-red-700'
-                    }`}
-                  >
-                    {generateFeedback.text}
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
             <ul className="space-y-2">
             <li className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-emerald-200/70 bg-white/90 px-3 py-2">
               <div className="flex min-w-0 items-center gap-2">
