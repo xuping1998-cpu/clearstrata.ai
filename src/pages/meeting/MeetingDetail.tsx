@@ -498,6 +498,8 @@ export function MeetingDetail() {
   }, [meeting?.description_zh]);
 
   const canSendMeetingInvites = canManageCouncilMeetings;
+  const canViewMeetingInvitePanel =
+    canManageCouncilMeetings || roleInProperty === 'manager';
   const canShowMeetingEditControl = canManageCouncilMeetings;
 
   const canDeleteDraftMeeting = useMemo(() => {
@@ -2671,7 +2673,8 @@ export function MeetingDetail() {
           )}
         </section>
 
-        {/* Layer 4 — invitations */}
+        {/* Layer 4 — invitations (staff / council / admin / property_admin / manager only) */}
+        {canViewMeetingInvitePanel ? (
         <section className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm space-y-8">
           <div>
             <h2 className="text-lg font-semibold text-gray-900 mb-4 border-b pb-2 flex items-center gap-2">
@@ -2805,6 +2808,7 @@ export function MeetingDetail() {
             )}
           </div>
         </section>
+        ) : null}
         </div>
       </div>
     </div>
