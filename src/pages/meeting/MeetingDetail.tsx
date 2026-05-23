@@ -96,6 +96,7 @@ import {
 } from '@/features/meetings/meetingFormatModel';
 import { OwnerVotingInlineControlBar } from '@/components/meetings/OwnerVotingInlineControlBar';
 import { MeetingVoteArchiveCard } from '@/components/meetings/MeetingVoteArchiveCard';
+import { MeetingPublicDiscussionSection } from '@/components/meetings/MeetingPublicDiscussionSection';
 import {
   fetchMeetingSupportingDocuments,
   type MeetingSupportingDocumentRow,
@@ -1978,6 +1979,11 @@ export function MeetingDetail() {
                   supportingDocuments={supportingDocumentsArchive}
                 />
               ) : null}
+              <MeetingPublicDiscussionSection
+                meeting={meeting}
+                currentUserId={user?.id ?? null}
+                en={en}
+              />
               <div className="space-y-6">
                 {sortedAgendaItems.map((agenda, idx) => {
                   const agendaKindUi = agendaKindFromRow(agenda);

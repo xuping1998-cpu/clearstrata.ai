@@ -558,6 +558,7 @@ export function MeetingEditor() {
 
   useEffect(() => {
     if (!isEdit) {
+      setForm(defaultForm);
       setAgendaItems([]);
       setPendingDeleteServerIds([]);
       setMeetingVotes([]);
@@ -1174,6 +1175,7 @@ export function MeetingEditor() {
                 step={1}
                 value={form.signed_units}
                 onChange={(e) => setForm((f) => ({ ...f, signed_units: e.target.value }))}
+                onWheel={(e) => e.currentTarget.blur()}
                 className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-900"
               />
             </div>
