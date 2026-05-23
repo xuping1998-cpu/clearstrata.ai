@@ -14,9 +14,9 @@ LANGUAGE sql
 IMMUTABLE
 AS $$
   SELECT CASE trim(both FROM coalesce(p_slot, ''))
-    WHEN '03' THEN '03 讨论记录 / Discussion Record'
-    WHEN '04' THEN '04 投票记录 / Voting Record'
-    WHEN '05' THEN '05 决议结果 / Resolution Results'
+    WHEN '03' THEN '03 Discussion Record'
+    WHEN '04' THEN '04 Voting Record'
+    WHEN '05' THEN '05 Resolution Results'
     ELSE NULL
   END;
 $$;
@@ -27,9 +27,9 @@ LANGUAGE sql
 IMMUTABLE
 AS $$
   SELECT CASE trim(both FROM coalesce(p_slot, ''))
-    WHEN '03' THEN '03 讨论记录'
-    WHEN '04' THEN '04 投票记录'
-    WHEN '05' THEN '05 决议结果'
+    WHEN '03' THEN '03 Discussion Record'
+    WHEN '04' THEN '04 Voting Record'
+    WHEN '05' THEN '05 Resolution Results'
     ELSE NULL
   END;
 $$;
@@ -189,7 +189,7 @@ DECLARE
   v_body_line text;
   v_has_opening boolean := false;
 BEGIN
-  v_out := '03 讨论记录 / Discussion Record' || E'\n';
+  v_out := '03 Discussion Record' || E'\n';
   v_out := v_out || '================================' || E'\n\n';
   v_out := v_out || '=== Opening Statement ===' || E'\n';
 
@@ -204,21 +204,21 @@ BEGIN
   LOOP
     v_has_opening := true;
     IF v_rec.status = 'withdrawn' THEN
-      v_body_line := $snap$[withdrawn] / [已撤回]$snap$;
+      v_body_line := '[withdrawn]';
     ELSE
       v_body_line := coalesce(v_rec.body, '');
     END IF;
     v_out := v_out
       || coalesce(nullif(trim(v_rec.author_name), ''), 'Moderator')
-      || CASE WHEN nullif(trim(v_rec.unit_no), '') IS NOT NULL THEN ' · Unit ' || trim(v_rec.unit_no) ELSE '' END
-      || ' · ' || to_char(v_rec.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI') || ' UTC'
+      || CASE WHEN nullif(trim(v_rec.unit_no), '') IS NOT NULL THEN ' | Unit ' || trim(v_rec.unit_no) ELSE '' END
+      || ' | ' || to_char(v_rec.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI') || ' UTC'
       || E'\n'
       || v_body_line
       || E'\n\n';
   END LOOP;
 
   IF NOT v_has_opening THEN
-    v_out := v_out || $snap$No opening statement yet. / 暂无开场发言。$snap$ || E'\n\n';
+    v_out := v_out || 'No opening statement yet.' || E'\n\n';
   END IF;
 
   v_out := v_out || '=== Public Comments ===' || E'\n';
@@ -230,7 +230,7 @@ BEGIN
       AND c.comment_type IN ('comment', 'reply')
       AND c.status <> 'hidden'
   ) THEN
-    v_out := v_out || $snap$No public comments. / 暂无留言。$snap$ || E'\n';
+    v_out := v_out || 'No public comments.' || E'\n';
     RETURN v_out;
   END IF;
 
@@ -243,7 +243,7 @@ BEGIN
     ORDER BY c.created_at ASC
   LOOP
     IF v_rec.status = 'withdrawn' THEN
-      v_body_line := $snap$[withdrawn] / [已撤回]$snap$;
+      v_body_line := '[withdrawn]';
     ELSE
       v_body_line := coalesce(v_rec.body, '');
     END IF;
@@ -265,9 +265,9 @@ BEGIN
     END IF;
 
     v_out := v_out
-      || coalesce(nullif(trim(v_rec.author_name), ''), $snap$Owner / 业主$snap$)
-      || CASE WHEN nullif(trim(v_rec.unit_no), '') IS NOT NULL THEN ' · Unit ' || trim(v_rec.unit_no) ELSE '' END
-      || ' · ' || to_char(v_rec.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI') || ' UTC'
+      || coalesce(nullif(trim(v_rec.author_name), ''), 'Owner')
+      || CASE WHEN nullif(trim(v_rec.unit_no), '') IS NOT NULL THEN ' | Unit ' || trim(v_rec.unit_no) ELSE '' END
+      || ' | ' || to_char(v_rec.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI') || ' UTC'
       || E'\n'
       || v_body_line
       || E'\n\n';
@@ -301,9 +301,9 @@ DECLARE
   v_has_election boolean := false;
   v_legacy_vote boolean := false;
 BEGIN
-  v_out := '04 投票记录 / Voting Record' || E'\n';
+  v_out := '04 Voting Record' || E'\n';
   v_out := v_out || '================================' || E'\n';
-  v_out := v_out || 'Meeting: ' || coalesce(p_meeting_title, '—') || E'\n';
+  v_out := v_out || 'Meeting: ' || coalesce(p_meeting_title, '-') || E'\n';
   v_out := v_out || 'Generated at: ' || to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') || E'\n\n';
 
   IF p_ov_meeting_id IS NOT NULL THEN
@@ -328,15 +328,15 @@ BEGIN
       v_out := v_out
         || E'\n- ' || coalesce(nullif(trim(v_rec.title), ''), 'Resolution')
         || E'\n  Yes: ' || coalesce(v_rec.yes_count::text, '0')
-        || ' · No: ' || coalesce(v_rec.no_count::text, '0')
-        || ' · Abstain: ' || coalesce(v_rec.abstain_count::text, '0')
-        || ' · Total cast: ' || coalesce(v_rec.total_cast::text, '0')
-        || ' · Eligible: ' || coalesce(v_rec.eligible_count::text, '0')
+        || ' | No: ' || coalesce(v_rec.no_count::text, '0')
+        || ' | Abstain: ' || coalesce(v_rec.abstain_count::text, '0')
+        || ' | Total cast: ' || coalesce(v_rec.total_cast::text, '0')
+        || ' | Eligible: ' || coalesce(v_rec.eligible_count::text, '0')
         || E'\n';
     END LOOP;
 
     IF NOT v_has_resolution THEN
-      v_out := v_out || 'No resolution vote aggregates recorded yet.' || E'\n';
+      v_out := v_out || 'No resolution vote records available.' || E'\n';
     END IF;
 
     v_out := v_out || E'\n=== B. Election votes (aggregate) ===' || E'\n';
@@ -367,7 +367,7 @@ BEGIN
 
       v_has_election := true;
       v_out := v_out
-        || E'\nAgenda #' || coalesce(v_agenda.sort_order::text, '?')
+        || E'\nAgenda #' || coalesce(v_agenda.sort_order::text, 'n/a')
         || ': ' || v_agenda.agenda_title
         || E'\n  Ballots cast (units): ' || coalesce(v_ballot_count::text, '0')
         || E'\n';
@@ -386,8 +386,8 @@ BEGIN
           ORDER BY count(*) DESC, cand_id
         LOOP
           v_out := v_out
-            || '  · candidate_id=' || v_cand.candidate_id
-            || ' · votes=' || v_cand.vote_count::text
+            || '  - candidate_id=' || v_cand.candidate_id
+            || ' | votes=' || v_cand.vote_count::text
             || E'\n';
         END LOOP;
       END IF;
@@ -395,11 +395,11 @@ BEGIN
 
     IF NOT v_has_election THEN
       v_out := v_out
-        || 'Election ballot aggregate is available in live results and will be finalized in the result snapshot.'
+        || 'No election ballots available.'
         || E'\n';
     END IF;
   ELSE
-    v_out := v_out || 'No linked owner vote meeting found for this council meeting.' || E'\n';
+    v_out := v_out || 'No linked owner vote meeting.' || E'\n';
   END IF;
 
   IF to_regclass('public.meeting_votes') IS NOT NULL AND to_regclass('public.meeting_ballots') IS NOT NULL THEN
@@ -422,7 +422,7 @@ BEGIN
       LOOP
         v_out := v_out
           || '- ' || v_rec.vote_title
-          || CASE WHEN v_rec.selected_option_key IS NOT NULL THEN ': ' || v_rec.selected_option_key || ' × ' || v_rec.cnt::text ELSE ' (no ballots)' END
+          || CASE WHEN v_rec.selected_option_key IS NOT NULL THEN ': ' || v_rec.selected_option_key || ' x ' || v_rec.cnt::text ELSE ' (no ballots)' END
           || E'\n';
       END LOOP;
     END IF;
@@ -460,9 +460,9 @@ DECLARE
   v_has_any boolean := false;
   v_participation numeric;
 BEGIN
-  v_out := '05 决议结果 / Resolution Results' || E'\n';
+  v_out := '05 Resolution Results' || E'\n';
   v_out := v_out || '================================' || E'\n';
-  v_out := v_out || 'Meeting: ' || coalesce(p_meeting_title, '—') || E'\n';
+  v_out := v_out || 'Meeting: ' || coalesce(p_meeting_title, '-') || E'\n';
   v_out := v_out || 'Generated at: ' || to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') || E'\n\n';
 
   IF p_ov_meeting_id IS NULL THEN
@@ -499,10 +499,10 @@ BEGIN
       || E'\n- ' || coalesce(nullif(trim(v_rec.title), ''), 'Resolution')
       || E'\n  Outcome: ' || CASE WHEN v_rec.passed IS TRUE THEN 'Passed' WHEN v_rec.passed IS FALSE THEN 'Not passed' ELSE 'Pending' END
       || E'\n  Yes: ' || coalesce(v_rec.yes_count::text, '0')
-      || ' · No: ' || coalesce(v_rec.no_count::text, '0')
-      || ' · Abstain: ' || coalesce(v_rec.abstain_count::text, '0')
-      || ' · Total: ' || coalesce(v_rec.total_cast::text, '0')
-      || CASE WHEN v_participation IS NOT NULL THEN ' · Participation: ' || v_participation::text || '%' ELSE '' END
+      || ' | No: ' || coalesce(v_rec.no_count::text, '0')
+      || ' | Abstain: ' || coalesce(v_rec.abstain_count::text, '0')
+      || ' | Total: ' || coalesce(v_rec.total_cast::text, '0')
+      || CASE WHEN v_participation IS NOT NULL THEN ' | Participation: ' || v_participation::text || '%' ELSE '' END
       || E'\n';
   END LOOP;
 
@@ -533,7 +533,7 @@ BEGIN
     v_rank := 0;
 
     v_out := v_out
-      || E'\nAgenda #' || coalesce(v_agenda.sort_order::text, '?')
+      || E'\nAgenda #' || coalesce(v_agenda.sort_order::text, 'n/a')
       || ': ' || v_agenda.agenda_title
       || E'\n';
 
@@ -565,10 +565,10 @@ BEGIN
       v_has_any := true;
       v_rank := v_rank + 1;
       v_out := v_out
-        || '  · ' || coalesce(nullif(trim(v_cand.candidate_json ->> 'name'), ''), v_cand.candidate_id)
-        || CASE WHEN nullif(trim(v_cand.candidate_json ->> 'unit'), '') IS NOT NULL THEN ' · Unit ' || trim(v_cand.candidate_json ->> 'unit') ELSE '' END
-        || ' · votes=' || v_cand.vote_count::text
-        || CASE WHEN v_rank <= v_seats THEN ' · Elected (top ' || v_seats::text || ')' ELSE '' END
+        || '  - ' || coalesce(nullif(trim(v_cand.candidate_json ->> 'name'), ''), v_cand.candidate_id)
+        || CASE WHEN nullif(trim(v_cand.candidate_json ->> 'unit'), '') IS NOT NULL THEN ' | Unit ' || trim(v_cand.candidate_json ->> 'unit') ELSE '' END
+        || ' | votes=' || v_cand.vote_count::text
+        || CASE WHEN v_rank <= v_seats THEN ' | Elected (top ' || v_seats::text || ')' ELSE '' END
         || E'\n';
     END LOOP;
 
