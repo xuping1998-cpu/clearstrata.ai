@@ -8,7 +8,6 @@ import {
 } from '@/components/meetings/meetingVoteArchiveConstants';
 import {
   decodeDataTextUrl,
-  displayArchiveSnapshotTitle,
   fetchMeetingArchiveDocuments,
   filterSupportingDocumentsOnly,
   formatArchiveSnapshotViewerBody,
@@ -29,11 +28,18 @@ import { supabase } from '@/lib/supabase';
 
 type ArchiveSlotId = '03' | '04' | '05';
 
-const ARCHIVE_SLOT_LABELS: Record<ArchiveSlotId, { zh: string; en: string }> = {
-  '03': { zh: '03 讨论记录', en: '03 Discussion Record' },
-  '04': { zh: '04 投票记录', en: '04 Voting Record' },
-  '05': { zh: '05 决议结果', en: '05 Resolution Results' },
-};
+type ArchiveSlotLanguage = 'en' | 'zh';
+
+function getArchiveSlotDisplayTitle(slot: ArchiveSlotId, language: ArchiveSlotLanguage): string {
+  switch (slot) {
+    case '03':
+      return language === 'en' ? '03 Discussion Record' : '03 讨论记录';
+    case '04':
+      return language === 'en' ? '04 Voting Record' : '04 投票记录';
+    case '05':
+      return language === 'en' ? '05 Resolution Results' : '05 决议结果';
+  }
+}
 
 type GenerateFeedback = { kind: 'success' | 'error'; text: string } | null;
 
@@ -254,7 +260,7 @@ export function MeetingVoteArchiveCard({
 
   function openGeneratedSnapshot(slot: ArchiveSlotId, doc: MeetingArchiveDocumentRow) {
     const url = doc.document_url?.trim() ?? '';
-    const title = en ? ARCHIVE_SLOT_LABELS[slot].en : ARCHIVE_SLOT_LABELS[slot].zh;
+    const title = getArchiveSlotDisplayTitle(slot, en ? 'en' : 'zh');
     if (url.startsWith('data:text/plain')) {
       const raw = decodeDataTextUrl(url);
       setSnapshotViewer({ title, body: formatArchiveSnapshotViewerBody(raw, en) });
@@ -266,8 +272,7 @@ export function MeetingVoteArchiveCard({
   }
 
   function renderGeneratedSnapshotRow(slot: ArchiveSlotId, doc: MeetingArchiveDocumentRow | undefined) {
-    const label = en ? ARCHIVE_SLOT_LABELS[slot].en : ARCHIVE_SLOT_LABELS[slot].zh;
-    const displayTitle = doc?.title_en ? displayArchiveSnapshotTitle(doc.title_en) : label;
+    const displayTitle = getArchiveSlotDisplayTitle(slot, en ? 'en' : 'zh');
     const generated = !!doc;
     return (
       <li
