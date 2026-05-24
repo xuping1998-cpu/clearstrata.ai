@@ -114,6 +114,8 @@ export function MeetingPublicDiscussionSection({ meeting, currentUserId, en }: P
     [comments],
   );
 
+  const canEditOpeningStatement = isModerator && discussionOpen;
+
   useEffect(() => {
     if (openingComment?.status === 'visible') {
       setOpeningDraft(openingComment.body);
@@ -444,32 +446,34 @@ export function MeetingPublicDiscussionSection({ meeting, currentUserId, en }: P
             <h4 className="text-sm font-semibold text-gray-900">
               {en ? 'Opening statement' : '开场发言'}
             </h4>
-            {openingComment?.status === 'visible' ? (
-              <div className="rounded-lg border border-sky-100 bg-sky-50/80 px-3 py-3">
-                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs text-gray-500">
-                  <span className="font-semibold text-gray-800">
-                    {openingComment.author_name?.trim() || (en ? 'Moderator' : '主持人')}
-                  </span>
-                  {openingComment.unit_no?.trim() ? (
-                    <span>
-                      {en
-                        ? `Unit: ${openingComment.unit_no.trim()}`
-                        : `房号：${openingComment.unit_no.trim()}`}
+            {!canEditOpeningStatement ? (
+              openingComment?.status === 'visible' ? (
+                <div className="rounded-lg border border-sky-100 bg-sky-50/80 px-3 py-3">
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs text-gray-500">
+                    <span className="font-semibold text-gray-800">
+                      {openingComment.author_name?.trim() || (en ? 'Moderator' : '主持人')}
                     </span>
-                  ) : null}
-                  <span>{fmtLocalTime(openingComment.created_at, en)}</span>
+                    {openingComment.unit_no?.trim() ? (
+                      <span>
+                        {en
+                          ? `Unit: ${openingComment.unit_no.trim()}`
+                          : `房号：${openingComment.unit_no.trim()}`}
+                      </span>
+                    ) : null}
+                    <span>{fmtLocalTime(openingComment.created_at, en)}</span>
+                  </div>
+                  <p className="mt-2 whitespace-pre-wrap text-sm text-gray-800">{openingComment.body}</p>
                 </div>
-                <p className="mt-2 whitespace-pre-wrap text-sm text-gray-800">{openingComment.body}</p>
-              </div>
-            ) : openingComment ? (
-              <p className="text-sm italic text-gray-400">{renderBodyText(openingComment)}</p>
-            ) : (
-              <p className="text-sm text-gray-500">
-                {en ? 'No opening statement yet.' : '暂无开场发言。'}
-              </p>
-            )}
+              ) : openingComment ? (
+                <p className="text-sm italic text-gray-400">{renderBodyText(openingComment)}</p>
+              ) : (
+                <p className="text-sm text-gray-500">
+                  {en ? 'No opening statement yet.' : '暂无开场发言。'}
+                </p>
+              )
+            ) : null}
 
-            {isModerator && discussionOpen ? (
+            {canEditOpeningStatement ? (
               <div className="space-y-2 rounded-lg border border-gray-200 bg-white p-3">
                 <textarea
                   value={openingDraft}
