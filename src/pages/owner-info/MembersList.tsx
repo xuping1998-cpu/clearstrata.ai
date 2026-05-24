@@ -45,6 +45,20 @@ function isDropdownRole(r: UserRole): r is PropertyMemberDirectoryRole {
   return r === 'owner' || r === 'council' || r === 'manager';
 }
 
+type MemberStatusFilter = 'active' | 'removed' | 'all';
+
+function isHistoricalMemberStatus(status: string): boolean {
+  const s = status.toLowerCase();
+  return s === 'removed' || s === 'inactive';
+}
+
+function matchesMemberStatusFilter(status: string, filter: MemberStatusFilter): boolean {
+  const s = status.toLowerCase();
+  if (filter === 'active') return s === 'active';
+  if (filter === 'removed') return isHistoricalMemberStatus(s);
+  return true;
+}
+
 export type MembersListProps = {
   propertyId: string;
   language: 'en' | 'zh';
@@ -99,6 +113,7 @@ type UnitEditTarget = {
 export function MembersList({ propertyId, language, canOperate, currentUserId, onMembershipUpdated }: MembersListProps) {
   const en = language === 'en';
   const [rows, setRows] = useState<MembersListRow[]>([]);
+  const [statusFilter, setStatusFilter] = useState<MemberStatusFilter>('active');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyMemberId, setBusyMemberId] = useState<string | null>(null);
@@ -133,7 +148,6 @@ export function MembersList({ propertyId, language, canOperate, currentUserId, o
       status: en ? 'Status' : '状态',
       unit: en ? 'Unit' : '房号',
       actions: en ? 'Actions' : '操作',
-      empty: en ? 'No members found for this property.' : '暂无成员。',
       loadErr: en ? 'Could not load members.' : '无法加载成员列表。',
       setCouncil: en ? 'Set as council' : '设为业委会',
       freeze: en ? 'Freeze' : '冻结',
@@ -145,9 +159,28 @@ export function MembersList({ propertyId, language, canOperate, currentUserId, o
       lastCouncilHint: en ? 'Last active council member' : '唯一在任业委会成员',
       selfHint: en ? 'Cannot change yourself' : '不可操作本人',
       removedHint: en ? 'Removed' : '已移除',
+      statusFilter: en ? 'Member status' : '成员状态',
+      filterActive: en ? 'Active' : '在册',
+      filterRemoved: en ? 'Removed' : '已移除',
+      filterAll: en ? 'All' : '全部',
+      historyOnly: en ? 'Historical record — read only' : '历史记录 · 只读',
+      emptyActive: en ? 'No active members found for this property.' : '暂无在册成员。',
+      emptyRemoved: en ? 'No removed or inactive members found.' : '暂无已移除成员。',
+      emptyAll: en ? 'No members found for this property.' : '暂无成员。',
     }),
     [en],
   );
+
+  const filteredRows = useMemo(
+    () => rows.filter((row) => matchesMemberStatusFilter(String(row.status), statusFilter)),
+    [rows, statusFilter],
+  );
+
+  const emptyMessage = useMemo(() => {
+    if (statusFilter === 'active') return labels.emptyActive;
+    if (statusFilter === 'removed') return labels.emptyRemoved;
+    return labels.emptyAll;
+  }, [labels.emptyActive, labels.emptyAll, labels.emptyRemoved, statusFilter]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -424,15 +457,29 @@ export function MembersList({ propertyId, language, canOperate, currentUserId, o
       <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <h3 className="text-sm font-semibold text-gray-900">{labels.title}</h3>
-          {!canOperate && (
-            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-md px-2 py-1">{labels.readOnlyHint}</p>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="inline-flex items-center gap-2 text-xs text-gray-600">
+              <span>{labels.statusFilter}</span>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as MemberStatusFilter)}
+                className="rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1D9E75]"
+              >
+                <option value="active">{labels.filterActive}</option>
+                <option value="removed">{labels.filterRemoved}</option>
+                <option value="all">{labels.filterAll}</option>
+              </select>
+            </label>
+            {!canOperate && (
+              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-md px-2 py-1">{labels.readOnlyHint}</p>
+            )}
+          </div>
         </div>
         {error && (
           <div className="mx-4 my-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">{error}</div>
         )}
-        {rows.length === 0 ? (
-          <p className="p-8 text-center text-sm text-gray-500">{labels.empty}</p>
+        {filteredRows.length === 0 ? (
+          <p className="p-8 text-center text-sm text-gray-500">{emptyMessage}</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
@@ -447,17 +494,19 @@ export function MembersList({ propertyId, language, canOperate, currentUserId, o
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {rows.map((row) => {
+                {filteredRows.map((row) => {
+                  const historical = isHistoricalMemberStatus(String(row.status));
                   const guard = rowActionsDisabled(row, currentUserId, rows);
-                  const opDisabled = !canOperate || guard.disabled;
+                  const opDisabled = !canOperate || guard.disabled || historical;
                   const busy = busyMemberId === row.memberId;
                   const dropdownRole = isDropdownRole(row.role) ? row.role : 'owner';
-                  const showDropdown = isDropdownRole(row.role) && row.status !== 'removed';
+                  const showDropdown = isDropdownRole(row.role) && row.status !== 'removed' && !historical;
                   const lastCouncil = isLastActiveCouncilRow(row, rows);
                   const alreadyCouncilActive = row.role === 'council' && row.status === 'active';
 
                   let hint = '';
-                  if (guard.reason === 'self') hint = labels.selfHint;
+                  if (historical) hint = labels.historyOnly;
+                  else if (guard.reason === 'self') hint = labels.selfHint;
                   else if (guard.reason === 'last_council') hint = labels.lastCouncilHint;
                   else if (guard.reason === 'terminal') hint = labels.removedHint;
 
@@ -475,6 +524,9 @@ export function MembersList({ propertyId, language, canOperate, currentUserId, o
                       </td>
                       <td className="px-4 py-3 text-gray-700">{row.unitNo?.trim() ? row.unitNo.trim() : '—'}</td>
                       <td className="px-4 py-3">
+                        {historical ? (
+                          <p className="text-xs text-gray-500 max-w-xs">{labels.historyOnly}</p>
+                        ) : (
                         <div className="flex flex-col gap-2">
                           <div className="flex flex-wrap items-center gap-2">
                             {showDropdown ? (
@@ -522,7 +574,6 @@ export function MembersList({ propertyId, language, canOperate, currentUserId, o
                             >
                               {labels.kick}
                             </button>
-                            {/* 修改房号 — only for council/admin (canOperate) */}
                             {canOperate && (
                               <button
                                 type="button"
@@ -534,7 +585,6 @@ export function MembersList({ propertyId, language, canOperate, currentUserId, o
                                 {labels.editUnit}
                               </button>
                             )}
-                            {/* 通知 — only for council/admin (canOperate) */}
                             {canOperate && row.status !== 'removed' && (
                               <button
                                 type="button"
@@ -549,6 +599,7 @@ export function MembersList({ propertyId, language, canOperate, currentUserId, o
                           </div>
                           {hint ? <p className="text-[11px] text-gray-500 max-w-xs">{hint}</p> : null}
                         </div>
+                        )}
                       </td>
                     </tr>
                   );

@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { ArrowRight, Clock3 } from 'lucide-react';
+import { useLanguage } from '@/contexts/LanguageContext';
 import type { TrialState } from '@/lib/subscription';
 
 export function TrialUpgradeCard({
@@ -9,16 +10,35 @@ export function TrialUpgradeCard({
   state: TrialState;
   daysLeft: number;
 }) {
+  const { language } = useLanguage();
+  const en = language === 'en';
+
   if (state !== 'expiring' && state !== 'expired') return null;
 
   const isExpired = state === 'expired';
 
-  const title = isExpired ? '试用已结束' : `你的试用还剩 ${daysLeft} 天`;
+  const title = isExpired
+    ? en
+      ? 'Trial ended'
+      : '试用已结束'
+    : en
+      ? `${daysLeft} days left in your trial`
+      : `你的试用还剩 ${daysLeft} 天`;
   const body = isExpired
-    ? '你仍可暂时访问系统，但建议尽快升级，避免后续服务调整影响正常使用。'
-    : '现在升级，可确保成员邀请、发票审计与预算管理不中断。';
+    ? en
+      ? 'You can still access the system for now, but we recommend upgrading soon to avoid service changes affecting normal use.'
+      : '你仍可暂时访问系统，但建议尽快升级，避免后续服务调整影响正常使用。'
+    : en
+      ? 'Upgrade now to keep member invites, invoice audit, and budget management uninterrupted.'
+      : '现在升级，可确保成员邀请、发票审计与预算管理不中断。';
 
-  const cta = isExpired ? '立即查看升级方案' : '准备升级';
+  const cta = isExpired
+    ? en
+      ? 'View upgrade options'
+      : '立即查看升级方案'
+    : en
+      ? 'Plan upgrade'
+      : '准备升级';
 
   return (
     <div className="mb-4 rounded-3xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
@@ -41,7 +61,7 @@ export function TrialUpgradeCard({
               <ArrowRight className="h-4 w-4" />
             </Link>
             <Link to="/pricing" className="text-xs font-semibold text-gray-600 hover:text-gray-900 text-center">
-              查看定价 →
+              {en ? 'View pricing →' : '查看定价 →'}
             </Link>
           </div>
         </div>
@@ -49,4 +69,3 @@ export function TrialUpgradeCard({
     </div>
   );
 }
-
