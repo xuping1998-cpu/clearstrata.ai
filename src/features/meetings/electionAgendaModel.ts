@@ -9,9 +9,13 @@ import {
   isWrittenRemoteUi,
   isWrittenRemoteV3Meeting,
   meetingFormatUiFromRow,
+  MEETING_SGM_REQUISITION_PERCENT_DEFAULT,
+  meetingSgmRequisitionRequiredUnits,
+  type MeetingGovernanceMetaV1,
 } from './meetingFormatModel';
 import {
   councilElectionLifecyclePhase,
+  deriveAgmSgmCanonDisplayWindows,
   deriveCouncilElectionCanonFromScheduledAt,
   deriveRemoteWrittenV3CanonFromScheduledAt,
   electionTimestampsCanonEqual,
@@ -811,4 +815,242 @@ export function isOwnerRequisitionedRemovalSgmMeeting(input: {
   if (init !== 'owner_requisitioned') return false;
   const fmt = String(input.meeting_format_ui ?? '').trim().toLowerCase();
   return fmt === 'written_remote' || fmt === 'remote_written';
+}
+
+/** Agenda row shape for 01 Formal Notice (matches `meeting_agenda_items` notice fetch). */
+export type FormalNoticeAgendaRow = {
+  id: string;
+  sort_order?: number | null;
+  title_en?: string | null;
+  title_zh?: string | null;
+  description_zh?: string | null;
+  requires_vote?: boolean | null;
+};
+
+export type FormalNoticeAgendaKind = 'removal_resolution' | 'election' | 'resolution' | 'normal';
+
+export type FormalNoticeAgendaItem = {
+  id: string;
+  order: number;
+  kind: FormalNoticeAgendaKind;
+  kindLabel: string;
+  /** Primary line in current UI language; secondary in the other language when available. */
+  displayTitle: string;
+};
+
+export function formalNoticeAgendaKindFromRow(row: FormalNoticeAgendaRow): FormalNoticeAgendaKind {
+  if (isRemoveCouncilGovernanceAgenda(row)) return 'removal_resolution';
+  if (extractElectionAgendaMeta(row.description_zh ?? '').meta?.agenda_type === 'council_election') {
+    return 'election';
+  }
+  return row.requires_vote ? 'resolution' : 'normal';
+}
+
+function formalNoticeBilingualTitle(
+  row: FormalNoticeAgendaRow,
+  languageEn: boolean,
+  fallbackOrder: number,
+): string {
+  const zh = row.title_zh?.trim() || '';
+  const en = row.title_en?.trim() || '';
+  if (languageEn) {
+    const primary = en || zh || `Agenda item ${fallbackOrder}`;
+    const secondary = en && zh && en !== zh ? zh : null;
+    return secondary ? `${primary} / ${secondary}` : primary;
+  }
+  const primary = zh || en || `议程 ${fallbackOrder}`;
+  const secondary = zh && en && zh !== en ? en : null;
+  return secondary ? `${primary} / ${secondary}` : primary;
+}
+
+export function buildFormalNoticeAgendaItems(
+  rows: FormalNoticeAgendaRow[],
+  languageEn: boolean,
+): FormalNoticeAgendaItem[] {
+  const sorted = sortGovernanceAgendaItems(rows);
+  return sorted.map((row, idx) => {
+    const kind = formalNoticeAgendaKindFromRow(row);
+    const order = idx + 1;
+
+    const kindLabel = (() => {
+      switch (kind) {
+        case 'removal_resolution':
+          return languageEn ? 'Removal resolution' : '罢免决议';
+        case 'election':
+          return languageEn ? 'Council election' : '选举';
+        case 'resolution':
+          return languageEn ? 'Resolution' : '决议';
+        default:
+          return languageEn ? 'Agenda' : '议程';
+      }
+    })();
+
+    return {
+      id: row.id,
+      order,
+      kind,
+      kindLabel,
+      displayTitle: formalNoticeBilingualTitle(row, languageEn, order),
+    };
+  });
+}
+
+export function buildFormalNoticeIntro(
+  items: FormalNoticeAgendaItem[],
+  languageEn: boolean,
+): string {
+  const hasRemoval = items.some((i) => i.kind === 'removal_resolution');
+  const hasElection = items.some((i) => i.kind === 'election');
+  const hasResolution = items.some((i) => i.kind === 'resolution');
+
+  if (languageEn) {
+    if (hasRemoval && hasElection) {
+      return 'This formal notice informs all owners that this meeting will consider a resolution to remove the current council and elect new council members.';
+    }
+    if (hasRemoval) {
+      return 'This formal notice informs all owners that this meeting will consider a resolution to remove the current council.';
+    }
+    if (hasElection) {
+      return 'This formal notice informs all owners that this meeting will include an election of council members.';
+    }
+    if (hasResolution) {
+      return 'This formal notice informs all owners of the resolutions to be considered at this remote written meeting.';
+    }
+    return 'This formal notice informs all owners of this remote written meeting and electronic voting.';
+  }
+
+  if (hasRemoval && hasElection) {
+    return '特此通知全体业主：本次会议将审议罢免现任业委会之决议，并选举新一届业委会成员。';
+  }
+  if (hasRemoval) {
+    return '特此通知全体业主：本次会议将审议罢免现任业委会之决议。';
+  }
+  if (hasElection) {
+    return '特此通知全体业主：本次会议将进行业委会成员选举。';
+  }
+  if (hasResolution) {
+    return '特此通知全体业主：本次会议将审议下列决议事项。';
+  }
+  return '特此通知全体业主：本次会议以远程书面会议形式举行，业主可通过平台进行电子投票。';
+}
+
+export function buildFormalNoticeInitiationLines(
+  meta: MeetingGovernanceMetaV1 | null,
+  languageEn: boolean,
+): string[] {
+  if (!meta) return [];
+
+  if (meta.initiation_type === 'owner_requisitioned') {
+    const total = meta.total_voting_units ?? '—';
+    const pct = meta.required_percent ?? MEETING_SGM_REQUISITION_PERCENT_DEFAULT;
+    const required =
+      meta.required_units ?? meetingSgmRequisitionRequiredUnits(meta.total_voting_units ?? 0, pct);
+    const signed = meta.signed_units ?? '—';
+
+    if (languageEn) {
+      return [
+        'This Special General Meeting is owner-requisitioned.',
+        `Total voting units: ${total}`,
+        `Required threshold: ${pct}%`,
+        `Required signed units: ${required}`,
+        `Signed units: ${signed}`,
+      ];
+    }
+    return [
+      '本次特别业主大会由业主联署发起。',
+      `总投票单位：${total}`,
+      `法定联署门槛：${pct}%`,
+      `所需联署户数：${required}`,
+      `已联名户数：${signed}`,
+    ];
+  }
+
+  if (meta.initiation_type === 'council_initiated') {
+    return languageEn
+      ? ['This meeting is initiated by the council.']
+      : ['本次会议由业委会发起。', 'This meeting is initiated by the council.'];
+  }
+
+  return [];
+}
+
+export type FormalNoticeIsoWindow = { openIso: string; closeIso: string };
+
+export type FormalNoticeTimelineWindows = {
+  isV3: boolean;
+  participation: FormalNoticeIsoWindow | null;
+  publicNotice: FormalNoticeIsoWindow | null;
+  nomination: FormalNoticeIsoWindow | null;
+  voting: FormalNoticeIsoWindow | null;
+};
+
+export function deriveFormalNoticeTimelineWindows(
+  meeting: Pick<MeetingRow, 'meeting_type' | 'description_zh' | 'scheduled_at'>,
+  opts: {
+    hasElectionAgenda: boolean;
+    ownerVoteVotingOpens?: string | null;
+    ownerVoteVotingCloses?: string | null;
+  },
+): FormalNoticeTimelineWindows {
+  const pair = (open: string | null | undefined, close: string | null | undefined): FormalNoticeIsoWindow | null => {
+    const o = open?.trim();
+    const c = close?.trim();
+    if (!o || !c) return null;
+    return { openIso: o, closeIso: c };
+  };
+
+  if (isWrittenRemoteV3Meeting(meeting)) {
+    const v3 = deriveRemoteWrittenV3CanonFromScheduledAt(meeting.scheduled_at);
+    if (!v3) {
+      return { isV3: true, participation: null, publicNotice: null, nomination: null, voting: null };
+    }
+    const window = pair(v3.publicNoticeOpenIso, v3.publicNoticeCloseIso);
+    return {
+      isV3: true,
+      participation: window,
+      publicNotice: window,
+      nomination: opts.hasElectionAgenda ? window : null,
+      voting: window,
+    };
+  }
+
+  if (isStrictAgmOrSgmMeeting(meeting)) {
+    const disp = deriveAgmSgmCanonDisplayWindows(meeting.scheduled_at, opts.hasElectionAgenda);
+    if (!disp) {
+      return { isV3: false, participation: null, publicNotice: null, nomination: null, voting: null };
+    }
+    return {
+      isV3: false,
+      participation: null,
+      publicNotice: pair(disp.publicNoticeOpenIso, disp.publicNoticeCloseIso),
+      nomination:
+        opts.hasElectionAgenda && disp.nominationOpenIso && disp.nominationCloseIso
+          ? pair(disp.nominationOpenIso, disp.nominationCloseIso)
+          : null,
+      voting: pair(disp.votingOpenIso, disp.votingCloseIso),
+    };
+  }
+
+  const disc = councilWrittenRemoteWindows(meeting);
+  let noticeOpen = disc.publicNoticeOpens?.trim() || null;
+  let noticeClose = disc.publicNoticeCloses?.trim() || null;
+  if (!noticeOpen && !noticeClose && meeting.scheduled_at?.trim()) {
+    const canon = deriveCouncilElectionCanonFromScheduledAt(meeting.scheduled_at);
+    if (canon) {
+      noticeOpen = canon.publicNoticeOpenIso;
+      noticeClose = canon.publicNoticeCloseIso;
+    }
+  }
+
+  const fb = councilMeetingVotingWindowFallback(meeting);
+  const voteOpen = opts.ownerVoteVotingOpens?.trim() || fb.votingOpens || null;
+  const voteClose = opts.ownerVoteVotingCloses?.trim() || fb.votingCloses || null;
+
+  return {
+    isV3: false,
+    participation: null,
+    publicNotice: pair(noticeOpen, noticeClose),
+    nomination: pair(disc.nominationOpens, disc.nominationCloses),
+    voting: pair(voteOpen, voteClose),
+  };
 }
