@@ -156,7 +156,7 @@ export function displayArchiveSnapshotTitle(titleEn: string | null | undefined):
 
 const GENERATED_AT_LINE = /^Generated at:\s*(.+)$/m;
 
-/** Known Chinese structural labels → English (archive viewer labels stay English-only). */
+/** Known Chinese structural labels → English (mixed snapshot bodies). */
 const ARCHIVE_VIEWER_LABEL_REPLACEMENTS: ReadonlyArray<[RegExp, string]> = [
   [/^会议[：:]\s*/gm, 'Meeting: '],
   [/^议程\s*#\s*(\d+)\s*[：:]/gm, 'Agenda #$1:'],
@@ -167,6 +167,39 @@ const ARCHIVE_VIEWER_LABEL_REPLACEMENTS: ReadonlyArray<[RegExp, string]> = [
   [/^选举投票[：:]\s*/gm, 'Election votes: '],
 ];
 
+/** English structural labels → Chinese (viewer display only; data URL unchanged). */
+const ARCHIVE_VIEWER_EN_TO_ZH_REPLACEMENTS: ReadonlyArray<[RegExp, string]> = [
+  [/^03 Discussion Record$/m, '03 讨论记录'],
+  [/^04 Voting Record$/m, '04 投票记录'],
+  [/^05 Resolution Results$/m, '05 表决结果'],
+  [/^06 Meeting Minutes v(\d+)$/m, '06 会议纪要 v$1'],
+  [/^06 Meeting Minutes$/m, '06 会议纪要'],
+  [/^Meeting:\s*/gm, '会议：'],
+  [/^Generated at:\s*/gm, '生成时间：'],
+  [/^Generated:\s*/gm, '生成时间：'],
+  [/^=== Resolution votes ===$/m, '=== 决议表决 ==='],
+  [/^=== Election votes ===$/m, '=== 选举投票 ==='],
+  [/^=== Resolution results ===$/m, '=== 表决结果 ==='],
+  [/^=== Election results ===$/m, '=== 选举结果 ==='],
+  [/Agenda #(\d+):/g, '议程 #$1：'],
+  [/Outcome:\s*Passed/g, '结果：通过'],
+  [/Outcome:\s*Not passed/g, '结果：未通过'],
+  [/No votes cast yet\./g, '暂无投票。'],
+  [/No election ballots cast yet\./g, '暂无选举投票。'],
+  [/No finalized election result available yet\./g, '暂无最终选举结果。'],
+  [/Voting not finalized yet\./g, '投票尚未最终确认。'],
+  [/Ballots cast \(units\):\s*/g, '已投户数：'],
+  [/Total cast:\s*/g, '已投：'],
+  [/Participation:\s*/g, '参与率：'],
+  [/Eligible:\s*/g, '应投：'],
+  [/Abstain:\s*/g, '弃权：'],
+  [/\| No:\s*/g, '| 反对：'],
+  [/Yes:\s*/g, '赞成：'],
+  [/\| Total:\s*/g, '| 总票数：'],
+  [/votes=/g, '票数='],
+  [/Elected \(top 3\)/g, '当选（前 3 名）'],
+];
+
 function normalizeArchiveViewerLabels(body: string): string {
   let out = body;
   for (const [pattern, replacement] of ARCHIVE_VIEWER_LABEL_REPLACEMENTS) {
@@ -175,14 +208,23 @@ function normalizeArchiveViewerLabels(body: string): string {
   return out;
 }
 
-/** Prettier viewer body — English structural labels; reformats ISO `Generated at:` lines only. */
+function translateArchiveViewerBodyToZh(body: string): string {
+  let out = body;
+  for (const [pattern, replacement] of ARCHIVE_VIEWER_EN_TO_ZH_REPLACEMENTS) {
+    out = out.replace(pattern, replacement);
+  }
+  return out;
+}
+
+/** Prettier viewer body — localized structural labels; reformats ISO `Generated at:` lines only. */
 export function formatArchiveSnapshotViewerBody(body: string, languageEn: boolean): string {
   if (!body.trim()) return body;
-  let out = normalizeArchiveViewerLabels(body);
+  let out = languageEn ? normalizeArchiveViewerLabels(body) : body;
   const locale = languageEn ? 'en-US' : 'zh-CN';
+  const generatedLabel = languageEn ? 'Generated:' : '生成时间：';
   out = out.replace(GENERATED_AT_LINE, (_line, iso: string) => {
     const d = new Date(iso.trim());
-    if (Number.isNaN(d.getTime())) return `Generated: ${iso.trim()}`;
+    if (Number.isNaN(d.getTime())) return `${generatedLabel} ${iso.trim()}`;
     const formatted = new Intl.DateTimeFormat(locale, {
       month: 'long',
       day: 'numeric',
@@ -190,8 +232,11 @@ export function formatArchiveSnapshotViewerBody(body: string, languageEn: boolea
       hour: 'numeric',
       minute: '2-digit',
     }).format(d);
-    return `Generated: ${formatted}`;
+    return `${generatedLabel} ${formatted}`;
   });
+  if (!languageEn) {
+    out = translateArchiveViewerBodyToZh(out);
+  }
   return out;
 }
 

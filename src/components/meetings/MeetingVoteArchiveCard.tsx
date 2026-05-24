@@ -8,7 +8,6 @@ import {
 } from '@/components/meetings/meetingVoteArchiveConstants';
 import {
   decodeDataTextUrl,
-  displayArchiveSnapshotTitle,
   extractMeetingMinutesVersion,
   fetchLatestMeetingMinutesDocument,
   fetchMeetingAgendaNoticeRows,
@@ -114,30 +113,9 @@ function getMinutesDisplayTitle(version: number, language: ArchiveSlotLanguage):
   return v > 1 ? `06 会议纪要 v${v}` : '06 会议纪要';
 }
 
-function formatMinutesVersionHistoryLabel(
-  finalizedVersions: number[],
-  draftVersion: number | null,
-  hasOpenDraft: boolean,
-  languageEn: boolean,
-): string | null {
-  const draftV = hasOpenDraft && draftVersion != null ? draftVersion : null;
-  const finalizedSet = new Set(finalizedVersions);
-
-  if (finalizedVersions.length === 0 && draftV == null) return null;
-  if (finalizedVersions.length <= 1 && draftV == null) return null;
-
-  const ordered = [...new Set([...finalizedVersions, ...(draftV != null ? [draftV] : [])])].sort(
-    (a, b) => a - b,
-  );
-
-  return ordered
-    .map((v) => {
-      if (draftV === v && !finalizedSet.has(v)) {
-        return languageEn ? `draft v${v}` : `草稿 v${v}`;
-      }
-      return `v${v}`;
-    })
-    .join(', ');
+function formatMinutesVersionHistoryLabel(finalizedVersions: number[]): string | null {
+  if (finalizedVersions.length <= 1) return null;
+  return finalizedVersions.map((v) => `v${v}`).join(' · ');
 }
 
 function getArchiveSlotDisplayTitle(slot: ArchiveSlotId, language: ArchiveSlotLanguage): string {
@@ -149,7 +127,7 @@ function getArchiveSlotDisplayTitle(slot: ArchiveSlotId, language: ArchiveSlotLa
     case '04':
       return language === 'en' ? '04 Voting Record' : '04 投票记录';
     case '05':
-      return language === 'en' ? '05 Resolution Results' : '05 决议结果';
+      return language === 'en' ? '05 Resolution Results' : '05 表决结果';
     case '06':
       return language === 'en' ? '06 Meeting Minutes' : '06 会议纪要';
   }
@@ -316,14 +294,8 @@ export function MeetingVoteArchiveCard({
     [archiveDocs],
   );
   const minutesVersionHistoryLabel = useMemo(
-    () =>
-      formatMinutesVersionHistoryLabel(
-        minutesFinalizedVersions,
-        minutesDraftVersion,
-        minutesOpenDraft,
-        en,
-      ),
-    [minutesFinalizedVersions, minutesDraftVersion, minutesOpenDraft, en],
+    () => formatMinutesVersionHistoryLabel(minutesFinalizedVersions),
+    [minutesFinalizedVersions],
   );
 
   const formalNoticeAgendaItems = useMemo(
@@ -342,7 +314,13 @@ export function MeetingVoteArchiveCard({
   const hasSupportingAttachments = docCount > 0;
   const showSupportingDocsAction =
     canViewMeetingArchive && (hasSupportingAttachments || canManageMeetingArchive);
-  const supportingDocsActionLabel = canManageMeetingArchive ? (en ? 'Manage' : '管理') : en ? 'View' : '查看';
+  const supportingDocsActionLabel = canManageMeetingArchive
+    ? en
+      ? 'Manage Files'
+      : '管理文件'
+    : en
+      ? 'View'
+      : '查看';
 
   const noticeFieldLabels = {
     participationPeriod: en ? 'Participation period:' : '参与期：',
@@ -457,10 +435,7 @@ export function MeetingVoteArchiveCard({
       return;
     }
     const url = doc.document_url?.trim() ?? '';
-    const title =
-      slot === '03' || slot === '04' || slot === '05'
-        ? displayArchiveSnapshotTitle(doc.title_en) || getArchiveSlotDisplayTitle(slot, en ? 'en' : 'zh')
-        : getArchiveSlotDisplayTitle(slot, en ? 'en' : 'zh');
+    const title = getArchiveSlotDisplayTitle(slot, en ? 'en' : 'zh');
     if (url.startsWith('data:text/plain')) {
       const raw = decodeDataTextUrl(url);
       setSnapshotViewer({ title, body: formatArchiveSnapshotViewerBody(raw, en) });
@@ -473,7 +448,7 @@ export function MeetingVoteArchiveCard({
 
   function openGeneratedSnapshot(slot: '03' | '04' | '05', doc: MeetingArchiveDocumentRow) {
     const url = doc.document_url?.trim() ?? '';
-    const title = displayArchiveSnapshotTitle(doc.title_en) || getArchiveSlotDisplayTitle(slot, en ? 'en' : 'zh');
+    const title = getArchiveSlotDisplayTitle(slot, en ? 'en' : 'zh');
     if (url.startsWith('data:text/plain')) {
       const raw = decodeDataTextUrl(url);
       setSnapshotViewer({ title, body: formatArchiveSnapshotViewerBody(raw, en) });
@@ -663,9 +638,7 @@ export function MeetingVoteArchiveCard({
   }
 
   function renderGeneratedSnapshotRow(slot: '03' | '04' | '05', doc: MeetingArchiveDocumentRow | undefined) {
-    const displayTitle = doc?.title_en
-      ? displayArchiveSnapshotTitle(doc.title_en)
-      : getArchiveSlotDisplayTitle(slot, en ? 'en' : 'zh');
+    const displayTitle = getArchiveSlotDisplayTitle(slot, en ? 'en' : 'zh');
     const generated = !!doc;
     return (
       <li
@@ -714,8 +687,8 @@ export function MeetingVoteArchiveCard({
         : `草稿 v${minutesDraftVersion ?? 1}`
       : showView
         ? en
-          ? `Generated v${minutesLatestVersion ?? 1}`
-          : `已生成 v${minutesLatestVersion ?? 1}`
+          ? `Current v${minutesLatestVersion ?? 1}`
+          : `当前版本 v${minutesLatestVersion ?? 1}`
         : getArchiveGeneratedSlotEmptyStatus(en, canManageMeetingArchive);
 
     return (
@@ -751,7 +724,7 @@ export function MeetingVoteArchiveCard({
                     ? 'Continue editing'
                     : '继续编辑'
                   : en
-                    ? 'Edit minutes'
+                    ? 'Edit Minutes'
                     : '编辑纪要'}
               </button>
             ) : null}
@@ -762,7 +735,7 @@ export function MeetingVoteArchiveCard({
                 onClick={() => void handleReviseMinutes()}
                 className="rounded-lg border border-slate-400 bg-white px-3 py-1 text-xs font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-50"
               >
-                {minutesReviseBusy ? (en ? 'Starting…' : '创建中…') : en ? 'Revise' : '修订'}
+                {minutesReviseBusy ? (en ? 'Starting…' : '创建中…') : en ? 'Revise Minutes' : '修订纪要'}
               </button>
             ) : null}
             {showView && minutesDoc ? (
@@ -776,9 +749,9 @@ export function MeetingVoteArchiveCard({
             ) : null}
           </div>
         </div>
-        {canManageMeetingArchive && minutesVersionHistoryLabel ? (
+        {minutesVersionHistoryLabel ? (
           <p className="text-[11px] text-slate-500">
-            {en ? 'Version history: ' : '版本历史：'}
+            {en ? 'Version history: ' : '历史版本：'}
             {minutesVersionHistoryLabel}
           </p>
         ) : null}
@@ -839,7 +812,7 @@ export function MeetingVoteArchiveCard({
                 <span className="font-mono text-xs font-semibold text-emerald-800">00</span>
                 <span className="font-medium text-gray-900">{en ? 'Guide' : '使用说明'}</span>
                 <span className="shrink-0 rounded border border-emerald-300 bg-emerald-50 px-1.5 py-px text-[10px] font-semibold uppercase text-emerald-900">
-                  {en ? 'Read-only' : '只读'}
+                  {en ? 'Read only' : '只读'}
                 </span>
               </div>
               <button

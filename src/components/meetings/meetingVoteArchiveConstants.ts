@@ -3,8 +3,8 @@
  */
 
 export const MEETING_VOTE_ARCHIVE_CARD_CLASSIFICATION_NOTE = {
-  zh: '会后将按 AGM / SGM / Minutes 分类归档至「法律法规」。',
-  en: 'After the meeting, records are filed under AGM, SGM, or Minutes within Legal & regulatory governance.',
+  zh: '会议相关文件将在会后自动归档至「法律法规」档案库。',
+  en: 'Meeting documents will be automatically archived to Legal & Governance after the meeting.',
 } as const;
 
 export const MEETING_VOTE_ARCHIVE_GUIDE_ZH = {
@@ -69,7 +69,7 @@ export const MEETING_VOTE_ARCHIVE_GUIDE_ZH = {
     '02 支持文件 / Supporting Documents',
     '03 讨论记录 / Discussion Archive',
     '04 投票记录 / Voting Record',
-    '05 决议结果 / Resolution Report',
+    '05 表决结果 / Resolution Results',
     '06 会议纪要 / Minutes',
   ],
   pledgeTitle: 'ClearStrata 承诺：',
@@ -79,7 +79,7 @@ export const MEETING_VOTE_ARCHIVE_GUIDE_ZH = {
 /** 02 支持文件 — 读取 meeting_documents（无则展示空态） */
 export const MEETING_VOTE_ARCHIVE_SUPPORTING_DOCUMENTS = {
   row02: { id: '02', zh: '支持文件', en: 'Supporting documents' },
-  emptyStatus: { zh: '暂无支持文件', en: 'No supporting documents' },
+  emptyStatus: { zh: '暂无文件', en: 'No files' },
   attached: (n: number, zh: boolean) =>
     zh ? `已附文件 · ${n} 个` : `Attached · ${n} file${n === 1 ? '' : 's'}`,
   zh: {
@@ -103,13 +103,13 @@ export const MEETING_VOTE_ARCHIVE_FORMAL_NOTICE = {
   placeholderRows: [
     { id: '03', zh: '讨论记录', en: 'Discussion archive' },
     { id: '04', zh: '投票记录', en: 'Voting record' },
-    { id: '05', zh: '决议结果', en: 'Resolution report' },
+    { id: '05', zh: '表决结果', en: 'Resolution results' },
     { id: '06', zh: '会议纪要', en: 'Minutes' },
   ] as const,
   row01: { id: '01', zh: '正式会议通知', en: 'Formal notice' },
   status: {
-    zh: '已生成 · 自动草案',
-    en: 'Generated · Auto draft',
+    zh: '自动归档',
+    en: 'Auto archived',
   },
   notSet: { zh: '暂未设置', en: 'Not set' },
   zh: {
