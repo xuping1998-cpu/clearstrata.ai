@@ -5,7 +5,7 @@
  * verify_jwt = false — pass user JWT from app; DB via service_role.
  *
  * APP_BASE_URL: optional secret; normalized to origin only. If unset, invalid,
- * or host is clearstrata.ai — uses https://clearstrataaiserena.vercel.app for links + logo origin.
+ * or host is clearstrata.ai / www.clearstrata.ai — uses https://app.clearstrata.ai for links + logo origin.
  */
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -37,7 +37,7 @@ function logFullCatchError(error: unknown): void {
 }
 
 /** Test / default deployment (see workspace domain rules). Production can override via APP_BASE_URL. */
-const APP_BASE_DEFAULT_ORIGIN = "https://clearstrataaiserena.vercel.app";
+const APP_BASE_DEFAULT_ORIGIN = "https://app.clearstrata.ai";
 
 /** Force Vercel test host when unset, invalid, or still pointing at marketing root domain. */
 function normalizeAppBaseUrl(raw?: string | null): string {
@@ -56,9 +56,9 @@ function normalizeAppBaseUrl(raw?: string | null): string {
   }
   try {
     const host = new URL(origin).hostname.replace(/^www\./i, "").toLowerCase();
-    if (host === "clearstrata.ai") {
-      console.log("✅ send-manager-invite APP_BASE_URL is clearstrata.ai → forcing test origin", APP_BASE_DEFAULT_ORIGIN);
-      return APP_BASE_DEFAULT_ORIGIN;
+    if (host === "clearstrata.ai" || host === "www.clearstrata.ai") {
+      console.log("✅ send-manager-invite APP_BASE_URL is marketing host → forcing app origin", "https://app.clearstrata.ai");
+      return "https://app.clearstrata.ai";
     }
   } catch {
     return APP_BASE_DEFAULT_ORIGIN;

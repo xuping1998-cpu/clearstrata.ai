@@ -3,7 +3,7 @@
  *
  * Secrets (Supabase Dashboard → Project Settings → Edge Functions → Secrets):
  * - APP_BASE_URL (optional): public app origin; path/query stripped. Empty/unset or marketing host
- *   `clearstrata.ai` → https://clearstrataaiserena.vercel.app (current test app).
+ *   `clearstrata.ai` / `www.clearstrata.ai` → https://app.clearstrata.ai (production app).
  * - RESEND_API_KEY (required)
  * - From address is fixed in code: ClearStrata <noreply@clearstrata.ai> (must be verified in Resend).
  * Redeploy after changing secrets: `supabase functions deploy send-meeting-invite`
@@ -25,7 +25,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const APP_BASE_DEFAULT_ORIGIN = "https://clearstrataaiserena.vercel.app";
+const APP_BASE_DEFAULT_ORIGIN = "https://app.clearstrata.ai";
 
 /** Public web origin for email links; never points marketing `clearstrata.ai` at test app. */
 function normalizeAppBaseUrl(raw?: string | null): string {
@@ -41,8 +41,8 @@ function normalizeAppBaseUrl(raw?: string | null): string {
     const url = new URL(withProtocol);
     const host = url.hostname.replace(/^www\./, "");
 
-    if (host === "clearstrata.ai") {
-      return APP_BASE_DEFAULT_ORIGIN;
+    if (host === "clearstrata.ai" || host === "www.clearstrata.ai") {
+      return "https://app.clearstrata.ai";
     }
 
     return url.origin;
@@ -64,6 +64,35 @@ interface InviteRequestBody {
   user_email?: string;
 }
 
+const ELECTION_FIXED_PHASE_DAYS = 7;
+const REMOTE_WRITTEN_V3_PARTICIPATION_DAYS = 14;
+const WRITTEN_REMOTE_META_START = "<!--clearstrata-written-remote\n";
+const WRITTEN_REMOTE_META_END = "\n-->";
+
+type MeetingFormatUi = "in_person" | "live_remote" | "hybrid" | "written_remote";
+
+type WrittenRemoteMeta = {
+  v?: number;
+  mode?: string;
+  public_notice_close_at?: string;
+  discussion_closes_at?: string;
+  voting_open_at?: string;
+  voting_close_at?: string;
+  participation_open_at?: string;
+  participation_close_at?: string;
+  nomination_open_at?: string;
+  nomination_close_at?: string;
+};
+
+type FormalNoticeIsoWindow = { openIso: string; closeIso: string };
+
+type InviteEmailFieldRow = {
+  labelZh: string;
+  labelEn: string;
+  valueZh: string;
+  valueEn: string;
+};
+
 /** First non-empty time string: `start_time` → `meeting_time` → `scheduled_at` (DB canonical). */
 function pickMeetingStartRaw(meeting: Record<string, unknown>): string | null {
   const start_time = meeting["start_time"];
@@ -73,10 +102,296 @@ function pickMeetingStartRaw(meeting: Record<string, unknown>): string | null {
   const str = (v: unknown): string | null =>
     typeof v === "string" && v.trim() !== "" ? v.trim() : null;
 
-  const meetingTimeRaw =
-    str(start_time) || str(meeting_time) || str(scheduled_at);
+  return str(start_time) || str(meeting_time) || str(scheduled_at);
+}
 
-  return meetingTimeRaw ?? null;
+function addDaysIso(fromIso: string, days: number): string {
+  const base = new Date(fromIso);
+  if (Number.isNaN(base.getTime())) return new Date().toISOString();
+  const d = new Date(base.getTime());
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString();
+}
+
+function deriveCouncilElectionCanonFromScheduledAt(scheduledIso: string | null | undefined) {
+  const t = scheduledIso?.trim();
+  if (!t) return null;
+  const base = new Date(t);
+  if (Number.isNaN(base.getTime())) return null;
+  const publicNoticeOpenIso = base.toISOString();
+  const publicNoticeCloseIso = addDaysIso(publicNoticeOpenIso, ELECTION_FIXED_PHASE_DAYS);
+  const nominationOpenIso = publicNoticeCloseIso;
+  const nominationCloseIso = addDaysIso(publicNoticeOpenIso, ELECTION_FIXED_PHASE_DAYS * 2);
+  const votingOpenIso = nominationCloseIso;
+  const votingCloseIso = addDaysIso(publicNoticeOpenIso, ELECTION_FIXED_PHASE_DAYS * 3);
+  return {
+    publicNoticeOpenIso,
+    publicNoticeCloseIso,
+    nominationOpenIso,
+    nominationCloseIso,
+    votingOpenIso,
+    votingCloseIso,
+  };
+}
+
+function deriveRemoteWrittenV3CanonFromScheduledAt(scheduledIso: string | null | undefined) {
+  const t = scheduledIso?.trim();
+  if (!t) return null;
+  const base = new Date(t);
+  if (Number.isNaN(base.getTime())) return null;
+  const publicNoticeOpenIso = base.toISOString();
+  const closeIso = addDaysIso(publicNoticeOpenIso, REMOTE_WRITTEN_V3_PARTICIPATION_DAYS);
+  return {
+    publicNoticeOpenIso,
+    publicNoticeCloseIso: closeIso,
+    nominationOpenIso: publicNoticeOpenIso,
+    nominationCloseIso: closeIso,
+    votingOpenIso: publicNoticeOpenIso,
+    votingCloseIso: closeIso,
+  };
+}
+
+function deriveAgmSgmCanonDisplayWindows(
+  scheduledIso: string | null | undefined,
+  hasElectionAgenda: boolean,
+) {
+  const full = deriveCouncilElectionCanonFromScheduledAt(scheduledIso);
+  if (!full) return null;
+  if (hasElectionAgenda) return full;
+  const votingOpenIso = full.publicNoticeCloseIso;
+  const votingCloseIso = addDaysIso(votingOpenIso, ELECTION_FIXED_PHASE_DAYS);
+  return {
+    ...full,
+    nominationOpenIso: null as string | null,
+    nominationCloseIso: null as string | null,
+    votingOpenIso,
+    votingCloseIso,
+  };
+}
+
+function extractWrittenRemoteMeta(descriptionZh: string | null | undefined): {
+  meta: WrittenRemoteMeta | null;
+} {
+  const s = descriptionZh ?? "";
+  const i = s.lastIndexOf(WRITTEN_REMOTE_META_START);
+  if (i < 0) return { meta: null };
+  const end = s.indexOf(WRITTEN_REMOTE_META_END, i + WRITTEN_REMOTE_META_START.length);
+  if (end < 0) return { meta: null };
+  const raw = s.slice(i + WRITTEN_REMOTE_META_START.length, end).trim();
+  try {
+    const o = JSON.parse(raw) as WrittenRemoteMeta;
+    return { meta: o && typeof o === "object" ? o : null };
+  } catch {
+    return { meta: null };
+  }
+}
+
+function isWrittenRemoteV3Meta(meta: WrittenRemoteMeta | null): boolean {
+  if (!meta) return false;
+  const v = Number(meta.v);
+  const mode = String(meta.mode ?? "").trim().toLowerCase();
+  if (v !== 3) return false;
+  return mode === "remote_written" || mode === "written_remote";
+}
+
+function isWrittenRemoteV3Meeting(meeting: Record<string, unknown>): boolean {
+  const desc = typeof meeting.description_zh === "string" ? meeting.description_zh : "";
+  return isWrittenRemoteV3Meta(extractWrittenRemoteMeta(desc).meta);
+}
+
+function meetingFormatUiFromRow(meeting: Record<string, unknown>): MeetingFormatUi {
+  const fmt = String(meeting.meeting_format ?? "").trim().toLowerCase();
+  if (fmt === "in_person") return "in_person";
+  if (fmt === "electronic") return "live_remote";
+  if (fmt === "written_remote" || fmt === "remote_written") return "written_remote";
+  if (fmt === "hybrid") {
+    const desc = typeof meeting.description_zh === "string" ? meeting.description_zh : "";
+    if (extractWrittenRemoteMeta(desc).meta) return "written_remote";
+    return "hybrid";
+  }
+  return "hybrid";
+}
+
+function isWrittenRemoteUi(ui: MeetingFormatUi): boolean {
+  return ui === "written_remote";
+}
+
+function isStrictAgmOrSgmMeeting(meeting: Record<string, unknown>): boolean {
+  const mt = String(meeting.meeting_type ?? "").trim().toLowerCase();
+  return mt === "agm" || mt === "sgm";
+}
+
+function councilWrittenRemoteWindows(meeting: Record<string, unknown>) {
+  const ui = meetingFormatUiFromRow(meeting);
+  const empty = () => ({
+    publicNoticeOpens: null as string | null,
+    publicNoticeCloses: null as string | null,
+    nominationOpens: null as string | null,
+    nominationCloses: null as string | null,
+    votingOpens: null as string | null,
+    votingCloses: null as string | null,
+  });
+  if (!isWrittenRemoteUi(ui)) return empty();
+
+  const scheduled = typeof meeting.scheduled_at === "string" ? meeting.scheduled_at : null;
+
+  if (isWrittenRemoteV3Meeting(meeting)) {
+    const v3 = deriveRemoteWrittenV3CanonFromScheduledAt(scheduled);
+    if (v3) {
+      return {
+        publicNoticeOpens: v3.publicNoticeOpenIso,
+        publicNoticeCloses: v3.publicNoticeCloseIso,
+        nominationOpens: v3.nominationOpenIso,
+        nominationCloses: v3.nominationCloseIso,
+        votingOpens: v3.votingOpenIso,
+        votingCloses: v3.votingCloseIso,
+      };
+    }
+  }
+
+  const canon = deriveCouncilElectionCanonFromScheduledAt(scheduled);
+  if (canon) {
+    return {
+      publicNoticeOpens: canon.publicNoticeOpenIso,
+      publicNoticeCloses: canon.publicNoticeCloseIso,
+      nominationOpens: null,
+      nominationCloses: null,
+      votingOpens: null,
+      votingCloses: null,
+    };
+  }
+
+  const { meta } = extractWrittenRemoteMeta(
+    typeof meeting.description_zh === "string" ? meeting.description_zh : "",
+  );
+  const open = scheduled?.trim() ? scheduled : null;
+  const closeRaw = (meta?.public_notice_close_at || meta?.discussion_closes_at || null)?.trim() ||
+    null;
+  return {
+    publicNoticeOpens: open,
+    publicNoticeCloses: closeRaw,
+    nominationOpens: null,
+    nominationCloses: null,
+    votingOpens: meta?.voting_open_at?.trim() || null,
+    votingCloses: meta?.voting_close_at?.trim() || null,
+  };
+}
+
+function councilMeetingVotingWindowFallback(meeting: Record<string, unknown>) {
+  const ui = meetingFormatUiFromRow(meeting);
+  if (isWrittenRemoteUi(ui)) {
+    if (isWrittenRemoteV3Meeting(meeting)) {
+      const v3 = deriveRemoteWrittenV3CanonFromScheduledAt(
+        typeof meeting.scheduled_at === "string" ? meeting.scheduled_at : null,
+      );
+      if (v3) return { votingOpens: v3.votingOpenIso, votingCloses: v3.votingCloseIso };
+    }
+    const canon = deriveCouncilElectionCanonFromScheduledAt(
+      typeof meeting.scheduled_at === "string" ? meeting.scheduled_at : null,
+    );
+    if (canon) {
+      return { votingOpens: canon.votingOpenIso, votingCloses: canon.votingCloseIso };
+    }
+  }
+  const vo = typeof meeting.voting_open_at === "string" && meeting.voting_open_at.trim()
+    ? meeting.voting_open_at.trim()
+    : null;
+  const vc = typeof meeting.voting_close_at === "string" && meeting.voting_close_at.trim()
+    ? meeting.voting_close_at.trim()
+    : null;
+  if (vo || vc) return { votingOpens: vo, votingCloses: vc };
+  const w = councilWrittenRemoteWindows(meeting);
+  if (w.votingOpens || w.votingCloses) {
+    return { votingOpens: w.votingOpens, votingCloses: w.votingCloses };
+  }
+  if (w.publicNoticeOpens || w.publicNoticeCloses) {
+    return {
+      votingOpens: w.publicNoticeOpens ?? w.publicNoticeCloses,
+      votingCloses: w.publicNoticeCloses ?? w.publicNoticeOpens,
+    };
+  }
+  return { votingOpens: null, votingCloses: null };
+}
+
+function deriveFormalNoticeTimelineWindows(
+  meeting: Record<string, unknown>,
+  opts: {
+    hasElectionAgenda: boolean;
+    ownerVoteVotingOpens?: string | null;
+    ownerVoteVotingCloses?: string | null;
+  },
+) {
+  const pair = (
+    open: string | null | undefined,
+    close: string | null | undefined,
+  ): FormalNoticeIsoWindow | null => {
+    const o = open?.trim();
+    const c = close?.trim();
+    if (!o || !c) return null;
+    return { openIso: o, closeIso: c };
+  };
+
+  if (isWrittenRemoteV3Meeting(meeting)) {
+    const v3 = deriveRemoteWrittenV3CanonFromScheduledAt(
+      typeof meeting.scheduled_at === "string" ? meeting.scheduled_at : null,
+    );
+    if (!v3) {
+      return { participation: null, publicNotice: null, nomination: null, voting: null };
+    }
+    const window = pair(v3.publicNoticeOpenIso, v3.publicNoticeCloseIso);
+    return {
+      participation: window,
+      publicNotice: window,
+      nomination: opts.hasElectionAgenda ? window : null,
+      voting: window,
+    };
+  }
+
+  if (isStrictAgmOrSgmMeeting(meeting)) {
+    const disp = deriveAgmSgmCanonDisplayWindows(
+      typeof meeting.scheduled_at === "string" ? meeting.scheduled_at : null,
+      opts.hasElectionAgenda,
+    );
+    if (!disp) {
+      return { participation: null, publicNotice: null, nomination: null, voting: null };
+    }
+    const publicNotice = pair(disp.publicNoticeOpenIso, disp.publicNoticeCloseIso);
+    const voting = pair(disp.votingOpenIso, disp.votingCloseIso);
+    const remoteWritten = isWrittenRemoteUi(meetingFormatUiFromRow(meeting));
+    return {
+      participation: remoteWritten ? (publicNotice ?? voting) : null,
+      publicNotice,
+      nomination: opts.hasElectionAgenda && disp.nominationOpenIso && disp.nominationCloseIso
+        ? pair(disp.nominationOpenIso, disp.nominationCloseIso)
+        : null,
+      voting,
+    };
+  }
+
+  const disc = councilWrittenRemoteWindows(meeting);
+  let noticeOpen = disc.publicNoticeOpens?.trim() || null;
+  let noticeClose = disc.publicNoticeCloses?.trim() || null;
+  if (!noticeOpen && !noticeClose && typeof meeting.scheduled_at === "string" &&
+    meeting.scheduled_at.trim()) {
+    const canon = deriveCouncilElectionCanonFromScheduledAt(meeting.scheduled_at);
+    if (canon) {
+      noticeOpen = canon.publicNoticeOpenIso;
+      noticeClose = canon.publicNoticeCloseIso;
+    }
+  }
+
+  const fb = councilMeetingVotingWindowFallback(meeting);
+  const voteOpen = opts.ownerVoteVotingOpens?.trim() || fb.votingOpens || null;
+  const voteClose = opts.ownerVoteVotingCloses?.trim() || fb.votingCloses || null;
+
+  return {
+    participation: isWrittenRemoteUi(meetingFormatUiFromRow(meeting))
+      ? pair(noticeOpen, noticeClose)
+      : null,
+    publicNotice: pair(noticeOpen, noticeClose),
+    nomination: pair(disc.nominationOpens, disc.nominationCloses),
+    voting: pair(voteOpen, voteClose),
+  };
 }
 
 function formatWhenZhFromDate(startTime: Date): string {
@@ -87,65 +402,185 @@ function formatWhenZhFromDate(startTime: Date): string {
 
 function formatWhenEnFromDate(startTime: Date): string {
   return startTime.toLocaleString("en-US", {
-    weekday: "short",
     year: "numeric",
-    month: "short",
+    month: "long",
     day: "numeric",
-    hour: "2-digit",
+    hour: "numeric",
     minute: "2-digit",
   });
 }
 
-/** Meeting start time for display (locale picks zh vs en formatting). */
-function getMeetingEmailDisplay(
-  meeting: Record<string, unknown>,
-  locale: "en" | "zh",
-): {
-  formattedTimeZh: string;
-  formattedTimeEn: string;
-  formattedTime: string;
-} {
-  const startRaw = pickMeetingStartRaw(meeting);
-  let formattedTimeZh = "待定";
-  let formattedTimeEn = "TBD";
-  if (startRaw) {
-    const startTime = new Date(startRaw);
-    if (!Number.isNaN(startTime.getTime())) {
-      formattedTimeZh = formatWhenZhFromDate(startTime);
-      formattedTimeEn = formatWhenEnFromDate(startTime);
-    }
-  }
-  const formattedTime = locale === "en" ? formattedTimeEn : formattedTimeZh;
-  return { formattedTimeZh, formattedTimeEn, formattedTime };
+function formatInstantBilingual(iso: string | null | undefined): { zh: string; en: string } {
+  if (!iso?.trim()) return { zh: "暂未设置", en: "Not set" };
+  const d = new Date(iso.trim());
+  if (Number.isNaN(d.getTime())) return { zh: "暂未设置", en: "Not set" };
+  return { zh: formatWhenZhFromDate(d), en: formatWhenEnFromDate(d) };
 }
 
-/** zh: title_zh > title > 默认；en: title_en > title > 默认 */
-function resolveMeetingTitle(m: Record<string, unknown>, locale: "en" | "zh"): string {
-  const generic = typeof m.title === "string" && m.title.trim() ? m.title.trim() : "";
-  if (locale === "zh") {
-    const zh = typeof m.title_zh === "string" && m.title_zh.trim() ? m.title_zh.trim() : "";
-    if (zh) return zh;
-    if (generic) return generic;
-    return "会议通知";
-  }
+function formatWindowSpanBilingual(window: FormalNoticeIsoWindow | null): { zh: string; en: string } {
+  if (!window) return { zh: "暂未设置", en: "Not set" };
+  const open = formatInstantBilingual(window.openIso);
+  const close = formatInstantBilingual(window.closeIso);
+  return {
+    zh: `${open.zh} · ${close.zh}`,
+    en: `${open.en} · ${close.en}`,
+  };
+}
+
+function resolveMeetingTitles(m: Record<string, unknown>): { titleZh: string; titleEn: string } {
+  const zh = typeof m.title_zh === "string" && m.title_zh.trim() ? m.title_zh.trim() : "";
   const en = typeof m.title_en === "string" && m.title_en.trim() ? m.title_en.trim() : "";
-  if (en) return en;
-  if (generic) return generic;
-  return "Meeting Invitation";
+  const generic = typeof m.title === "string" && m.title.trim() ? m.title.trim() : "";
+  return {
+    titleZh: zh || generic || en || "会议通知",
+    titleEn: en || generic || zh || "Meeting Invitation",
+  };
 }
 
-function formatDurationText(m: Record<string, unknown>, locale: "en" | "zh"): string {
-  const raw = m.duration_minutes ?? m.duration;
-  const n = typeof raw === "number" && Number.isFinite(raw) ? raw : null;
-  if (n === null) return "—";
-  return locale === "en" ? `${n} minutes` : `${n} 分钟`;
+function meetingFormatLabelBilingual(meeting: Record<string, unknown>): { zh: string; en: string } {
+  const ui = meetingFormatUiFromRow(meeting);
+  if (isWrittenRemoteUi(ui)) {
+    return { zh: "远程书面会议", en: "Remote Written Meeting" };
+  }
+  if (ui === "in_person") return { zh: "现场会议", en: "In-Person Meeting" };
+  if (ui === "live_remote") return { zh: "线上直播", en: "Live Remote Meeting" };
+  return { zh: "混合会议", en: "Hybrid Meeting" };
 }
 
-/** 有 location 显示；否则中英文 fallback */
-function formatLocationText(m: Record<string, unknown>, locale: "en" | "zh"): string {
-  const loc = typeof m.location === "string" && m.location.trim() ? m.location.trim() : "";
-  if (loc) return loc;
-  return locale === "en" ? "Online / To be confirmed" : "线上 / 待确认";
+function locationLabelBilingual(meeting: Record<string, unknown>): { zh: string; en: string } {
+  if (isWrittenRemoteUi(meetingFormatUiFromRow(meeting))) {
+    return { zh: "线上", en: "Online" };
+  }
+  const loc = typeof meeting.location === "string" && meeting.location.trim()
+    ? meeting.location.trim()
+    : "";
+  if (loc) return { zh: loc, en: loc };
+  return { zh: "待确认", en: "To be confirmed" };
+}
+
+function durationLabelBilingual(meeting: Record<string, unknown>): { zh: string; en: string } | null {
+  const raw = meeting.duration_minutes ?? meeting.duration;
+  const n = typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? raw : null;
+  if (n === null) return null;
+  return { zh: `${n} 分钟`, en: `${n} minutes` };
+}
+
+function buildInviteEmailFields(
+  meeting: Record<string, unknown>,
+  opts: {
+    hasElectionAgenda: boolean;
+    ownerVoteVotingOpens?: string | null;
+    ownerVoteVotingCloses?: string | null;
+  },
+): InviteEmailFieldRow[] {
+  const titles = resolveMeetingTitles(meeting);
+  const remoteWritten = isWrittenRemoteUi(meetingFormatUiFromRow(meeting));
+  const startRaw = pickMeetingStartRaw(meeting);
+  const when = formatInstantBilingual(startRaw);
+  const timeline = deriveFormalNoticeTimelineWindows(meeting, opts);
+  const fields: InviteEmailFieldRow[] = [
+    {
+      labelZh: "会议",
+      labelEn: "Meeting",
+      valueZh: titles.titleZh,
+      valueEn: titles.titleEn,
+    },
+    {
+      labelZh: "组织者",
+      labelEn: "Organizer",
+      valueZh: "ClearStrata 团队",
+      valueEn: "ClearStrata Team",
+    },
+  ];
+
+  if (remoteWritten) {
+    const fmt = meetingFormatLabelBilingual(meeting);
+    fields.push({
+      labelZh: "会议形式",
+      labelEn: "Meeting Format",
+      valueZh: fmt.zh,
+      valueEn: fmt.en,
+    });
+    const loc = locationLabelBilingual(meeting);
+    fields.push({
+      labelZh: "地点",
+      labelEn: "Location",
+      valueZh: loc.zh,
+      valueEn: loc.en,
+    });
+    if (startRaw) {
+      fields.push({
+        labelZh: "时间",
+        labelEn: "Date & Time",
+        valueZh: when.zh,
+        valueEn: when.en,
+      });
+    }
+    const participation = formatWindowSpanBilingual(timeline.participation);
+    fields.push({
+      labelZh: "参与期间",
+      labelEn: "Participation Period",
+      valueZh: participation.zh,
+      valueEn: participation.en,
+    });
+    const publicNotice = formatWindowSpanBilingual(timeline.publicNotice);
+    fields.push({
+      labelZh: "公示与讨论期",
+      labelEn: "Public Notice & Discussion Period",
+      valueZh: publicNotice.zh,
+      valueEn: publicNotice.en,
+    });
+    if (opts.hasElectionAgenda && timeline.nomination) {
+      const nomination = formatWindowSpanBilingual(timeline.nomination);
+      fields.push({
+        labelZh: "提名期",
+        labelEn: "Nomination Period",
+        valueZh: nomination.zh,
+        valueEn: nomination.en,
+      });
+    }
+    const voting = formatWindowSpanBilingual(timeline.voting);
+    fields.push({
+      labelZh: "投票期",
+      labelEn: "Voting Period",
+      valueZh: voting.zh,
+      valueEn: voting.en,
+    });
+    return fields;
+  }
+
+  if (startRaw) {
+    fields.push({
+      labelZh: "时间",
+      labelEn: "Date & Time",
+      valueZh: when.zh,
+      valueEn: when.en,
+    });
+  }
+  const duration = durationLabelBilingual(meeting);
+  if (duration) {
+    fields.push({
+      labelZh: "时长",
+      labelEn: "Duration",
+      valueZh: duration.zh,
+      valueEn: duration.en,
+    });
+  }
+  const fmt = meetingFormatLabelBilingual(meeting);
+  fields.push({
+    labelZh: "会议形式",
+    labelEn: "Meeting Format",
+    valueZh: fmt.zh,
+    valueEn: fmt.en,
+  });
+  const loc = locationLabelBilingual(meeting);
+  fields.push({
+    labelZh: "地点",
+    labelEn: "Location",
+    valueZh: loc.zh,
+    valueEn: loc.en,
+  });
+  return fields;
 }
 
 function escapeHtml(s: string): string {
@@ -156,141 +591,55 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-/** Stripe/Notion-style invitation; all copy from params (plain HTML, no Resend `data`). */
+/** Bilingual invitation HTML; all copy from params (plain HTML, no Resend `data`). */
 interface InviteEmailHtmlParams {
-  locale: "en" | "zh";
-  recipientName: string;
-  meetingTitle: string;
-  formattedTime: string;
-  durationText: string;
-  locationText: string;
-  organizerName: string;
+  recipientNameZh: string;
+  recipientNameEn: string;
+  fields: InviteEmailFieldRow[];
   inviteLink: string;
   signInUrl: string;
   logoUrl: string;
 }
 
+function renderInviteFieldRows(fields: InviteEmailFieldRow[]): string {
+  return fields.map((row, index) => {
+    const safe = {
+      labelZh: escapeHtml(row.labelZh),
+      labelEn: escapeHtml(row.labelEn),
+      valueZh: escapeHtml(row.valueZh),
+      valueEn: escapeHtml(row.valueEn),
+    };
+    const border = index < fields.length - 1 ? "border-bottom:1px solid #e5e7eb;" : "";
+    return `<tr><td style="padding:12px 0;${border}">
+      <p style="margin:0 0 6px;color:#6b7280;font-size:12px;font-weight:600;">${safe.labelZh} / ${safe.labelEn}</p>
+      <p style="margin:0 0 2px;color:#111827;font-size:15px;">${safe.valueZh}</p>
+      <p style="margin:0;color:#374151;font-size:14px;">${safe.valueEn}</p>
+    </td></tr>`;
+  }).join("");
+}
+
 function buildEmailHtml(p: InviteEmailHtmlParams): string {
   const {
-    locale,
-    recipientName,
-    meetingTitle,
-    formattedTime,
-    durationText,
-    locationText,
-    organizerName,
+    recipientNameZh,
+    recipientNameEn,
+    fields,
     inviteLink,
     signInUrl,
     logoUrl,
   } = p;
 
   const safe = {
-    recipientName: escapeHtml(recipientName),
-    meetingTitle: escapeHtml(meetingTitle),
-    formattedTime: escapeHtml(formattedTime),
-    durationText: escapeHtml(durationText),
-    locationText: escapeHtml(locationText),
-    organizerName: escapeHtml(organizerName),
+    recipientNameZh: escapeHtml(recipientNameZh),
+    recipientNameEn: escapeHtml(recipientNameEn),
     logoUrl: escapeHtml(logoUrl),
   };
-
-  if (locale === "en") {
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Meeting invitation</title>
-</head>
-<body style="margin:0;padding:0;background:#f6f9fc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f9fc;padding:40px 16px;">
-    <tr>
-      <td align="center">
-        <table role="presentation" width="100%" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06),0 4px 12px rgba(0,0,0,0.04);">
-          <tr>
-            <td style="background:#16a34a;padding:16px 20px;text-align:center;">
-              <div style="margin-bottom:12px;">
-                <img
-                  src="${safe.logoUrl}"
-                  alt="ClearStrata"
-                  style="height:48px;object-fit:contain;display:block;margin:0 auto;"
-                />
-              </div>
-              <div style="font-size:22px;font-weight:600;color:#ffffff;">
-                会议邀请 / Meeting Invitation
-              </div>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:32px 32px 24px;">
-              <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.65;">
-                Hi ${safe.recipientName},<br /><br />
-                You&rsquo;ve been invited to a meeting. Details are below.
-              </p>
-              <table role="presentation" width="100%" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:20px 22px;">
-                <tr><td style="padding:0 0 12px;border-bottom:1px solid #e5e7eb;">
-                  <p style="margin:0 0 4px;color:#6b7280;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">Meeting</p>
-                  <p style="margin:0;color:#111827;font-size:15px;font-weight:600;">${safe.meetingTitle}</p>
-                </td></tr>
-                <tr><td style="padding:12px 0;border-bottom:1px solid #e5e7eb;">
-                  <p style="margin:0 0 4px;color:#6b7280;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">When</p>
-                  <p style="margin:0;color:#111827;font-size:15px;">${safe.formattedTime}</p>
-                </td></tr>
-                <tr><td style="padding:12px 0;border-bottom:1px solid #e5e7eb;">
-                  <p style="margin:0 0 4px;color:#6b7280;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">Duration</p>
-                  <p style="margin:0;color:#111827;font-size:15px;">${safe.durationText}</p>
-                </td></tr>
-                <tr><td style="padding:12px 0;border-bottom:1px solid #e5e7eb;">
-                  <p style="margin:0 0 4px;color:#6b7280;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">Location</p>
-                  <p style="margin:0;color:#111827;font-size:15px;">${safe.locationText}</p>
-                </td></tr>
-                <tr><td style="padding:12px 0 0;">
-                  <p style="margin:0 0 4px;color:#6b7280;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;">Organizer</p>
-                  <p style="margin:0;color:#111827;font-size:15px;">${safe.organizerName}</p>
-                </td></tr>
-              </table>
-              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:28px;">
-                <tr>
-                  <td align="center" style="padding:0 0 12px;">
-                    <a href="${inviteLink}" style="display:inline-block;background:#1D9E75;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;padding:14px 28px;border-radius:8px;">进入会议 / Enter Meeting</a>
-                  </td>
-                </tr>
-                <tr>
-                  <td align="center" style="padding:0 0 8px;">
-                    <a href="${signInUrl}" style="display:inline-block;background:#ffffff;color:#374151;font-size:14px;font-weight:600;text-decoration:none;padding:12px 24px;border-radius:8px;border:1px solid #d1d5db;">Sign in only</a>
-                  </td>
-                </tr>
-              </table>
-              <p style="margin:24px 0 0;color:#6b7280;font-size:12px;line-height:1.6;">
-                If the button doesn&rsquo;t work, copy and paste this link into your browser:<br />
-                <a href="${inviteLink}" style="color:#1D9E75;word-break:break-all;">${inviteLink}</a>
-              </p>
-              <p style="margin:16px 0 0;color:#6b7280;font-size:12px;line-height:1.6;">
-                Sign-in only: <a href="${signInUrl}" style="color:#1D9E75;word-break:break-all;">${signInUrl}</a>
-              </p>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:20px 32px 28px;border-top:1px solid #f3f4f6;background:#fafafa;">
-              <p style="margin:0;color:#9ca3af;font-size:11px;line-height:1.5;">
-                This is an automated message from ClearStrata. Please do not reply to this email.
-              </p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
-  }
 
   return `<!DOCTYPE html>
 <html lang="zh">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>会议邀请</title>
+  <title>会议邀请 / Meeting Invitation</title>
 </head>
 <body style="margin:0;padding:0;background:#f6f9fc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,'PingFang SC','Microsoft YaHei',sans-serif;">
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f9fc;padding:40px 16px;">
@@ -313,31 +662,20 @@ function buildEmailHtml(p: InviteEmailHtmlParams): string {
           </tr>
           <tr>
             <td style="padding:32px 32px 24px;">
+              <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.65;">
+                ${safe.recipientNameZh} 您好，
+              </p>
               <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.65;">
-                ${safe.recipientName} 您好，<br /><br />
-                您已被邀请参加以下会议，详情如下。
+                Hello ${safe.recipientNameEn},
+              </p>
+              <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.65;">
+                您已被邀请参加以下会议，请查看会议详情并进入会议页面参与。
+              </p>
+              <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.65;">
+                You are invited to the following meeting. Please review the details and enter the meeting page to participate.
               </p>
               <table role="presentation" width="100%" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:20px 22px;">
-                <tr><td style="padding:0 0 12px;border-bottom:1px solid #e5e7eb;">
-                  <p style="margin:0 0 4px;color:#6b7280;font-size:12px;font-weight:600;">会议</p>
-                  <p style="margin:0;color:#111827;font-size:15px;font-weight:600;">${safe.meetingTitle}</p>
-                </td></tr>
-                <tr><td style="padding:12px 0;border-bottom:1px solid #e5e7eb;">
-                  <p style="margin:0 0 4px;color:#6b7280;font-size:12px;font-weight:600;">时间</p>
-                  <p style="margin:0;color:#111827;font-size:15px;">${safe.formattedTime}</p>
-                </td></tr>
-                <tr><td style="padding:12px 0;border-bottom:1px solid #e5e7eb;">
-                  <p style="margin:0 0 4px;color:#6b7280;font-size:12px;font-weight:600;">时长</p>
-                  <p style="margin:0;color:#111827;font-size:15px;">${safe.durationText}</p>
-                </td></tr>
-                <tr><td style="padding:12px 0;border-bottom:1px solid #e5e7eb;">
-                  <p style="margin:0 0 4px;color:#6b7280;font-size:12px;font-weight:600;">地点</p>
-                  <p style="margin:0;color:#111827;font-size:15px;">${safe.locationText}</p>
-                </td></tr>
-                <tr><td style="padding:12px 0 0;">
-                  <p style="margin:0 0 4px;color:#6b7280;font-size:12px;font-weight:600;">组织者</p>
-                  <p style="margin:0;color:#111827;font-size:15px;">${safe.organizerName}</p>
-                </td></tr>
+                ${renderInviteFieldRows(fields)}
               </table>
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:28px;">
                 <tr>
@@ -345,25 +683,23 @@ function buildEmailHtml(p: InviteEmailHtmlParams): string {
                     <a href="${inviteLink}" style="display:inline-block;background:#1D9E75;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;padding:14px 28px;border-radius:8px;">进入会议 / Enter Meeting</a>
                   </td>
                 </tr>
-                <tr>
-                  <td align="center" style="padding:0 0 8px;">
-                    <a href="${signInUrl}" style="display:inline-block;background:#ffffff;color:#374151;font-size:14px;font-weight:600;text-decoration:none;padding:12px 24px;border-radius:8px;border:1px solid #d1d5db;">仅登录系统</a>
-                  </td>
-                </tr>
               </table>
               <p style="margin:24px 0 0;color:#6b7280;font-size:12px;line-height:1.6;">
-                若按钮无法打开，请将以下链接复制到浏览器地址栏：<br />
+                如果按钮无法打开，请复制以下链接：<br />
+                If the button does not open, copy this link:<br />
                 <a href="${inviteLink}" style="color:#1D9E75;word-break:break-all;">${inviteLink}</a>
               </p>
               <p style="margin:16px 0 0;color:#6b7280;font-size:12px;line-height:1.6;">
-                仅登录：<a href="${signInUrl}" style="color:#1D9E75;word-break:break-all;">${signInUrl}</a>
+                仅登录：<a href="${signInUrl}" style="color:#1D9E75;word-break:break-all;">${signInUrl}</a><br />
+                Sign in only: <a href="${signInUrl}" style="color:#1D9E75;word-break:break-all;">${signInUrl}</a>
               </p>
             </td>
           </tr>
           <tr>
             <td style="padding:20px 32px 28px;border-top:1px solid #f3f4f6;background:#fafafa;">
               <p style="margin:0;color:#9ca3af;font-size:11px;line-height:1.5;">
-                此邮件由 ClearStrata 系统自动发送，请勿直接回复。
+                此邮件由 ClearStrata 自动发送。<br />
+                This email was sent automatically by ClearStrata.
               </p>
             </td>
           </tr>
@@ -526,7 +862,7 @@ Deno.serve(async (req: Request) => {
     const [{ data: meeting, error: meetingErr }, { data: profile, error: profileErr }] =
       await Promise.all([
         supabaseAdmin.from("meetings").select(
-          "id, property_id, title_en, title_zh, scheduled_at, duration_minutes, is_virtual, meeting_link, location, created_by",
+          "id, property_id, title_en, title_zh, meeting_type, description_zh, scheduled_at, duration_minutes, is_virtual, meeting_link, location, meeting_format, voting_open_at, voting_close_at, created_by",
         ).eq("id", meeting_id).eq("property_id", property_id)
           .maybeSingle(),
         supabaseAdmin.from("profiles").select("full_name_en, full_name_zh, email").eq("id", user_id)
@@ -575,9 +911,12 @@ Deno.serve(async (req: Request) => {
       return apiResponse(false, "User profile or email not found", { profileErr }, 404);
     }
 
-    const recipientName = locale === "en"
-      ? (profile.full_name_en || profile.full_name_zh || "Owner")
-      : (profile.full_name_zh || profile.full_name_en || "业主");
+    const recipientNameZh = profile.full_name_zh?.trim() ||
+      profile.full_name_en?.trim() ||
+      "业主";
+    const recipientNameEn = profile.full_name_en?.trim() ||
+      profile.full_name_zh?.trim() ||
+      "Owner";
 
     const normalizedBaseUrl = normalizeAppBaseUrl(Deno.env.get("APP_BASE_URL"));
     const logoUrl = `${normalizedBaseUrl}/logo-email.png`;
@@ -616,43 +955,62 @@ Deno.serve(async (req: Request) => {
     console.log("meeting raw:", meeting);
 
     const m = meeting as Record<string, unknown>;
-    const displayMeta = getMeetingEmailDisplay(m, locale);
-    const meetingTitle = resolveMeetingTitle(m, locale);
-    const formattedTime = displayMeta.formattedTime;
-    const durationText = formatDurationText(m, locale);
-    const locationText = formatLocationText(m, locale);
 
-    let organizerName = "—";
-    const createdBy = m.created_by as string | undefined;
-    if (createdBy) {
-      const { data: orgProf } = await supabaseAdmin.from("profiles").select("full_name_en, full_name_zh").eq(
-        "id",
-        createdBy,
-      ).maybeSingle();
-      if (orgProf) {
-        organizerName = locale === "en"
-          ? (orgProf.full_name_en || orgProf.full_name_zh || "—")
-          : (orgProf.full_name_zh || orgProf.full_name_en || "—");
+    const [{ count: electionAgendaCount, error: electionAgendaErr }, { data: ovMeetingId }] =
+      await Promise.all([
+        supabaseAdmin
+          .from("meeting_agenda_items")
+          .select("id", { count: "exact", head: true })
+          .eq("meeting_id", meeting_id)
+          .like("description_zh", "%clearstrata-election-agenda%"),
+        supabaseAdmin.rpc("_archive_resolve_owner_vote_meeting_id", {
+          p_property_id: property_id,
+          p_council_meeting_id: meeting_id,
+        }),
+      ]);
+
+    if (electionAgendaErr) {
+      console.warn("[send-meeting-invite] election agenda count failed (non-fatal)", electionAgendaErr);
+    }
+
+    let ownerVoteVotingOpens: string | null = null;
+    let ownerVoteVotingCloses: string | null = null;
+    const resolvedOvId = typeof ovMeetingId === "string" ? ovMeetingId : null;
+    if (resolvedOvId) {
+      const { data: ovRow } = await supabaseAdmin
+        .from("owner_vote_meetings")
+        .select("voting_opens_at, voting_closes_at")
+        .eq("id", resolvedOvId)
+        .maybeSingle();
+      if (ovRow) {
+        ownerVoteVotingOpens = typeof ovRow.voting_opens_at === "string"
+          ? ovRow.voting_opens_at
+          : null;
+        ownerVoteVotingCloses = typeof ovRow.voting_closes_at === "string"
+          ? ovRow.voting_closes_at
+          : null;
       }
     }
+
+    const inviteFields = buildInviteEmailFields(m, {
+      hasElectionAgenda: (electionAgendaCount ?? 0) > 0,
+      ownerVoteVotingOpens,
+      ownerVoteVotingCloses,
+    });
 
     console.log("[send-meeting-invite] email fields", {
       normalizedBaseUrl,
       meetingMagicUrl,
       signInUrl,
       logoUrl,
-      meetingTitle,
-      formattedTime,
+      remoteWritten: isWrittenRemoteUi(meetingFormatUiFromRow(m)),
+      inviteFieldCount: inviteFields.length,
     });
 
     const htmlTemplate = buildEmailHtml({
-      locale,
-      recipientName,
-      meetingTitle,
-      formattedTime,
-      durationText,
-      locationText,
-      organizerName,
+      recipientNameZh,
+      recipientNameEn,
+      fields: inviteFields,
       inviteLink,
       signInUrl,
       logoUrl,

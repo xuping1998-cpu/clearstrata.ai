@@ -172,7 +172,7 @@ Deno.serve(async (req: Request) => {
     const enGreetingLine = hasName ? `Hello ${safeName},` : "Hello,";
 
     const appBase =
-      Deno.env.get("APP_BASE_URL")?.replace(/\/$/, "") || "https://www.clearstrata.ai";
+      Deno.env.get("APP_BASE_URL")?.replace(/\/$/, "") || "https://app.clearstrata.ai";
     const enterUrl = `${appBase}/?propertyId=${encodeURIComponent(jr.property_id as string)}`;
     const reapplyUrl = `${appBase}/entry?propertyId=${encodeURIComponent(jr.property_id as string)}`;
 
@@ -224,7 +224,7 @@ Deno.serve(async (req: Request) => {
             <td style="background:#28C7D9;padding:36px 32px 28px 32px;text-align:center;">
               <div style="margin-bottom:12px;">
                 <img
-                  src="https://clearstrataaiserena.vercel.app/logo-email.png"
+                  src="${appBase}/logo-email.png"
                   alt="ClearStrata"
                   width="180"
                   style="display:block;margin:0 auto 20px auto;border:0;outline:none;text-decoration:none;height:auto;max-width:180px;"

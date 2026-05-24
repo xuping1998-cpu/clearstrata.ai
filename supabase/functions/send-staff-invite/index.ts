@@ -11,8 +11,8 @@
  *   - DO NOT include a real /staff-invite?token=... link (acceptance page lands in Phase 2C).
  *   - DO NOT write `public.property_members` (acceptance flow will do that later).
  *
- * APP_BASE_URL: optional secret; normalized to origin only. Empty / invalid / clearstrata.ai →
- * falls back to https://clearstrataaiserena.vercel.app (matches send-manager-invite).
+ * APP_BASE_URL: optional secret; normalized to origin only. Empty / invalid / clearstrata.ai / www.clearstrata.ai →
+ * falls back to https://app.clearstrata.ai (matches send-manager-invite).
  */
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -42,7 +42,7 @@ function logFullCatchError(error: unknown): void {
   });
 }
 
-const APP_BASE_DEFAULT_ORIGIN = "https://clearstrataaiserena.vercel.app";
+const APP_BASE_DEFAULT_ORIGIN = "https://app.clearstrata.ai";
 
 function normalizeAppBaseUrl(raw?: string | null): string {
   const cleaned = (raw ?? "").trim().replace(/[\u200B-\u200D\uFEFF]/g, "");
@@ -69,12 +69,12 @@ function normalizeAppBaseUrl(raw?: string | null): string {
   }
   try {
     const host = new URL(origin).hostname.replace(/^www\./i, "").toLowerCase();
-    if (host === "clearstrata.ai") {
+    if (host === "clearstrata.ai" || host === "www.clearstrata.ai") {
       console.log(
-        "✅ send-staff-invite APP_BASE_URL is clearstrata.ai → forcing test origin",
-        APP_BASE_DEFAULT_ORIGIN,
+        "✅ send-staff-invite APP_BASE_URL is marketing host → forcing app origin",
+        "https://app.clearstrata.ai",
       );
-      return APP_BASE_DEFAULT_ORIGIN;
+      return "https://app.clearstrata.ai";
     }
   } catch {
     return APP_BASE_DEFAULT_ORIGIN;
