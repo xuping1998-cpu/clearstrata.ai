@@ -749,7 +749,7 @@ export function MeetingVoteArchiveCard({
             ) : null}
           </div>
         </div>
-        {minutesVersionHistoryLabel ? (
+        {canManageMeetingArchive && minutesVersionHistoryLabel ? (
           <p className="text-[11px] text-slate-500">
             {en ? 'Version history: ' : '历史版本：'}
             {minutesVersionHistoryLabel}

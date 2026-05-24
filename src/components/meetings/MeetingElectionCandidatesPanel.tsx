@@ -18,6 +18,7 @@ import {
 } from '@/features/meetings/electionAgendaModel';
 import { deriveRemoteWrittenV3CanonFromScheduledAt } from '@/features/meetings/electionTimelineMath';
 import { isWrittenRemoteV3Meeting } from '@/features/meetings/meetingFormatModel';
+import { silentRegenerateMeetingArchiveVoteSnapshots } from '@/features/meetings/meetingDocumentsRead';
 import { supabase } from '@/lib/supabase';
 
 export type MeetingElectionCandidatesPanelProps = {
@@ -308,6 +309,7 @@ export function MeetingElectionCandidatesPanel({
       }
       setSelectedBallotIds([]);
       await onUpdated();
+      void silentRegenerateMeetingArchiveVoteSnapshots(meetingId);
     } catch (err) {
       console.error('submit_owner_election_ballot failed', err);
       ballotErrorAlert(extractRpcErrCode(err), en, t, maxBallotChoices);
