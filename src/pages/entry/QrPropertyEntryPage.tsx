@@ -14,6 +14,26 @@ const BACK_TO_HOME_PATH: '/' | '/entry' = '/';
 
 const OTP_LENGTH = 8;
 
+function isValidEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+function formatEntrySubmitError(raw: string, en: boolean): string {
+  const msg = raw.trim();
+  const lc = msg.toLowerCase();
+  if (
+    !msg ||
+    lc.includes('non-2xx status code') ||
+    lc.includes('edge function returned') ||
+    lc === 'entry failed'
+  ) {
+    return en
+      ? 'Submission failed. Please check your name, email, and unit number, then try again.'
+      : '提交失败，请检查姓名、邮箱和房号后重试。';
+  }
+  return msg;
+}
+
 const DRAFT_NAME_KEY = 'entry_draft_name';
 const DRAFT_UNIT_KEY = 'entry_draft_unit';
 
@@ -240,7 +260,17 @@ export function QrPropertyEntryPage() {
         reason: data?.reason,
       });
 
-      if (error) throw new Error(error.message || 'Entry failed');
+      if (error) {
+        const edgeMsg =
+          typeof data === 'object' && data !== null && typeof data.message === 'string'
+            ? data.message.trim()
+            : '';
+        if (edgeMsg) {
+          setSubmitErr(edgeMsg);
+          return;
+        }
+        throw new Error(error.message || 'Entry failed');
+      }
 
       // ── ok:false 分支 ──────────────────────────────────────────────────────
       if (!data || data.ok !== true) {
@@ -302,8 +332,8 @@ export function QrPropertyEntryPage() {
       // 未知返回 — 兜底报错
       throw new Error(data?.message || 'Unexpected response from server');
     } catch (e) {
-      const msg = e instanceof Error ? e.message : '加入失败。';
-      setSubmitErr(msg);
+      const raw = e instanceof Error ? e.message : en ? 'Entry failed' : '加入失败。';
+      setSubmitErr(formatEntrySubmitError(raw, en));
     } finally {
       setSubmitting(false);
     }
@@ -385,36 +415,52 @@ export function QrPropertyEntryPage() {
   /** Called when user confirms to proceed after seeing the "unit occupied" warning. */
   const handleContinueAfterOccupied = async () => {
     const name = fullName.trim();
-    const email = emailIn.trim();
+    const normalizedEmail = emailIn.trim().toLowerCase();
     const unit = unitNo.trim();
     setOccupiedConfirm(false);
+    if (!isValidEmail(normalizedEmail)) {
+      setSubmitErr(
+        en
+          ? 'Please enter a valid email address, for example name@example.com.'
+          : '请输入有效的邮箱地址，例如 name@example.com。',
+      );
+      return;
+    }
     if (session?.user) {
-      await runJoin(name, email, unit); // entry-auto-join will return pending_submitted
+      await runJoin(name, normalizedEmail, unit); // entry-auto-join will return pending_submitted
     } else {
-      await doSendOtp(name, email, unit); // OTP → auto-submit → pending
+      await doSendOtp(name, normalizedEmail, unit); // OTP → auto-submit → pending
     }
   };
 
-  /** Button click handler — delegates all validation to entry-auto-join. */
+  /** Button click handler — validates locally before entry-auto-join. */
   const handleSubmit = async () => {
     setSubmitErr(null);
     setAlreadyMemberMsg(null);
     setOccupiedConfirm(false);
 
     const name = fullName.trim();
-    const email = emailIn.trim();
+    const normalizedEmail = emailIn.trim().toLowerCase();
     const unit = unitNo.trim();
 
-    if (!name || !email || !unit) {
-      setSubmitErr('请填写姓名、邮箱与房号。');
+    if (!name || !normalizedEmail || !unit) {
+      setSubmitErr(en ? 'Please fill in name, email, and unit number.' : '请填写姓名、邮箱与房号。');
+      return;
+    }
+    if (!isValidEmail(normalizedEmail)) {
+      setSubmitErr(
+        en
+          ? 'Please enter a valid email address, for example name@example.com.'
+          : '请输入有效的邮箱地址，例如 name@example.com。',
+      );
       return;
     }
     if (!effectivePropertyId) {
-      setSubmitErr('缺少物业信息。');
+      setSubmitErr(en ? 'Property information is missing.' : '缺少物业信息。');
       return;
     }
 
-    await runJoin(name, email, unit);
+    await runJoin(name, normalizedEmail, unit);
   };
 
   // Auto-submit once when session appears + draft exists (user returned via OTP link)
@@ -725,9 +771,13 @@ export function QrPropertyEntryPage() {
             邮箱
             <input
               type="email"
+              inputMode="email"
               className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-clearstrata-ui-primary/40"
               value={emailIn}
-              onChange={(e) => setEmailIn(e.target.value)}
+              onChange={(e) => {
+                setEmailIn(e.target.value);
+                setSubmitErr(null);
+              }}
               autoComplete="email"
               disabled={submitting || Boolean(session?.user)}
               required
