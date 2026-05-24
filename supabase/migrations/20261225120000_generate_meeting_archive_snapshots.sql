@@ -383,19 +383,33 @@ BEGIN
           || E'\n';
 
         FOR v_cand IN
+          WITH tallies AS (
+            SELECT
+              cand_id AS candidate_id,
+              count(*) AS vote_count
+            FROM public.owner_election_ballots eb,
+            LATERAL jsonb_array_elements_text(eb.selected_candidate_ids) AS cand_id
+            WHERE eb.property_id = p_property_id
+              AND eb.meeting_id = p_ov_meeting_id
+              AND eb.agenda_item_id = v_agenda.id
+            GROUP BY cand_id
+          )
           SELECT
-            cand_id AS candidate_id,
-            count(*) AS vote_count
-          FROM public.owner_election_ballots eb,
-          LATERAL jsonb_array_elements_text(eb.selected_candidate_ids) AS cand_id
-          WHERE eb.property_id = p_property_id
-            AND eb.meeting_id = p_ov_meeting_id
-            AND eb.agenda_item_id = v_agenda.id
-          GROUP BY cand_id
-          ORDER BY count(*) DESC, cand_id
+            t.candidate_id,
+            t.vote_count,
+            c.elem AS candidate_json
+          FROM tallies t
+          LEFT JOIN LATERAL (
+            SELECT elem
+            FROM jsonb_array_elements(coalesce(v_meta -> 'candidates', '[]'::jsonb)) AS elem
+            WHERE elem ->> 'id' = t.candidate_id
+            LIMIT 1
+          ) c ON true
+          ORDER BY t.vote_count DESC, t.candidate_id
         LOOP
           v_out := v_out
-            || '  - candidate_id=' || v_cand.candidate_id
+            || '  - ' || coalesce(nullif(trim(v_cand.candidate_json ->> 'name'), ''), v_cand.candidate_id)
+            || CASE WHEN nullif(trim(v_cand.candidate_json ->> 'unit'), '') IS NOT NULL THEN ' | Unit ' || trim(v_cand.candidate_json ->> 'unit') ELSE '' END
             || ' | votes=' || v_cand.vote_count::text
             || E'\n';
         END LOOP;
