@@ -84,6 +84,7 @@ export function QrPropertyEntryPage() {
     [searchParams],
   );
   const sourceParam = useMemo(() => (searchParams.get('source') || '').trim(), [searchParams]);
+  const isReapply = sourceParam === 'reapply';
   const langParam = useMemo(() => (searchParams.get('lang') || '').trim(), [searchParams]);
 
   // Property resolution state
@@ -310,9 +311,18 @@ export function QrPropertyEntryPage() {
       }
 
       if (kind === 'already_member') {
-        if (session?.user) {
+        if (session?.user && !isReapply) {
           console.log('[ENTRY FLOW] already_member with session redirect home', effectivePropertyId);
           navigate('/?propertyId=' + effectivePropertyId, { replace: true });
+          return;
+        }
+        if (session?.user && isReapply) {
+          setAlreadyMemberMsg(
+            data.message?.trim() ||
+              (en
+                ? 'You are already a member of this property. Update your unit below if needed, or contact council.'
+                : '您已是本物业成员。如需更改房号请在下方重新提交，或联系业委会。'),
+          );
           return;
         }
         console.log('[ENTRY FLOW] already_member without session send OTP', effectivePropertyId);
@@ -513,7 +523,7 @@ export function QrPropertyEntryPage() {
         .eq('status', 'active')
         .maybeSingle();
 
-      if (data) {
+      if (data && !isReapply) {
         console.log('[entry] active member detected, redirect to app', data);
         navigate('/?propertyId=' + effectivePropertyId, { replace: true });
       } else {

@@ -98,7 +98,7 @@ Deno.serve(async (req: Request) => {
     const admin = createClient(supabaseUrl, serviceKey);
     const { data: jr, error: jrErr } = await admin
       .from("join_requests")
-      .select("id, property_id, user_id, email, full_name, status, rejection_reason")
+      .select("id, property_id, user_id, email, full_name, status, rejection_reason, invite_code")
       .eq("id", join_request_id)
       .maybeSingle();
 
@@ -174,7 +174,13 @@ Deno.serve(async (req: Request) => {
     const appBase =
       Deno.env.get("APP_BASE_URL")?.replace(/\/$/, "") || "https://app.clearstrata.ai";
     const enterUrl = `${appBase}/?propertyId=${encodeURIComponent(jr.property_id as string)}`;
-    const reapplyUrl = `${appBase}/entry?propertyId=${encodeURIComponent(jr.property_id as string)}`;
+    const reapplyParams = new URLSearchParams({
+      propertyId: jr.property_id as string,
+      source: "reapply",
+    });
+    const jrInviteCode = typeof jr.invite_code === "string" ? jr.invite_code.trim() : "";
+    if (jrInviteCode) reapplyParams.set("inviteCode", jrInviteCode);
+    const reapplyUrl = `${appBase}/entry?${reapplyParams.toString()}`;
 
     const approved = decision === "approved";
     const reason =

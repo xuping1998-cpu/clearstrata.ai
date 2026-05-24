@@ -108,6 +108,43 @@ async function loadInviteEmailsByUserId(userIds: string[]): Promise<{
   return { emailByUser, error: null };
 }
 
+/** Meeting invite UI/send: only active owners are eligible recipients. */
+async function loadActiveOwnerUserIds(propertyId: string): Promise<{
+  userIds: Set<string>;
+  error: Error | null;
+}> {
+  const { data: members, error: membersError } = await withProperty(
+    supabase.from('property_members').select('user_id') as any,
+    propertyId,
+  )
+    .eq('status', 'active')
+    .eq('role', 'owner');
+
+  if (membersError) {
+    return {
+      userIds: new Set(),
+      error: new Error(
+        (membersError as { message?: string }).message ?? 'Failed to load active owner members',
+      ),
+    };
+  }
+
+  const userIds = new Set(
+    (members ?? []).map((m: { user_id: string }) => m.user_id).filter(Boolean),
+  );
+  return { userIds, error: null };
+}
+
+async function filterInvitationsToActiveOwners(
+  invitations: MeetingInvitationRow[],
+  propertyId: string,
+): Promise<MeetingInvitationRow[]> {
+  if (invitations.length === 0) return invitations;
+  const { userIds, error } = await loadActiveOwnerUserIds(propertyId);
+  if (error) return [];
+  return invitations.filter((inv) => userIds.has(inv.recipient_user_id));
+}
+
 /** Invoke send-meeting-invite per recipient and sync meeting_invitations delivery_status. */
 async function dispatchMeetingInviteEmails(params: {
   meetingId: string;
@@ -608,7 +645,12 @@ export async function fetchMeetingExtras(meetingId: string, propertyId: string):
       supabase.from('meeting_invitations').select('*') as any,
       propertyId,
     ).eq('meeting_id', meetingId);
-    if (!invRes.error && invRes.data) invitations = invRes.data as MeetingInvitationRow[];
+    if (!invRes.error && invRes.data) {
+      invitations = await filterInvitationsToActiveOwners(
+        invRes.data as MeetingInvitationRow[],
+        propertyId,
+      );
+    }
 
     let resolutions: MeetingResolutionRow[] = [];
     const resRes = await withProperty(
@@ -713,7 +755,9 @@ export async function getMeetingDetail(meetingId: string, propertyId: string): P
   ).eq('meeting_id', meetingId);
   const invitationsError = invRes.error;
   const invitations: MeetingInvitationRow[] =
-    !invitationsError && invRes.data ? (invRes.data as MeetingInvitationRow[]) : [];
+    !invitationsError && invRes.data
+      ? await filterInvitationsToActiveOwners(invRes.data as MeetingInvitationRow[], propertyId)
+      : [];
 
   const resRes = await withProperty(
     supabase.from('meeting_resolutions').select(RESOLUTION_DETAIL_COLUMNS) as any,
@@ -1017,23 +1061,14 @@ export async function sendMeetingInvitations(
       return empty(new Error(sessionErr?.message ?? 'Not signed in'));
     }
 
-    const { data: members, error: membersError } = await withProperty(
-      supabase.from('property_members').select('user_id') as any,
-      propertyId,
-    );
+    const { userIds: eligibleOwnerIds, error: membersError } = await loadActiveOwnerUserIds(propertyId);
 
     if (membersError) {
       console.warn('🚨 early return reason:', 'property_members query failed', membersError);
-      return empty(
-        new Error(
-          (membersError as { message?: string }).message ?? 'Failed to load property members',
-        ),
-      );
+      return empty(membersError);
     }
 
-    const userIds = Array.from(
-      new Set((members ?? []).map((m: { user_id: string }) => m.user_id).filter(Boolean)),
-    );
+    const userIds = Array.from(eligibleOwnerIds);
 
     console.log('[sendMeetingInvitations] recipients count', userIds.length);
 

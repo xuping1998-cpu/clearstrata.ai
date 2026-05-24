@@ -394,7 +394,11 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
 
   /** URL 含有效 propertyId 且与 state 不一致时，以 URL 为准（扫码 / 前进后退 / 分享链接）。 */
   useEffect(() => {
-    if (location.pathname === '/reset-password' || location.pathname === '/login') return;
+    if (
+      location.pathname === '/reset-password' ||
+      location.pathname === '/login' ||
+      location.pathname === '/entry'
+    ) return;
     if (shouldDeferAutoPropertyRedirects()) return;
     if (!ready || memberships.length === 0 || isDemoMode || isDemoPropertyMock) return;
     const urlPid = getPropertyIdFromUrl(searchParams);
@@ -437,7 +441,11 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
 
   /** 缺失或无效 URL 时，把当前物业写回 query（与 state 对齐）。 */
   useEffect(() => {
-    if (location.pathname === '/reset-password' || location.pathname === '/login') return;
+    if (
+      location.pathname === '/reset-password' ||
+      location.pathname === '/login' ||
+      location.pathname === '/entry'
+    ) return;
     if (shouldDeferAutoPropertyRedirects()) return;
     if (!ready || !currentPropertyId || memberships.length === 0 || isDemoMode || isDemoPropertyMock) return;
     const urlPid = getPropertyIdFromUrl(searchParams);

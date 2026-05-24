@@ -877,31 +877,21 @@ Deno.serve(async (req: Request) => {
       return apiResponse(false, "Meeting not found", null, 404);
     }
 
-    const [{ count: invitationCount, error: invErr }, { count: memberCount, error: memErr }] =
-      await Promise.all([
-        supabaseAdmin
-          .from("meeting_invitations")
-          .select("id", { count: "exact", head: true })
-          .eq("meeting_id", meeting_id)
-          .eq("property_id", property_id)
-          .eq("recipient_user_id", user_id),
-        supabaseAdmin
-          .from("property_members")
-          .select("user_id", { count: "exact", head: true })
-          .eq("property_id", property_id)
-          .eq("user_id", user_id)
-          .eq("status", "active"),
-      ]);
+    const { count: eligibleOwnerCount, error: memErr } = await supabaseAdmin
+      .from("property_members")
+      .select("user_id", { count: "exact", head: true })
+      .eq("property_id", property_id)
+      .eq("user_id", user_id)
+      .eq("status", "active")
+      .eq("role", "owner");
 
-    if (invErr || memErr) {
-      return apiResponse(false, "Authorization check failed", { invErr, memErr }, 500);
+    if (memErr) {
+      return apiResponse(false, "Authorization check failed", { memErr }, 500);
     }
-    const okInvite = (invitationCount ?? 0) > 0;
-    const okMember = (memberCount ?? 0) > 0;
-    if (!okInvite && !okMember) {
+    if ((eligibleOwnerCount ?? 0) === 0) {
       return apiResponse(
         false,
-        "Recipient is not invited to this meeting and is not an active member of this property.",
+        "Recipient is not an active owner of this property.",
         { code: "FORBIDDEN" },
         403,
       );
