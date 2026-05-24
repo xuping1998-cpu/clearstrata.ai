@@ -457,7 +457,7 @@ DECLARE
   v_property_id uuid;
   v_minutes_id uuid;
   v_body text := coalesce(p_body, '');
-  v_current_version int := 1;
+  v_current_version int;
   v_is_final boolean := false;
 BEGIN
   IF v_actor IS NULL THEN
@@ -486,7 +486,7 @@ BEGIN
     RETURN jsonb_build_object('ok', false, 'error', 'meeting_not_found');
   END IF;
 
-  SELECT mm.id, greatest(coalesce(mm.current_version, 1), 1), coalesce(mm.is_final, false)
+  SELECT mm.id, mm.current_version, coalesce(mm.is_final, false)
   INTO v_minutes_id, v_current_version, v_is_final
   FROM public.meeting_minutes mm
   WHERE mm.meeting_id = p_meeting_id
@@ -494,7 +494,7 @@ BEGIN
   LIMIT 1;
 
   IF v_minutes_id IS NOT NULL AND v_is_final THEN
-    RETURN jsonb_build_object('ok', false, 'error', 'already_finalized');
+    RETURN jsonb_build_object('ok', false, 'error', 'minutes_finalized_use_revise');
   END IF;
 
   IF v_minutes_id IS NOT NULL THEN
@@ -505,8 +505,10 @@ BEGIN
       property_id = v_property_id,
       status = 'draft'::minutes_status,
       is_final = false,
+      current_version = coalesce(v_current_version, 1),
       updated_at = now()
     WHERE mm.id = v_minutes_id;
+    v_current_version := coalesce(v_current_version, 1);
   ELSE
     INSERT INTO public.meeting_minutes (
       meeting_id,
