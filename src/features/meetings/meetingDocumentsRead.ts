@@ -304,3 +304,42 @@ export async function fetchMeetingAgendaNoticeRows(
   if (error) return { rows: [], error: new Error(error.message) };
   return { rows: (data ?? []) as MeetingAgendaNoticeRow[], error: null };
 }
+
+/** Dispatched after silent archive snapshot regenerate (04/05) succeeds. */
+export const MEETING_ARCHIVE_SNAPSHOTS_UPDATED_EVENT = 'clearstrata:meeting-archive-snapshots-updated';
+
+export type MeetingArchiveSnapshotSlot = '03' | '04' | '05';
+
+const VOTE_ARCHIVE_REFRESH_SLOTS: MeetingArchiveSnapshotSlot[] = ['04', '05'];
+
+/**
+ * Background refresh of archive vote/result snapshots after owner vote submit.
+ * Uses existing `generate_meeting_archive_snapshots` RPC; failures are console.warn only.
+ */
+export async function silentRegenerateMeetingArchiveVoteSnapshots(
+  councilMeetingId: string,
+): Promise<void> {
+  const mid = councilMeetingId.trim();
+  if (!mid) return;
+
+  try {
+    const { data, error } = await supabase.rpc('generate_meeting_archive_snapshots', {
+      p_meeting_id: mid,
+      p_slots: VOTE_ARCHIVE_REFRESH_SLOTS,
+    });
+    if (error) {
+      console.warn('[silentRegenerateMeetingArchiveVoteSnapshots]', error.message);
+      return;
+    }
+    const payload = data as { ok?: boolean; error?: string } | null;
+    if (payload?.ok === false) {
+      console.warn('[silentRegenerateMeetingArchiveVoteSnapshots]', payload.error ?? 'unknown');
+      return;
+    }
+    window.dispatchEvent(
+      new CustomEvent(MEETING_ARCHIVE_SNAPSHOTS_UPDATED_EVENT, { detail: { meetingId: mid } }),
+    );
+  } catch (e) {
+    console.warn('[silentRegenerateMeetingArchiveVoteSnapshots]', e);
+  }
+}

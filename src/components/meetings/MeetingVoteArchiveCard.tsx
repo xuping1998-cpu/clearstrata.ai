@@ -13,6 +13,7 @@ import {
   fetchLatestMeetingMinutesDocument,
   fetchMeetingAgendaNoticeRows,
   fetchMeetingArchiveDocuments,
+  MEETING_ARCHIVE_SNAPSHOTS_UPDATED_EVENT,
   filterSupportingDocumentsOnly,
   findLatestMeetingMinutesDocument,
   formatArchiveSnapshotViewerBody,
@@ -270,6 +271,17 @@ export function MeetingVoteArchiveCard({
     void loadLatestMinutesDoc();
     void loadAgendaNoticeRows();
   }, [loadArchiveDocs, loadLatestMinutesDoc, loadAgendaNoticeRows]);
+
+  useEffect(() => {
+    const mid = meeting.id?.trim();
+    if (!mid) return;
+    const onSnapshotsUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ meetingId?: string }>).detail;
+      if (detail?.meetingId === mid) void loadArchiveDocs();
+    };
+    window.addEventListener(MEETING_ARCHIVE_SNAPSHOTS_UPDATED_EVENT, onSnapshotsUpdated);
+    return () => window.removeEventListener(MEETING_ARCHIVE_SNAPSHOTS_UPDATED_EVENT, onSnapshotsUpdated);
+  }, [meeting.id, loadArchiveDocs]);
 
   useEffect(() => {
     if (expanded) {

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { MeetingAgendaRow, MeetingRow, OwnerVoteMeetingLite } from '@/features/meetings/api';
 import { ensureOwnerVoteResolutionForMeeting } from '@/features/meetings/api';
 import { isRemoveCouncilResolutionVotingAllowed } from '@/features/meetings/electionAgendaModel';
+import { silentRegenerateMeetingArchiveVoteSnapshots } from '@/features/meetings/meetingDocumentsRead';
 import { supabase } from '@/lib/supabase';
 
 export type OwnerResolutionChoice = 'yes' | 'no' | 'abstain';
@@ -179,6 +180,7 @@ export function MeetingResolutionVotePanel({
       }
       setSubmittedChoice(choice);
       await onUpdated();
+      void silentRegenerateMeetingArchiveVoteSnapshots(String(councilMeeting.id));
     } catch (err) {
       voteErrorAlert(extractRpcErrCode(err), en);
     } finally {
