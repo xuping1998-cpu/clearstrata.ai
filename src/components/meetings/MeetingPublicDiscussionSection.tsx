@@ -1,9 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MessageSquare } from 'lucide-react';
 import type { MeetingRow } from '@/features/meetings/api';
+import {
+  councilWrittenRemoteWindows,
+  stripWrittenRemoteMeta,
+} from '@/features/meetings/meetingFormatModel';
 import { supabase } from '@/lib/supabase';
 
-type MeetingLike = Pick<MeetingRow, 'id' | 'property_id' | 'created_by' | 'scheduled_at' | 'status'>;
+type MeetingLike = Pick<
+  MeetingRow,
+  'id' | 'property_id' | 'created_by' | 'scheduled_at' | 'status' | 'description_en' | 'description_zh' | 'meeting_format'
+>;
 
 type MeetingPublicComment = {
   id: string;
@@ -42,24 +49,57 @@ function parseRpcOk(data: unknown): RpcPayload {
   return null;
 }
 
+function isMeetingDiscussionArchived(status: string | null | undefined): boolean {
+  const s = String(status ?? '').trim().toLowerCase();
+  return s === 'archived' || s === 'finalized';
+}
+
+function resolveOpeningStatementText(meeting: MeetingLike, en: boolean): string | null {
+  const zhRaw = meeting.description_zh?.trim()
+    ? stripWrittenRemoteMeta(meeting.description_zh).trim()
+    : '';
+  const enRaw = meeting.description_en?.trim() ?? '';
+  const primary = en ? enRaw : zhRaw;
+  const fallback = en ? zhRaw : enRaw;
+  return primary || fallback || null;
+}
+
+function resolvePublicNoticeCloseIso(meeting: MeetingLike): string | null {
+  const windows = councilWrittenRemoteWindows(meeting as MeetingRow);
+  return windows.publicNoticeCloses?.trim() ?? null;
+}
+
+function isPublicNoticePeriodEnded(meeting: MeetingLike): boolean {
+  const closeIso = resolvePublicNoticeCloseIso(meeting);
+  if (!closeIso) return false;
+  const close = new Date(closeIso);
+  if (Number.isNaN(close.getTime())) return false;
+  return Date.now() >= close.getTime();
+}
+
 export function MeetingPublicDiscussionSection({ meeting, currentUserId, en }: Props) {
   const [expanded, setExpanded] = useState(true);
   const [loading, setLoading] = useState(true);
   const [comments, setComments] = useState<MeetingPublicComment[]>([]);
-  const [discussionOpen, setDiscussionOpen] = useState(false);
   const [isModerator, setIsModerator] = useState(false);
-  const [openingDraft, setOpeningDraft] = useState('');
   const [commentDraft, setCommentDraft] = useState('');
   const [replyOpenId, setReplyOpenId] = useState<string | null>(null);
   const [replyDraft, setReplyDraft] = useState('');
   const [actionError, setActionError] = useState<string | null>(null);
-  const [openingBusy, setOpeningBusy] = useState(false);
   const [commentBusy, setCommentBusy] = useState(false);
   const [replyBusy, setReplyBusy] = useState(false);
   const [withdrawBusyId, setWithdrawBusyId] = useState<string | null>(null);
   const [hideBusyId, setHideBusyId] = useState<string | null>(null);
 
   const actionFailedText = en ? 'Action failed. Please try again.' : '操作失败，请稍后重试。';
+
+  const isArchived = isMeetingDiscussionArchived(meeting.status);
+  const canPostComments = !isArchived;
+  const noticePeriodEnded = !isArchived && isPublicNoticePeriodEnded(meeting);
+  const openingStatementText = useMemo(
+    () => resolveOpeningStatementText(meeting, en),
+    [meeting.description_en, meeting.description_zh, en],
+  );
 
   const loadComments = useCallback(async () => {
     const { data, error } = await supabase
@@ -75,54 +115,31 @@ export function MeetingPublicDiscussionSection({ meeting, currentUserId, en }: P
     setComments((data ?? []) as MeetingPublicComment[]);
   }, [meeting.id]);
 
-  const loadFlags = useCallback(async () => {
-    const [openRes, modRes] = await Promise.all([
-      supabase.rpc('is_meeting_public_discussion_open', { p_meeting_id: meeting.id }),
-      supabase.rpc('is_meeting_discussion_moderator', { p_meeting_id: meeting.id }),
-    ]);
+  const loadModeratorFlag = useCallback(async () => {
+    const { data, error } = await supabase.rpc('is_meeting_discussion_moderator', {
+      p_meeting_id: meeting.id,
+    });
 
-    if (openRes.error) {
-      console.error('[MeetingPublicDiscussionSection] is_meeting_public_discussion_open', openRes.error);
-      setDiscussionOpen(false);
-    } else {
-      setDiscussionOpen(openRes.data === true);
-    }
-
-    if (modRes.error) {
-      console.error('[MeetingPublicDiscussionSection] is_meeting_discussion_moderator', modRes.error);
+    if (error) {
+      console.error('[MeetingPublicDiscussionSection] is_meeting_discussion_moderator', error);
       setIsModerator(false);
     } else {
-      setIsModerator(modRes.data === true);
+      setIsModerator(data === true);
     }
   }, [meeting.id]);
 
   const refreshAll = useCallback(async () => {
     setLoading(true);
     try {
-      await Promise.all([loadComments(), loadFlags()]);
+      await Promise.all([loadComments(), loadModeratorFlag()]);
     } finally {
       setLoading(false);
     }
-  }, [loadComments, loadFlags]);
+  }, [loadComments, loadModeratorFlag]);
 
   useEffect(() => {
     void refreshAll();
   }, [refreshAll]);
-
-  const openingComment = useMemo(
-    () => comments.find((c) => c.comment_type === 'opening' && c.parent_id === null),
-    [comments],
-  );
-
-  const canEditOpeningStatement = isModerator && discussionOpen;
-
-  useEffect(() => {
-    if (openingComment?.status === 'visible') {
-      setOpeningDraft(openingComment.body);
-    } else if (!openingComment) {
-      setOpeningDraft('');
-    }
-  }, [meeting.id, openingComment?.id, openingComment?.body, openingComment?.status]);
 
   const mainComments = useMemo(
     () => comments.filter((c) => c.comment_type === 'comment' && c.parent_id === null),
@@ -139,32 +156,6 @@ export function MeetingPublicDiscussionSection({ meeting, currentUserId, en }: P
     }
     return map;
   }, [comments]);
-
-  async function handleSaveOpening() {
-    const body = openingDraft.trim();
-    if (!body) return;
-    setActionError(null);
-    setOpeningBusy(true);
-    try {
-      const { data, error } = await supabase.rpc('set_meeting_opening_statement', {
-        p_meeting_id: meeting.id,
-        p_body: body,
-      });
-      if (error) throw error;
-      const payload = parseRpcOk(data);
-      if (payload?.ok === false) {
-        console.error('[MeetingPublicDiscussionSection] set_meeting_opening_statement', payload.error);
-        setActionError(actionFailedText);
-        return;
-      }
-      await loadComments();
-    } catch (e) {
-      console.error('[MeetingPublicDiscussionSection] set_meeting_opening_statement', e);
-      setActionError(actionFailedText);
-    } finally {
-      setOpeningBusy(false);
-    }
-  }
 
   async function handlePostComment() {
     const body = commentDraft.trim();
@@ -281,12 +272,14 @@ export function MeetingPublicDiscussionSection({ meeting, currentUserId, en }: P
 
   function renderCommentActions(comment: MeetingPublicComment) {
     const canWithdraw =
+      canPostComments &&
       currentUserId &&
       comment.user_id === currentUserId &&
       comment.status === 'visible' &&
       (comment.comment_type === 'comment' || comment.comment_type === 'reply');
 
     const canHide =
+      canPostComments &&
       isModerator &&
       comment.status === 'visible' &&
       (comment.comment_type === 'comment' || comment.comment_type === 'reply');
@@ -352,7 +345,7 @@ export function MeetingPublicDiscussionSection({ meeting, currentUserId, en }: P
         </p>
         {renderCommentActions(comment)}
         {!isReply &&
-        discussionOpen &&
+        canPostComments &&
         comment.status === 'visible' &&
         comment.comment_type === 'comment' ? (
           <div className="mt-2">
@@ -442,61 +435,35 @@ export function MeetingPublicDiscussionSection({ meeting, currentUserId, en }: P
             </p>
           ) : null}
 
+          {isArchived ? (
+            <p className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+              {en
+                ? 'This meeting has been archived. Public discussion records are read-only.'
+                : '会议已归档，公示与讨论记录只读。'}
+            </p>
+          ) : null}
+
+          {noticePeriodEnded ? (
+            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              {en
+                ? 'The public notice period has ended. Discussion remains open until the meeting is archived.'
+                : '公示期已结束，会议讨论记录仍开放至归档。'}
+            </p>
+          ) : null}
+
           <section className="space-y-2">
             <h4 className="text-sm font-semibold text-gray-900">
               {en ? 'Opening statement' : '开场发言'}
             </h4>
-            {!canEditOpeningStatement ? (
-              openingComment?.status === 'visible' ? (
-                <div className="rounded-lg border border-sky-100 bg-sky-50/80 px-3 py-3">
-                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs text-gray-500">
-                    <span className="font-semibold text-gray-800">
-                      {openingComment.author_name?.trim() || (en ? 'Moderator' : '主持人')}
-                    </span>
-                    {openingComment.unit_no?.trim() ? (
-                      <span>
-                        {en
-                          ? `Unit: ${openingComment.unit_no.trim()}`
-                          : `房号：${openingComment.unit_no.trim()}`}
-                      </span>
-                    ) : null}
-                    <span>{fmtLocalTime(openingComment.created_at, en)}</span>
-                  </div>
-                  <p className="mt-2 whitespace-pre-wrap text-sm text-gray-800">{openingComment.body}</p>
-                </div>
-              ) : openingComment ? (
-                <p className="text-sm italic text-gray-400">{renderBodyText(openingComment)}</p>
-              ) : (
-                <p className="text-sm text-gray-500">
-                  {en ? 'No opening statement yet.' : '暂无开场发言。'}
-                </p>
-              )
-            ) : null}
-
-            {canEditOpeningStatement ? (
-              <div className="space-y-2 rounded-lg border border-gray-200 bg-white p-3">
-                <textarea
-                  value={openingDraft}
-                  onChange={(e) => setOpeningDraft(e.target.value)}
-                  rows={4}
-                  maxLength={5000}
-                  placeholder={
-                    en
-                      ? 'Enter the opening statement, including meeting purpose, discussion rules, and key dates.'
-                      : '请输入会议开场发言，例如会议目的、讨论规则和重要日期。'
-                  }
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                />
-                <button
-                  type="button"
-                  disabled={openingBusy || !openingDraft.trim()}
-                  onClick={() => void handleSaveOpening()}
-                  className="rounded-lg border border-emerald-600 bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
-                >
-                  {en ? 'Save opening statement' : '保存开场发言'}
-                </button>
+            {openingStatementText ? (
+              <div className="rounded-lg border border-sky-100 bg-sky-50/80 px-3 py-3">
+                <p className="whitespace-pre-wrap text-sm text-gray-800">{openingStatementText}</p>
               </div>
-            ) : null}
+            ) : (
+              <p className="text-sm text-gray-500">
+                {en ? 'No opening statement.' : '暂无开场发言。'}
+              </p>
+            )}
           </section>
 
           <section className="space-y-3">
@@ -521,7 +488,7 @@ export function MeetingPublicDiscussionSection({ meeting, currentUserId, en }: P
               </div>
             )}
 
-            {discussionOpen ? (
+            {canPostComments ? (
               <div className="space-y-2 rounded-lg border border-gray-200 bg-white p-3">
                 <textarea
                   value={commentDraft}
@@ -540,13 +507,7 @@ export function MeetingPublicDiscussionSection({ meeting, currentUserId, en }: P
                   {en ? 'Post comment' : '发表留言'}
                 </button>
               </div>
-            ) : (
-              <p className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">
-                {en
-                  ? 'Discussion is closed. Comments are read-only.'
-                  : '讨论已结束，留言只读。'}
-              </p>
-            )}
+            ) : null}
           </section>
         </div>
       ) : null}
