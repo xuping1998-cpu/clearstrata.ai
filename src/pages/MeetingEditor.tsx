@@ -511,6 +511,33 @@ function buildCouncilMeetingRowAfterEditorSave(params: {
   };
 }
 
+function resolveEditorOpeningStatementFields(meeting: MeetingRow): {
+  openingStatementZh: string;
+  openingStatementEn: string;
+  showPrefillHint: boolean;
+} {
+  const hadStoredOpening =
+    Boolean(meeting.opening_statement_zh?.trim()) || Boolean(meeting.opening_statement_en?.trim());
+  const hasDescription =
+    Boolean(meeting.description_zh?.trim()) || Boolean(meeting.description_en?.trim());
+
+  const openingStatementZh = meeting.opening_statement_zh?.trim()
+    ? stripWrittenRemoteMeta(meeting.opening_statement_zh)
+    : meeting.description_zh?.trim()
+      ? stripWrittenRemoteMeta(meeting.description_zh)
+      : '';
+
+  const openingStatementEn = meeting.opening_statement_en?.trim()
+    ? meeting.opening_statement_en.trim()
+    : meeting.description_en?.trim() ?? '';
+
+  return {
+    openingStatementZh,
+    openingStatementEn,
+    showPrefillHint: !hadStoredOpening && hasDescription,
+  };
+}
+
 export function MeetingEditor() {
   const { meetingId } = useParams<{ meetingId?: string }>();
   const isEdit = Boolean(meetingId);
@@ -533,6 +560,7 @@ export function MeetingEditor() {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [voteLine, setVoteLine] = useState<'loading' | 'none' | string>('loading');
+  const [showOpeningStatementPrefillHint, setShowOpeningStatementPrefillHint] = useState(false);
 
   const agendaCount = useMemo(() => agendaItems.filter(agendaHasMeaningfulContent).length, [agendaItems]);
 
@@ -563,6 +591,7 @@ export function MeetingEditor() {
   useEffect(() => {
     if (!isEdit) {
       setForm(defaultForm);
+      setShowOpeningStatementPrefillHint(false);
       setAgendaItems([]);
       setPendingDeleteServerIds([]);
       setMeetingVotes([]);
@@ -607,16 +636,16 @@ export function MeetingEditor() {
       if (!(statusMapped === 'draft' || statusMapped === 'open' || statusMapped === 'closed' || statusMapped === 'archived')) {
         statusMapped = 'draft';
       }
+      const openingFields = resolveEditorOpeningStatementFields(m);
+      setShowOpeningStatementPrefillHint(openingFields.showPrefillHint);
       setForm({
         meeting_type: m.meeting_type,
         title_en: m.title_en ?? '',
         title_zh: m.title_zh ?? '',
         description_en: m.description_en ?? '',
         description_zh: layers.userText,
-        opening_statement_en: m.opening_statement_en ?? '',
-        opening_statement_zh: m.opening_statement_zh
-          ? stripWrittenRemoteMeta(m.opening_statement_zh)
-          : '',
+        opening_statement_en: openingFields.openingStatementEn,
+        opening_statement_zh: openingFields.openingStatementZh,
         scheduled_at: sliceDatetimeLocal(m.scheduled_at),
         meeting_format_ui: normalizeEditorMeetingFormatUi(uiFmt),
         status: statusMapped,
@@ -1192,6 +1221,13 @@ export function MeetingEditor() {
             />
           </div>
         </div>
+        {isEdit && showOpeningStatementPrefillHint ? (
+          <p className="text-xs leading-relaxed text-slate-600">
+            {en
+              ? 'For existing meetings without a separate opening statement, the meeting description is prefilled here. After saving, it will be maintained separately.'
+              : '旧会议若未单独填写开场发言，系统会先以会议说明预填；保存后将作为独立开场发言维护。'}
+          </p>
+        ) : null}
 
         {form.initiation_type === 'owner_requisitioned' ? (
           <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-4 space-y-3">
