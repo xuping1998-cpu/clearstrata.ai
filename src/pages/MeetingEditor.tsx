@@ -115,6 +115,8 @@ const defaultForm = {
   title_zh: '',
   description_en: '',
   description_zh: '',
+  opening_statement_en: '',
+  opening_statement_zh: '',
   scheduled_at: '',
   meeting_format_ui: 'hybrid' as MeetingFormatUi,
   status: 'draft' as MeetingStatus,
@@ -495,6 +497,8 @@ function buildCouncilMeetingRowAfterEditorSave(params: {
     title_zh: params.form.title_zh || null,
     description_en: params.form.description_en || null,
     description_zh: params.descriptionZhFinal,
+    opening_statement_en: prior?.opening_statement_en ?? null,
+    opening_statement_zh: prior?.opening_statement_zh ?? null,
     scheduled_at: params.scheduledIso,
     meeting_format: params.dbFormat,
     status: params.form.status,
@@ -609,6 +613,10 @@ export function MeetingEditor() {
         title_zh: m.title_zh ?? '',
         description_en: m.description_en ?? '',
         description_zh: layers.userText,
+        opening_statement_en: m.opening_statement_en ?? '',
+        opening_statement_zh: m.opening_statement_zh
+          ? stripWrittenRemoteMeta(m.opening_statement_zh)
+          : '',
         scheduled_at: sliceDatetimeLocal(m.scheduled_at),
         meeting_format_ui: normalizeEditorMeetingFormatUi(uiFmt),
         status: statusMapped,
@@ -840,6 +848,10 @@ export function MeetingEditor() {
 
     descriptionZhFinal = embedGovernanceMeta(descriptionZhFinal, buildGovernanceMetaForSave(form));
 
+    const openingStatementZhFinal =
+      stripWrittenRemoteMeta(form.opening_statement_zh).trim() || null;
+    const openingStatementEnFinal = form.opening_statement_en.trim() || null;
+
     const readinessMeeting: Partial<MeetingRow> = {
       meeting_type: form.meeting_type,
       title_en: form.title_en,
@@ -927,6 +939,8 @@ export function MeetingEditor() {
         titleZh: form.title_zh || null,
         descriptionEn: form.description_en || null,
         descriptionZh: descriptionZhFinal || null,
+        openingStatementEn: openingStatementEnFinal,
+        openingStatementZh: openingStatementZhFinal,
         scheduledAt: scheduledIso,
         votingOpenAt: written ? votingOpenIso : undefined,
         votingCloseAt: written ? votingCloseIso : undefined,
@@ -971,6 +985,8 @@ export function MeetingEditor() {
       title_zh: form.title_zh || null,
       description_en: form.description_en || null,
       description_zh: descriptionZhFinal || null,
+      opening_statement_en: openingStatementEnFinal,
+      opening_statement_zh: openingStatementZhFinal,
       scheduled_at: scheduledIso,
       meeting_format: dbFormat,
       status: form.status,
@@ -1141,6 +1157,37 @@ export function MeetingEditor() {
               value={form.description_zh}
               onChange={(e) => setForm((f) => ({ ...f, description_zh: e.target.value }))}
               rows={3}
+              className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-900"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              {en ? 'Opening Statement (Chinese)' : '开场发言（中文）'}
+            </label>
+            <textarea
+              value={form.opening_statement_zh}
+              onChange={(e) => setForm((f) => ({ ...f, opening_statement_zh: e.target.value }))}
+              rows={3}
+              placeholder={
+                en
+                  ? 'Enter the opening statement shown in Public Discussion and archived in 03 Discussion Record.'
+                  : '请输入会议开场发言，将显示在公示与讨论区，并归档到 03 讨论记录。'
+              }
+              className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-900"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              {en ? 'Opening Statement (English)' : 'Opening Statement (English)'}
+            </label>
+            <textarea
+              value={form.opening_statement_en}
+              onChange={(e) => setForm((f) => ({ ...f, opening_statement_en: e.target.value }))}
+              rows={3}
+              placeholder="Enter the opening statement shown in Public Discussion and archived in 03 Discussion Record."
               className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-900"
             />
           </div>

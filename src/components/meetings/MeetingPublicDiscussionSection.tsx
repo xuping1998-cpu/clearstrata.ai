@@ -9,8 +9,41 @@ import { supabase } from '@/lib/supabase';
 
 type MeetingLike = Pick<
   MeetingRow,
-  'id' | 'property_id' | 'created_by' | 'scheduled_at' | 'status' | 'description_en' | 'description_zh' | 'meeting_format'
+  | 'id'
+  | 'property_id'
+  | 'created_by'
+  | 'scheduled_at'
+  | 'status'
+  | 'description_en'
+  | 'description_zh'
+  | 'opening_statement_en'
+  | 'opening_statement_zh'
+  | 'meeting_format'
 >;
+
+function pickNonEmpty(...values: Array<string | null | undefined>): string | null {
+  for (const v of values) {
+    const t = v?.trim();
+    if (t) return t;
+  }
+  return null;
+}
+
+function resolveOpeningStatementText(meeting: MeetingLike, en: boolean): string | null {
+  const openingZh = meeting.opening_statement_zh?.trim()
+    ? stripWrittenRemoteMeta(meeting.opening_statement_zh).trim()
+    : '';
+  const openingEn = meeting.opening_statement_en?.trim() ?? '';
+  const descZh = meeting.description_zh?.trim()
+    ? stripWrittenRemoteMeta(meeting.description_zh).trim()
+    : '';
+  const descEn = meeting.description_en?.trim() ?? '';
+
+  if (en) {
+    return pickNonEmpty(openingEn, openingZh, descEn, descZh);
+  }
+  return pickNonEmpty(openingZh, openingEn, descZh, descEn);
+}
 
 type MeetingPublicComment = {
   id: string;
@@ -54,16 +87,6 @@ function isMeetingDiscussionArchived(status: string | null | undefined): boolean
   return s === 'archived' || s === 'finalized';
 }
 
-function resolveOpeningStatementText(meeting: MeetingLike, en: boolean): string | null {
-  const zhRaw = meeting.description_zh?.trim()
-    ? stripWrittenRemoteMeta(meeting.description_zh).trim()
-    : '';
-  const enRaw = meeting.description_en?.trim() ?? '';
-  const primary = en ? enRaw : zhRaw;
-  const fallback = en ? zhRaw : enRaw;
-  return primary || fallback || null;
-}
-
 function resolvePublicNoticeCloseIso(meeting: MeetingLike): string | null {
   const windows = councilWrittenRemoteWindows(meeting as MeetingRow);
   return windows.publicNoticeCloses?.trim() ?? null;
@@ -98,7 +121,13 @@ export function MeetingPublicDiscussionSection({ meeting, currentUserId, en }: P
   const noticePeriodEnded = !isArchived && isPublicNoticePeriodEnded(meeting);
   const openingStatementText = useMemo(
     () => resolveOpeningStatementText(meeting, en),
-    [meeting.description_en, meeting.description_zh, en],
+    [
+      meeting.description_en,
+      meeting.description_zh,
+      meeting.opening_statement_en,
+      meeting.opening_statement_zh,
+      en,
+    ],
   );
 
   const loadComments = useCallback(async () => {

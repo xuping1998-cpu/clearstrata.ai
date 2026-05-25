@@ -1105,9 +1105,7 @@ export function MeetingVoteArchiveCard({
                 {c.participationBody}
               </p>
               <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
-                {en
-                  ? 'This is an automatically generated draft for reference only.'
-                  : '本文为系统自动生成的草案，仅供参考。'}
+                {en ? fc.draftPreviewFooter.en : fc.draftPreviewFooter.zh}
               </p>
             </div>
             <div className="border-t border-gray-100 bg-gray-50 px-4 py-2">

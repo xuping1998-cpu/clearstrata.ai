@@ -231,6 +231,8 @@ export interface MeetingRow {
   title_zh: string | null;
   description_en: string | null;
   description_zh: string | null;
+  opening_statement_zh?: string | null;
+  opening_statement_en?: string | null;
   scheduled_at: string | null;
   meeting_format: MeetingFormat;
   status: MeetingStatus;
@@ -788,6 +790,8 @@ export async function createMeeting(input: {
   titleZh?: string | null;
   descriptionEn?: string | null;
   descriptionZh?: string | null;
+  openingStatementEn?: string | null;
+  openingStatementZh?: string | null;
   scheduledAt?: string | null;
   votingOpenAt?: string | null;
   votingCloseAt?: string | null;
@@ -805,6 +809,8 @@ export async function createMeeting(input: {
       title_zh: input.titleZh ?? null,
       description_en: input.descriptionEn ?? null,
       description_zh: input.descriptionZh ?? null,
+      opening_statement_en: input.openingStatementEn ?? null,
+      opening_statement_zh: input.openingStatementZh ?? null,
       scheduled_at: input.scheduledAt ?? null,
       voting_open_at: input.votingOpenAt ?? null,
       voting_close_at: input.votingCloseAt ?? null,
@@ -827,6 +833,8 @@ export async function updateMeeting(
     title_zh: string | null;
     description_en: string | null;
     description_zh: string | null;
+    opening_statement_en: string | null;
+    opening_statement_zh: string | null;
     scheduled_at: string | null;
     meeting_format: MeetingFormat;
     status: MeetingStatus;
