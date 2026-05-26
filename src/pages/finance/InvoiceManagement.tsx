@@ -7,6 +7,7 @@ import {
   forwardRef,
   useImperativeHandle,
   type ChangeEvent,
+  type ReactNode,
 } from 'react';
 import { Link } from 'react-router-dom';
 import {
@@ -38,13 +39,8 @@ import { fetchTaskTitleByInvoiceIds, fetchTasksForInvoice, type LinkedTask } fro
 import { computeQuoteInvoiceVariance, isRedAlertVariance, type QuoteVarianceResult } from '../../lib/quoteInvoiceVariance';
 import { exportInvoiceApprovalPdf } from '../../lib/pdf/exportInvoiceApprovalPdf';
 import { QuoteVariancePanel } from '../../components/finance/QuoteVariancePanel';
-import { uploadInvoiceDocumentDirect, isAllowedInvoiceUploadFile } from '../../lib/invoiceDirectUpload';
+import { uploadInvoiceDocumentDirect, isAllowedInvoiceUploadFile, isInvoiceFileOnlyArchive, invoiceListDisplayFileName, invoiceListDisplayAmount, invoiceListDisplayInvoiceNumber } from '../../lib/invoiceDirectUpload';
 import { ocrPrefillCredibility } from '../../lib/invoiceSingleUploadCredibility';
-import {
-  getPdfPageCountFromFile,
-  processPayablePdfPackage,
-  type PayablePackageResult,
-} from '../../lib/invoicePdfPackage';
 import {
   currentAccountingDefaults,
   effectiveAccountingMonth,
@@ -238,6 +234,31 @@ function statusStyle(status: string): { labelZh: string; labelEn: string; classN
     ai_extraction_failed: { labelZh: '识别失败', labelEn: 'Extraction failed', className: 'bg-orange-100 text-orange-800' },
   };
   return map[status] || map.pending_review;
+}
+
+function resolveInvoiceListStatusStyle(
+  inv: Invoice,
+  historical: boolean,
+): { labelZh: string; labelEn: string; className: string } {
+  if (historical) {
+    return {
+      labelZh: '历史归档',
+      labelEn: 'Archived',
+      className: 'bg-slate-100 text-slate-700 ring-1 ring-slate-200',
+    };
+  }
+  if (isInvoiceFileOnlyArchive(inv)) {
+    return {
+      labelZh: '已归档',
+      labelEn: 'Archived',
+      className: 'bg-slate-100 text-slate-700 ring-1 ring-slate-200',
+    };
+  }
+  return statusStyle(inv.status);
+}
+
+function openInvoiceDocumentUrl(url: string) {
+  window.open(url, '_blank', 'noopener,noreferrer');
 }
 
 type InvoiceAiAuditRow = {
@@ -1708,7 +1729,6 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
-  const [uploadFollowUpHint, setUploadFollowUpHint] = useState('');
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Invoice | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -1728,9 +1748,7 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [uploadAccountingYear, setUploadAccountingYear] = useState(() => currentAccountingDefaults().year);
   const [uploadAccountingMonth, setUploadAccountingMonth] = useState(() => currentAccountingDefaults().month);
-  const uploadPackagePdfInputRef = useRef<HTMLInputElement>(null);
-  const uploadSupplementInputRef = useRef<HTMLInputElement>(null);
-  const [payablePackageSummary, setPayablePackageSummary] = useState<PayablePackageResult | null>(null);
+  const uploadArchiveInputRef = useRef<HTMLInputElement>(null);
   const [expandedYears, setExpandedYears] = useState<Set<number>>(() => new Set());
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(() => new Set());
   const expandAccountingUiDone = useRef(false);
@@ -2351,80 +2369,7 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
     });
   };
 
-  const handlePackagePdfSelected = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    const inputEl = e.target;
-    if (!file || !profile || !currentPropertyId) return;
-    if (!canUploadPkg) {
-      inputEl.value = '';
-      return;
-    }
-
-    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
-    if (!isPdf) {
-      alert(l ? 'Please choose a PDF payable package.' : '请选择 PDF 格式的发票包。');
-      inputEl.value = '';
-      return;
-    }
-
-    setUploadFollowUpHint('');
-    setPayablePackageSummary(null);
-
-    try {
-      const pageCount = await getPdfPageCountFromFile(file);
-      if (pageCount <= 1) {
-        alert(
-          l
-            ? 'This PDF has only one page. Use “Single-file supplement” below for one-off uploads, or combine pages into a multi-page package.'
-            : '该 PDF 仅 1 页。请使用「单张补录」做单笔补录，或将多页合并为发票包后从主入口上传。',
-        );
-        inputEl.value = '';
-        return;
-      }
-
-      setUploadModalOpen(false);
-      setUploading(true);
-
-      setUploadProgress(
-        l ? `Processing payable package (${pageCount} pages)…` : `正在处理发票包（共 ${pageCount} 页）…`,
-      );
-      const summary = await processPayablePdfPackage({
-        file,
-        profileId: profile.id,
-        propertyId: currentPropertyId,
-        accountingYear: uploadAccountingYear,
-        accountingMonth: uploadAccountingMonth,
-        langEn: l,
-        onProgress: (p) => setUploadProgress(l ? p.messageEn : p.messageZh),
-      });
-      setPayablePackageSummary(summary);
-      setUploadProgress(
-        l
-          ? `Processed ${summary.totalPages} pages · imported ${summary.recognizedInvoices} · skipped ${summary.skippedPages}.`
-          : `已处理 ${summary.totalPages} 页，成功导入 ${summary.recognizedInvoices} 张，跳过 ${summary.skippedPages} 页。`,
-      );
-      await loadInvoices();
-      setTimeout(() => setUploadProgress(''), 4000);
-    } catch (err: unknown) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : (() => {
-              try {
-                return typeof err === 'string' ? err : JSON.stringify(err);
-              } catch {
-                return String(err);
-              }
-            })();
-      alert((l ? 'Package upload failed: ' : '发票包上传失败：') + msg);
-      setUploadProgress('');
-    } finally {
-      setUploading(false);
-      inputEl.value = '';
-    }
-  };
-
-  const handleSupplementFileSelected = async (e: ChangeEvent<HTMLInputElement>) => {
+  const handleArchiveFileSelected = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     const inputEl = e.target;
     if (!file || !profile || !currentPropertyId) return;
@@ -2439,29 +2384,13 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
       return;
     }
 
-    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
-    if (isPdf) {
-      const pageCount = await getPdfPageCountFromFile(file);
-      if (pageCount > 1) {
-        alert(
-          l
-            ? 'Multi-page PDFs should use “Upload PDF payable package” (main workflow).'
-            : '多页 PDF 请使用主入口「上传 PDF 发票包」。',
-        );
-        inputEl.value = '';
-        return;
-      }
-    }
-
     setUploadModalOpen(false);
     setUploading(true);
-    setUploadFollowUpHint('');
-    setPayablePackageSummary(null);
 
     try {
       setUploadProgress(l ? 'Uploading…' : '上传中…');
 
-      const { invoiceId } = await uploadInvoiceDocumentDirect({
+      await uploadInvoiceDocumentDirect({
         file,
         profileId: profile.id,
         propertyId: currentPropertyId,
@@ -2470,18 +2399,13 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
         langEn: l,
       });
 
-      setUploadFollowUpHint(
+      setUploadProgress('');
+      alert(
         l
-          ? 'File saved as draft. Use AI Extract in the invoice detail to pre-fill fields, then submit for review.'
-          : '文件已保存为草稿。可在发票详情中使用「AI识别」预填字段，再提交待审核。',
+          ? 'PDF uploaded\n1 file saved. Click the file name in the list to view the original PDF.'
+          : 'PDF 上传完成\n已保存 1 个文件。可在列表中点击文件名查看原始 PDF。',
       );
-      window.setTimeout(() => setUploadFollowUpHint(''), 12000);
-
-      setUploadProgress(l ? 'Uploaded.' : '上传完成。');
       await loadInvoices();
-      const row = (await supabase.from('invoices').select('*').eq('id', invoiceId).maybeSingle()).data as Invoice | null;
-      if (row) setSelectedInvoice(row);
-      setTimeout(() => setUploadProgress(''), 2000);
     } catch (err: unknown) {
       const msg =
         err instanceof Error
@@ -2914,20 +2838,10 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
         </div>
       ) : null}
 
-      {uploadProgress && (
+      {uploadProgress ? (
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center gap-3">
-          {uploadProgress.includes('!') || uploadProgress.includes('Done') || uploadProgress.includes('完成') ? (
-            <CheckCircle size={20} className="text-clearstrata-ui-primary shrink-0" />
-          ) : (
-            <Loader2 size={20} className="animate-spin text-blue-600 shrink-0" />
-          )}
+          <Loader2 size={20} className="animate-spin text-blue-600 shrink-0" />
           <span className="text-sm font-medium text-blue-800">{uploadProgress}</span>
-        </div>
-      )}
-
-      {uploadFollowUpHint ? (
-        <div className="rounded-xl border border-slate-200 bg-slate-50/90 px-4 py-2.5 text-xs text-slate-700">
-          {uploadFollowUpHint}
         </div>
       ) : null}
 
@@ -2945,23 +2859,12 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
             onClick={(ev) => ev.stopPropagation()}
           >
             <h2 id="invoice-upload-modal-title" className="text-lg font-semibold text-gray-900">
-              {l ? 'Upload invoices' : '上传发票'}
+              {l ? 'Upload invoice file' : '上传发票文件'}
             </h2>
-            <p className="mt-2 text-sm font-medium text-gray-900">
-              {l ? 'Main workflow: monthly payable PDF package' : '主流程：整月 PDF payable 发票包'}
-            </p>
-            <p className="mt-1 text-sm text-gray-600">
+            <p className="mt-2 text-sm text-gray-600">
               {l
-                ? 'Upload a multi-page PDF exported by your property manager (typical 20–100 pages). Each page is saved as a draft file first; AI Extract can run later.'
-                : '上传物业管理公司导出的多页 PDF 发票包（常见 20～100 页）。文件会先保存，AI识别可稍后执行。'}
-            </p>
-            <p className="mt-3 text-xs font-medium text-gray-700">
-              {l ? 'Supplement: single-page PDF or image (one-off)' : '补录工具：单页 PDF 或图片（零散票据）'}
-            </p>
-            <p className="mt-1 text-xs text-gray-600">
-              {l
-                ? 'Use only for odd receipts. Multi-page PDFs must use the main package button.'
-                : '仅用于零散补录；多页 PDF 必须使用上方「上传 PDF 发票包」。'}
+                ? 'Upload a PDF or image. The original file is saved as one archived record—no OCR or page splitting.'
+                : '上传 PDF 或图片。整份文件保存为一条归档记录，不做 OCR，不拆页。'}
             </p>
 
             <div className="mt-4 space-y-3">
@@ -3009,44 +2912,25 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
             </div>
 
             <input
-              ref={uploadPackagePdfInputRef}
-              type="file"
-              className="hidden"
-              accept="application/pdf,.pdf"
-              onChange={handlePackagePdfSelected}
-              disabled={uploading}
-            />
-            <input
-              ref={uploadSupplementInputRef}
+              ref={uploadArchiveInputRef}
               type="file"
               className="hidden"
               accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png"
-              onChange={handleSupplementFileSelected}
+              onChange={handleArchiveFileSelected}
               disabled={uploading}
             />
 
             <div className="mt-5 flex flex-col gap-2">
               {canUploadPkg ? (
-                <>
-                  <button
-                    type="button"
-                    disabled={uploading}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-clearstrata-ui-primary py-2.5 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover disabled:opacity-50"
-                    onClick={() => uploadPackagePdfInputRef.current?.click()}
-                  >
-                    <Upload size={16} aria-hidden />
-                    {l ? 'Upload PDF payable package' : '上传 PDF 发票包（主流程）'}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={uploading}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white py-2.5 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
-                    onClick={() => uploadSupplementInputRef.current?.click()}
-                  >
-                    <PenLine size={16} aria-hidden />
-                    {l ? 'Single-file supplement (1-page PDF / image)' : '单张补录（单页 PDF / 图片）'}
-                  </button>
-                </>
+                <button
+                  type="button"
+                  disabled={uploading}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-clearstrata-ui-primary py-2.5 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover disabled:opacity-50"
+                  onClick={() => uploadArchiveInputRef.current?.click()}
+                >
+                  {uploading ? <Loader2 size={16} className="animate-spin" aria-hidden /> : <Upload size={16} aria-hidden />}
+                  {uploading ? (l ? 'Uploading…' : '上传中…') : l ? 'Choose file' : '选择文件'}
+                </button>
               ) : (
                 <p className="text-sm text-gray-600">
                   {l ? 'Upload is restricted to property staff.' : '仅物业工作人员可上传发票。'}
@@ -3065,92 +2949,6 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
         </div>
       )}
 
-      {payablePackageSummary ? (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 p-4"
-          role="presentation"
-          onClick={() => setPayablePackageSummary(null)}
-        >
-          <div
-            className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-xl border border-gray-200 bg-white shadow-xl"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="payable-package-summary-title"
-            onClick={(ev) => ev.stopPropagation()}
-          >
-            <div className="p-6 pb-3">
-              <h2 id="payable-package-summary-title" className="text-lg font-bold text-gray-900">
-                {l ? 'PDF upload complete' : 'PDF 上传完成'}
-              </h2>
-              <p className="mt-2 text-sm font-medium text-gray-800">
-                {l
-                  ? `Processed ${payablePackageSummary.totalPages} pages · imported ${payablePackageSummary.recognizedInvoices} · skipped ${payablePackageSummary.skippedPages}.`
-                  : `已处理 ${payablePackageSummary.totalPages} 页，成功导入 ${payablePackageSummary.recognizedInvoices} 张，跳过 ${payablePackageSummary.skippedPages} 页。`}
-              </p>
-              <ul className="mt-3 space-y-2 text-sm text-gray-800">
-                <li className="flex justify-between gap-3 border-b border-gray-100 pb-2">
-                  <span className="text-gray-600">{l ? 'Total pages' : '总页数'}</span>
-                  <span className="font-semibold tabular-nums">{payablePackageSummary.totalPages}</span>
-                </li>
-                <li className="flex justify-between gap-3 border-b border-gray-100 pb-2">
-                  <span className="text-gray-600">{l ? 'Imported' : '成功入库'}</span>
-                  <span className="font-semibold tabular-nums text-clearstrata-brand-700">
-                    {payablePackageSummary.recognizedInvoices}
-                  </span>
-                </li>
-                <li className="flex justify-between gap-3 pb-1">
-                  <span className="text-gray-600">{l ? 'Skipped' : '跳过'}</span>
-                  <span className="font-semibold tabular-nums text-amber-800">
-                    {payablePackageSummary.skippedPages}
-                  </span>
-                </li>
-              </ul>
-            </div>
-            {payablePackageSummary.skipped.length > 0 ? (
-              <div className="flex-1 overflow-y-auto border-t border-gray-100 px-6 py-3">
-                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  {l ? 'Skipped pages' : '跳过页清单'}
-                </h3>
-                <ul className="space-y-2">
-                  {payablePackageSummary.skipped.map((sk) => (
-                    <li
-                      key={`${sk.pageIndex}-${sk.reason}`}
-                      className="rounded-lg border border-amber-100 bg-amber-50/60 px-3 py-2 text-xs"
-                    >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="rounded-md bg-white px-1.5 py-0.5 font-semibold text-amber-900 ring-1 ring-amber-200">
-                          {l ? `Page ${sk.pageIndex}` : `第 ${sk.pageIndex} 页`}
-                        </span>
-                        <span className="font-medium text-amber-950">{l ? sk.reasonEn : sk.reasonZh}</span>
-                      </div>
-                      {sk.excerpt ? (
-                        <p className="mt-1 line-clamp-2 break-words text-[11px] leading-relaxed text-gray-600">
-                          {sk.excerpt}
-                        </p>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-            <div className="border-t border-gray-100 p-6 pt-4">
-              <p className="text-xs leading-relaxed text-gray-500">
-                {l
-                  ? 'Pages that failed to save are listed below. Use AI Extract on saved drafts to pre-fill invoice fields.'
-                  : '未能保存的页见下方清单。已保存的草稿可在详情中使用「AI识别」预填字段。'}
-              </p>
-              <button
-                type="button"
-                className="mt-4 w-full rounded-lg bg-clearstrata-ui-primary py-2.5 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive"
-                onClick={() => setPayablePackageSummary(null)}
-              >
-                {l ? 'View invoices' : '查看发票列表'}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
       <div className="min-w-0 rounded-xl border border-gray-100 bg-white shadow-sm">
         {!hideToolbar ? (
           <div className="border-b border-gray-200 p-2.5 sm:p-3 md:p-4">
@@ -3165,7 +2963,7 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
                   }`}
                 >
                   <Upload size={16} className="sm:h-[18px] sm:w-[18px]" />
-                  {uploading ? (l ? 'Working…' : '处理中…') : l ? 'Upload package' : '上传发票包'}
+                  {uploading ? (l ? 'Uploading…' : '上传中…') : l ? 'Upload file' : '上传文件'}
                 </button>
               ) : null}
               <button
@@ -3323,7 +3121,7 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
                 <thead className="border-b border-gray-200 bg-gray-50">
                   <tr>
                     <th className="min-w-0 px-1 py-1.5 text-left text-[10px] font-medium uppercase tracking-wide text-gray-500 sm:px-1.5 sm:py-2">
-                      {l ? 'Vendor' : '供应商'}
+                      {l ? 'File' : '文件名'}
                     </th>
                     <th className="min-w-0 px-1 py-1.5 text-left text-[10px] font-medium uppercase tracking-wide text-gray-500 sm:px-1.5 sm:py-2">
                       {l ? 'Invoice #' : '发票号'}
@@ -3371,16 +3169,11 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {monthList.map((inv) => {
-                    const baseSt = statusStyle(inv.status);
                     const archivedHistorical = isHistoricalRow(inv);
-                    const st = archivedHistorical
-                      ? {
-                          ...baseSt,
-                          labelZh: '历史归档',
-                          labelEn: 'Archived',
-                          className: 'bg-slate-100 text-slate-700 ring-1 ring-slate-200',
-                        }
-                      : baseSt;
+                    const st = resolveInvoiceListStatusStyle(inv, archivedHistorical);
+                    const listFileName = invoiceListDisplayFileName(inv);
+                    const listAmount = invoiceListDisplayAmount(inv);
+                    const listInvoiceNo = invoiceListDisplayInvoiceNumber(inv);
                     const qv = quoteVarianceByInvoiceId[inv.id];
                     return (
                       <tr
@@ -3391,9 +3184,23 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
                         onClick={() => setSelectedInvoice(inv)}
                       >
                         <td className="min-w-0 max-w-[160px] overflow-hidden px-1 py-1.5 align-top sm:px-1.5 sm:py-2">
-                          <div className="truncate text-xs font-medium text-gray-900" title={inv.vendor_name}>
-                            {inv.vendor_name}
-                          </div>
+                          {inv.document_url ? (
+                            <button
+                              type="button"
+                              className="truncate text-left text-xs font-medium text-clearstrata-ui-primary hover:underline"
+                              title={listFileName}
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                openInvoiceDocumentUrl(inv.document_url);
+                              }}
+                            >
+                              {listFileName}
+                            </button>
+                          ) : (
+                            <div className="truncate text-xs font-medium text-gray-900" title={listFileName}>
+                              {listFileName}
+                            </div>
+                          )}
                           {inv.hst_number && (
                             <div className="truncate text-[10px] text-gray-500" title={`HST: ${inv.hst_number}`}>
                               HST: {inv.hst_number}
@@ -3420,8 +3227,8 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
                           ) : null}
                         </td>
                         <td className="min-w-0 max-w-[120px] overflow-hidden px-1 py-1.5 sm:px-1.5 sm:py-2">
-                          <div className="truncate whitespace-nowrap text-xs text-gray-700" title={inv.invoice_number || undefined}>
-                            {inv.invoice_number || '-'}
+                          <div className="truncate whitespace-nowrap text-xs text-gray-700">
+                            {listInvoiceNo ?? '—'}
                           </div>
                         </td>
                         <td className="whitespace-nowrap px-1 py-1.5 text-xs text-gray-700 sm:px-1.5 sm:py-2">
@@ -3437,7 +3244,7 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
                             : `${effectiveAccountingYear(inv)}年${effectiveAccountingMonth(inv)}月`}
                         </td>
                         <td className="min-w-0 whitespace-nowrap px-1 py-1.5 text-right text-xs font-semibold tabular-nums text-gray-900 sm:px-1.5 sm:py-2">
-                          ${Number(inv.total_amount).toFixed(2)}
+                          {listAmount != null ? `$${listAmount}` : '—'}
                         </td>
                         <td className="min-w-0 overflow-hidden px-0.5 py-1.5 text-center sm:py-2">
                           {qv ? (
@@ -3569,16 +3376,11 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
 
             <div className="md:hidden p-4 space-y-3">
               {monthList.map((inv) => {
-                const baseSt = statusStyle(inv.status);
                 const archivedHistorical = isHistoricalRow(inv);
-                const st = archivedHistorical
-                  ? {
-                      ...baseSt,
-                      labelZh: '历史归档',
-                      labelEn: 'Archived',
-                      className: 'bg-slate-100 text-slate-700 ring-1 ring-slate-200',
-                    }
-                  : baseSt;
+                const st = resolveInvoiceListStatusStyle(inv, archivedHistorical);
+                const listFileName = invoiceListDisplayFileName(inv);
+                const listAmount = invoiceListDisplayAmount(inv);
+                const listInvoiceNo = invoiceListDisplayInvoiceNumber(inv);
                 const qv = quoteVarianceByInvoiceId[inv.id];
                 return (
                   <button
@@ -3588,7 +3390,28 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
                     className="w-full text-left border border-gray-200 rounded-xl p-4 hover:border-clearstrata-ui-primary/50 transition-colors bg-white shadow-sm"
                   >
                     <div className="flex justify-between gap-2 mb-2">
-                      <span className="font-semibold text-gray-900">{inv.vendor_name}</span>
+                      {inv.document_url ? (
+                        <span
+                          role="link"
+                          tabIndex={0}
+                          className="font-semibold text-clearstrata-ui-primary hover:underline truncate"
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            openInvoiceDocumentUrl(inv.document_url);
+                          }}
+                          onKeyDown={(ev) => {
+                            if (ev.key === 'Enter' || ev.key === ' ') {
+                              ev.preventDefault();
+                              ev.stopPropagation();
+                              openInvoiceDocumentUrl(inv.document_url);
+                            }
+                          }}
+                        >
+                          {listFileName}
+                        </span>
+                      ) : (
+                        <span className="font-semibold text-gray-900 truncate">{listFileName}</span>
+                      )}
                       <div className="flex items-center gap-1.5 shrink-0">
                         {aiAuditListMap[inv.id] ? (
                           <AiListRiskBadge level={aiAuditListMap[inv.id].risk_level} l={l} />
@@ -3619,7 +3442,7 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
                     ) : null}
                     <div className="text-sm text-gray-600 space-y-1">
                       <div>
-                        {inv.invoice_number || '—'} · {new Date(inv.invoice_date).toLocaleDateString(l ? 'en-CA' : 'zh-CN')}
+                        {listInvoiceNo ?? '—'} · {new Date(inv.invoice_date).toLocaleDateString(l ? 'en-CA' : 'zh-CN')}
                       </div>
                       <div className="text-xs text-gray-500">
                         {l ? 'Book: ' : '归档：'}
@@ -3627,7 +3450,7 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
                           ? `${effectiveAccountingYear(inv)}-${String(effectiveAccountingMonth(inv)).padStart(2, '0')}`
                           : `${effectiveAccountingYear(inv)}年${effectiveAccountingMonth(inv)}月`}
                       </div>
-                      <div className="font-bold text-gray-900">${Number(inv.total_amount).toFixed(2)}</div>
+                      <div className="font-bold text-gray-900">{listAmount != null ? `$${listAmount}` : '—'}</div>
                       {qv ? (
                         <div className="flex items-center gap-2 pt-1">
                           <span className="text-gray-500">{l ? 'Quote Δ' : '报价对比'}:</span>
@@ -4006,15 +3829,22 @@ function InvoiceDetailModal({
   }, [invoice, governanceStartIso]);
 
   const st = useMemo(() => {
-    const base = statusStyle(invoice.status);
-    if (!isHistoricalInvoice) return base;
-    return {
-      ...base,
-      labelZh: '历史归档',
-      labelEn: 'Archived',
-      className: 'bg-slate-100 text-slate-700 ring-1 ring-slate-200',
-    };
-  }, [invoice.status, isHistoricalInvoice]);
+    if (isHistoricalInvoice) {
+      return {
+        labelZh: '历史归档',
+        labelEn: 'Archived',
+        className: 'bg-slate-100 text-slate-700 ring-1 ring-slate-200',
+      };
+    }
+    if (isInvoiceFileOnlyArchive(invoice)) {
+      return {
+        labelZh: '已归档',
+        labelEn: 'Archived',
+        className: 'bg-slate-100 text-slate-700 ring-1 ring-slate-200',
+      };
+    }
+    return statusStyle(invoice.status);
+  }, [invoice, isHistoricalInvoice]);
 
   const loadAiAuditBundle = useCallback(async () => {
     if (!currentPropertyId) {
@@ -4448,21 +4278,6 @@ function InvoiceDetailModal({
             </p>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            {canAudit && invoice.document_url ? (
-              <button
-                type="button"
-                disabled
-                title={
-                  l
-                    ? 'AI Extract (OCR pre-fill) — coming in next phase'
-                    : 'AI识别（OCR 预填）— 下一阶段接入'
-                }
-                className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-500 border border-gray-200 rounded-lg bg-gray-50 cursor-not-allowed opacity-70"
-              >
-                <Sparkles className="h-4 w-4" />
-                <span className="hidden sm:inline">{l ? 'AI Extract' : 'AI识别'}</span>
-              </button>
-            ) : null}
             <button
               type="button"
               onClick={() => void handleExportApprovalPdf()}
@@ -4496,7 +4311,7 @@ function InvoiceDetailModal({
           </div>
         ) : null}
 
-        {invoice.status === 'draft_manual' && canAudit ? (
+        {invoice.status === 'draft_manual' && canAudit && !isInvoiceFileOnlyArchive(invoice) ? (
           <div
             className="mx-4 mt-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-4 shadow-sm sm:mx-6"
             aria-labelledby="draft-manual-heading"
@@ -4599,7 +4414,26 @@ function InvoiceDetailModal({
               )}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <InfoField label={l ? 'Supplier' : '供应商'} value={invoice.vendor_name || '—'} />
+              {isInvoiceFileOnlyArchive(invoice) ? (
+                <InfoField
+                  label={l ? 'File name' : '文件名'}
+                  value={
+                    invoice.document_url ? (
+                      <button
+                        type="button"
+                        className="text-left text-clearstrata-ui-primary hover:underline"
+                        onClick={() => openInvoiceDocumentUrl(invoice.document_url)}
+                      >
+                        {invoiceListDisplayFileName(invoice)}
+                      </button>
+                    ) : (
+                      invoiceListDisplayFileName(invoice)
+                    )
+                  }
+                />
+              ) : (
+                <InfoField label={l ? 'Supplier' : '供应商'} value={invoice.vendor_name || '—'} />
+              )}
               <InfoField
                 label={l ? 'Invoice date' : '开票日期'}
                 value={new Date(invoice.invoice_date).toLocaleDateString(l ? 'en-CA' : 'zh-CN')}
@@ -4621,13 +4455,20 @@ function InvoiceDetailModal({
               )}
               <InfoField
                 label={l ? 'Total amount' : '金额（含税）'}
-                value={`$${Number(invoice.total_amount).toFixed(2)}`}
+                value={
+                  invoiceListDisplayAmount(invoice) != null
+                    ? `$${invoiceListDisplayAmount(invoice)}`
+                    : '—'
+                }
                 highlight
               />
               <InfoField label={l ? 'Category' : '分类'} value={catLabel(invoice.category)} />
             </div>
             <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-gray-100">
-              <InfoField label={l ? 'Invoice #' : '发票号'} value={invoice.invoice_number || '-'} />
+              <InfoField
+                label={l ? 'Invoice #' : '发票号'}
+                value={invoiceListDisplayInvoiceNumber(invoice) ?? '—'}
+              />
               <InfoField label={l ? 'Subtotal' : '税前'} value={`$${Number(invoice.subtotal).toFixed(2)}`} />
               <InfoField label={l ? 'Tax' : '税额'} value={`$${Number(invoice.tax_amount || 0).toFixed(2)}`} />
               <InfoField label={l ? 'Currency' : '币种'} value={invoice.currency || 'CAD'} />
@@ -5377,7 +5218,7 @@ function InvoiceDetailModal({
   );
 }
 
-function InfoField({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+function InfoField({ label, value, highlight }: { label: string; value: ReactNode; highlight?: boolean }) {
   return (
     <div>
       <div className="text-xs font-medium text-gray-500 mb-0.5">{label}</div>

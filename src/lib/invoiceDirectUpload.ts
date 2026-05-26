@@ -14,16 +14,47 @@ export function isAllowedInvoiceUploadFile(file: File): boolean {
   );
 }
 
-function draftNeedsDetailsVendor(langEn: boolean): string {
-  return langEn ? 'Needs details' : '待补充信息';
+export type InvoiceDirectUploadOutcome = 'draft_manual';
+
+export function isInvoiceFileOnlyArchive(inv: {
+  ai_extracted_data?: Record<string, unknown> | null;
+}): boolean {
+  const d = inv.ai_extracted_data;
+  if (!d || typeof d !== 'object') return false;
+  return d.file_only_upload === true || d.upload_mode === 'invoice_archive';
 }
 
-export type InvoiceDirectUploadOutcome = 'pending_review' | 'draft_manual';
+export function invoiceListDisplayFileName(inv: {
+  file_name?: string | null;
+  vendor_name?: string;
+  ai_extracted_data?: Record<string, unknown> | null;
+}): string {
+  const name = (inv.file_name || inv.vendor_name || '').trim();
+  return name || '—';
+}
+
+export function invoiceListDisplayAmount(inv: {
+  total_amount?: number | null;
+  ai_extracted_data?: Record<string, unknown> | null;
+}): string | null {
+  if (isInvoiceFileOnlyArchive(inv)) return null;
+  const n = Number(inv.total_amount);
+  if (!Number.isFinite(n)) return null;
+  return n.toFixed(2);
+}
+
+export function invoiceListDisplayInvoiceNumber(inv: {
+  invoice_number?: string | null;
+  ai_extracted_data?: Record<string, unknown> | null;
+}): string | null {
+  if (isInvoiceFileOnlyArchive(inv)) return null;
+  const n = (inv.invoice_number ?? '').trim();
+  return n || null;
+}
 
 /**
- * Single invoice: Storage → insert `draft_manual` row (file archived).
- * OCR pre-fill is a separate optional action (see AI Extract in invoice detail).
- * Does **not** run AI audit workflow (budget / duplicate scan / anomalies).
+ * Archive one invoice file (PDF or image): Storage → single `invoices` row.
+ * No OCR, no AI, no page splitting.
  */
 export async function uploadInvoiceDocumentDirect(opts: {
   file: File;
@@ -42,10 +73,11 @@ export async function uploadInvoiceDocumentDirect(opts: {
   }
 
   const today = new Date().toISOString().split('T')[0];
+  const originalFileName = file.name.trim();
 
   const fileExt = file.name.split('.').pop();
-  const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-  const filePath = `invoices/${fileName}`;
+  const storageFileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+  const filePath = `invoices/${storageFileName}`;
 
   const { error: uploadError } = await supabase.storage.from('documents').upload(filePath, file);
   if (uploadError) throw uploadError;
@@ -55,9 +87,9 @@ export async function uploadInvoiceDocumentDirect(opts: {
 
   const insertBody = {
     property_id: propertyId,
-    file_name: sanitizeDbText(file.name),
+    file_name: sanitizeDbText(originalFileName),
     document_url: sanitizeDbText(docUrl),
-    vendor_name: sanitizeDbText(draftNeedsDetailsVendor(langEn)),
+    vendor_name: sanitizeDbText(originalFileName),
     invoice_number: null,
     invoice_date: today,
     due_date: null,
@@ -70,7 +102,9 @@ export async function uploadInvoiceDocumentDirect(opts: {
     notes: null,
     has_anomalies: false,
     ai_extracted_data: {
-      single_upload_file_only: true,
+      file_only_upload: true,
+      upload_mode: 'invoice_archive',
+      original_file_name: originalFileName,
     },
     ai_confidence_score: null,
     uploaded_by: profileId,

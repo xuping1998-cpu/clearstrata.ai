@@ -1,13 +1,12 @@
 import { useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ChevronLeft, Loader2, PenLine, Upload } from 'lucide-react';
+import { ChevronLeft, Loader2, Upload } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useProperty } from '../contexts/PropertyContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { canUploadInvoicePackage } from '../lib/financePermissions';
 import { uploadInvoiceDocumentDirect, isAllowedInvoiceUploadFile } from '../lib/invoiceDirectUpload';
 import { currentAccountingDefaults } from '../lib/invoiceAccountingPeriod';
-import { getPdfPageCountFromFile, processPayablePdfPackage } from '../lib/invoicePdfPackage';
 
 export function InvoiceUpload() {
   const { profile } = useAuth();
@@ -15,65 +14,13 @@ export function InvoiceUpload() {
   const { language } = useLanguage();
   const en = language === 'en';
   const navigate = useNavigate();
-  const packagePdfInputRef = useRef<HTMLInputElement>(null);
-  const supplementInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
   const [accountingYear, setAccountingYear] = useState(() => currentAccountingDefaults().year);
   const [accountingMonth, setAccountingMonth] = useState(() => currentAccountingDefaults().month);
 
-  async function handlePackageFile(file: File) {
-    if (!profile || !currentPropertyId) {
-      window.alert(en ? 'Missing profile or property.' : '未登录或未选择物业。');
-      return;
-    }
-    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
-    if (!isPdf) {
-      window.alert(en ? 'Please choose a PDF payable package.' : '请选择 PDF 发票包。');
-      return;
-    }
-
-    setBusy(true);
-    setHint(en ? 'Reading PDF…' : '正在读取 PDF…');
-
-    try {
-      const pageCount = await getPdfPageCountFromFile(file);
-      if (pageCount <= 1) {
-        window.alert(
-          en
-            ? 'Only one page found. Use “Single-file supplement” for one-page PDFs, or merge pages into a package.'
-            : '仅检测到 1 页。请使用「单张补录」上传单页 PDF，或将多页合并为发票包后再用主入口。',
-        );
-        return;
-      }
-      setHint(en ? `Processing ${pageCount}-page package…` : `正在处理 ${pageCount} 页发票包…`);
-      const summary = await processPayablePdfPackage({
-        file,
-        profileId: profile.id,
-        propertyId: currentPropertyId,
-        accountingYear,
-        accountingMonth,
-        langEn: en,
-        onProgress: (p) => setHint(en ? p.messageEn : p.messageZh),
-      });
-      window.alert(
-        en
-          ? `PDF upload complete.\nTotal pages: ${summary.totalPages}\nSaved: ${summary.recognizedInvoices}\nFailed: ${summary.skippedPages}`
-          : `PDF 上传完成\n总页数：${summary.totalPages}\n已保存：${summary.recognizedInvoices}\n失败：${summary.skippedPages}`,
-      );
-      setHint(en ? 'Done. Opening invoice list…' : '完成，正在打开发票列表…');
-      navigate('/finance?tab=invoices');
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      window.alert((en ? 'Package upload failed: ' : '发票包上传失败：') + msg);
-      setHint(null);
-    } finally {
-      setBusy(false);
-      if (packagePdfInputRef.current) packagePdfInputRef.current.value = '';
-    }
-  }
-
-  async function handleSupplementFile(file: File) {
+  async function handleFile(file: File) {
     if (!profile || !currentPropertyId) {
       window.alert(en ? 'Missing profile or property.' : '未登录或未选择物业。');
       return;
@@ -84,21 +31,11 @@ export function InvoiceUpload() {
       return;
     }
 
-    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
-    if (isPdf) {
-      const pageCount = await getPdfPageCountFromFile(file);
-      if (pageCount > 1) {
-        window.alert(en ? 'Multi-page PDFs belong under “Upload PDF payable package”.' : '多页 PDF 请使用「上传 PDF 发票包」主入口。');
-        if (supplementInputRef.current) supplementInputRef.current.value = '';
-        return;
-      }
-    }
-
     setBusy(true);
     setHint(en ? 'Uploading…' : '上传中…');
 
     try {
-      const { invoiceId } = await uploadInvoiceDocumentDirect({
+      await uploadInvoiceDocumentDirect({
         file,
         profileId: profile.id,
         propertyId: currentPropertyId,
@@ -109,19 +46,19 @@ export function InvoiceUpload() {
 
       window.alert(
         en
-          ? 'File saved as draft. Open the invoice and use AI Extract to pre-fill fields when available.'
-          : '文件已保存为草稿。打开发票后可使用「AI识别」预填字段。',
+          ? 'PDF uploaded\n1 file saved. Click the file name in the list to view the original PDF.'
+          : 'PDF 上传完成\n已保存 1 个文件。可在列表中点击文件名查看原始 PDF。',
       );
 
-      setHint(en ? 'Saved. Redirecting…' : '已保存，正在跳转…');
-      navigate(`/finance?tab=invoices&invoice=${encodeURIComponent(invoiceId)}`);
+      setHint(en ? 'Done. Opening invoice list…' : '完成，正在打开发票列表…');
+      navigate('/finance?tab=invoices');
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       window.alert((en ? 'Upload failed: ' : '上传失败：') + msg);
       setHint(null);
     } finally {
       setBusy(false);
-      if (supplementInputRef.current) supplementInputRef.current.value = '';
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   }
 
@@ -169,15 +106,10 @@ export function InvoiceUpload() {
       </Link>
 
       <h1 className="text-2xl font-bold text-gray-900">{en ? 'Invoice Review · uploads' : '发票审核 · 上传发票'}</h1>
-      <p className="mt-2 text-sm font-semibold text-gray-900">{en ? 'Main: monthly payable PDF package' : '主流程：整月 PDF 发票包'}</p>
-      <p className="mt-1 text-sm text-gray-600">
+      <p className="mt-2 text-sm text-gray-600">
         {en
-          ? 'Files are saved to Invoice details first; AI Extract can run later on each draft.'
-          : '文件会先保存至「发票明细」，AI识别可稍后对每条草稿执行。'}
-      </p>
-      <p className="mt-3 text-xs font-semibold text-gray-800">{en ? 'Supplement: one-off receipt' : '补录：零散单张'}</p>
-      <p className="mt-1 text-xs text-gray-600">
-        {en ? 'Single-page PDF or photo only. Multi-page PDFs must use the main package button.' : '仅单页 PDF 或照片；多页 PDF 必须使用主入口。'}
+          ? 'Upload a PDF or image. One file is saved as one archived record—no OCR or page splitting.'
+          : '上传 PDF 或图片。每个文件保存为一条归档记录，不做 OCR，不拆页。'}
       </p>
 
       <div className="mt-6 space-y-3 rounded-xl border border-gray-200 bg-gray-50/80 px-4 py-4 text-sm">
@@ -227,25 +159,14 @@ export function InvoiceUpload() {
       </div>
 
       <input
-        ref={packagePdfInputRef}
-        type="file"
-        accept="application/pdf,.pdf"
-        className="hidden"
-        disabled={busy || !profile}
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) void handlePackageFile(f);
-        }}
-      />
-      <input
-        ref={supplementInputRef}
+        ref={fileInputRef}
         type="file"
         accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png"
         className="hidden"
         disabled={busy || !profile}
         onChange={(e) => {
           const f = e.target.files?.[0];
-          if (f) void handleSupplementFile(f);
+          if (f) void handleFile(f);
         }}
       />
 
@@ -254,19 +175,10 @@ export function InvoiceUpload() {
           type="button"
           className="btn-primary inline-flex w-full items-center justify-center gap-2"
           disabled={busy || !profile}
-          onClick={() => packagePdfInputRef.current?.click()}
+          onClick={() => fileInputRef.current?.click()}
         >
           {busy ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
-          {en ? 'Upload PDF payable package' : '上传 PDF 发票包（主流程）'}
-        </button>
-        <button
-          type="button"
-          className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
-          disabled={busy || !profile}
-          onClick={() => supplementInputRef.current?.click()}
-        >
-          <PenLine className="size-4 shrink-0" />
-          {en ? 'Single-file supplement (1-page PDF / image)' : '单张补录（单页 PDF / 图片）'}
+          {busy ? (en ? 'Uploading…' : '上传中…') : en ? 'Choose file' : '选择文件'}
         </button>
       </div>
 
