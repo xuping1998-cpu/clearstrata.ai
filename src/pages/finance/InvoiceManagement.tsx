@@ -2459,9 +2459,9 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
     setPayablePackageSummary(null);
 
     try {
-      setUploadProgress(l ? 'Uploading & scanning…' : '上传并识别中…');
+      setUploadProgress(l ? 'Uploading…' : '上传中…');
 
-      const { invoiceId, status } = await uploadInvoiceDocumentDirect({
+      const { invoiceId } = await uploadInvoiceDocumentDirect({
         file,
         profileId: profile.id,
         propertyId: currentPropertyId,
@@ -2471,13 +2471,9 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
       });
 
       setUploadFollowUpHint(
-        status === 'pending_review'
-          ? l
-            ? 'OCR prefilled fields. Review in the list; use AI Review only for anomalies, duplicates, budgets, etc.'
-            : '已从 OCR 预填。「AI审核」仅用于异常/重复/预算等辅助分析，不负责基础 OCR 预填。'
-          : l
-            ? 'Saved as draft (needs details)—not in the review queue yet. Open it, fill in fields, then submit for review.'
-            : '已保存为「待补充信息」草稿，暂不进入待审核。请点开补齐后提交待审核。',
+        l
+          ? 'File saved as draft. Use AI Extract in the invoice detail to pre-fill fields, then submit for review.'
+          : '文件已保存为草稿。可在发票详情中使用「AI识别」预填字段，再提交待审核。',
       );
       window.setTimeout(() => setUploadFollowUpHint(''), 12000);
 
@@ -2956,8 +2952,8 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
             </p>
             <p className="mt-1 text-sm text-gray-600">
               {l
-                ? 'Upload a multi-page PDF exported by your property manager (typical 20–100 pages). Split, OCR, and pending-review rows are created automatically—no AI required for upload.'
-                : '上传物业管理公司导出的多页 PDF 发票包（常见 20～100 页）。系统将拆页、识别并生成多条「待审核」记录；上传本身不依赖 AI。'}
+                ? 'Upload a multi-page PDF exported by your property manager (typical 20–100 pages). Each page is saved as a draft file first; AI Extract can run later.'
+                : '上传物业管理公司导出的多页 PDF 发票包（常见 20～100 页）。文件会先保存，AI识别可稍后执行。'}
             </p>
             <p className="mt-3 text-xs font-medium text-gray-700">
               {l ? 'Supplement: single-page PDF or image (one-off)' : '补录工具：单页 PDF 或图片（零散票据）'}
@@ -3140,8 +3136,8 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
             <div className="border-t border-gray-100 p-6 pt-4">
               <p className="text-xs leading-relaxed text-gray-500">
                 {l
-                  ? 'Skipped pages are not force-imported to avoid weak OCR data. To add one manually, upload that page with Single invoice upload.'
-                  : '跳过页不会强行入库，避免引入弱 OCR 数据。如需补录，请用「单张补录」单独上传该页。'}
+                  ? 'Pages that failed to save are listed below. Use AI Extract on saved drafts to pre-fill invoice fields.'
+                  : '未能保存的页见下方清单。已保存的草稿可在详情中使用「AI识别」预填字段。'}
               </p>
               <button
                 type="button"
@@ -4452,6 +4448,21 @@ function InvoiceDetailModal({
             </p>
           </div>
           <div className="flex items-center gap-1 shrink-0">
+            {canAudit && invoice.document_url ? (
+              <button
+                type="button"
+                disabled
+                title={
+                  l
+                    ? 'AI Extract (OCR pre-fill) — coming in next phase'
+                    : 'AI识别（OCR 预填）— 下一阶段接入'
+                }
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-500 border border-gray-200 rounded-lg bg-gray-50 cursor-not-allowed opacity-70"
+              >
+                <Sparkles className="h-4 w-4" />
+                <span className="hidden sm:inline">{l ? 'AI Extract' : 'AI识别'}</span>
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => void handleExportApprovalPdf()}
@@ -4495,8 +4506,8 @@ function InvoiceDetailModal({
             </h3>
             <p className="mt-1 text-xs text-amber-900/85 leading-relaxed">
               {l
-                ? 'OCR could not pre-fill confidently. Fill key fields below, then submit—AI Review stays optional for anomalies, duplicates, and budgets.'
-                : '系统自动识别未达到可信预填阈值。补齐下方字段后可提交「待审核」；「AI审核」仍为可选辅助，用于异常/重复/预算等。'}
+                ? 'File saved—complete details below or use AI Extract, then submit for council review. AI audit remains optional.'
+                : '文件已保存—请补全下方字段或使用「AI识别」，再提交待审核；「AI审核」仍为可选辅助。'}
             </p>
             <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="block text-xs font-medium text-amber-950">

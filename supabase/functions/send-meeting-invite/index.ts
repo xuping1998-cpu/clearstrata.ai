@@ -647,7 +647,7 @@ function buildEmailHtml(p: InviteEmailHtmlParams): string {
       <td align="center">
         <table role="presentation" width="100%" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06),0 4px 12px rgba(0,0,0,0.04);">
           <tr>
-            <td style="background:#16a34a;padding:16px 20px;text-align:center;">
+            <td style="background:#35C3D6;padding:16px 20px;text-align:center;">
               <div style="margin-bottom:12px;">
                 <img
                   src="${safe.logoUrl}"
@@ -680,18 +680,18 @@ function buildEmailHtml(p: InviteEmailHtmlParams): string {
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:28px;">
                 <tr>
                   <td align="center" style="padding:0 0 12px;">
-                    <a href="${inviteLink}" style="display:inline-block;background:#1D9E75;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;padding:14px 28px;border-radius:8px;">进入会议 / Enter Meeting</a>
+                    <a href="${inviteLink}" style="display:inline-block;background:#35C3D6;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;padding:14px 28px;border-radius:8px;">进入会议 / Enter Meeting</a>
                   </td>
                 </tr>
               </table>
               <p style="margin:24px 0 0;color:#6b7280;font-size:12px;line-height:1.6;">
                 如果按钮无法打开，请复制以下链接：<br />
                 If the button does not open, copy this link:<br />
-                <a href="${inviteLink}" style="color:#1D9E75;word-break:break-all;">${inviteLink}</a>
+                <a href="${inviteLink}" style="color:#35C3D6;word-break:break-all;">${inviteLink}</a>
               </p>
               <p style="margin:16px 0 0;color:#6b7280;font-size:12px;line-height:1.6;">
-                仅登录：<a href="${signInUrl}" style="color:#1D9E75;word-break:break-all;">${signInUrl}</a><br />
-                Sign in only: <a href="${signInUrl}" style="color:#1D9E75;word-break:break-all;">${signInUrl}</a>
+                仅登录：<a href="${signInUrl}" style="color:#35C3D6;word-break:break-all;">${signInUrl}</a><br />
+                Sign in only: <a href="${signInUrl}" style="color:#35C3D6;word-break:break-all;">${signInUrl}</a>
               </p>
             </td>
           </tr>

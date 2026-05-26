@@ -58,8 +58,8 @@ export function InvoiceUpload() {
       });
       window.alert(
         en
-          ? `PDF upload complete.\nTotal pages: ${summary.totalPages}\nInvoices recognized: ${summary.recognizedInvoices}\nSkipped: ${summary.skippedPages}`
-          : `PDF 上传完成\n总页数：${summary.totalPages}\n识别发票：${summary.recognizedInvoices}\n跳过：${summary.skippedPages}`,
+          ? `PDF upload complete.\nTotal pages: ${summary.totalPages}\nSaved: ${summary.recognizedInvoices}\nFailed: ${summary.skippedPages}`
+          : `PDF 上传完成\n总页数：${summary.totalPages}\n已保存：${summary.recognizedInvoices}\n失败：${summary.skippedPages}`,
       );
       setHint(en ? 'Done. Opening invoice list…' : '完成，正在打开发票列表…');
       navigate('/finance?tab=invoices');
@@ -95,10 +95,10 @@ export function InvoiceUpload() {
     }
 
     setBusy(true);
-    setHint(en ? 'Upload & scan…' : '上传并识别中…');
+    setHint(en ? 'Uploading…' : '上传中…');
 
     try {
-      const { invoiceId, status } = await uploadInvoiceDocumentDirect({
+      const { invoiceId } = await uploadInvoiceDocumentDirect({
         file,
         profileId: profile.id,
         propertyId: currentPropertyId,
@@ -107,13 +107,11 @@ export function InvoiceUpload() {
         langEn: en,
       });
 
-      if (status === 'draft_manual') {
-        window.alert(
-          en
-            ? 'Saved as draft (needs details)—not in the review queue yet. Open the invoice, complete fields, then submit for review.'
-            : '已保存为「待补充信息」。请打开发票补齐后提交「待审核」。',
-        );
-      }
+      window.alert(
+        en
+          ? 'File saved as draft. Open the invoice and use AI Extract to pre-fill fields when available.'
+          : '文件已保存为草稿。打开发票后可使用「AI识别」预填字段。',
+      );
 
       setHint(en ? 'Saved. Redirecting…' : '已保存，正在跳转…');
       navigate(`/finance?tab=invoices&invoice=${encodeURIComponent(invoiceId)}`);
@@ -174,8 +172,8 @@ export function InvoiceUpload() {
       <p className="mt-2 text-sm font-semibold text-gray-900">{en ? 'Main: monthly payable PDF package' : '主流程：整月 PDF 发票包'}</p>
       <p className="mt-1 text-sm text-gray-600">
         {en
-          ? 'Adds rows to Invoice details—no standalone AI audit tab needed to upload.'
-          : '导入后记录在「发票明细」；上传不依赖单独的「AI审核」导航。'}
+          ? 'Files are saved to Invoice details first; AI Extract can run later on each draft.'
+          : '文件会先保存至「发票明细」，AI识别可稍后对每条草稿执行。'}
       </p>
       <p className="mt-3 text-xs font-semibold text-gray-800">{en ? 'Supplement: one-off receipt' : '补录：零散单张'}</p>
       <p className="mt-1 text-xs text-gray-600">
