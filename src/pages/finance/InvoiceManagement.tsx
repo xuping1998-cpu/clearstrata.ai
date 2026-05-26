@@ -4281,9 +4281,20 @@ function InvoiceDetailModal({
         <div className="sticky top-0 z-10 flex items-start justify-between gap-2 border-b border-gray-200 bg-white p-3 sm:gap-3 sm:p-4 md:p-5">
           <div className="min-w-0">
             <h2 className="text-lg sm:text-xl font-bold text-gray-900 truncate">{invoice.vendor_name}</h2>
-            <p className="text-sm text-gray-500 mt-1 truncate">
-              {invoice.file_name || invoice.invoice_number || invoice.id.slice(0, 8)}
-            </p>
+            {invoice.document_url ? (
+              <button
+                type="button"
+                onClick={() => openInvoiceDocumentUrl(invoice.document_url)}
+                className="mt-1 block max-w-full truncate text-left text-sm text-clearstrata-ui-primary hover:underline cursor-pointer"
+                title={invoice.file_name || invoice.invoice_number || undefined}
+              >
+                {invoice.file_name || invoice.invoice_number || invoice.id.slice(0, 8)}
+              </button>
+            ) : (
+              <p className="text-sm text-gray-500 mt-1 truncate">
+                {invoice.file_name || invoice.invoice_number || invoice.id.slice(0, 8)}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-1 shrink-0">
             <button
