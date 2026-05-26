@@ -168,7 +168,7 @@ function buildStaffInviteHtml(params: {
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f9fc;padding:40px 16px;">
     <tr><td align="center">
       <table role="presentation" width="100%" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06),0 4px 12px rgba(0,0,0,0.04);">
-        <tr><td style="background:#0f766e;padding:16px 20px;text-align:center;">
+        <tr><td style="background:#35C3D6;padding:16px 20px;text-align:center;">
           <div style="margin-bottom:12px;"><img src="${safe.logoUrl}" alt="ClearStrata" style="height:48px;object-fit:contain;display:block;margin:0 auto;" /></div>
           <div style="font-size:22px;font-weight:600;color:#ffffff;">${safe.title}</div>
         </td></tr>
@@ -206,12 +206,12 @@ function buildStaffInviteHtml(params: {
 
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:18px;">
             <tr><td align="center" style="padding:0 0 8px;">
-              <a href="${params.acceptLink}" style="display:inline-block;background:#1D9E75;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;padding:14px 28px;border-radius:8px;">接受职员邀请 / Accept Staff Invitation</a>
+              <a href="${params.acceptLink}" style="display:inline-block;background:#35C3D6;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;padding:14px 28px;border-radius:8px;">接受职员邀请 / Accept Staff Invitation</a>
             </td></tr>
           </table>
 
           <p style="margin:20px 0 0;color:#6b7280;font-size:12px;line-height:1.6;">
-            若按钮无法打开：<a href="${params.acceptLink}" style="color:#1D9E75;word-break:break-all;">${params.acceptLink}</a>
+            若按钮无法打开：<a href="${params.acceptLink}" style="color:#35C3D6;word-break:break-all;">${params.acceptLink}</a>
           </p>
           <p style="margin:16px 0 0;color:#9ca3af;font-size:11px;line-height:1.5;">
             如果你不是该协作人员，请忽略此邮件。<br/>

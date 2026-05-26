@@ -112,7 +112,7 @@ function buildManagerInviteHtml(params: {
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f9fc;padding:40px 16px;">
     <tr><td align="center">
       <table role="presentation" width="100%" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06),0 4px 12px rgba(0,0,0,0.04);">
-        <tr><td style="background:#16a34a;padding:16px 20px;text-align:center;">
+        <tr><td style="background:#35C3D6;padding:16px 20px;text-align:center;">
           <div style="margin-bottom:12px;"><img src="${safe.logoUrl}" alt="ClearStrata" style="height:48px;object-fit:contain;display:block;margin:0 auto;" /></div>
           <div style="font-size:22px;font-weight:600;color:#ffffff;">物业经理邀请 / Property Manager Invitation</div>
         </td></tr>
@@ -136,14 +136,14 @@ function buildManagerInviteHtml(params: {
           <p style="margin:16px 0 8px;color:#374151;font-size:14px;">有效期 Valid for: <strong>7 天 · 7 days</strong></p>
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:24px;">
             <tr><td align="center" style="padding:0 0 12px;">
-              <a href="${params.acceptLink}" style="display:inline-block;background:#1D9E75;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;padding:14px 28px;border-radius:8px;">接受邀请 / Accept Invitation</a>
+              <a href="${params.acceptLink}" style="display:inline-block;background:#35C3D6;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;padding:14px 28px;border-radius:8px;">接受邀请 / Accept Invitation</a>
             </td></tr>
             <tr><td align="center" style="padding:0 0 8px;">
               <a href="${params.signInUrl}" style="display:inline-block;background:#ffffff;color:#374151;font-size:14px;font-weight:600;text-decoration:none;padding:12px 24px;border-radius:8px;border:1px solid #d1d5db;">仅登录 Continue to sign in</a>
             </td></tr>
           </table>
           <p style="margin:24px 0 0;color:#6b7280;font-size:12px;line-height:1.6;">
-            若按钮无法打开：<a href="${params.acceptLink}" style="color:#1D9E75;word-break:break-all;">${params.acceptLink}</a>
+            若按钮无法打开：<a href="${params.acceptLink}" style="color:#35C3D6;word-break:break-all;">${params.acceptLink}</a>
           </p>
           <p style="margin:16px 0 0;color:#9ca3af;font-size:11px;line-height:1.5;">
             如果你不是该物业经理，请忽略此邮件。<br/>

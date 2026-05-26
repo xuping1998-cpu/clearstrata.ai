@@ -316,38 +316,25 @@ export function MembersList({ propertyId, language, canOperate, currentUserId, o
     }
     setNotifySending(true);
     try {
-      const { data: meData } = await supabase.auth.getUser();
-      const senderId = meData?.user?.id ?? null;
+      const { data, error } = await supabase.functions.invoke('send-member-notification', {
+        body: {
+          property_id: propertyId,
+          recipient_user_id: notifyTarget.userId,
+          title: t,
+          message: m,
+          priority: notifyPriority,
+        },
+      });
 
-      const payload = {
-        property_id: propertyId,
-        user_id: notifyTarget.userId,
-        type: 'direct_message',
-        title: t,
-        title_en: t,
-        content: m,
-        message_en: m,
-        priority: notifyPriority,
-        created_by: senderId,
-        read: false,
-      };
-      console.log('[direct-message] payload', payload);
-
-      const { error } = await supabase
-        .from('notifications')
-        .insert(payload);
-
-      console.log('[direct-message] result', error ?? 'ok');
-
-      if (error) {
-        console.warn('[direct-message] insert failed', error);
+      if (error || !data?.ok) {
+        console.warn('[direct-message] send-member-notification failed', { error, data });
         setToast({ kind: 'error', message: '发送失败，请重试' });
         return;
       }
       setToast({ kind: 'success', message: '通知已发送' });
       closeNotify();
     } catch (e) {
-      console.warn('[direct-message] insert exception', e);
+      console.warn('[direct-message] send-member-notification exception', e);
       setToast({ kind: 'error', message: '发送失败，请重试' });
     } finally {
       setNotifySending(false);
