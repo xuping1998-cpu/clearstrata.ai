@@ -25,8 +25,6 @@ const SENDER_ROLES = new Set([
   "manager",
 ]);
 
-const VALID_PRIORITIES = new Set(["normal", "important", "urgent"]);
-
 function json(body: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -176,8 +174,6 @@ Deno.serve(async (req: Request) => {
   ).trim();
   const title = String(raw.title ?? "").trim();
   const message = String(raw.message ?? "").trim();
-  const priorityRaw = String(raw.priority ?? "normal").trim().toLowerCase();
-  const priority = VALID_PRIORITIES.has(priorityRaw) ? priorityRaw : "normal";
 
   if (!propertyId) {
     return json({ ok: false, message: "property_id is required" }, 400);
@@ -294,7 +290,6 @@ Deno.serve(async (req: Request) => {
         link: null,
         is_read: false,
         related_property_id: propertyId,
-        priority,
       })
       .select("id")
       .maybeSingle();
