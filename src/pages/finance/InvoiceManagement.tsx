@@ -261,6 +261,14 @@ function openInvoiceDocumentUrl(url: string) {
   window.open(url, '_blank', 'noopener,noreferrer');
 }
 
+function handleInvoiceListPrimaryClick(inv: Invoice, openDetail: (inv: Invoice) => void) {
+  if (isInvoiceFileOnlyArchive(inv) && inv.document_url) {
+    openInvoiceDocumentUrl(inv.document_url);
+    return;
+  }
+  openDetail(inv);
+}
+
 type InvoiceAiAuditRow = {
   id?: string;
   invoice_id: string;
@@ -3181,7 +3189,7 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
                         className={`hover:bg-gray-50 cursor-pointer ${
                           inv.has_anomalies || inv.is_abnormal ? 'bg-red-50/30' : ''
                         }`}
-                        onClick={() => setSelectedInvoice(inv)}
+                        onClick={() => handleInvoiceListPrimaryClick(inv, setSelectedInvoice)}
                       >
                         <td className="min-w-0 max-w-[160px] overflow-hidden px-1 py-1.5 align-top sm:px-1.5 sm:py-2">
                           {inv.document_url ? (
@@ -3386,7 +3394,7 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
                   <button
                     type="button"
                     key={inv.id}
-                    onClick={() => setSelectedInvoice(inv)}
+                    onClick={() => handleInvoiceListPrimaryClick(inv, setSelectedInvoice)}
                     className="w-full text-left border border-gray-200 rounded-xl p-4 hover:border-clearstrata-ui-primary/50 transition-colors bg-white shadow-sm"
                   >
                     <div className="flex justify-between gap-2 mb-2">
