@@ -111,6 +111,14 @@ export const MEETING_VOTE_ARCHIVE_FORMAL_NOTICE = {
     zh: '自动草案',
     en: 'Draft preview',
   },
+  archivedStatus: {
+    zh: '已归档',
+    en: 'Archived',
+  },
+  notArchivedStatus: {
+    zh: '尚未归档',
+    en: 'Not archived yet',
+  },
   draftPreviewFooter: {
     zh: '本文为系统根据会议信息、议程与时间线自动生成的正式通知草案。归档前请由业委会确认。',
     en: 'This formal notice is an auto-generated draft based on meeting details, agenda items and timelines. Council should confirm it before archiving.',

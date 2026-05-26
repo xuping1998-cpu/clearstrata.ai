@@ -13,6 +13,7 @@ import {
   fetchMeetingAgendaNoticeRows,
   fetchMeetingArchiveDocuments,
   MEETING_ARCHIVE_SNAPSHOTS_UPDATED_EVENT,
+  FORMAL_NOTICE_SNAPSHOT_TITLE_EN,
   filterSupportingDocumentsOnly,
   findLatestMeetingMinutesDocument,
   formatArchiveSnapshotViewerBody,
@@ -21,16 +22,12 @@ import {
   type MeetingArchiveDocumentRow,
   type MeetingSupportingDocumentRow,
 } from '@/features/meetings/meetingDocumentsRead';
-import { meetingTitleZhFirst, type MeetingRow, type OwnerVoteMeetingLite } from '@/features/meetings/api';
+import { type MeetingRow, type OwnerVoteMeetingLite } from '@/features/meetings/api';
 import {
-  buildFormalNoticeAgendaItems,
-  buildFormalNoticeInitiationLines,
-  buildFormalNoticeIntro,
-  deriveFormalNoticeTimelineWindows,
-  type FormalNoticeIsoWindow,
+  buildFormalNoticePlainText,
+  buildFormalNoticeViewPayload,
+  type FormalNoticeBuildInput,
 } from '@/features/meetings/electionAgendaModel';
-import { labelMeetingFormatUiDisplay, labelMeetingType, meetingUiStrings } from '@/features/meetings/labels';
-import { extractGovernanceMeta, stripWrittenRemoteMeta } from '@/features/meetings/meetingFormatModel';
 import { MeetingDocumentsSection } from '@/pages/meeting/MeetingDocumentsSection';
 import { supabase } from '@/lib/supabase';
 
@@ -84,17 +81,6 @@ function fmtArchiveTs(iso: string | null | undefined, languageEn: boolean): stri
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
   return d.toLocaleString(languageEn ? 'en-CA' : 'zh-CN', { dateStyle: 'medium', timeStyle: 'short' });
-}
-
-function fmtFormalNoticeWindowSpan(
-  window: FormalNoticeIsoWindow | null,
-  languageEn: boolean,
-  notSet: string,
-): string {
-  if (!window) return notSet;
-  const open = fmtArchiveTs(window.openIso, languageEn) ?? notSet;
-  const close = fmtArchiveTs(window.closeIso, languageEn) ?? notSet;
-  return `${open} · ${close}`;
 }
 
 /** Staff: pending generation copy. Owner: read-only empty copy (no generate/edit hints). */
@@ -173,7 +159,6 @@ export function MeetingVoteArchiveCard({
   const fc = MEETING_VOTE_ARCHIVE_FORMAL_NOTICE;
   const sup = MEETING_VOTE_ARCHIVE_SUPPORTING_DOCUMENTS;
   const supCopy = en ? sup.en : sup.zh;
-  const c = en ? fc.en : fc.zh;
 
   const loadArchiveDocs = useCallback(async () => {
     const pid = meeting.property_id?.trim();
@@ -268,6 +253,16 @@ export function MeetingVoteArchiveCard({
     }
   }, [expanded, loadLatestMinutesDoc, loadMinutesDraftMeta]);
 
+  const generated01 = useMemo(
+    () =>
+      archiveDocs.find(
+        (d) =>
+          d.title_en?.trim() === FORMAL_NOTICE_SNAPSHOT_TITLE_EN ||
+          d.title_en?.startsWith('01 '),
+      ) ?? null,
+    [archiveDocs],
+  );
+  const hasArchivedFormalNotice = generated01 != null;
   const generated03 = useMemo(
     () => archiveDocs.find((d) => d.title_en?.startsWith('03 ')),
     [archiveDocs],
@@ -298,11 +293,6 @@ export function MeetingVoteArchiveCard({
     [minutesFinalizedVersions],
   );
 
-  const formalNoticeAgendaItems = useMemo(
-    () => buildFormalNoticeAgendaItems(agendaNoticeRows, en),
-    [agendaNoticeRows, en],
-  );
-
   const supportingOnly = useMemo(() => {
     if (archiveDocs.length > 0) {
       return filterSupportingDocumentsOnly(archiveDocs);
@@ -322,68 +312,44 @@ export function MeetingVoteArchiveCard({
       ? 'View'
       : '查看';
 
-  const noticeFieldLabels = {
-    participationPeriod: en ? 'Participation period:' : '参与期：',
-    publicNotice: en ? 'Public notice / discussion period:' : '公示 / 讨论期：',
-    nominationPeriod: en ? 'Nomination period:' : '提名期：',
-    votingPeriod: en ? 'Voting period:' : '投票期：',
-    topics: en ? 'Agenda:' : '议程：',
-    agendaEmpty: en ? 'No agenda items listed.' : '暂无议程。',
-  };
-
-  const noticePayload = useMemo(() => {
-    const notSet = en ? fc.notSet.en : fc.notSet.zh;
-    const orNotSet = (s: string | null | undefined) => (s?.trim() ? s.trim() : notSet);
-
-    const agendaItems = formalNoticeAgendaItems;
-    const hasElectionAgenda =
-      agendaItems.some((a) => a.kind === 'election') || electionAgendaCount > 0;
-    const governanceMeta = extractGovernanceMeta(meeting.description_zh ?? '').meta;
-
-    const timeline = deriveFormalNoticeTimelineWindows(meeting, {
-      hasElectionAgenda,
-      ownerVoteVotingOpens: ownerVoteMeeting?.voting_opens_at,
-      ownerVoteVotingCloses: ownerVoteMeeting?.voting_closes_at,
-    });
-
-    const title =
-      meetingTitleZhFirst(meeting)?.trim() ||
-      (en ? meetingUiStrings.untitled.en : meetingUiStrings.untitled.zh);
-    const typeLabel = orNotSet(labelMeetingType(meeting.meeting_type, en));
-    const fd = labelMeetingFormatUiDisplay(meeting, en);
-    const formatCore = fd.secondary ? `${fd.primary}\n${fd.secondary}` : fd.primary;
-    const formatLabel = orNotSet(formatCore);
-    const dateStr = fmtArchiveTs(meeting.scheduled_at, en) ?? notSet;
-
-    const descZh = meeting.description_zh ? stripWrittenRemoteMeta(meeting.description_zh) : '';
-    const descEn = meeting.description_en?.trim() || '';
-    const descCombined = en ? descEn || descZh : descZh || descEn;
-
+  const formalNoticeBuildInput = useMemo((): FormalNoticeBuildInput => {
     return {
-      intro: buildFormalNoticeIntro(agendaItems, en),
-      initiationLines: buildFormalNoticeInitiationLines(governanceMeta, en),
-      title,
-      typeLabel,
-      formatLabel,
-      dateStr,
-      participationSpan: timeline.participation
-        ? fmtFormalNoticeWindowSpan(timeline.participation, en, notSet)
-        : null,
-      publicNoticeSpan: fmtFormalNoticeWindowSpan(timeline.publicNotice, en, notSet),
-      nominationSpan: timeline.nomination
-        ? fmtFormalNoticeWindowSpan(timeline.nomination, en, notSet)
-        : null,
-      votingSpan: fmtFormalNoticeWindowSpan(timeline.voting, en, notSet),
-      descDisplay: descCombined ? descCombined : notSet,
-      agendaItems,
+      meeting,
+      ownerVoteMeeting,
+      electionAgendaCount,
+      agendaNoticeRows,
     };
-  }, [meeting, ownerVoteMeeting, en, electionAgendaCount, formalNoticeAgendaItems]);
+  }, [meeting, ownerVoteMeeting, electionAgendaCount, agendaNoticeRows]);
+
+  const noticePayload = useMemo(
+    () => buildFormalNoticeViewPayload(formalNoticeBuildInput, en),
+    [formalNoticeBuildInput, en],
+  );
 
   async function handleGenerateArchive() {
     if (!meeting.id?.trim() || generateBusy) return;
     setGenerateFeedback(null);
     setGenerateBusy(true);
     try {
+      const formalNoticeBody = buildFormalNoticePlainText(formalNoticeBuildInput, 'bilingual');
+      const { data: noticeData, error: noticeError } = await supabase.rpc(
+        'upsert_meeting_formal_notice_snapshot',
+        {
+          p_meeting_id: meeting.id,
+          p_body: formalNoticeBody,
+        },
+      );
+      if (noticeError) throw noticeError;
+      const noticePayloadRpc = noticeData as { ok?: boolean; error?: string } | null;
+      if (noticePayloadRpc && noticePayloadRpc.ok === false) {
+        console.error('[MeetingVoteArchiveCard] upsert_meeting_formal_notice_snapshot', noticePayloadRpc.error);
+        setGenerateFeedback({
+          kind: 'error',
+          text: en ? 'Failed to generate archive. Please try again.' : '生成失败，请稍后重试。',
+        });
+        return;
+      }
+
       const { data, error } = await supabase.rpc('generate_meeting_archive_snapshots', {
         p_meeting_id: meeting.id,
       });
@@ -830,19 +796,42 @@ export function MeetingVoteArchiveCard({
                   {getArchiveSlotDisplayTitle('01', en ? 'en' : 'zh')}
                 </span>
                 <span className="shrink-0 rounded border border-sky-300 bg-sky-50 px-1.5 py-px text-[10px] font-semibold text-sky-950">
-                  {en ? fc.status.en : fc.status.zh}
+                  {hasArchivedFormalNotice
+                    ? en
+                      ? fc.archivedStatus.en
+                      : fc.archivedStatus.zh
+                    : canManageMeetingArchive
+                      ? en
+                        ? fc.status.en
+                        : fc.status.zh
+                      : en
+                        ? fc.notArchivedStatus.en
+                        : fc.notArchivedStatus.zh}
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  void loadAgendaNoticeRows();
-                  setNoticeOpen(true);
-                }}
-                className="shrink-0 rounded-lg border border-sky-600 bg-sky-700 px-3 py-1 text-xs font-semibold text-white hover:bg-sky-800"
-              >
-                {en ? 'View' : '查看'}
-              </button>
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                {hasArchivedFormalNotice && generated01 ? (
+                  <button
+                    type="button"
+                    onClick={() => openArchiveTextDocument('01', generated01)}
+                    className="shrink-0 rounded-lg border border-sky-600 bg-sky-700 px-3 py-1 text-xs font-semibold text-white hover:bg-sky-800"
+                  >
+                    {en ? 'View' : '查看'}
+                  </button>
+                ) : null}
+                {canManageMeetingArchive && !hasArchivedFormalNotice ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void loadAgendaNoticeRows();
+                      setNoticeOpen(true);
+                    }}
+                    className="shrink-0 rounded-lg border border-sky-600 bg-white px-3 py-1 text-xs font-semibold text-sky-800 hover:bg-sky-50"
+                  >
+                    {en ? 'Preview' : '预览'}
+                  </button>
+                ) : null}
+              </div>
             </li>
 
             <li
@@ -1037,56 +1026,56 @@ export function MeetingVoteArchiveCard({
                 </div>
               ) : null}
               <p>
-                <span className="font-medium text-gray-900">{c.meetingName}</span>
+                <span className="font-medium text-gray-900">{noticePayload.meetingNameLabel}</span>
                 <br />
                 <span className="whitespace-pre-wrap">{noticePayload.title}</span>
               </p>
               <p>
-                <span className="font-medium text-gray-900">{c.meetingType}</span>
+                <span className="font-medium text-gray-900">{noticePayload.meetingTypeLabel}</span>
                 <br />
                 {noticePayload.typeLabel}
               </p>
               <p>
-                <span className="font-medium text-gray-900">{c.meetingFormat}</span>
+                <span className="font-medium text-gray-900">{noticePayload.meetingFormatLabel}</span>
                 <br />
                 <span className="whitespace-pre-wrap">{noticePayload.formatLabel}</span>
               </p>
               <p>
-                <span className="font-medium text-gray-900">{c.meetingDate}</span>
+                <span className="font-medium text-gray-900">{noticePayload.meetingDateLabel}</span>
                 <br />
                 {noticePayload.dateStr}
               </p>
               {noticePayload.participationSpan ? (
                 <p>
-                  <span className="font-medium text-gray-900">{noticeFieldLabels.participationPeriod}</span>
+                  <span className="font-medium text-gray-900">{noticePayload.participationPeriodLabel}</span>
                   <br />
                   {noticePayload.participationSpan}
                 </p>
               ) : null}
               <p>
-                <span className="font-medium text-gray-900">{noticeFieldLabels.publicNotice}</span>
+                <span className="font-medium text-gray-900">{noticePayload.publicNoticeLabel}</span>
                 <br />
                 {noticePayload.publicNoticeSpan}
               </p>
               {noticePayload.nominationSpan ? (
                 <p>
-                  <span className="font-medium text-gray-900">{noticeFieldLabels.nominationPeriod}</span>
+                  <span className="font-medium text-gray-900">{noticePayload.nominationPeriodLabel}</span>
                   <br />
                   {noticePayload.nominationSpan}
                 </p>
               ) : null}
               <p>
-                <span className="font-medium text-gray-900">{noticeFieldLabels.votingPeriod}</span>
+                <span className="font-medium text-gray-900">{noticePayload.votingPeriodLabel}</span>
                 <br />
                 {noticePayload.votingSpan}
               </p>
               <p>
-                <span className="font-medium text-gray-900">{c.description}</span>
+                <span className="font-medium text-gray-900">{noticePayload.descriptionLabel}</span>
                 <br />
                 <span className="whitespace-pre-wrap">{noticePayload.descDisplay}</span>
               </p>
               <p>
-                <span className="font-medium text-gray-900">{noticeFieldLabels.topics}</span>
+                <span className="font-medium text-gray-900">{noticePayload.topicsLabel}</span>
               </p>
               {noticePayload.agendaItems.length > 0 ? (
                 <ol className="list-decimal space-y-2 pl-5">
@@ -1097,12 +1086,12 @@ export function MeetingVoteArchiveCard({
                   ))}
                 </ol>
               ) : (
-                <p className="text-gray-700">{noticeFieldLabels.agendaEmpty}</p>
+                <p className="text-gray-700">{noticePayload.agendaEmpty}</p>
               )}
               <p className="pt-2 border-t border-gray-100">
-                <span className="font-medium text-gray-900">{c.participation}</span>
+                <span className="font-medium text-gray-900">{noticePayload.participationLabel}</span>
                 <br />
-                {c.participationBody}
+                {noticePayload.participationBody}
               </p>
               <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
                 {en ? fc.draftPreviewFooter.en : fc.draftPreviewFooter.zh}

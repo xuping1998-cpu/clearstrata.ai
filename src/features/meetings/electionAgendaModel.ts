@@ -1,6 +1,8 @@
 /** Hidden HTML comment blob in `meeting_agenda_items.description_zh`. Must match Postgres `try_extract_election_agenda_meta`. */
 
-import type { MeetingRow } from './api';
+import { meetingTitleZhFirst, type MeetingRow, type OwnerVoteMeetingLite } from './api';
+import { MEETING_VOTE_ARCHIVE_FORMAL_NOTICE } from '@/components/meetings/meetingVoteArchiveConstants';
+import { labelMeetingFormatUiDisplay, labelMeetingType, meetingUiStrings } from './labels';
 import {
   councilMeetingVotingWindowFallback,
   councilWrittenRemoteWindows,
@@ -11,6 +13,7 @@ import {
   meetingFormatUiFromRow,
   MEETING_SGM_REQUISITION_PERCENT_DEFAULT,
   meetingSgmRequisitionRequiredUnits,
+  stripWrittenRemoteMeta,
   type MeetingGovernanceMetaV1,
 } from './meetingFormatModel';
 import {
@@ -1053,4 +1056,211 @@ export function deriveFormalNoticeTimelineWindows(
     nomination: pair(disc.nominationOpens, disc.nominationCloses),
     voting: pair(voteOpen, voteClose),
   };
+}
+
+export type FormalNoticeBuildInput = {
+  meeting: Pick<
+    MeetingRow,
+    | 'meeting_type'
+    | 'description_zh'
+    | 'description_en'
+    | 'scheduled_at'
+    | 'title_zh'
+    | 'title_en'
+    | 'meeting_format'
+  >;
+  ownerVoteMeeting?: Pick<OwnerVoteMeetingLite, 'voting_opens_at' | 'voting_closes_at'> | null;
+  electionAgendaCount: number;
+  agendaNoticeRows: FormalNoticeAgendaRow[];
+};
+
+/** View-model for formal notice modal — same fields rendered in MeetingVoteArchiveCard. */
+export type FormalNoticeViewPayload = {
+  intro: string;
+  initiationLines: string[];
+  title: string;
+  typeLabel: string;
+  formatLabel: string;
+  dateStr: string;
+  participationSpan: string | null;
+  publicNoticeSpan: string;
+  nominationSpan: string | null;
+  votingSpan: string;
+  descDisplay: string;
+  agendaItems: FormalNoticeAgendaItem[];
+  docTitle: string;
+  meetingNameLabel: string;
+  meetingTypeLabel: string;
+  meetingFormatLabel: string;
+  meetingDateLabel: string;
+  participationPeriodLabel: string;
+  publicNoticeLabel: string;
+  nominationPeriodLabel: string;
+  votingPeriodLabel: string;
+  descriptionLabel: string;
+  topicsLabel: string;
+  agendaEmpty: string;
+  participationLabel: string;
+  participationBody: string;
+};
+
+export type FormalNoticePlainTextLang = 'zh' | 'en' | 'bilingual';
+
+function fmtFormalNoticeArchiveTs(iso: string | null | undefined, languageEn: boolean): string | null {
+  if (!iso?.trim()) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleString(languageEn ? 'en-CA' : 'zh-CN', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function fmtFormalNoticeArchiveWindowSpan(
+  window: FormalNoticeIsoWindow | null,
+  languageEn: boolean,
+  notSet: string,
+): string {
+  if (!window) return notSet;
+  const open = fmtFormalNoticeArchiveTs(window.openIso, languageEn) ?? notSet;
+  const close = fmtFormalNoticeArchiveTs(window.closeIso, languageEn) ?? notSet;
+  return `${open} · ${close}`;
+}
+
+/** Build formal notice view payload — shared by Draft preview modal and archive plain text. */
+export function buildFormalNoticeViewPayload(
+  input: FormalNoticeBuildInput,
+  languageEn: boolean,
+): FormalNoticeViewPayload {
+  const fc = MEETING_VOTE_ARCHIVE_FORMAL_NOTICE;
+  const c = languageEn ? fc.en : fc.zh;
+  const notSet = languageEn ? fc.notSet.en : fc.notSet.zh;
+  const orNotSet = (s: string | null | undefined) => (s?.trim() ? s.trim() : notSet);
+
+  const { meeting, ownerVoteMeeting, electionAgendaCount, agendaNoticeRows } = input;
+  const agendaItems = buildFormalNoticeAgendaItems(agendaNoticeRows, languageEn);
+  const hasElectionAgenda =
+    agendaItems.some((a) => a.kind === 'election') || electionAgendaCount > 0;
+  const governanceMeta = extractGovernanceMeta(meeting.description_zh ?? '').meta;
+
+  const timeline = deriveFormalNoticeTimelineWindows(meeting, {
+    hasElectionAgenda,
+    ownerVoteVotingOpens: ownerVoteMeeting?.voting_opens_at,
+    ownerVoteVotingCloses: ownerVoteMeeting?.voting_closes_at,
+  });
+
+  const title =
+    meetingTitleZhFirst(meeting)?.trim() ||
+    (languageEn ? meetingUiStrings.untitled.en : meetingUiStrings.untitled.zh);
+  const typeLabel = orNotSet(labelMeetingType(meeting.meeting_type, languageEn));
+  const fd = labelMeetingFormatUiDisplay(meeting, languageEn);
+  const formatCore = fd.secondary ? `${fd.primary}\n${fd.secondary}` : fd.primary;
+  const formatLabel = orNotSet(formatCore);
+  const dateStr = fmtFormalNoticeArchiveTs(meeting.scheduled_at, languageEn) ?? notSet;
+
+  const descZh = meeting.description_zh ? stripWrittenRemoteMeta(meeting.description_zh) : '';
+  const descEn = meeting.description_en?.trim() || '';
+  const descCombined = languageEn ? descEn || descZh : descZh || descEn;
+
+  return {
+    intro: buildFormalNoticeIntro(agendaItems, languageEn),
+    initiationLines: buildFormalNoticeInitiationLines(governanceMeta, languageEn),
+    title,
+    typeLabel,
+    formatLabel,
+    dateStr,
+    participationSpan: timeline.participation
+      ? fmtFormalNoticeArchiveWindowSpan(timeline.participation, languageEn, notSet)
+      : null,
+    publicNoticeSpan: fmtFormalNoticeArchiveWindowSpan(timeline.publicNotice, languageEn, notSet),
+    nominationSpan: timeline.nomination
+      ? fmtFormalNoticeArchiveWindowSpan(timeline.nomination, languageEn, notSet)
+      : null,
+    votingSpan: fmtFormalNoticeArchiveWindowSpan(timeline.voting, languageEn, notSet),
+    descDisplay: descCombined ? descCombined : notSet,
+    agendaItems,
+    docTitle: c.docTitle,
+    meetingNameLabel: c.meetingName,
+    meetingTypeLabel: c.meetingType,
+    meetingFormatLabel: c.meetingFormat,
+    meetingDateLabel: c.meetingDate,
+    participationPeriodLabel: languageEn ? 'Participation period:' : '参与期：',
+    publicNoticeLabel: languageEn ? 'Public notice / discussion period:' : '公示 / 讨论期：',
+    nominationPeriodLabel: languageEn ? 'Nomination period:' : '提名期：',
+    votingPeriodLabel: languageEn ? 'Voting period:' : '投票期：',
+    descriptionLabel: c.description,
+    topicsLabel: languageEn ? 'Agenda:' : '议程：',
+    agendaEmpty: languageEn ? 'No agenda items listed.' : '暂无议程。',
+    participationLabel: c.participation,
+    participationBody: c.participationBody,
+  };
+}
+
+function renderFormalNoticePlainTextSection(payload: FormalNoticeViewPayload): string {
+  const lines: string[] = [];
+  lines.push(payload.docTitle);
+  lines.push('');
+  lines.push(payload.intro);
+  if (payload.initiationLines.length > 0) {
+    lines.push('');
+    lines.push(...payload.initiationLines);
+  }
+  lines.push('');
+  lines.push(`${payload.meetingNameLabel}`);
+  lines.push(payload.title);
+  lines.push('');
+  lines.push(`${payload.meetingTypeLabel}`);
+  lines.push(payload.typeLabel);
+  lines.push('');
+  lines.push(`${payload.meetingFormatLabel}`);
+  lines.push(payload.formatLabel);
+  lines.push('');
+  lines.push(`${payload.meetingDateLabel}`);
+  lines.push(payload.dateStr);
+  if (payload.participationSpan) {
+    lines.push('');
+    lines.push(`${payload.participationPeriodLabel}`);
+    lines.push(payload.participationSpan);
+  }
+  lines.push('');
+  lines.push(`${payload.publicNoticeLabel}`);
+  lines.push(payload.publicNoticeSpan);
+  if (payload.nominationSpan) {
+    lines.push('');
+    lines.push(`${payload.nominationPeriodLabel}`);
+    lines.push(payload.nominationSpan);
+  }
+  lines.push('');
+  lines.push(`${payload.votingPeriodLabel}`);
+  lines.push(payload.votingSpan);
+  lines.push('');
+  lines.push(`${payload.descriptionLabel}`);
+  lines.push(payload.descDisplay);
+  lines.push('');
+  lines.push(`${payload.topicsLabel}`);
+  if (payload.agendaItems.length > 0) {
+    payload.agendaItems.forEach((item, idx) => {
+      lines.push(`${idx + 1}. ${item.displayTitle}`);
+    });
+  } else {
+    lines.push(payload.agendaEmpty);
+  }
+  lines.push('');
+  lines.push(`${payload.participationLabel}`);
+  lines.push(payload.participationBody);
+  return lines.join('\n');
+}
+
+/** Plain-text formal notice for meeting_documents slot 01 — uses the same view payload as Draft preview. */
+export function buildFormalNoticePlainText(
+  input: FormalNoticeBuildInput,
+  lang: FormalNoticePlainTextLang = 'bilingual',
+): string {
+  const header = '01 Formal Notice\n================================\n';
+  if (lang === 'zh') {
+    return header + '\n' + renderFormalNoticePlainTextSection(buildFormalNoticeViewPayload(input, false));
+  }
+  if (lang === 'en') {
+    return header + '\n' + renderFormalNoticePlainTextSection(buildFormalNoticeViewPayload(input, true));
+  }
+  const zhSection = renderFormalNoticePlainTextSection(buildFormalNoticeViewPayload(input, false));
+  const enSection = renderFormalNoticePlainTextSection(buildFormalNoticeViewPayload(input, true));
+  return `${header}\n=== 中文 ===\n\n${zhSection}\n\n=== English ===\n\n${enSection}`;
 }

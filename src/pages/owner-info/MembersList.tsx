@@ -17,10 +17,13 @@ import {
 
 const DROPDOWN_ROLES: PropertyMemberDirectoryRole[] = ['owner', 'council', 'manager'];
 
+export type StaffMemberType = 'finance' | 'lawyer' | 'auditor' | 'accountant';
+
 export type MembersListRow = {
   memberId: string;
   userId: string;
   role: UserRole;
+  staffType: StaffMemberType | null;
   /** Sourced from `property_members.status`. */
   status: PropertyMemberRowStatus | string;
   fullName: string;
@@ -189,7 +192,7 @@ export function MembersList({ propertyId, language, canOperate, currentUserId, o
     try {
       // 1. property_members — role, status, unit_no (canonical source)
       const { data: pm, error: pmErr } = await withProperty(
-        supabase.from('property_members').select('id, user_id, role, status, unit_no') as any,
+        supabase.from('property_members').select('id, user_id, role, status, unit_no, staff_type') as any,
         propertyId,
       );
       if (pmErr) {
@@ -203,6 +206,7 @@ export function MembersList({ propertyId, language, canOperate, currentUserId, o
         role: UserRole;
         status: string;
         unit_no: string | null;
+        staff_type: string | null;
       }>;
       const userIds = pmRows.map((r) => r.user_id).filter(Boolean);
       if (userIds.length === 0) {
@@ -234,6 +238,13 @@ export function MembersList({ propertyId, language, canOperate, currentUserId, o
       }
 
       const byId = new Map((prof ?? []).map((p: any) => [p.id as string, p]));
+      const parseStaffType = (raw: string | null | undefined): StaffMemberType | null => {
+        const s = String(raw ?? '').trim().toLowerCase();
+        if (s === 'finance' || s === 'lawyer' || s === 'auditor' || s === 'accountant') {
+          return s;
+        }
+        return null;
+      };
       const merged: MembersListRow[] = pmRows.map((m) => {
         const p = byId.get(m.user_id);
         const email = (p?.email as string | undefined)?.trim() || '—';
@@ -244,6 +255,7 @@ export function MembersList({ propertyId, language, canOperate, currentUserId, o
           memberId: m.id,
           userId: m.user_id,
           role: m.role,
+          staffType: parseStaffType(m.staff_type),
           status: String(m.status ?? 'active') as PropertyMemberRowStatus,
           fullName: resolveName(p?.full_name_zh, p?.full_name_en, email),
           email,
@@ -385,17 +397,27 @@ export function MembersList({ propertyId, language, canOperate, currentUserId, o
     return '物业经理';
   };
 
-  const roleCellLabel = (r: UserRole) => {
-    if (isDropdownRole(r)) return roleOptionLabel(r);
+  const roleCellLabel = (row: Pick<MembersListRow, 'role' | 'staffType'>) => {
+    if (isDropdownRole(row.role)) return roleOptionLabel(row.role);
+    if (row.role === 'viewer' && row.staffType) {
+      const staffLabels: Record<StaffMemberType, [string, string]> = {
+        finance: ['Finance', '财务'],
+        lawyer: ['Legal Counsel', '律师'],
+        auditor: ['Auditor', '审计'],
+        accountant: ['Accountant', '会计'],
+      };
+      const pair = staffLabels[row.staffType];
+      return en ? pair[0] : pair[1];
+    }
     const map: Record<string, [string, string]> = {
       admin: ['Administrator', '管理员'],
       property_admin: ['Property admin', '物业管理员'],
       tenant: ['Tenant', '租户'],
       viewer: ['Viewer', '访客'],
     };
-    const pair = map[r];
+    const pair = map[row.role];
     if (pair) return en ? pair[0] : pair[1];
-    return r;
+    return row.role;
   };
 
   const statusLabel = (status: string) => {
@@ -514,7 +536,7 @@ export function MembersList({ propertyId, language, canOperate, currentUserId, o
                     <tr key={row.userId} className="text-gray-800 hover:bg-gray-50/80 align-top">
                       <td className="px-4 py-3 font-medium">{row.fullName}</td>
                       <td className="px-4 py-3 text-gray-600">{row.email}</td>
-                      <td className="px-4 py-3">{roleCellLabel(row.role)}</td>
+                      <td className="px-4 py-3">{roleCellLabel(row)}</td>
                       <td className="px-4 py-3">
                         <span
                           className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${statusBadgeClass(String(row.status))}`}

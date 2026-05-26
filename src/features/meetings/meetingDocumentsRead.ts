@@ -26,10 +26,13 @@ export type MeetingArchiveDocumentRow = {
 };
 
 const GENERATED_SNAPSHOT_TITLES = new Set([
+  '01 Formal Notice',
   '03 Discussion Record',
   '04 Voting Record',
   '05 Resolution Results',
 ]);
+
+export const FORMAL_NOTICE_SNAPSHOT_TITLE_EN = '01 Formal Notice';
 
 export function isGeneratedArchiveSnapshot(
   titleEn: string | null | undefined,
@@ -39,7 +42,7 @@ export function isGeneratedArchiveSnapshot(
     const t = raw?.trim() ?? '';
     if (!t) return false;
     if (GENERATED_SNAPSHOT_TITLES.has(t)) return true;
-    return t.startsWith('03 ') || t.startsWith('04 ') || t.startsWith('05 ');
+    return t.startsWith('01 ') || t.startsWith('03 ') || t.startsWith('04 ') || t.startsWith('05 ');
   };
   return check(titleEn) || check(titleZh);
 }
