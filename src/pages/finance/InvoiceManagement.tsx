@@ -3854,6 +3854,8 @@ function InvoiceDetailModal({
     return statusStyle(invoice.status);
   }, [invoice, isHistoricalInvoice]);
 
+  const fileOnlyArchive = isInvoiceFileOnlyArchive(invoice);
+
   const loadAiAuditBundle = useCallback(async () => {
     if (!currentPropertyId) {
       setAiAudit(null);
@@ -4426,21 +4428,21 @@ function InvoiceDetailModal({
                 {invoice.is_abnormal && <ShieldAlert size={14} className="inline mr-1 text-amber-700" aria-hidden />}
                 {l ? st.labelEn : st.labelZh}
               </span>
-              {invoice.ai_confidence_score != null && (
+              {invoice.ai_confidence_score != null && !fileOnlyArchive && (
                 <span className="text-xs text-gray-500">
                   AI {(invoice.ai_confidence_score * 100).toFixed(0)}%
                 </span>
               )}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {isInvoiceFileOnlyArchive(invoice) ? (
+            {fileOnlyArchive ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <InfoField
                   label={l ? 'File name' : '文件名'}
                   value={
                     invoice.document_url ? (
                       <button
                         type="button"
-                        className="text-left text-clearstrata-ui-primary hover:underline"
+                        className="text-left text-clearstrata-ui-primary hover:underline cursor-pointer"
                         onClick={() => openInvoiceDocumentUrl(invoice.document_url)}
                       >
                         {invoiceListDisplayFileName(invoice)}
@@ -4450,9 +4452,43 @@ function InvoiceDetailModal({
                     )
                   }
                 />
-              ) : (
-                <InfoField label={l ? 'Supplier' : '供应商'} value={invoice.vendor_name || '—'} />
-              )}
+                <InfoField
+                  label={l ? 'Accounting period' : '归档年月'}
+                  value={
+                    l
+                      ? `${effectiveAccountingYear(invoice)}-${String(effectiveAccountingMonth(invoice)).padStart(2, '0')}`
+                      : `${effectiveAccountingYear(invoice)}年${effectiveAccountingMonth(invoice)}月`
+                  }
+                />
+                <InfoField
+                  label={l ? 'Uploaded at' : '上传日期'}
+                  value={new Date(invoice.created_at).toLocaleString(l ? 'en-CA' : 'zh-CN', {
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                  })}
+                />
+                <InfoField
+                  label={l ? 'Uploaded by' : '上传人'}
+                  value={
+                    invoice.uploader
+                      ? l
+                        ? invoice.uploader.full_name_en
+                        : invoice.uploader.full_name_zh || invoice.uploader.full_name_en
+                      : '—'
+                  }
+                />
+                {canAudit && !editing && (
+                  <p className="col-span-full -mt-2 text-[11px] text-gray-500 sm:col-span-2">
+                    {l
+                      ? 'Until you edit and save ledger period here, grouping may follow upload/created time.'
+                      : '若尚未写入归档年月，分组会暂时按上传/创建日期推算；点击「编辑」可写入归档年份与月份。'}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <InfoField label={l ? 'Supplier' : '供应商'} value={invoice.vendor_name || '—'} />
               <InfoField
                 label={l ? 'Invoice date' : '开票日期'}
                 value={new Date(invoice.invoice_date).toLocaleDateString(l ? 'en-CA' : 'zh-CN')}
@@ -4503,10 +4539,12 @@ function InvoiceDetailModal({
                 }
               />
             </div>
+              </>
+            )}
           </section>
 
-          {/* AI 审计结论 — historical invoices are archive-only and skip AI audit UI */}
-          {isHistoricalInvoice ? (
+          {/* AI 审计结论 — historical / file-only archive: records only, no AI audit UI */}
+          {isHistoricalInvoice || fileOnlyArchive ? (
             <section
               aria-labelledby="inv-ai-audit-heading"
               className="rounded-2xl border border-slate-200 bg-slate-50 p-5"
@@ -5064,6 +5102,16 @@ function InvoiceDetailModal({
                   : '决定这张发票计入哪一年度的哪个月账本；与开票日、付款日、上传时间无关。'}
               </p>
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{l ? 'Notes' : '备注'}</label>
+                <textarea
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                />
+              </div>
+              {!fileOnlyArchive ? (
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{l ? 'Category' : '分类'}</label>
                 <select
                   value={editCategory}
@@ -5077,15 +5125,7 @@ function InvoiceDetailModal({
                   ))}
                 </select>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{l ? 'Notes' : '备注'}</label>
-                <textarea
-                  value={editNotes}
-                  onChange={(e) => setEditNotes(e.target.value)}
-                  rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                />
-              </div>
+              ) : null}
               <div className="flex gap-2">
                 <button
                   type="button"
