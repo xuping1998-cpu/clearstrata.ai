@@ -295,7 +295,6 @@ Deno.serve(async (req: Request) => {
         is_read: false,
         related_property_id: propertyId,
         priority,
-        created_by: senderId,
       })
       .select("id")
       .maybeSingle();
