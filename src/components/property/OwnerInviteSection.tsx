@@ -58,6 +58,30 @@ function asInviteStatus(raw: string): InviteStatus | null {
   return null;
 }
 
+/** Map send-owner-invite conflict codes to explicit bilingual messages. */
+function resolveSendErrorMessage(
+  code: string | undefined,
+  fallback: string,
+  en: boolean,
+): string {
+  switch (code) {
+    case 'email_is_staff':
+      return en
+        ? 'This email is already a staff member. To invite them as an owner, remove the staff membership first.'
+        : '该邮箱已是本物业职员。如需邀请为业主，请先在成员管理移除其职员身份。';
+    case 'email_already_member':
+      return en
+        ? 'This email is already an active member with another role and cannot receive an owner invitation.'
+        : '该邮箱已是本物业其他身份成员，不能发送业主邀请。';
+    case 'already_owner':
+      return en
+        ? 'This email is already an owner of this property.'
+        : '该邮箱已经是本物业业主。';
+    default:
+      return fallback;
+  }
+}
+
 export function OwnerInviteSection({ propertyId }: { propertyId: string }) {
   const { language } = useLanguage();
   const en = language === 'en';
@@ -142,10 +166,10 @@ export function OwnerInviteSection({ propertyId }: { propertyId: string }) {
         return;
       }
       if (!payload?.ok) {
-        const msg =
+        const fallback =
           payload?.message ||
           (en ? 'Failed to send owner invitation. Please try again later.' : '发送业主邀请失败，请稍后重试。');
-        setFeedback({ ok: false, msg });
+        setFeedback({ ok: false, msg: resolveSendErrorMessage(payload?.code, fallback, en) });
         return;
       }
 

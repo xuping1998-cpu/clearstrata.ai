@@ -356,7 +356,10 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // ── Already active owner conflict (best-effort) ────────────────────────
+    // ── Existing active membership conflict ───────────────────────────────
+    // owner / staff / any other active role are all mutually exclusive with a
+    // fresh owner invite. Resolve auth user id by email; if found, gate here so
+    // the conflict surfaces at SEND time, not at accept time.
     let existingUserId: string | null = null;
     try {
       const { data: rpcUid, error: rpcErr } = await svc.rpc(
@@ -375,20 +378,49 @@ Deno.serve(async (req: Request) => {
     if (existingUserId) {
       const { data: existingMember, error: emErr } = await svc
         .from("property_members")
-        .select("role,status")
+        .select("role,status,staff_type")
         .eq("property_id", propertyId)
         .eq("user_id", existingUserId)
         .eq("status", "active")
         .maybeSingle();
       if (emErr) {
         console.warn("[send-owner-invite] property_members conflict select (non-fatal)", emErr);
-      } else if (existingMember && String(existingMember.role ?? "").toLowerCase() === "owner") {
+      } else if (existingMember) {
+        const existingRole = String(existingMember.role ?? "").toLowerCase();
+        const existingStaffType = existingMember.staff_type
+          ? String(existingMember.staff_type).trim()
+          : "";
+
+        // Priority: owner → already_owner; staff_type present → email_is_staff;
+        // any other active non-owner role → email_already_member.
+        if (existingRole === "owner") {
+          return json(
+            {
+              ok: false,
+              code: "already_owner",
+              message:
+                "该邮箱已经是本物业业主。 This email is already an owner of this property.",
+            },
+            409,
+          );
+        }
+        if (existingStaffType) {
+          return json(
+            {
+              ok: false,
+              code: "email_is_staff",
+              message:
+                "该邮箱已是本物业职员。如需邀请为业主，请先在成员管理移除其职员身份。 This email is already a staff member; remove the staff membership first.",
+            },
+            409,
+          );
+        }
         return json(
           {
             ok: false,
-            code: "already_owner",
+            code: "email_already_member",
             message:
-              "该账号已是本物业的活跃业主。 This account is already an active owner of this property.",
+              "该邮箱已是本物业其他身份成员，不能发送业主邀请。 This email is already an active member with another role.",
           },
           409,
         );
