@@ -77,6 +77,10 @@ function resolveSendErrorMessage(
       return en
         ? 'This email is already an owner of this property.'
         : '该邮箱已经是本物业业主。';
+    case 'unit_already_assigned':
+      return en
+        ? 'This unit is already assigned and cannot receive another owner invitation.'
+        : '该房号已被占用，不能发送业主邀请。';
     default:
       return fallback;
   }

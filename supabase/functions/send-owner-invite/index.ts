@@ -427,6 +427,80 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // ── Unit occupancy check (residents / property_members / owner_invites) ─
+    // Block at SEND time so an already-assigned unit never gets an invite email.
+    const normalizedUnitNo = unitNo.trim();
+    const unitKey = normalizedUnitNo.toLowerCase();
+    const matchesUnit = (raw: unknown): boolean =>
+      String(raw ?? "").trim().toLowerCase() === unitKey;
+
+    const unitOccupied = (): Promise<boolean> => doUnitOccupancyCheck();
+    async function doUnitOccupancyCheck(): Promise<boolean> {
+      // A. residents — occupied if a bound row (user_id not null) with an
+      //    active-ish status or owner role. Empty roster rows (user_id null)
+      //    do NOT count as occupied.
+      const { data: resRows, error: resErr } = await svc
+        .from("residents")
+        .select("user_id,status,role,unit_no")
+        .eq("property_id", propertyId)
+        .ilike("unit_no", normalizedUnitNo);
+      if (resErr) {
+        console.warn("[send-owner-invite] residents unit check (non-fatal)", resErr);
+      } else if (Array.isArray(resRows)) {
+        const occupied = resRows.some((r) => {
+          if (!matchesUnit(r.unit_no)) return false;
+          if (!r.user_id) return false;
+          const st = r.status == null ? null : String(r.status).trim().toLowerCase();
+          const role = String(r.role ?? "").trim().toLowerCase();
+          const activeStatus =
+            st === null || st === "active" || st === "approved" || st === "current";
+          return activeStatus || role === "owner";
+        });
+        if (occupied) return true;
+      }
+
+      // B. property_members — any active member already on this unit.
+      //    (No unit_number column online; only unit_no.)
+      const { data: pmRows, error: pmErr } = await svc
+        .from("property_members")
+        .select("id,unit_no,status")
+        .eq("property_id", propertyId)
+        .eq("status", "active")
+        .ilike("unit_no", normalizedUnitNo);
+      if (pmErr) {
+        console.warn("[send-owner-invite] property_members unit check (non-fatal)", pmErr);
+      } else if (Array.isArray(pmRows) && pmRows.some((r) => matchesUnit(r.unit_no))) {
+        return true;
+      }
+
+      // C. owner_invites — a pending invite already holds this unit.
+      const { data: oiRows, error: oiErr } = await svc
+        .from("owner_invites")
+        .select("id,unit_no,status")
+        .eq("property_id", propertyId)
+        .eq("status", "pending")
+        .ilike("unit_no", normalizedUnitNo);
+      if (oiErr) {
+        console.warn("[send-owner-invite] owner_invites unit check (non-fatal)", oiErr);
+      } else if (Array.isArray(oiRows) && oiRows.some((r) => matchesUnit(r.unit_no))) {
+        return true;
+      }
+
+      return false;
+    }
+
+    if (await unitOccupied()) {
+      return json(
+        {
+          ok: false,
+          code: "unit_already_assigned",
+          message:
+            "该房号已被占用，不能发送业主邀请。 This unit is already assigned and cannot receive another owner invitation.",
+        },
+        409,
+      );
+    }
+
     // ── Inviter display label for email ────────────────────────────────────
     const { data: inviterProfile } = await svc
       .from("profiles")
