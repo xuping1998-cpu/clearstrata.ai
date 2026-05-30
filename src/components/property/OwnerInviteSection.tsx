@@ -62,25 +62,18 @@ function asInviteStatus(raw: string): InviteStatus | null {
 function resolveSendErrorMessage(
   code: string | undefined,
   fallback: string,
-  en: boolean,
 ): string {
   switch (code) {
-    case 'email_is_staff':
-      return en
-        ? 'This email is already a staff member. To invite them as an owner, remove the staff membership first.'
-        : '该邮箱已是本物业职员。如需邀请为业主，请先在成员管理移除其职员身份。';
-    case 'email_already_member':
-      return en
-        ? 'This email is already an active member with another role and cannot receive an owner invitation.'
-        : '该邮箱已是本物业其他身份成员，不能发送业主邀请。';
     case 'already_owner':
-      return en
-        ? 'This email is already an owner of this property.'
-        : '该邮箱已经是本物业业主。';
+      return '该邮箱已经是本物业业主。\nThis email is already an owner of this property.';
+    case 'email_is_staff':
+      return '该邮箱已是本物业职员。如需邀请为业主，请先移除职员身份。\nThis email is already a staff member. Remove the staff membership before sending an owner invitation.';
+    case 'email_already_member':
+      return '该邮箱已是本物业其他身份成员，不能发送业主邀请。\nThis email is already an active member with another role and cannot receive an owner invitation.';
+    case 'pending_exists':
+      return '该邮箱已有等待接受的业主邀请。\nThis email already has a pending owner invitation.';
     case 'unit_already_assigned':
-      return en
-        ? 'This unit is already assigned and cannot receive another owner invitation.'
-        : '该房号已被占用，不能发送业主邀请。';
+      return '该房号已有业主绑定，不能发送新的业主邀请。\nThis unit already has an owner assigned and cannot receive another owner invitation.';
     default:
       return fallback;
   }
@@ -173,7 +166,7 @@ export function OwnerInviteSection({ propertyId }: { propertyId: string }) {
         const fallback =
           payload?.message ||
           (en ? 'Failed to send owner invitation. Please try again later.' : '发送业主邀请失败，请稍后重试。');
-        setFeedback({ ok: false, msg: resolveSendErrorMessage(payload?.code, fallback, en) });
+        setFeedback({ ok: false, msg: resolveSendErrorMessage(payload?.code, fallback) });
         return;
       }
 
@@ -267,7 +260,7 @@ export function OwnerInviteSection({ propertyId }: { propertyId: string }) {
 
         {feedback ? (
           <p
-            className={`text-sm ${feedback.ok ? 'text-green-700' : 'text-red-700'}`}
+            className={`text-sm whitespace-pre-line ${feedback.ok ? 'text-green-700' : 'text-red-700'}`}
             role={feedback.ok ? 'status' : 'alert'}
           >
             {feedback.msg}
