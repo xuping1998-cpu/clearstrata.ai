@@ -14,10 +14,10 @@ import { useLanguage } from '../../contexts/LanguageContext';
 type InviteStatus = 'pending' | 'accepted' | 'expired' | 'revoked';
 
 const STATUS_LABEL: Record<InviteStatus, { zh: string; en: string }> = {
-  pending: { zh: '已发送，等待接受', en: 'Sent, waiting for acceptance' },
-  accepted: { zh: '已启用', en: 'Active' },
+  pending: { zh: '已发送，等待接受', en: 'Pending' },
+  accepted: { zh: '已启用', en: 'Activated' },
   expired: { zh: '已过期', en: 'Expired' },
-  revoked: { zh: '已撤销', en: 'Revoked' },
+  revoked: { zh: '已失效', en: 'Revoked' },
 };
 
 const STATUS_BADGE: Record<InviteStatus, string> = {
@@ -92,6 +92,7 @@ export function OwnerInviteSection({ propertyId }: { propertyId: string }) {
   const [rows, setRows] = useState<OwnerInviteRow[]>([]);
   const [listLoading, setListLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
+  const [revokingId, setRevokingId] = useState<string | null>(null);
 
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -127,6 +128,35 @@ export function OwnerInviteSection({ propertyId }: { propertyId: string }) {
   useEffect(() => {
     void loadRows();
   }, [loadRows]);
+
+  const revokeInvite = useCallback(
+    async (id: string) => {
+      if (typeof window !== 'undefined') {
+        const ok = window.confirm(en ? 'Revoke this owner invitation?' : '确认撤销此业主邀请？');
+        if (!ok) return;
+      }
+      setRevokingId(id);
+      try {
+        const { error } = await supabase
+          .from('owner_invites')
+          .update({ status: 'revoked' })
+          .eq('id', id)
+          .eq('status', 'pending');
+        if (error) {
+          console.error('[OwnerInviteSection] revoke', error);
+          setFeedback({
+            ok: false,
+            msg: en ? 'Failed to revoke the invitation. Please try again.' : '撤销邀请失败，请重试。',
+          });
+          return;
+        }
+        void loadRows();
+      } finally {
+        if (mountedRef.current) setRevokingId(null);
+      }
+    },
+    [en, loadRows],
+  );
 
   const send = useCallback(async () => {
     setFeedback(null);
@@ -283,6 +313,8 @@ export function OwnerInviteSection({ propertyId }: { propertyId: string }) {
         loading={listLoading}
         error={listError}
         en={en}
+        revokingId={revokingId}
+        onRevoke={(id) => void revokeInvite(id)}
         onRefresh={() => void loadRows()}
       />
     </div>
@@ -294,12 +326,16 @@ function OwnerInviteList({
   loading,
   error,
   en,
+  revokingId,
+  onRevoke,
   onRefresh,
 }: {
   rows: OwnerInviteRow[];
   loading: boolean;
   error: string | null;
   en: boolean;
+  revokingId: string | null;
+  onRevoke: (id: string) => void;
   onRefresh: () => void;
 }) {
   const sorted = useMemo(
@@ -351,6 +387,7 @@ function OwnerInviteList({
                 <th className="py-2 pr-3 font-medium whitespace-nowrap">{en ? 'Sent at' : '发送时间'}</th>
                 <th className="py-2 pr-3 font-medium whitespace-nowrap">{en ? 'Expires at' : '过期时间'}</th>
                 <th className="py-2 pr-3 font-medium whitespace-nowrap">{en ? 'Accepted at' : '接受时间'}</th>
+                <th className="py-2 pr-3 font-medium whitespace-nowrap">{en ? 'Action' : '操作'}</th>
               </tr>
             </thead>
             <tbody>
@@ -388,6 +425,23 @@ function OwnerInviteList({
                     </td>
                     <td className="py-2 pr-3 text-xs text-gray-600 whitespace-nowrap">
                       {formatDate(row.accepted_at, en)}
+                    </td>
+                    <td className="py-2 pr-3 whitespace-nowrap">
+                      {statusKey === 'pending' ? (
+                        <button
+                          type="button"
+                          onClick={() => onRevoke(row.id)}
+                          disabled={revokingId === row.id}
+                          className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                        >
+                          {revokingId === row.id ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : null}
+                          {en ? 'Revoke' : '撤销'}
+                        </button>
+                      ) : (
+                        <span className="text-gray-300">—</span>
+                      )}
                     </td>
                   </tr>
                 );

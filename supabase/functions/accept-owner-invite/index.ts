@@ -357,6 +357,45 @@ Deno.serve(async (req: Request) => {
     return apiJson({ ok: false, code: "invite_already_used", message: "邀请已被使用 / Invitation already used" }, 200);
   }
 
+  // ── 8b) Revoke other PENDING invites for the same unit (lifecycle consistency).
+  //       Keeps audit history (no delete); only pending rows flip to revoked.
+  //       Failure here must NOT affect the accepted main flow → warn only.
+  try {
+    const unitKey = unitNo.trim().toLowerCase();
+    const { data: siblings, error: sibErr } = await svc
+      .from("owner_invites")
+      .select("id,unit_no")
+      .eq("property_id", propertyId)
+      .eq("status", "pending")
+      .neq("id", invite.id)
+      .ilike("unit_no", unitNo.trim());
+    if (sibErr) {
+      console.warn("[accept-owner-invite] sibling pending lookup (non-fatal)", sibErr);
+    } else if (Array.isArray(siblings) && siblings.length > 0) {
+      const staleIds = siblings
+        .filter((r) => String(r.unit_no ?? "").trim().toLowerCase() === unitKey)
+        .map((r) => r.id as string);
+      if (staleIds.length > 0) {
+        const { error: revErr } = await svc
+          .from("owner_invites")
+          .update({ status: "revoked", updated_at: new Date().toISOString() })
+          .in("id", staleIds)
+          .eq("status", "pending");
+        if (revErr) {
+          console.warn("[accept-owner-invite] revoke same-unit pending (non-fatal)", revErr);
+        } else {
+          console.log("[accept-owner-invite] revoked stale pending invites", {
+            propertyId,
+            unit_no: unitNo,
+            count: staleIds.length,
+          });
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("[accept-owner-invite] revoke same-unit pending threw (non-fatal)", e);
+  }
+
   // ── 9) Magic link → front-end navigates to it (auto session, no OTP) ────
   const actionLink = await generateMagicLink(svc, email, redirectTo);
   if (!actionLink) {
