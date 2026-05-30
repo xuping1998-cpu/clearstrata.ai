@@ -12,6 +12,7 @@ import { BackButton } from '../../components/BackButton';
 import { UserManagementTab, type StaffTab } from '../owner-info/UserManagementTab';
 import { ExternalContactsAdminTab } from './ExternalContactsAdminTab';
 import { StaffInviteSection } from '../../components/property/StaffInviteSection';
+import { OwnerInviteSection } from '../../components/property/OwnerInviteSection';
 
 function staffFromTabParam(raw: string | null): StaffTab | null {
   if (raw === 'invites') return 'review';
@@ -20,7 +21,7 @@ function staffFromTabParam(raw: string | null): StaffTab | null {
   return null;
 }
 
-type ActivePeopleSection = StaffTab | 'external';
+type ActivePeopleSection = StaffTab | 'external' | 'owner';
 
 export function PropertyPeoplePage() {
   const { language } = useLanguage();
@@ -39,6 +40,10 @@ export function PropertyPeoplePage() {
     const raw = searchParams.get('tab');
     if (raw === 'external') {
       setSection('external');
+      return;
+    }
+    if (raw === 'owner') {
+      setSection('owner');
       return;
     }
     const st = staffFromTabParam(raw);
@@ -71,11 +76,16 @@ export function PropertyPeoplePage() {
 
   const en = language === 'en';
 
-  const staffTabs = [
-    { key: 'members' as const, zh: '成员管理', en: 'Members' },
-    { key: 'review' as const, zh: '待审核人员', en: 'Pending Reviews' },
-    { key: 'anomaly' as const, zh: '职员邀请', en: 'Staff Invitations' },
+  const canOwnerInvite = canInvitePropertyManager(currentRole) && !isDemoPropertyMock;
+
+  const staffTabs: { key: ActivePeopleSection; zh: string; en: string }[] = [
+    { key: 'members', zh: '成员管理', en: 'Members' },
+    { key: 'review', zh: '待审核人员', en: 'Pending Reviews' },
+    { key: 'anomaly', zh: '职员邀请', en: 'Staff Invitations' },
   ];
+  if (canOwnerInvite) {
+    staffTabs.push({ key: 'owner', zh: '业主邀请', en: 'Owner Invite' });
+  }
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6">
@@ -143,7 +153,19 @@ export function PropertyPeoplePage() {
         )
       ) : null}
 
-      {staffPeopleAccess && section !== 'external' && section !== 'anomaly' && currentPropertyId ? (
+      {staffPeopleAccess && section === 'owner' && currentPropertyId ? (
+        canOwnerInvite ? (
+          <OwnerInviteSection propertyId={currentPropertyId} />
+        ) : (
+          <div className="rounded-xl border border-gray-200 bg-white p-6 text-sm text-gray-600">
+            {en
+              ? 'You do not have permission to invite owners for this property.'
+              : '您没有权限邀请本物业业主。'}
+          </div>
+        )
+      ) : null}
+
+      {staffPeopleAccess && section !== 'external' && section !== 'anomaly' && section !== 'owner' && currentPropertyId ? (
         <UserManagementTab
           readOnly={false}
           controlledStaffTab={section as StaffTab}

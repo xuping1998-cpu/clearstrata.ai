@@ -27,3 +27,9 @@ verify_jwt = false
 
 [functions.send-member-notification]
 verify_jwt = false
+
+[functions.send-owner-invite]
+verify_jwt = false
+
+[functions.accept-owner-invite]
+verify_jwt = false
