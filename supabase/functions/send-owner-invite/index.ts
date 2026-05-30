@@ -241,7 +241,7 @@ Deno.serve(async (req: Request) => {
         message:
           "property_id, full_name, email and unit_no are all required. / 姓名、邮箱、房号均为必填。",
       },
-      400,
+      200,
     );
   }
   if (!email.includes("@") || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
@@ -251,7 +251,7 @@ Deno.serve(async (req: Request) => {
         code: "invalid_email",
         message: "Email is invalid. / 邮箱格式无效。",
       },
-      400,
+      200,
     );
   }
 
@@ -352,7 +352,7 @@ Deno.serve(async (req: Request) => {
           message:
             "该邮箱已有等待接受的业主邀请。 This email already has a pending owner invitation.",
         },
-        409,
+        200,
       );
     }
 
@@ -401,7 +401,7 @@ Deno.serve(async (req: Request) => {
               message:
                 "该邮箱已经是本物业业主。 This email is already an owner of this property.",
             },
-            409,
+            200,
           );
         }
         if (existingStaffType) {
@@ -412,7 +412,7 @@ Deno.serve(async (req: Request) => {
               message:
                 "该邮箱已是本物业职员。如需邀请为业主，请先在成员管理移除其职员身份。 This email is already a staff member; remove the staff membership first.",
             },
-            409,
+            200,
           );
         }
         return json(
@@ -422,7 +422,7 @@ Deno.serve(async (req: Request) => {
             message:
               "该邮箱已是本物业其他身份成员，不能发送业主邀请。 This email is already an active member with another role.",
           },
-          409,
+          200,
         );
       }
     }
@@ -497,7 +497,7 @@ Deno.serve(async (req: Request) => {
           message:
             "该房号已被占用，不能发送业主邀请。 This unit is already assigned and cannot receive another owner invitation.",
         },
-        409,
+        200,
       );
     }
 
@@ -545,7 +545,7 @@ Deno.serve(async (req: Request) => {
             message:
               "该邮箱已有等待接受的业主邀请。 This email already has a pending owner invitation.",
           },
-          409,
+          200,
         );
       }
       console.error("❌ send-owner-invite owner_invites insert", insErr);
