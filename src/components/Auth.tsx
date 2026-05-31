@@ -173,6 +173,7 @@ export function Auth() {
   const [legacyOpen, setLegacyOpen] = useState<LegacyOpen>('none');
   const [epCode, setEpCode] = useState('');
   const [epBusy, setEpBusy] = useState(false);
+  const [showOwnerEntry, setShowOwnerEntry] = useState(false);
 
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
@@ -208,6 +209,7 @@ export function Auth() {
     const pc = searchParams.get('propertyCode')?.trim();
     if (pc) {
       setEpCode(pc);
+      setShowOwnerEntry(true);
     }
   }, [searchParams]);
 
@@ -421,12 +423,23 @@ export function Auth() {
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-50">
-      {/* Top bar: quick link to existing-property sign in. */}
+      {/* Top bar: owner entry (property code) + language toggle. */}
       <div className="w-full">
-        <div className="mx-auto flex max-w-7xl items-center justify-end px-4 pt-4 sm:px-6">
+        <div className="mx-auto flex max-w-7xl items-center justify-end gap-2 px-4 pt-4 sm:px-6">
           <button
             type="button"
-            onClick={() => navigate('/login')}
+            onClick={toggleLanguage}
+            className="rounded-lg px-3 py-2 text-sm font-medium text-gray-500 transition-colors hover:text-gray-700"
+          >
+            {language === 'en' ? '中文' : 'EN'}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setError('');
+              setResetSuccess('');
+              setShowOwnerEntry(true);
+            }}
             className="rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-right text-sm font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
           >
             进入已有物业
@@ -473,61 +486,45 @@ export function Auth() {
         </div>
       </section>
 
-      <div className="mx-auto w-full max-w-md flex-1 px-4 pb-12 pt-2 sm:px-6">
-        <div className="mt-2 text-center">
-          <h2 className="text-lg font-semibold text-gray-800 sm:text-xl">业主进入物业</h2>
-          <p className="mt-0.5 text-sm text-gray-500">Enter your property</p>
-        </div>
-        <div className="mt-6 w-full">
-          <div className="flex flex-col overflow-visible rounded-2xl border border-gray-200 bg-white shadow-sm">
-            <div className="flex shrink-0 items-center justify-between border-b border-gray-100 px-5 py-3">
-              <span className="text-sm font-semibold text-slate-900">
-                {language === 'zh' ? '进入物业' : 'Join property'}
-              </span>
+      {/* Footer: admin / staff sign-in as a low-key secondary link. */}
+      <footer className="mt-auto w-full px-4 pb-8 pt-6 text-center sm:px-6">
+        <a
+          href="/login"
+          className="inline-block text-xs text-gray-400 transition-colors underline-offset-2 hover:text-gray-600 hover:underline"
+        >
+          管理员/职员登录 / Admin or Staff Sign In
+        </a>
+      </footer>
+
+      {/* Owner entry modal — opened from the top-right button; reuses handlePropertyEnter. */}
+      {showOwnerEntry && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setShowOwnerEntry(false)}
+        >
+          <div
+            className="w-full max-w-md overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
+              <div>
+                <h2 className="text-base font-semibold text-slate-900">
+                  {language === 'zh' ? '进入已有物业' : 'Join existing property'}
+                </h2>
+                <p className="text-xs text-gray-500">
+                  {language === 'zh' ? '输入业委会提供的物业代号' : 'Enter the code provided by your strata council'}
+                </p>
+              </div>
               <button
                 type="button"
-                onClick={toggleLanguage}
-                className="text-sm font-medium text-gray-500 transition-colors hover:text-gray-700"
+                onClick={() => setShowOwnerEntry(false)}
+                className="shrink-0 rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
+                aria-label={language === 'zh' ? '关闭' : 'Close'}
               >
-                {language === 'en' ? '中文' : 'EN'}
+                ×
               </button>
-            </div>
-
-            <div className="min-h-0 shrink-0 overflow-visible px-5 pt-5">
-              {passwordUpdated && (
-                <div className="p-3 bg-clearstrata-ui-soft border border-clearstrata-ui-softBorder rounded-lg text-clearstrata-ui-softText text-sm flex justify-between gap-2 items-start">
-                  <span>{t('auth_password_updated_banner')}</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const next = new URLSearchParams(searchParams);
-                      next.delete('passwordUpdated');
-                      setSearchParams(next, { replace: true });
-                    }}
-                    className="shrink-0 text-clearstrata-brand-700 hover:text-clearstrata-brand-900 text-lg leading-none"
-                    aria-label="Dismiss"
-                  >
-                    ×
-                  </button>
-                </div>
-              )}
-              {passwordResetDone && (
-                <div className="p-3 bg-clearstrata-ui-soft border border-clearstrata-ui-softBorder rounded-lg text-clearstrata-ui-softText text-sm flex justify-between gap-2 items-start">
-                  <span>{t('auth_password_reset_login_banner')}</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const next = new URLSearchParams(searchParams);
-                      next.delete('passwordReset');
-                      setSearchParams(next, { replace: true });
-                    }}
-                    className="shrink-0 text-clearstrata-brand-700 hover:text-clearstrata-brand-900 text-lg leading-none"
-                    aria-label="Dismiss"
-                  >
-                    ×
-                  </button>
-                </div>
-              )}
             </div>
 
             <form onSubmit={(e) => void handlePropertyEnter(e)} className="space-y-4 p-5">
@@ -543,11 +540,17 @@ export function Auth() {
                   className="w-full rounded-lg border border-gray-300 px-4 py-2.5 font-mono uppercase transition-colors focus:border-clearstrata-ui-primary focus:ring-2 focus:ring-clearstrata-ui-primary/20"
                   placeholder="PROPERTY-CODE"
                   autoComplete="off"
+                  autoFocus
                 />
                 <p className="mt-1 text-xs text-gray-500">
                   {language === 'zh' ? '请使用业委会提供的专属代号。' : 'Use the code provided by your strata council.'}
                 </p>
               </div>
+
+              {error && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>
+              )}
+
               <button
                 type="submit"
                 disabled={epBusy}
@@ -557,25 +560,9 @@ export function Auth() {
                 {language === 'zh' ? '进入业主身份确认' : 'Continue to owner verification'}
               </button>
             </form>
-
-            <div className="w-full shrink-0">
-              {error && (
-                <div className="mx-6 mb-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>
-              )}
-
-              {/* Card footer: admin link */}
-              <div className="border-t border-gray-100 bg-gray-50/60 px-6 py-4 text-center">
-                <a
-                  href="/login"
-                  className="inline-block text-xs text-gray-400 hover:text-gray-600 transition-colors underline-offset-2 hover:underline"
-                >
-                  管理员入口 / Admin Sign In
-                </a>
-              </div>
-            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
