@@ -6,14 +6,12 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { supabase } from '../lib/supabase';
 import { getAuthErrorMessage } from '../lib/authErrorMessages';
 import { DEFAULT_PROPERTY_ID } from '../lib/defaultProperty';
-import { AuthPromoPanel } from './AuthPromoPanel';
 import {
   APP_MODE_STORAGE_KEY,
   GUEST_PROPERTY_STORAGE_KEY,
   clearPublicDemoLocalStorage,
 } from '../contexts/PropertyContext';
 import { trackPropertyEntryEvent } from '../lib/propertyEntryEvents';
-import { saveGuestExperienceDraft } from '@/lib/guestExperienceDraft';
 
 import { consumePendingRedirect } from '../lib/pendingRedirect';
 
@@ -169,15 +167,10 @@ function generateSecureEntryPassword(): string {
   return `${hex}Aa1!`;
 }
 
-type MainTab = 'guest' | 'property';
 type LegacyOpen = 'none' | 'login' | 'signup';
 
 export function Auth() {
-  const [mainTab, setMainTab] = useState<MainTab>('guest');
   const [legacyOpen, setLegacyOpen] = useState<LegacyOpen>('none');
-  const [guestName, setGuestName] = useState('');
-  const [guestEmail, setGuestEmail] = useState('');
-  const [guestBusy, setGuestBusy] = useState(false);
   const [epCode, setEpCode] = useState('');
   const [epBusy, setEpBusy] = useState(false);
 
@@ -215,32 +208,8 @@ export function Auth() {
     const pc = searchParams.get('propertyCode')?.trim();
     if (pc) {
       setEpCode(pc);
-      setMainTab('property');
     }
   }, [searchParams]);
-
-  const handleGuestDemo = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setResetSuccess('');
-    const n = guestName.trim();
-    const em = guestEmail.trim().toLowerCase();
-    if (!n || !em) {
-      setError(language === 'zh' ? '请填写姓名与邮箱。' : 'Please enter your name and email.');
-      return;
-    }
-    if (!isValidEmailBasic(em)) {
-      setError(language === 'zh' ? '邮箱格式不正确。' : 'Please enter a valid email address.');
-      return;
-    }
-    setGuestBusy(true);
-    try {
-      saveGuestExperienceDraft({ name: n, email: em });
-      navigate('/demo-property', { replace: false });
-    } finally {
-      setGuestBusy(false);
-    }
-  };
 
   const handlePropertyEnter = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -452,6 +421,20 @@ export function Auth() {
 
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-50">
+      {/* Top bar: quick link to existing-property sign in. */}
+      <div className="w-full">
+        <div className="mx-auto flex max-w-7xl items-center justify-end px-4 pt-4 sm:px-6">
+          <button
+            type="button"
+            onClick={() => navigate('/login')}
+            className="rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-right text-sm font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
+          >
+            进入已有物业
+            <span className="block text-xs font-normal text-gray-400">Join Existing Property</span>
+          </button>
+        </div>
+      </div>
+
       {/* Marketing landing hero — first visual on the public homepage. */}
       <section className="w-full bg-gradient-to-b from-white to-clearstrata-ui-soft/30">
         <div className="mx-auto max-w-5xl px-4 pt-10 pb-8 text-center sm:px-6">
@@ -490,188 +473,107 @@ export function Auth() {
         </div>
       </section>
 
-      <div className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col gap-6 px-4 pb-4 pt-0 sm:px-6 lg:grid lg:grid-cols-[minmax(0,46%)_minmax(0,54%)] lg:items-stretch lg:gap-6">
-        <div className="flex h-full min-h-0 w-full flex-col pt-5 lg:pt-7">
-          <div className="mb-2 flex w-full shrink-0 flex-col items-center justify-start px-2">
-            <div className="mt-2 text-center">
-              <h2 className="text-lg font-semibold text-gray-800 sm:text-xl">进入已有物业</h2>
-              <p className="mt-0.5 text-sm text-gray-500">Sign in to existing property</p>
-            </div>
-          </div>
-          <div className="mt-6 flex min-h-0 w-full flex-1 flex-col">
-            <div className="flex min-h-0 flex-1 flex-col overflow-visible rounded-2xl border border-gray-200 bg-white shadow-sm">
-              <div className="flex shrink-0 border-b border-gray-100">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMainTab('guest');
-                    setError('');
-                    setResetSuccess('');
-                  }}
-                  className={`flex-1 py-3 text-sm font-semibold transition-colors ${
-                    mainTab === 'guest'
-                      ? 'border-b-2 border-clearstrata-ui-primary bg-clearstrata-ui-soft/40 text-clearstrata-ui-primary'
-                      : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  {language === 'zh' ? '游客体验' : 'Try demo'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMainTab('property');
-                    setError('');
-                    setResetSuccess('');
-                  }}
-                  className={`flex-1 py-3 text-sm font-semibold transition-colors ${
-                    mainTab === 'property'
-                      ? 'border-b-2 border-slate-800 bg-slate-50 text-slate-900'
-                      : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  {language === 'zh' ? '进入物业' : 'Join property'}
-                </button>
-                <button
-                  type="button"
-                  onClick={toggleLanguage}
-                  className="border-l border-gray-100 px-4 py-3 text-sm font-medium text-gray-500 transition-colors hover:text-gray-700"
-                >
-                  {language === 'en' ? '中文' : 'EN'}
-                </button>
-              </div>
-
-              <div className="flex min-h-0 flex-1 flex-col">
-                <div className="min-h-0 shrink-0 overflow-visible">
-            {passwordUpdated && (
-              <div className="p-3 bg-clearstrata-ui-soft border border-clearstrata-ui-softBorder rounded-lg text-clearstrata-ui-softText text-sm flex justify-between gap-2 items-start">
-                <span>{t('auth_password_updated_banner')}</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const next = new URLSearchParams(searchParams);
-                    next.delete('passwordUpdated');
-                    setSearchParams(next, { replace: true });
-                  }}
-                  className="shrink-0 text-clearstrata-brand-700 hover:text-clearstrata-brand-900 text-lg leading-none"
-                  aria-label="Dismiss"
-                >
-                  ×
-                </button>
-              </div>
-            )}
-            {passwordResetDone && (
-              <div className="p-3 bg-clearstrata-ui-soft border border-clearstrata-ui-softBorder rounded-lg text-clearstrata-ui-softText text-sm flex justify-between gap-2 items-start">
-                <span>{t('auth_password_reset_login_banner')}</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const next = new URLSearchParams(searchParams);
-                    next.delete('passwordReset');
-                    setSearchParams(next, { replace: true });
-                  }}
-                  className="shrink-0 text-clearstrata-brand-700 hover:text-clearstrata-brand-900 text-lg leading-none"
-                  aria-label="Dismiss"
-                >
-                  ×
-                </button>
-              </div>
-            )}
-            {mainTab === 'guest' ? (
-              <form onSubmit={handleGuestDemo} className="space-y-3 p-5">
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="guest-name">
-                    {language === 'zh' ? '姓名' : 'Name'} <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    id="guest-name"
-                    type="text"
-                    value={guestName}
-                    onChange={(e) => setGuestName(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-clearstrata-ui-primary focus:ring-2 focus:ring-clearstrata-ui-primary/20"
-                    autoComplete="name"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="guest-email">
-                    {language === 'zh' ? '邮箱' : 'Email'} <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    id="guest-email"
-                    type="email"
-                    value={guestEmail}
-                    onChange={(e) => setGuestEmail(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 transition-colors focus:border-clearstrata-ui-primary focus:ring-2 focus:ring-clearstrata-ui-primary/20"
-                    autoComplete="email"
-                    placeholder="name@example.com"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={guestBusy}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-clearstrata-ui-primary py-3 font-semibold text-white transition-colors hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {guestBusy ? <Loader2 size={18} className="animate-spin" /> : null}
-                  {language === 'zh' ? '立即查看账单' : 'View bills now'}
-                </button>
-              </form>
-            ) : (
-              <form onSubmit={(e) => void handlePropertyEnter(e)} className="space-y-4 p-5">
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="ep-code">
-                    {language === 'zh' ? '物业代号' : 'Property code'} <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    id="ep-code"
-                    type="text"
-                    value={epCode}
-                    onChange={(e) => setEpCode(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 font-mono uppercase transition-colors focus:border-clearstrata-ui-primary focus:ring-2 focus:ring-clearstrata-ui-primary/20"
-                    placeholder="PROPERTY-CODE"
-                    autoComplete="off"
-                  />
-                  <p className="mt-1 text-xs text-gray-500">
-                    {language === 'zh' ? '请使用业委会提供的专属代号。' : 'Use the code provided by your strata council.'}
-                  </p>
-                </div>
-                <button
-                  type="submit"
-                  disabled={epBusy}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 py-3 font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {epBusy ? <Loader2 size={18} className="animate-spin" /> : null}
-                  {language === 'zh' ? '进入业主身份确认' : 'Continue to owner verification'}
-                </button>
-              </form>
-            )}
-
-                </div>
-
-                <div className="mt-auto w-full shrink-0">
-            {error && (
-              <div className="mx-6 mb-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>
-            )}
-
-            {/* Card footer: owner hint + admin link */}
-            <div className="border-t border-gray-100 bg-gray-50/60 px-6 py-4 text-center space-y-2">
-              <p className="text-xs text-gray-400 select-none">
-                业主入口请使用上方「进入物业」
-                <span className="block text-gray-300">Owner entry: use the &ldquo;Join property&rdquo; tab above</span>
-              </p>
-              <a
-                href="/login"
-                className="inline-block text-xs text-gray-400 hover:text-gray-600 transition-colors underline-offset-2 hover:underline"
-              >
-                管理员入口 / Admin Sign In
-              </a>
-            </div>
-                </div>
-              </div>
-            </div>
-          </div>
+      <div className="mx-auto w-full max-w-md flex-1 px-4 pb-12 pt-2 sm:px-6">
+        <div className="mt-2 text-center">
+          <h2 className="text-lg font-semibold text-gray-800 sm:text-xl">业主进入物业</h2>
+          <p className="mt-0.5 text-sm text-gray-500">Enter your property</p>
         </div>
+        <div className="mt-6 w-full">
+          <div className="flex flex-col overflow-visible rounded-2xl border border-gray-200 bg-white shadow-sm">
+            <div className="flex shrink-0 items-center justify-between border-b border-gray-100 px-5 py-3">
+              <span className="text-sm font-semibold text-slate-900">
+                {language === 'zh' ? '进入物业' : 'Join property'}
+              </span>
+              <button
+                type="button"
+                onClick={toggleLanguage}
+                className="text-sm font-medium text-gray-500 transition-colors hover:text-gray-700"
+              >
+                {language === 'en' ? '中文' : 'EN'}
+              </button>
+            </div>
 
-        <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
-          <AuthPromoPanel />
+            <div className="min-h-0 shrink-0 overflow-visible px-5 pt-5">
+              {passwordUpdated && (
+                <div className="p-3 bg-clearstrata-ui-soft border border-clearstrata-ui-softBorder rounded-lg text-clearstrata-ui-softText text-sm flex justify-between gap-2 items-start">
+                  <span>{t('auth_password_updated_banner')}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = new URLSearchParams(searchParams);
+                      next.delete('passwordUpdated');
+                      setSearchParams(next, { replace: true });
+                    }}
+                    className="shrink-0 text-clearstrata-brand-700 hover:text-clearstrata-brand-900 text-lg leading-none"
+                    aria-label="Dismiss"
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
+              {passwordResetDone && (
+                <div className="p-3 bg-clearstrata-ui-soft border border-clearstrata-ui-softBorder rounded-lg text-clearstrata-ui-softText text-sm flex justify-between gap-2 items-start">
+                  <span>{t('auth_password_reset_login_banner')}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = new URLSearchParams(searchParams);
+                      next.delete('passwordReset');
+                      setSearchParams(next, { replace: true });
+                    }}
+                    className="shrink-0 text-clearstrata-brand-700 hover:text-clearstrata-brand-900 text-lg leading-none"
+                    aria-label="Dismiss"
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <form onSubmit={(e) => void handlePropertyEnter(e)} className="space-y-4 p-5">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700" htmlFor="ep-code">
+                  {language === 'zh' ? '物业代号' : 'Property code'} <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="ep-code"
+                  type="text"
+                  value={epCode}
+                  onChange={(e) => setEpCode(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-4 py-2.5 font-mono uppercase transition-colors focus:border-clearstrata-ui-primary focus:ring-2 focus:ring-clearstrata-ui-primary/20"
+                  placeholder="PROPERTY-CODE"
+                  autoComplete="off"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  {language === 'zh' ? '请使用业委会提供的专属代号。' : 'Use the code provided by your strata council.'}
+                </p>
+              </div>
+              <button
+                type="submit"
+                disabled={epBusy}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 py-3 font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {epBusy ? <Loader2 size={18} className="animate-spin" /> : null}
+                {language === 'zh' ? '进入业主身份确认' : 'Continue to owner verification'}
+              </button>
+            </form>
+
+            <div className="w-full shrink-0">
+              {error && (
+                <div className="mx-6 mb-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>
+              )}
+
+              {/* Card footer: admin link */}
+              <div className="border-t border-gray-100 bg-gray-50/60 px-6 py-4 text-center">
+                <a
+                  href="/login"
+                  className="inline-block text-xs text-gray-400 hover:text-gray-600 transition-colors underline-offset-2 hover:underline"
+                >
+                  管理员入口 / Admin Sign In
+                </a>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
