@@ -13,7 +13,6 @@ import {
   clearPublicDemoLocalStorage,
 } from '../contexts/PropertyContext';
 import { trackPropertyEntryEvent } from '../lib/propertyEntryEvents';
-import { demoEntryPath, MARKETING_DEMO_PROPERTY_CODE } from '@/lib/propertyEntryRoutes';
 import { saveGuestExperienceDraft } from '@/lib/guestExperienceDraft';
 
 import { consumePendingRedirect } from '../lib/pendingRedirect';
@@ -237,7 +236,7 @@ export function Auth() {
     setGuestBusy(true);
     try {
       saveGuestExperienceDraft({ name: n, email: em });
-      navigate(demoEntryPath(MARKETING_DEMO_PROPERTY_CODE), { replace: false });
+      navigate('/demo-property', { replace: false });
     } finally {
       setGuestBusy(false);
     }
@@ -436,22 +435,71 @@ export function Auth() {
     setResetSuccess('');
   };
 
+  /** Primary CTA — keep existing create-property routing logic. */
+  const goCreateProperty = () => {
+    const target = '/onboarding/create-property';
+    if (!session) {
+      navigate(`/?redirect=${encodeURIComponent(target)}`);
+      return;
+    }
+    navigate(target);
+  };
+
+  /** Secondary CTA — pure mock demo (NOT /demo/BCS3736). */
+  const goExploreDemo = () => {
+    navigate('/demo-property');
+  };
+
   return (
     <div className="flex min-h-screen w-full flex-col bg-gray-50">
+      {/* Marketing landing hero — first visual on the public homepage. */}
+      <section className="w-full bg-gradient-to-b from-white to-clearstrata-ui-soft/30">
+        <div className="mx-auto max-w-5xl px-4 pt-10 pb-8 text-center sm:px-6">
+          <img
+            src="/clearstrata-hero-logo.png"
+            alt="ClearStrata"
+            className="mx-auto h-auto w-[200px] object-contain sm:w-[240px]"
+          />
+          <h1 className="mt-6 text-2xl font-extrabold tracking-tight text-gray-900 sm:text-3xl">
+            AI驱动的业主自管平台
+            <span className="mt-1 block text-base font-semibold text-gray-500 sm:text-lg">
+              AI-Powered Owner Self-Governance Platform
+            </span>
+          </h1>
+          <div className="mx-auto mt-5 max-w-2xl space-y-1.5 text-sm text-gray-600 sm:text-base">
+            <p>让业主的每一笔支出干净透明</p>
+            <p>让全球 Council 决策轻松、便捷、高效</p>
+            <p>让本地物业服务可追踪、可监督、可查询</p>
+          </div>
+          <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={goCreateProperty}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-clearstrata-ui-primary px-6 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive sm:text-base"
+            >
+              创建我的物业 / Create My Property
+            </button>
+            <button
+              type="button"
+              onClick={goExploreDemo}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-6 py-3 text-sm font-semibold text-gray-900 transition-colors hover:bg-gray-50 sm:text-base"
+            >
+              体验演示物业 / Explore Demo Property
+            </button>
+          </div>
+        </div>
+      </section>
+
       <div className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col gap-6 px-4 pb-4 pt-0 sm:px-6 lg:grid lg:grid-cols-[minmax(0,46%)_minmax(0,54%)] lg:items-stretch lg:gap-6">
         <div className="flex h-full min-h-0 w-full flex-col pt-5 lg:pt-7">
-          <div className="mb-2 flex w-full shrink-0 flex-col items-center justify-start overflow-visible px-2">
-            <div className="w-full flex justify-center mt-8 mb-6">
-              <img
-                src="/clearstrata-hero-logo.png"
-                alt="ClearStrata.Ai"
-                className="h-auto w-[260px] sm:w-[320px] md:w-[380px] object-contain"
-              />
+          <div className="mb-2 flex w-full shrink-0 flex-col items-center justify-start px-2">
+            <div className="mt-2 text-center">
+              <h2 className="text-lg font-semibold text-gray-800 sm:text-xl">进入已有物业</h2>
+              <p className="mt-0.5 text-sm text-gray-500">Sign in to existing property</p>
             </div>
-            <p className="mt-2 text-center text-xl font-semibold text-gray-700 sm:text-2xl">清涟让物业管理更简单透明</p>
           </div>
           <div className="mt-6 flex min-h-0 w-full flex-1 flex-col">
-            <div className="flex min-h-0 flex-1 flex-col overflow-visible rounded-2xl border border-gray-100 bg-white shadow-md">
+            <div className="flex min-h-0 flex-1 flex-col overflow-visible rounded-2xl border border-gray-200 bg-white shadow-sm">
               <div className="flex shrink-0 border-b border-gray-100">
                 <button
                   type="button"
@@ -578,7 +626,7 @@ export function Auth() {
                     value={epCode}
                     onChange={(e) => setEpCode(e.target.value)}
                     className="w-full rounded-lg border border-gray-300 px-4 py-2.5 font-mono uppercase transition-colors focus:border-clearstrata-ui-primary focus:ring-2 focus:ring-clearstrata-ui-primary/20"
-                    placeholder="BCS3736"
+                    placeholder="PROPERTY-CODE"
                     autoComplete="off"
                   />
                   <p className="mt-1 text-xs text-gray-500">

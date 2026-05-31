@@ -132,12 +132,23 @@ export function Layout({ children }: LayoutProps) {
     if (isDemoPropertyMock) {
       if (location.pathname.startsWith('/demo-property')) {
         return [
-          { path: '/demo-property', icon: Home, label: t('nav_dashboard'), iconBg: 'bg-clearstrata-brand-500' },
-          { path: '/demo-property/finance', icon: DollarSign, label: t('nav_finance'), iconBg: 'bg-clearstrata-brand-600' },
+          { path: '/demo-property', icon: Home, label: language === 'en' ? 'Overview' : '总览', iconBg: 'bg-clearstrata-brand-500' },
           {
-            path: '/demo-property/members',
-            icon: Users,
-            label: language === 'en' ? 'Members' : '成员',
+            path: '/demo-property/finance',
+            icon: DollarSign,
+            label: language === 'en' ? 'Expense Transparency' : '支出透明',
+            iconBg: 'bg-clearstrata-brand-600',
+          },
+          {
+            path: '/demo-property#demo-council-decisions',
+            icon: Vote,
+            label: language === 'en' ? 'Council Decisions' : 'Council 决策',
+            iconBg: 'bg-violet-600',
+          },
+          {
+            path: '/demo-property#demo-local-services',
+            icon: Briefcase,
+            label: language === 'en' ? 'Local Services' : '物业服务',
             iconBg: 'bg-sky-500',
           },
         ] as Array<{ path: string; icon: LucideIcon; label: string; iconBg: string }>;
