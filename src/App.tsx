@@ -97,6 +97,8 @@ const PUBLIC_PATH_PREFIXES = [
   '/manager-invite',
   '/staff-invite',
   '/owner-invite',
+  '/demo-property',
+  '/onboarding/create-property',
 ];
 
 function isPublicPath(pathname: string) {

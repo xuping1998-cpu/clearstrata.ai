@@ -406,17 +406,13 @@ export function Auth() {
     setResetSuccess('');
   };
 
-  /** Primary CTA — keep existing create-property routing logic. */
+  /** Primary CTA — go straight to create-property; the page itself shows a sign-in
+   *  prompt for logged-out users (avoids a no-op redirect back to this landing). */
   const goCreateProperty = () => {
-    const target = '/onboarding/create-property';
-    if (!session) {
-      navigate(`/?redirect=${encodeURIComponent(target)}`);
-      return;
-    }
-    navigate(target);
+    navigate('/onboarding/create-property');
   };
 
-  /** Secondary CTA — pure mock demo (NOT /demo/BCS3736). */
+  /** Secondary CTA — pure mock demo (NOT /demo/BCS3736, never /login). */
   const goExploreDemo = () => {
     navigate('/demo-property');
   };
