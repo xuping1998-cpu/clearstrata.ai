@@ -127,6 +127,7 @@ export function Layout({ children }: LayoutProps) {
     location.pathname === '/demo-property/' ||
     (location.pathname === '/' && new URLSearchParams(location.search).get('mode') === 'demo');
   const homeActive = isDashboardHome;
+  const onDemoPropertyRoute = location.pathname.startsWith('/demo-property');
 
   const quickModules = useMemo(() => {
     if (isDemoPropertyMock) {
@@ -613,7 +614,7 @@ export function Layout({ children }: LayoutProps) {
           }`}
         >
           <UserNotificationToast />
-          {isDemoPropertyMock ? (
+          {(isDemoPropertyMock || onDemoPropertyRoute) ? (
             <DemoGeneratedDataProvider>{children}</DemoGeneratedDataProvider>
           ) : (
             children
