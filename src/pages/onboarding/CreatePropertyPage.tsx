@@ -1,6 +1,6 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { Building2, Loader2, ShieldCheck } from 'lucide-react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
+import { Navigate, useNavigate } from 'react-router-dom';
+import { Building2, Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useProperty } from '@/contexts/PropertyContext';
@@ -15,6 +15,9 @@ import { readGuestExperienceDraft } from '@/lib/guestExperienceDraft';
 
 type Toast = { kind: 'success' | 'error' | 'warn'; text: string } | null;
 
+const CREATE_PROPERTY_PATH = '/onboarding/create-property';
+const CREATE_PROPERTY_LOGIN = `/login?redirect=${encodeURIComponent(CREATE_PROPERTY_PATH)}`;
+
 function normalizeCodeHint(name: string): string {
   const s = name.trim().toUpperCase();
   const compact = s.replace(/[^A-Z0-9]/g, '').slice(0, 8);
@@ -23,7 +26,6 @@ function normalizeCodeHint(name: string): string {
 
 export function CreatePropertyPage() {
   const navigate = useNavigate();
-  const location = useLocation();
   const { session, user, profile, loading: authLoading, refreshProfile } = useAuth();
   const { language } = useLanguage();
   const en = language === 'en';
@@ -47,11 +49,6 @@ export function CreatePropertyPage() {
     const t = window.setTimeout(() => setToast(null), toast.kind === 'success' ? 4200 : 7000);
     return () => window.clearTimeout(t);
   }, [toast]);
-
-  const redirectBackToSelf = useMemo(
-    () => `/?redirect=${encodeURIComponent(location.pathname + location.search)}`,
-    [location.pathname, location.search],
-  );
 
   useEffect(() => {
     if (!profile) return;
@@ -87,11 +84,7 @@ export function CreatePropertyPage() {
     setToast(null);
 
     if (!session?.user || !user?.id) {
-      setToast({
-        kind: 'error',
-        text: en ? 'Please sign in before creating a property.' : '请先登录后再创建物业。',
-      });
-      navigate(redirectBackToSelf, { replace: false });
+      navigate(CREATE_PROPERTY_LOGIN, { replace: true });
       return;
     }
 
@@ -198,39 +191,7 @@ export function CreatePropertyPage() {
   }
 
   if (!session) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-clearstrata-ui-soft/40 to-gray-50 flex items-center justify-center p-6">
-        <div className="w-full max-w-lg rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-clearstrata-brand-100 text-clearstrata-brand-700">
-              <ShieldCheck size={20} />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold text-gray-900">
-                {en ? 'Create your property' : '创建你的物业'}
-              </h1>
-              <p className="mt-1 text-sm text-gray-600">
-                {en
-                  ? 'To make sure you become the first administrator of this property, please sign in or register first.'
-                  : '为了确保你将成为该物业的首位管理员，请先登录或注册。'}
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => navigate(redirectBackToSelf)}
-            className="mt-5 w-full rounded-xl bg-clearstrata-ui-primary px-4 py-3 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors"
-          >
-            {en ? 'Sign in / Register' : '去登录 / 注册'}
-          </button>
-          <p className="mt-3 text-xs text-gray-400">
-            {en
-              ? 'You will return here automatically after signing in.'
-              : '登录后将自动返回本页继续创建。'}
-          </p>
-        </div>
-      </div>
-    );
+    return <Navigate to={CREATE_PROPERTY_LOGIN} replace />;
   }
 
   return (

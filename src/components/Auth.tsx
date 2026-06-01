@@ -406,10 +406,14 @@ export function Auth() {
     setResetSuccess('');
   };
 
-  /** Primary CTA — go straight to create-property; the page itself shows a sign-in
-   *  prompt for logged-out users (avoids a no-op redirect back to this landing). */
+  /** Primary CTA — logged-out users go to login with return path; logged-in users enter create flow directly. */
   const goCreateProperty = () => {
-    navigate('/onboarding/create-property');
+    const target = '/onboarding/create-property';
+    if (!session) {
+      navigate(`/login?redirect=${encodeURIComponent(target)}`);
+      return;
+    }
+    navigate(target);
   };
 
   /** Secondary CTA — pure mock demo (NOT /demo/BCS3736, never /login). */
