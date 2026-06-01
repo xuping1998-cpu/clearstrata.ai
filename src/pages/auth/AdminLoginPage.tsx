@@ -1,14 +1,31 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { getAuthErrorMessage } from '../../lib/authErrorMessages';
 import { consumePendingRedirect } from '../../lib/pendingRedirect';
 
+const CREATE_PROPERTY_PATH = '/onboarding/create-property';
+
+function isCreatePropertyRedirectTarget(redirectRaw: string | null): boolean {
+  if (!redirectRaw) return false;
+  try {
+    const path = decodeURIComponent(redirectRaw);
+    return path === CREATE_PROPERTY_PATH || path.includes(CREATE_PROPERTY_PATH);
+  } catch {
+    return redirectRaw.includes(CREATE_PROPERTY_PATH);
+  }
+}
+
 export function AdminLoginPage() {
   const { signIn } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+
+  const isCreatePropertyRedirect = useMemo(
+    () => isCreatePropertyRedirectTarget(searchParams.get('redirect')),
+    [searchParams],
+  );
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -81,8 +98,21 @@ export function AdminLoginPage() {
         </div>
 
         <div className="text-center">
-          <h1 className="text-lg font-bold text-gray-900">管理员登录</h1>
-          <p className="text-xs text-gray-400 mt-0.5">Admin Sign In</p>
+          {isCreatePropertyRedirect ? (
+            <>
+              <h1 className="text-lg font-bold text-gray-900">创建物业账户</h1>
+              <p className="mt-1 text-xs text-gray-500">Create Your Property Account</p>
+              <p className="mt-2 text-sm text-gray-600">登录或注册后继续创建你的物业</p>
+              <p className="mt-0.5 text-xs text-gray-400">
+                Sign in or register to continue creating your property
+              </p>
+            </>
+          ) : (
+            <>
+              <h1 className="text-lg font-bold text-gray-900">管理员登录</h1>
+              <p className="text-xs text-gray-400 mt-0.5">Admin Sign In</p>
+            </>
+          )}
         </div>
 
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
@@ -141,20 +171,27 @@ export function AdminLoginPage() {
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-slate-800 py-3 font-semibold text-white text-sm transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {submitting ? <Loader2 size={16} className="animate-spin" /> : null}
-            登录
+            {isCreatePropertyRedirect ? '登录 / Sign In' : '登录'}
           </button>
         </form>
 
-        <div className="text-center text-xs text-gray-400 space-y-3">
-          <div className="space-y-1">
-            <p>业主入口：返回首页后点击【进入物业】</p>
-            <p>物业经理/职员：请联系理事会发送职员邀请</p>
+        {isCreatePropertyRedirect ? (
+          <div className="text-center text-xs text-gray-500 space-y-1">
+            <p>登录后将自动返回创建物业页面。</p>
+            <p>You will return to the property creation page after signing in.</p>
           </div>
-          <div className="space-y-1">
-            <p>Owners: return home and use “Join Property”</p>
-            <p>Staff/Managers: contact council for an invitation</p>
+        ) : (
+          <div className="text-center text-xs text-gray-400 space-y-3">
+            <div className="space-y-1">
+              <p>业主入口：返回首页后点击【进入物业】</p>
+              <p>物业经理/职员：请联系理事会发送职员邀请</p>
+            </div>
+            <div className="space-y-1">
+              <p>Owners: return home and use “Join Property”</p>
+              <p>Staff/Managers: contact council for an invitation</p>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
