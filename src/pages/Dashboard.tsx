@@ -61,7 +61,9 @@ export function Dashboard() {
     };
   }, [currentPropertyId, isDemoMode, isDemoPropertyMock]);
 
-  if (isDemoPropertyMock) {
+  const onDemoPropertyRoute = location.pathname.startsWith('/demo-property');
+
+  if (isDemoPropertyMock || onDemoPropertyRoute) {
     return <DemoPropertyMockHomePanel />;
   }
 
