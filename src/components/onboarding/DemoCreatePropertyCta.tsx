@@ -1,8 +1,10 @@
-import { useMemo } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Rocket } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { demoEntryPath, MARKETING_DEMO_PROPERTY_CODE, realPropertyJoinPath } from '@/lib/propertyEntryRoutes';
+
+const CREATE_PROPERTY_TARGET = '/onboarding/create-property';
+const CREATE_PROPERTY_LOGIN = `/login?redirect=${encodeURIComponent(CREATE_PROPERTY_TARGET)}`;
 
 export function DemoCreatePropertyCtaButton({
   variant = 'primary',
@@ -12,24 +14,17 @@ export function DemoCreatePropertyCtaButton({
   className?: string;
 }) {
   const navigate = useNavigate();
-  const location = useLocation();
   const { session } = useAuth();
-
-  const target = '/onboarding/create-property';
-  const loginHref = useMemo(() => {
-    const redir = `${target}?from=${encodeURIComponent(location.pathname)}`;
-    return `/?redirect=${encodeURIComponent(redir)}`;
-  }, [location.pathname]);
 
   return (
     <button
       type="button"
       onClick={() => {
         if (!session) {
-          navigate(loginHref);
+          navigate(CREATE_PROPERTY_LOGIN);
           return;
         }
-        navigate(target);
+        navigate(CREATE_PROPERTY_TARGET);
       }}
       className={
         variant === 'primary'
@@ -45,10 +40,7 @@ export function DemoCreatePropertyCtaButton({
 
 export function DemoCreatePropertyCtaCard() {
   const navigate = useNavigate();
-  const location = useLocation();
   const { session } = useAuth();
-  const target = '/onboarding/create-property';
-  const loginHref = `/?redirect=${encodeURIComponent(target)}&from=${encodeURIComponent(location.pathname)}`;
 
   return (
     <div className="rounded-2xl border border-clearstrata-ui-softBorder bg-gradient-to-br from-white to-clearstrata-ui-soft/60 p-5 shadow-sm">
@@ -63,10 +55,10 @@ export function DemoCreatePropertyCtaCard() {
           type="button"
           onClick={() => {
             if (!session) {
-              navigate(loginHref);
+              navigate(CREATE_PROPERTY_LOGIN);
               return;
             }
-            navigate(target);
+            navigate(CREATE_PROPERTY_TARGET);
           }}
           className="inline-flex items-center justify-center gap-2 rounded-xl bg-clearstrata-ui-primary px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive active:scale-[0.99]"
         >
@@ -89,4 +81,3 @@ export function DemoCreatePropertyCtaCard() {
     </div>
   );
 }
-
