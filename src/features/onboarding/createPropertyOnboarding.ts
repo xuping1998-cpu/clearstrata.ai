@@ -181,7 +181,6 @@ async function insertPropertyRow(input: CreatePropertyOnboardingInput): Promise<
     name: input.propertyName.trim(),
     code: normalizeCode(input.propertyCode),
     city: input.city.trim() || null,
-    is_active: true,
     ...contactPayload,
   };
 
@@ -210,21 +209,7 @@ async function insertPropertyRow(input: CreatePropertyOnboardingInput): Promise<
     }
   }
 
-  // Prefer legacy status='trial' if schema supports it.
-  {
-    const { data, error } = await supabase
-      .from('properties')
-      .insert({ ...payloadBase, ...trialPayload, status: 'trial' })
-      .select('id')
-      .maybeSingle();
-    if (!error && data?.id) return String(data.id);
-    if (error && isMissingColumnError(error)) {
-      // Retry without status.
-    } else if (error) {
-      throwNormalizedPropertyInsertError(error);
-    }
-  }
-
+  // Fallback without trial fields if schema does not support them.
   const { data, error } = await supabase.from('properties').insert(payloadBase).select('id').maybeSingle();
   if (error) throwNormalizedPropertyInsertError(error);
   const pid = data?.id ? String(data.id) : '';
