@@ -3,6 +3,7 @@ import { Link, Navigate, NavLink } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useProperty } from '../../contexts/PropertyContext';
+import { useLanguage } from '../../contexts/LanguageContext';
 import {
   canAccessPropertySettingsPage,
   canApproveJoinRequest,
@@ -98,6 +99,8 @@ export function PropertySettingsPage() {
 }
 
 export function InviteManagerSection({ propertyId }: { propertyId: string }) {
+  const { language } = useLanguage();
+  const en = language === 'en';
   const [managerName, setManagerName] = useState('');
   const [managerEmail, setManagerEmail] = useState('');
   const [busy, setBusy] = useState(false);
@@ -110,6 +113,29 @@ export function InviteManagerSection({ propertyId }: { propertyId: string }) {
       setFeedback({ ok: false, msg: '请填写有效的经理邮箱地址' });
       return;
     }
+
+    try {
+      const { data: activeManagers, error: lookupErr } = await supabase
+        .from('property_members')
+        .select('id, user_id, role, status')
+        .eq('property_id', propertyId)
+        .eq('role', 'manager')
+        .eq('status', 'active');
+
+      if (lookupErr) {
+        console.warn('[InviteManagerSection] active manager lookup failed', lookupErr);
+      } else if ((activeManagers?.length ?? 0) > 0) {
+        const confirmed = window.confirm(
+          en
+            ? 'This property already has an active manager. Continuing will add another manager. Do you want to continue?'
+            : '本物业已有物业经理。继续邀请后将产生多名物业经理。是否继续？',
+        );
+        if (!confirmed) return;
+      }
+    } catch (lookupCatch) {
+      console.warn('[InviteManagerSection] active manager lookup threw', lookupCatch);
+    }
+
     setBusy(true);
     try {
       const { data, error } = await supabase.functions.invoke('send-manager-invite', {
@@ -132,7 +158,7 @@ export function InviteManagerSection({ propertyId }: { propertyId: string }) {
     } finally {
       setBusy(false);
     }
-  }, [propertyId, managerEmail, managerName]);
+  }, [propertyId, managerEmail, managerName, en]);
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-6 max-w-lg space-y-3">
