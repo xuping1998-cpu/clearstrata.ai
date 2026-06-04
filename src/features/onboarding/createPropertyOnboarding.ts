@@ -362,16 +362,12 @@ export async function createPropertyOnboarding(
   const role = mapStarterRoleToMembershipRole(input.starterRole);
   const unit = input.unitNo?.trim() ? input.unitNo.trim() : null;
 
-  // Create membership first (unblocks RLS for subsequent property-scoped inserts).
-  const { error: memErr } = await (supabase.from('property_members').insert({
-    property_id: propertyId,
-    user_id: user.id,
-    role,
-    status: 'active',
-    unit_number: unit,
-    approved_by: user.id,
-    approved_at: new Date().toISOString(),
-  }) as any);
+  // Bootstrap creator membership via SECURITY DEFINER RPC (authenticated INSERT revoked).
+  const { error: memErr } = await supabase.rpc('bootstrap_property_creator_membership', {
+    p_property_id: propertyId,
+    p_role: role,
+    p_unit_no: unit,
+  });
   if (memErr) throw memErr;
 
   // Minimal baseline data (best-effort).
