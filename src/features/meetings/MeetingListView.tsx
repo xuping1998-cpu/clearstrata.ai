@@ -34,7 +34,11 @@ import {
   finalizeElectionMeta,
   isStrictAgmOrSgmMeeting,
 } from './electionAgendaModel';
-import { deriveAgmSgmCanonDisplayWindows, deriveCouncilElectionCanonFromScheduledAt } from './electionTimelineMath';
+import {
+  deriveAgmSgmCanonDisplayWindows,
+  deriveCouncilElectionCanonFromScheduledAt,
+  deriveRemoteWrittenV3CanonFromScheduledAt,
+} from './electionTimelineMath';
 import { canManagePropertyMeetings } from '@/lib/meetingPermissions';
 
 type MeetingCardExtras = {
@@ -460,10 +464,29 @@ export function MeetingListView({ variant }: Props) {
                     )}
                     {(() => {
                       const extras = rowId ? cardExtrasByMeetingId[rowId] ?? emptyExtras() : emptyExtras();
+                      const isV3 = isWrittenRemoteV3Meeting(m);
                       const agmSgmStrict = isStrictAgmOrSgmMeeting(m);
-                      const disp = agmSgmStrict
-                        ? deriveAgmSgmCanonDisplayWindows(m.scheduled_at, extras.electionAgendaCount > 0)
-                        : null;
+                      let disp: ReturnType<typeof deriveAgmSgmCanonDisplayWindows> = null;
+                      if (agmSgmStrict) {
+                        if (isV3) {
+                          const v3Canon = deriveRemoteWrittenV3CanonFromScheduledAt(m.scheduled_at);
+                          if (v3Canon) {
+                            disp = {
+                              publicNoticeOpenIso: v3Canon.publicNoticeOpenIso,
+                              publicNoticeCloseIso: v3Canon.publicNoticeCloseIso,
+                              nominationOpenIso: v3Canon.nominationOpenIso,
+                              nominationCloseIso: v3Canon.nominationCloseIso,
+                              votingOpenIso: v3Canon.votingOpenIso,
+                              votingCloseIso: v3Canon.votingCloseIso,
+                            };
+                          }
+                        } else {
+                          disp = deriveAgmSgmCanonDisplayWindows(
+                            m.scheduled_at,
+                            extras.electionAgendaCount > 0,
+                          );
+                        }
+                      }
                       const notSetLbl = agmSgmScheduledNotSetLabel(en);
 
                       let displayPublicNoticeOpens: string | null = null;
