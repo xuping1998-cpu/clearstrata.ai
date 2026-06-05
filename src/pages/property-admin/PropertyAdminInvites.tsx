@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useProperty } from '../../contexts/PropertyContext';
 import { supabase } from '../../lib/supabase';
+import { publicInviteEntryUrl } from '../../lib/propertyInviteEntryUrl';
 import { InviteQRCode } from '../../components/InviteQRCode';
 
 /** 公开码 — property_invite_codes */
@@ -49,19 +50,6 @@ function genInviteToken(): string {
   const arr = new Uint8Array(24);
   crypto.getRandomValues(arr);
   return Array.from(arr, (b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-/** 公开码扫码 / 复制链接：统一走 `/entry`，与 `QrPropertyEntryPage` 自动提交一致。 */
-function publicInviteEntryUrl(origin: string, propertyId: string, code: string): string {
-  const rawLang = localStorage.getItem('language') || localStorage.getItem('i18nextLng') || 'zh';
-  const lang = rawLang === 'en' ? 'en' : 'zh';
-  const q = new URLSearchParams({
-    propertyId,
-    inviteCode: code,
-    source: 'qr',
-    lang,
-  });
-  return `${origin}/entry?${q.toString()}`;
 }
 
 function deriveStatus(row: {
@@ -314,7 +302,7 @@ export function PropertyAdminInvites() {
       setBanner(en ? 'No property selected.' : '未选择物业。');
       return;
     }
-    const url = publicInviteEntryUrl(base, currentPropertyId, row.code);
+    const url = publicInviteEntryUrl({ propertyId: currentPropertyId, inviteCode: row.code });
     setQrUrl(url);
     setQrTitle(row.label?.trim() || row.code);
     setQrPurpose(en ? 'Public code — property binding only.' : '公开邀请码 — 仅绑定物业。');
@@ -430,7 +418,7 @@ export function PropertyAdminInvites() {
                 publicRows.map((r) => {
                   const st = deriveStatus(r);
                   const link = currentPropertyId
-                    ? publicInviteEntryUrl(base, currentPropertyId, r.code)
+                    ? publicInviteEntryUrl({ propertyId: currentPropertyId, inviteCode: r.code })
                     : '';
                   return (
                     <tr key={r.id} className="border-t border-gray-100">

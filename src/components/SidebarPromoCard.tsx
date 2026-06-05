@@ -2,24 +2,12 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'react-qr-code';
 import { useProperty } from '../contexts/PropertyContext';
+import { publicInviteEntryUrl } from '@/lib/propertyInviteEntryUrl';
 import { supabase } from '@/lib/supabase';
 
 export type SidebarPromoCardProps = {
   language: 'en' | 'zh';
 };
-
-/** 与 `PropertyAdminInvites` 中公开码链接一致：`/entry?propertyId=&inviteCode=&source=qr&lang=` */
-function publicInviteEntryUrl(origin: string, propertyId: string, code: string): string {
-  const rawLang = typeof localStorage !== 'undefined' ? localStorage.getItem('language') || localStorage.getItem('i18nextLng') || 'zh' : 'zh';
-  const lang = rawLang === 'en' ? 'en' : 'zh';
-  const q = new URLSearchParams({
-    propertyId,
-    inviteCode: code,
-    source: 'qr',
-    lang,
-  });
-  return `${origin}/entry?${q.toString()}`;
-}
 
 type PublicCodeRow = {
   id: string;
@@ -83,14 +71,18 @@ export function SidebarPromoCard({ language }: SidebarPromoCardProps) {
 
       const rows = data as PublicCodeRow[];
       const firstActive = rows.find((r) => deriveStatus(r) === 'active');
-      const origin = typeof window !== 'undefined' ? window.location.origin : '';
-      if (!firstActive || !origin) {
+      if (!firstActive) {
         setInviteUrl(null);
         setResolved(true);
         return;
       }
 
-      setInviteUrl(publicInviteEntryUrl(origin, String(currentPropertyId), firstActive.code));
+      setInviteUrl(
+        publicInviteEntryUrl({
+          propertyId: String(currentPropertyId),
+          inviteCode: firstActive.code,
+        }),
+      );
       setResolved(true);
     })();
 

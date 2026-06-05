@@ -4,6 +4,7 @@ import { Ban, Loader2, Plus, QrCode } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useProperty } from '../../contexts/PropertyContext';
 import { supabase } from '../../lib/supabase';
+import { publicInviteEntryUrl } from '../../lib/propertyInviteEntryUrl';
 import { BackButton } from '../../components/BackButton';
 import { InviteQRCode } from '../../components/InviteQRCode';
 
@@ -71,7 +72,7 @@ export function AdminInviteCodes() {
     const rawLang = localStorage.getItem('language') || localStorage.getItem('i18nextLng') || 'zh';
     const lang = rawLang === 'en' ? 'en' : 'zh';
     const url = pid
-      ? `${typeof window !== 'undefined' ? window.location.origin : ''}/entry?propertyId=${encodeURIComponent(pid)}&inviteCode=${encodeURIComponent(row.code)}&source=qr&lang=${lang}`
+      ? publicInviteEntryUrl({ propertyId: pid, inviteCode: row.code, lang })
       : `${inviteBase}?code=${encodeURIComponent(row.code)}`;
 
     setQrPayload({
