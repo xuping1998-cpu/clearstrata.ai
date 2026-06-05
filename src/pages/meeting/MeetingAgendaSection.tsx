@@ -50,7 +50,10 @@ export function MeetingAgendaSection({ meetingId, meetingStatus, isCouncil }: Pr
   });
 
   const loadItems = useCallback(async () => {
-    if (!user || !currentPropertyId) return;
+    if (!user || !currentPropertyId) {
+      setLoading(true);
+      return;
+    }
     try {
       const { data } = await supabase
         .from('meeting_agenda_items')

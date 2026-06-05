@@ -9,6 +9,7 @@ import {
   useState,
   ReactNode,
 } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { supabase, type UserRole } from '../lib/supabase';
 import { useAuth } from './AuthContext';
@@ -160,15 +161,30 @@ interface PropertyContextValue {
 
 const PropertyContext = createContext<PropertyContextValue | undefined>(undefined);
 
+function computeInitialPropertyReady(session: Session | null, authLoading: boolean): boolean {
+  if (readUrlDemoPropertyMock()) return true;
+  if (readDemoLocalState()) return true;
+  if (authLoading) return false;
+  if (!session) return true;
+  return false;
+}
+
+function computeInitialPropertyId(): string | null {
+  if (readUrlDemoPropertyMock()) return DEMO_PROPERTY_MOCK_ID;
+  const demoId = readDemoLocalState()?.id;
+  if (demoId) return demoId;
+  return readStoredPropertyId();
+}
+
 export function PropertyProvider({ children }: { children: ReactNode }) {
-  const { user, session } = useAuth();
+  const { user, session, loading: authLoading } = useAuth();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const guestQuery = searchParams.get('guest');
   const searchParamsRef = useRef(searchParams);
   searchParamsRef.current = searchParams;
 
-  const [ready, setReady] = useState(() => !session || readUrlDemoPropertyMock());
+  const [ready, setReady] = useState(() => computeInitialPropertyReady(session, authLoading));
   const [memberships, setMemberships] = useState<PropertyMembership[]>(() => {
     if (readUrlDemoPropertyMock()) {
       return [
@@ -190,10 +206,7 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
         ]
       : [];
   });
-  const [currentPropertyId, setCurrentPropertyIdState] = useState<string | null>(() => {
-    if (readUrlDemoPropertyMock()) return DEMO_PROPERTY_MOCK_ID;
-    return readDemoLocalState()?.id ?? null;
-  });
+  const [currentPropertyId, setCurrentPropertyIdState] = useState<string | null>(computeInitialPropertyId);
   const [needsPropertyChoice, setNeedsPropertyChoice] = useState(false);
   const [isGuest, setIsGuest] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(() => Boolean(readDemoLocalState()));
@@ -347,6 +360,11 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    if (authLoading) {
+      setReady(false);
+      return;
+    }
+
     if (shouldDeferAutoPropertyRedirects()) {
       setReady(false);
       return;
@@ -390,7 +408,7 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
     }
     setReady(false);
     void loadMemberships();
-  }, [session, loadMemberships, guestQuery, location.pathname, location.hash, searchParams]);
+  }, [authLoading, session, loadMemberships, guestQuery, location.pathname, location.hash, searchParams]);
 
   /** URL 含有效 propertyId 且与 state 不一致时，以 URL 为准（扫码 / 前进后退 / 分享链接）。 */
   useEffect(() => {

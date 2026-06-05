@@ -397,9 +397,8 @@ export function MeetingDetail() {
       setCoreDone(true);
       return;
     }
-    if (!currentPropertyId) {
-      setBundle(initialBundle());
-      setCoreDone(true);
+    if (!propertyReady || !currentPropertyId) {
+      setCoreDone(false);
       return;
     }
 
@@ -416,7 +415,7 @@ export function MeetingDetail() {
     const ex = await fetchMeetingExtras(meetingId, m.property_id);
     setBundle((prev) => (prev.meeting ? { ...prev, ...ex } : prev));
     setExtrasLoading(false);
-  }, [meetingId, user, currentPropertyId, location.pathname, location.hash, location.search]);
+  }, [meetingId, user, currentPropertyId, propertyReady, location.pathname, location.hash, location.search]);
 
   useEffect(() => {
     void load();
@@ -1654,6 +1653,18 @@ export function MeetingDetail() {
 
   if (!user) {
     return <div className="min-h-screen flex items-center justify-center text-gray-600">{en ? 'Sign in required.' : '请先登录。'}</div>;
+  }
+
+  if (!propertyReady || !currentPropertyId) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-clearstrata-ui-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-gray-700 font-medium">{en ? 'Loading meeting records…' : '正在载入会议资料…'}</p>
+          <p className="text-sm text-gray-500 mt-1">{en ? '正在载入会议资料…' : 'Loading meeting records…'}</p>
+        </div>
+      </div>
+    );
   }
 
   if (!coreDone) {

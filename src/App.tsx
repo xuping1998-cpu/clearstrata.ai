@@ -105,6 +105,18 @@ function isPublicPath(pathname: string) {
   return pathname === '/' || PUBLIC_PATH_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
+function PropertyBootstrapLoading() {
+  return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="text-center">
+        <div className="w-16 h-16 border-4 border-clearstrata-ui-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+        <p className="text-gray-700 font-medium">正在载入物业资料…</p>
+        <p className="text-sm text-gray-500 mt-1">Loading property records…</p>
+      </div>
+    </div>
+  );
+}
+
 const PENDING_JOIN_STATUSES = new Set(['pending', 'submitted', 'under_review', 'reviewing']);
 
 function NoActiveMembershipGate() {
@@ -718,16 +730,10 @@ function AppMain() {
     !publicPath &&
     (loading ||
       (session && !isDemoPropertyMock && !propertyReady) ||
-      (session && !isDemoPropertyMock && hasActiveMembership === null))
+      (session && !isDemoPropertyMock && hasActiveMembership === null) ||
+      (session && !isDemoPropertyMock && !currentPropertyId))
   ) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-clearstrata-ui-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
+    return <PropertyBootstrapLoading />;
   }
 
   // ── Home guard: default-deny for authenticated '/' access ──────────────
@@ -744,13 +750,14 @@ function AppMain() {
 
     // 2. Session present: enforce active membership
     if (session) {
-      // Wait for auth and membership data — never default-allow
-      if (loading || !propertyReady || hasActiveMembership === null) {
-        return (
-          <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-            <div className="w-16 h-16 border-4 border-clearstrata-ui-primary border-t-transparent rounded-full animate-spin" />
-          </div>
-        );
+      // Wait for auth, membership, and current property — never default-allow
+      if (
+        loading ||
+        !propertyReady ||
+        hasActiveMembership === null ||
+        !currentPropertyId
+      ) {
+        return <PropertyBootstrapLoading />;
       }
 
       // No active membership at all → /demo
@@ -808,14 +815,7 @@ function AppMain() {
     location.pathname !== '/owner-voting' &&
     !currentPropertyId
   ) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-clearstrata-ui-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
+    return <PropertyBootstrapLoading />;
   }
 
   return (

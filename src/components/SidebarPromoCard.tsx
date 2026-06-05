@@ -51,7 +51,7 @@ function deriveStatus(row: {
 
 export function SidebarPromoCard({ language }: SidebarPromoCardProps) {
   const en = language === 'en';
-  const { currentPropertyId } = useProperty();
+  const { currentPropertyId, ready: propertyReady } = useProperty();
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [resolved, setResolved] = useState(false);
 
@@ -99,7 +99,24 @@ export function SidebarPromoCard({ language }: SidebarPromoCardProps) {
     };
   }, [currentPropertyId]);
 
-  if (!currentPropertyId) return null;
+  if (!propertyReady || !currentPropertyId) {
+    const qrPx = 83;
+    return (
+      <div className="rounded-2xl border border-gray-100 bg-white px-2.5 py-2 shadow-sm sm:px-3 sm:py-2.5">
+        <div className="h-4 w-3/4 mx-auto animate-pulse rounded bg-gray-200" aria-hidden />
+        <div className="mt-2 flex justify-center">
+          <div
+            style={{ width: qrPx, height: qrPx }}
+            className="flex items-center justify-center rounded-lg bg-gray-50 ring-1 ring-gray-200"
+            aria-busy
+            aria-label={en ? 'Loading invite QR' : '加载邀请二维码'}
+          >
+            <div className="h-7 w-7 animate-spin rounded-full border-2 border-clearstrata-ui-primary border-t-transparent" />
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (resolved && !inviteUrl) return null;
 
   const line1 = en ? 'Scan to view spending' : '扫码查看支出';

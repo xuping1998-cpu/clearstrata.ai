@@ -197,11 +197,7 @@ export function MeetingListView({ variant }: Props) {
   const load = useCallback(async () => {
     if (!user || !propertyReady) return;
     if (!currentPropertyId) {
-      setMeetings([]);
-      setStats(null);
-      setCardExtrasByMeetingId({});
-      setOvCardByCouncilTitle({});
-      setLoading(false);
+      setLoading(true);
       return;
     }
     setLoading(true);
@@ -281,18 +277,14 @@ export function MeetingListView({ variant }: Props) {
     );
   }
 
-  if (!propertyReady || loading) {
+  if (!propertyReady || !currentPropertyId || loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="w-12 h-12 border-4 border-clearstrata-ui-primary border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
-
-  if (!currentPropertyId) {
-    return (
-      <div className="min-h-screen bg-gray-50 p-6 text-center text-gray-600">
-        {en ? 'Select a property to view meetings.' : '请先选择物业以查看会议。'}
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-clearstrata-ui-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-gray-700 font-medium">{en ? 'Loading meeting records…' : '正在载入会议资料…'}</p>
+          <p className="text-sm text-gray-500 mt-1">{en ? '正在载入会议资料…' : 'Loading meeting records…'}</p>
+        </div>
       </div>
     );
   }

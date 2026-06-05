@@ -33,15 +33,18 @@ export function Dashboard() {
   } = useProperty();
 
   const [trialRow, setTrialRow] = useState<{ subscription_status?: string | null; trial_ends_at?: string | null } | null>(null);
+  const [trialLoading, setTrialLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     const pid = currentPropertyId ? String(currentPropertyId) : '';
-    if (!pid || isDemoMode || isDemoPropertyMock) {
+    if (!pid || !propertyReady || isDemoMode || isDemoPropertyMock) {
       setTrialRow(null);
+      setTrialLoading(false);
       return;
     }
     setTrialRow(null);
+    setTrialLoading(true);
     void (async () => {
       try {
         const { data, error } = await (supabase
@@ -50,16 +53,21 @@ export function Dashboard() {
           .eq('id', pid)
           .maybeSingle() as any);
         if (cancelled) return;
-        if (error) return; // silent downgrade (missing columns / RLS / etc.)
+        if (error) {
+          setTrialRow(null);
+          return;
+        }
         setTrialRow(data ?? null);
       } catch {
         /* silent */
+      } finally {
+        if (!cancelled) setTrialLoading(false);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [currentPropertyId, isDemoMode, isDemoPropertyMock]);
+  }, [currentPropertyId, propertyReady, isDemoMode, isDemoPropertyMock]);
 
   const onDemoPropertyRoute = location.pathname.startsWith('/demo-property');
 
@@ -116,10 +124,11 @@ export function Dashboard() {
       return <Navigate to="/login" replace />;
     }
 
-    if (!propertyReady || memberships == null) {
+    if (!propertyReady || memberships == null || !currentPropertyId) {
       return (
-        <div className="flex items-center justify-center py-16">
+        <div className="flex flex-col items-center justify-center py-16 gap-3">
           <div className="w-10 h-10 border-4 border-clearstrata-ui-primary border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm font-medium text-gray-700">{en ? 'Loading property records…' : '正在载入物业资料…'}</p>
         </div>
       );
     }
@@ -166,20 +175,26 @@ export function Dashboard() {
               <p className="text-xs font-semibold leading-tight text-gray-900 sm:text-sm sm:leading-snug">
                 {en ? "You're on a free ClearStrata trial" : '你正在免费试用 ClearStrata'}
               </p>
-              <p className="text-[11px] leading-tight text-gray-700 sm:text-sm sm:leading-snug">
-                {(() => {
-                  const ends = trialRow?.trial_ends_at ?? null;
-                  const daysLeft = getTrialDaysRemaining(ends);
-                  const d = ends ? new Date(String(ends)) : null;
-                  const endText =
-                    d && !Number.isNaN(d.getTime())
-                      ? `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`
-                      : '—';
-                  return en
-                    ? `${daysLeft} days left (expires ${endText})`
-                    : `剩余 ${daysLeft} 天（到期日 ${endText}）`;
-                })()}
-              </p>
+              {trialLoading ? (
+                <div className="h-4 w-40 animate-pulse rounded bg-gray-200/80" aria-hidden />
+              ) : (
+                <p className="text-[11px] leading-tight text-gray-700 sm:text-sm sm:leading-snug">
+                  {(() => {
+                    const ends = trialRow?.trial_ends_at ?? null;
+                    const daysLeft = getTrialDaysRemaining(ends);
+                    const d = ends ? new Date(String(ends)) : null;
+                    const endText =
+                      d && !Number.isNaN(d.getTime())
+                        ? `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`
+                        : en
+                          ? 'Pending'
+                          : '加载中';
+                    return en
+                      ? `${daysLeft} days left (expires ${endText})`
+                      : `剩余 ${daysLeft} 天（到期日 ${endText}）`;
+                  })()}
+                </p>
+              )}
             </div>
             <Link
               to="/upgrade"

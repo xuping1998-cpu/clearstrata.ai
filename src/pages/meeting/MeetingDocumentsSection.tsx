@@ -71,8 +71,6 @@ export function MeetingDocumentsSection({
 
   const loadDocuments = useCallback(async () => {
     if (!currentPropertyId) {
-      setDocuments([]);
-      setLoading(false);
       return;
     }
     try {

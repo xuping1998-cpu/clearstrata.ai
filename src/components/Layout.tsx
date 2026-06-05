@@ -85,10 +85,14 @@ export function Layout({ children }: LayoutProps) {
     currentPropertyId,
     setCurrentPropertyId,
     roleInProperty,
+    ready: propertyReady,
     isDemoMode,
     guestPropertyCode,
     isDemoPropertyMock,
   } = useProperty();
+
+  const propertyContextLoading =
+    Boolean(session) && !isDemoMode && !isDemoPropertyMock && (!propertyReady || !currentPropertyId);
   const { t, language, toggleLanguage, setLanguage } = useLanguage();
 
   const currentMembership = useMemo(
@@ -416,7 +420,13 @@ export function Layout({ children }: LayoutProps) {
                         className="text-xs text-gray-500"
                         title={language === 'en' ? 'Role in current property' : '当前物业中的角色'}
                       >
-                        {roleInProperty ? t(roleInProperty) : language === 'en' ? '—' : '未选择'}
+                        {propertyContextLoading ? (
+                          <span className="inline-block h-3 w-16 animate-pulse rounded bg-gray-200" aria-hidden />
+                        ) : roleInProperty ? (
+                          t(roleInProperty)
+                        ) : (
+                          <span className="inline-block h-3 w-16 animate-pulse rounded bg-gray-200" aria-hidden />
+                        )}
                       </div>
                     </div>
                   </button>

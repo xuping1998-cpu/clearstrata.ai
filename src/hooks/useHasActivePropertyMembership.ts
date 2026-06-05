@@ -1,43 +1,16 @@
-import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { useProperty } from '../contexts/PropertyContext';
 
 /**
- * Authoritative check: at least one property_members row with status = active.
- * Returns null while resolving (caller should show loading when session && propertyReady).
+ * At least one active property membership (from PropertyContext — no extra query).
+ * Returns null while auth user or property context is not ready.
  */
 export function useHasActivePropertyMembership(
   userId: string | undefined,
-  propertyReady: boolean
+  propertyReady: boolean,
 ): boolean | null {
-  const [hasActive, setHasActive] = useState<boolean | null>(null);
+  const { memberships } = useProperty();
 
-  useEffect(() => {
-    if (!userId) {
-      setHasActive(null);
-      return;
-    }
-    if (!propertyReady) {
-      setHasActive(null);
-      return;
-    }
-
-    let cancelled = false;
-
-    void (async () => {
-      const { count, error } = await supabase
-        .from('property_members')
-        .select('user_id', { count: 'exact', head: true })
-        .eq('user_id', userId)
-        .eq('status', 'active');
-
-      if (cancelled) return;
-      setHasActive(!error && (count ?? 0) > 0);
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [userId, propertyReady]);
-
-  return hasActive;
+  if (!userId) return null;
+  if (!propertyReady) return null;
+  return memberships.length > 0;
 }

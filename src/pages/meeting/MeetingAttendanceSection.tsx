@@ -204,7 +204,6 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
   /** 【保持原有】加载参会列表与 profile */
   const loadAttendees = useCallback(async () => {
     if (!currentPropertyId) {
-      setLoading(false);
       return;
     }
     try {
@@ -233,7 +232,7 @@ export function MeetingAttendanceSection({ meetingId, isCouncil }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [meetingId]);
+  }, [meetingId, currentPropertyId]);
 
   useEffect(() => {
     loadAttendees();
