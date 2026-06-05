@@ -720,21 +720,11 @@ function AppMain() {
   const publicPath = isPublicPath(location.pathname);
 
   useEffect(() => {
-    const onHome = location.pathname === '/';
-    if (publicPath && !onHome) return;
+    if (publicPath) return;
     if (!session || isDemoPropertyMock || !propertyReady) return;
     if (currentPropertyId || memberships.length === 0) return;
     setCurrentPropertyId(memberships[0].propertyId);
-  }, [
-    publicPath,
-    location.pathname,
-    session,
-    isDemoPropertyMock,
-    propertyReady,
-    currentPropertyId,
-    memberships,
-    setCurrentPropertyId,
-  ]);
+  }, [publicPath, session, isDemoPropertyMock, propertyReady, currentPropertyId, memberships, setCurrentPropertyId]);
 
   if (
     !publicPath &&
@@ -760,12 +750,17 @@ function AppMain() {
 
     // 2. Session present: enforce active membership
     if (session) {
-      // Wait for auth + membership load — do not block on missing currentPropertyId (auto-selected below)
-      if (loading || !propertyReady || hasActiveMembership === null) {
+      // Wait for auth, membership, and current property — never default-allow
+      if (
+        loading ||
+        !propertyReady ||
+        hasActiveMembership === null ||
+        !currentPropertyId
+      ) {
         return <PropertyBootstrapLoading />;
       }
 
-      // No active membership at all → /demo (not permanent property bootstrap loading)
+      // No active membership at all → /demo
       if (hasActiveMembership === false || memberships.length === 0) {
         return <Navigate to="/demo" replace />;
       }
