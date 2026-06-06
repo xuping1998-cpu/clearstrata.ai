@@ -367,7 +367,7 @@ export function Compliance() {
       bylaw: { en: 'Bylaws', zh: '章程' },
       financial: { en: 'Engineering Reports', zh: '工程报告' },
       safety: { en: 'Safety', zh: '安全' },
-      legal: { en: 'Legal', zh: '法律' },
+      legal: { en: 'Legal', zh: '法规文件' },
       meeting_archive: { en: 'Meeting Archive', zh: '会议存档' },
       other: { en: 'Other', zh: '其他' },
     };
@@ -414,7 +414,7 @@ export function Compliance() {
     { value: 'bylaw', label: { en: 'Bylaws', zh: '章程' } },
     { value: 'financial', label: { en: 'Engineering Reports', zh: '工程报告' } },
     { value: 'safety', label: { en: 'Safety', zh: '安全' } },
-    { value: 'legal', label: { en: 'Legal', zh: '法律' } },
+    { value: 'legal', label: { en: 'Legal', zh: '法规文件' } },
     { value: 'meeting_archive', label: { en: 'Meeting Archive', zh: '会议存档' } },
     { value: 'other', label: { en: 'Other', zh: '其他' } },
   ];
@@ -516,10 +516,12 @@ export function Compliance() {
 
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">
-            {language === 'zh' ? '法规合规' : 'Legal Compliance'}
+            {language === 'zh' ? '法規文檔' : 'Regulatory Documents'}
           </h1>
           <p className="text-gray-600">
-            {language === 'zh' ? '管理和跟踪所有合规文件' : 'Manage and track all compliance documents'}
+            {language === 'zh'
+              ? '集中管理和追蹤所有重要物業文件'
+              : 'Manage and track important strata records and compliance documents.'}
           </p>
         </div>
 
@@ -750,7 +752,7 @@ export function Compliance() {
                     <option value="bylaw">章程</option>
                     <option value="financial">工程报告</option>
                     <option value="safety">安全</option>
-                    <option value="legal">法律</option>
+                    <option value="legal">法规文件</option>
                     <option value="meeting_archive">会议存档</option>
                     <option value="other">其他</option>
                   </select>

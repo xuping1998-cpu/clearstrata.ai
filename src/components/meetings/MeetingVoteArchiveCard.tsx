@@ -104,6 +104,12 @@ function formatMinutesVersionHistoryLabel(finalizedVersions: number[]): string |
   return finalizedVersions.map((v) => `v${v}`).join(' · ');
 }
 
+/** Post-meeting slots (03–06) — hidden for draft/scheduled; shown once meeting is active or concluded. */
+function shouldShowPostMeetingArchiveSlots(meetingStatus: string | null | undefined): boolean {
+  const s = meetingStatus?.trim().toLowerCase() ?? 'draft';
+  return s !== 'draft' && s !== 'scheduled';
+}
+
 function getArchiveSlotDisplayTitle(slot: ArchiveSlotId, language: ArchiveSlotLanguage): string {
   switch (slot) {
     case '01':
@@ -131,6 +137,10 @@ export function MeetingVoteArchiveCard({
   supportingDocuments,
 }: Props) {
   const en = languageEn;
+  const showPostMeetingArchiveSlots = useMemo(
+    () => shouldShowPostMeetingArchiveSlots(meeting.status),
+    [meeting.status],
+  );
   /** Staff/council/admin: edit archive, regenerate, minutes, 02 upload. Owner: read-only view. */
   const canManageMeetingArchive = canManageDocuments;
   const canViewMeetingArchive = true;
@@ -879,11 +889,11 @@ export function MeetingVoteArchiveCard({
               ) : null}
             </li>
 
-            {renderGeneratedSnapshotRow('03', generated03)}
-            {renderGeneratedSnapshotRow('04', generated04)}
-            {renderGeneratedSnapshotRow('05', generated05)}
+            {showPostMeetingArchiveSlots ? renderGeneratedSnapshotRow('03', generated03) : null}
+            {showPostMeetingArchiveSlots ? renderGeneratedSnapshotRow('04', generated04) : null}
+            {showPostMeetingArchiveSlots ? renderGeneratedSnapshotRow('05', generated05) : null}
 
-            {renderMinutesRow()}
+            {showPostMeetingArchiveSlots ? renderMinutesRow() : null}
             </ul>
           </div>
         ) : null}

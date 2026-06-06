@@ -69,7 +69,7 @@ const translations: Record<string, Record<Language, string>> = {
   nav_group_primary: { en: 'Main', zh: '主导航' },
   nav_group_system: { en: 'System', zh: '系统管理' },
   nav_group_help: { en: 'Help', zh: '帮助中心' },
-  nav_help_compliance: { en: 'Laws & regulations', zh: '法律法规' },
+  nav_help_compliance: { en: 'Regulatory Documents', zh: '法規文檔' },
   nav_invite_codes: { en: 'Invite codes', zh: '邀请码管理' },
   nav_join_requests: { en: 'Join requests', zh: '加入申请审核' },
   nav_property_admin_sidebar: { en: 'Property settings', zh: '物业设置' },
