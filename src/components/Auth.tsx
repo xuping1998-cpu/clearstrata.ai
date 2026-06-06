@@ -458,14 +458,18 @@ export function Auth() {
       {/* Header */}
       <header className="relative z-10 w-full shrink-0 border-b border-sky-100/80 bg-[#EAF7FB]/90 backdrop-blur-sm">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-2 px-3 py-1.5 sm:px-5 sm:py-2">
-          <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-1 sm:gap-1.5">
             <img
               src="/clearstrata-hero-logo.png"
               alt="ClearStrata.Ai"
               className="h-6 w-auto shrink-0 object-contain sm:h-7"
             />
-            <span className="truncate text-[11px] font-semibold leading-tight text-slate-700 sm:text-xs">
-              {zh ? '物业透明管理平台' : 'Transparent property management'}
+            <span className="shrink-0 text-[11px] font-semibold leading-tight text-slate-800 sm:text-xs">
+              ClearStrata.Ai
+            </span>
+            <span className="h-3 w-px shrink-0 bg-slate-300/90" aria-hidden />
+            <span className="shrink-0 text-[9px] font-medium leading-tight text-blue-600 sm:text-[11px]">
+              app.clearstrata.ai
             </span>
           </div>
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
@@ -497,22 +501,31 @@ export function Auth() {
           className="pointer-events-none absolute -right-8 top-10 h-28 w-28 rounded-full bg-cyan-100/45 blur-2xl sm:h-36 sm:w-36"
           aria-hidden
         />
-        <div className="relative mx-auto max-w-3xl px-3 py-3 text-center sm:px-5 sm:py-4 md:py-5">
+        <div className="relative mx-auto max-w-3xl px-3 py-2.5 text-center sm:px-5 sm:py-3 md:py-4">
           <h1 className="text-xl font-extrabold tracking-tight text-slate-900 sm:text-3xl md:text-4xl">
             {zh ? 'AI驱动的业主自管平台' : 'AI驱动的业主自管平台'}
           </h1>
-          <p className="mt-1 text-xs font-semibold text-slate-600 sm:mt-1.5 sm:text-sm md:text-base">
+          <p className="mt-0.5 text-xs font-semibold text-slate-600 sm:mt-1 sm:text-sm md:text-base">
             AI-Powered Owner Self-Governance Platform
           </p>
-          <p className="mt-0.5 font-mono text-[10px] tracking-wide text-sky-700/80 sm:text-xs">
-            app.clearstrata.ai
-          </p>
-          <ul className="mx-auto mt-2 max-w-xl space-y-0.5 text-xs leading-snug text-slate-700 sm:mt-2.5 sm:space-y-1 sm:text-sm">
+          <div className="mx-auto mt-1.5 max-w-lg border-y border-sky-200/70 py-1.5 sm:mt-2 sm:py-2">
+            <p className="text-[10px] leading-snug text-slate-700 sm:text-sm">
+              我们追求的不是人治，而是法治。
+            </p>
+            <p className="mt-0.5 text-[11px] font-bold leading-snug text-blue-600 sm:mt-1 sm:text-sm">
+              Rules before relationships.
+            </p>
+            <p className="mt-0.5 text-[9px] leading-snug text-slate-600 sm:mt-1 sm:text-xs">
+              ClearStrata helps strata communities move from personality-based governance to
+              process-based governance.
+            </p>
+          </div>
+          <ul className="mx-auto mt-1.5 max-w-xl space-y-0.5 text-[11px] leading-snug text-slate-700 sm:mt-2 sm:space-y-0.5 sm:text-sm">
             <li>{zh ? '让业主的每一笔支出干净透明' : '让业主的每一笔支出干净透明'}</li>
             <li>{zh ? '让全球 Council 决策轻松、便捷、高效' : '让全球 Council 决策轻松、便捷、高效'}</li>
             <li>{zh ? '让本地物业服务可追踪、可监督、可查询' : '让本地物业服务可追踪、可监督、可查询'}</li>
           </ul>
-          <div className="mt-3 grid grid-cols-2 gap-2 sm:mt-4 sm:flex sm:items-stretch sm:justify-center sm:gap-2.5">
+          <div className="mt-2.5 grid grid-cols-2 gap-2 sm:mt-3 sm:flex sm:items-stretch sm:justify-center sm:gap-2.5">
             <button
               type="button"
               onClick={goCreateProperty}
