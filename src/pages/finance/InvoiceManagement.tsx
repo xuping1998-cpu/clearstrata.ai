@@ -2576,11 +2576,9 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
     if (!currentPropertyId) return;
     setDeleting(true);
     try {
-      const { error } = await supabase
-        .from('invoices')
-        .delete()
-        .eq('property_id', currentPropertyId)
-        .eq('id', invoice.id);
+      const { error } = await supabase.rpc('delete_invoice_with_audit', {
+        p_invoice_id: invoice.id,
+      });
       if (error) throw error;
       await loadInvoicesQuiet();
       if (selectedInvoice?.id === invoice.id) setSelectedInvoice(null);

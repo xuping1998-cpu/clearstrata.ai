@@ -56,7 +56,7 @@ type OwnerRequestReview = {
   property_id: string;
   reviewer_id: string;
   reviewer_role: string | null;
-  rating: number;
+  rating: number | null;
   comment: string | null;
   created_at: string;
 };
@@ -154,11 +154,33 @@ type ManagerMonthlyReportReview = {
   property_id: string;
   reviewer_id: string;
   reviewer_role: string | null;
-  rating: number;
+  rating: number | null;
   comment: string | null;
   created_at: string;
   updated_at?: string;
 };
+
+function ownerFeedbackRatingPayload(rating: number): number | null {
+  return rating > 0 ? rating : null;
+}
+
+function feedbackCopyText(en: boolean) {
+  return {
+    sectionTitle: en ? 'Public Feedback & Oversight' : '公开意见与监督',
+    placeholder: en
+      ? 'Enter your feedback, comments, or oversight observations...'
+      : '请输入您的意见、建议或监督反馈…',
+    submit: en ? 'Submit Feedback' : '提交意见',
+  };
+}
+
+function ownerRequestReviewsAvg(reviews: OwnerRequestReview[]): number | null {
+  const rated = reviews.filter(
+    (r) => typeof r.rating === 'number' && r.rating >= 1 && r.rating <= 5,
+  );
+  if (rated.length === 0) return null;
+  return Number((rated.reduce((s, r) => s + (r.rating as number), 0) / rated.length).toFixed(1));
+}
 
 const PUBLIC_MATTER_VISIBLE_NON_MANAGER = [
   'published',
@@ -416,6 +438,9 @@ type OwnerRequestCardProps = {
 function OwnerRequestCard({
   req, reviews, currentUserId, currentRole, currentPropertyId, onRefresh, showToast, showTypeBadge,
 }: OwnerRequestCardProps) {
+  const { language } = useLanguage();
+  const en = language === 'en';
+  const feedbackCopy = feedbackCopyText(en);
   const [sending, setSending] = useState(false);
   const [editStatus, setEditStatus] = useState(req.status);
   const [editResult, setEditResult] = useState(req.manager_result ?? '');
@@ -429,9 +454,7 @@ function OwnerRequestCard({
     setEditResult(req.manager_result ?? '');
   }, [req.id, req.status, req.manager_result]);
 
-  const avgRating = reviews.length
-    ? Number((reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1))
-    : null;
+  const avgRating = ownerRequestReviewsAvg(reviews);
 
   const attachments = Array.isArray(req.attachment_urls) ? req.attachment_urls : [];
 
@@ -495,7 +518,8 @@ function OwnerRequestCard({
   };
 
   const submitReview = async () => {
-    if (!myRating) return;
+    const comment = myComment.trim();
+    if (!comment) return;
     setSubmittingReview(true);
     const { error } = await supabase.from('property_manager_request_reviews').upsert(
       {
@@ -503,8 +527,8 @@ function OwnerRequestCard({
         property_id: currentPropertyId,
         reviewer_id: currentUserId,
         reviewer_role: currentRole,
-        rating: myRating,
-        comment: myComment.trim() || null,
+        rating: ownerFeedbackRatingPayload(myRating),
+        comment,
       },
       { onConflict: 'request_id,reviewer_id' },
     );
@@ -661,7 +685,7 @@ function OwnerRequestCard({
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-700 mb-2">
           <span className="font-semibold text-gray-600 flex items-center gap-1">
             <Star size={11} className="text-amber-400 shrink-0" />
-            公共评价与监督
+            {feedbackCopy.sectionTitle}
           </span>
           <span className="text-gray-300 hidden sm:inline">｜</span>
           {avgRating != null ? (
@@ -681,17 +705,17 @@ function OwnerRequestCard({
             value={myComment}
             onChange={(e) => setMyComment(e.target.value)}
             rows={1}
-            placeholder="评语（可选，所有业主可见）"
+            placeholder={feedbackCopy.placeholder}
             className="flex-1 min-w-[140px] min-h-[34px] max-h-[120px] rounded-lg border border-gray-300 px-2 py-1.5 text-sm leading-snug resize-y overflow-y-auto"
           />
           <button
             type="button"
-            disabled={submittingReview || !myRating}
+            disabled={submittingReview || !myComment.trim()}
             onClick={() => void submitReview()}
             className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 hover:bg-amber-600"
           >
             {submittingReview ? <Loader2 size={13} className="animate-spin" /> : null}
-            提交评价
+            {feedbackCopy.submit}
           </button>
         </div>
 
@@ -700,7 +724,11 @@ function OwnerRequestCard({
             {reviews.map((rv) => (
               <div key={rv.id} className="rounded-xl bg-white border border-gray-100 px-4 py-2.5">
                 <div className="flex items-center gap-2 text-xs text-gray-500">
-                  <span className="text-amber-400">{'★'.repeat(rv.rating)}{'☆'.repeat(5 - rv.rating)}</span>
+                  {typeof rv.rating === 'number' && rv.rating >= 1 ? (
+                    <span className="text-amber-400">{'★'.repeat(rv.rating)}{'☆'.repeat(5 - rv.rating)}</span>
+                  ) : (
+                    <span className="text-gray-400">—</span>
+                  )}
                   <span>{rv.reviewer_role ?? '业主'}</span>
                   <span className="text-gray-300">·</span>
                   <span>{rv.reviewer_id.slice(0, 8)}</span>
@@ -743,6 +771,9 @@ function InspectionReportReviewsSection({
   canSubmitReview: boolean;
   onReloadReviews: () => void | Promise<void>;
 }) {
+  const { language } = useLanguage();
+  const en = language === 'en';
+  const feedbackCopy = feedbackCopyText(en);
   const [myRating, setMyRating] = useState(0);
   const [myComment, setMyComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -750,7 +781,8 @@ function InspectionReportReviewsSection({
   const avgRating = inspectionReviewsAvg(reviews);
 
   const submit = async () => {
-    if (!myRating || !currentUserId) return;
+    const comment = myComment.trim();
+    if (!comment || !currentUserId) return;
     setSubmitting(true);
     const { error } = await supabase.from('manager_inspection_report_reviews').upsert(
       {
@@ -758,8 +790,8 @@ function InspectionReportReviewsSection({
         property_id: currentPropertyId,
         reviewer_id: currentUserId,
         reviewer_role: currentRole,
-        rating: myRating,
-        comment: myComment.trim() || null,
+        rating: ownerFeedbackRatingPayload(myRating),
+        comment,
       },
       { onConflict: 'inspection_report_id,reviewer_id' },
     );
@@ -779,7 +811,7 @@ function InspectionReportReviewsSection({
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-700 mb-2">
         <span className="font-semibold text-gray-600 flex items-center gap-1">
           <Star size={11} className="text-amber-400 shrink-0" />
-          公共评价与监督
+          {feedbackCopy.sectionTitle}
         </span>
         <span className="text-gray-300 hidden sm:inline">｜</span>
         {avgRating != null ? (
@@ -799,17 +831,17 @@ function InspectionReportReviewsSection({
             value={myComment}
             onChange={(e) => setMyComment(e.target.value)}
             rows={1}
-            placeholder="补充现场情况（可选）"
+            placeholder={feedbackCopy.placeholder}
             className="flex-1 min-w-[140px] min-h-[34px] max-h-[120px] rounded-lg border border-gray-300 px-2 py-1.5 text-sm leading-snug resize-y overflow-y-auto"
           />
           <button
             type="button"
-            disabled={submitting || !myRating}
+            disabled={submitting || !myComment.trim()}
             onClick={() => void submit()}
             className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 hover:bg-amber-600"
           >
             {submitting ? <Loader2 size={13} className="animate-spin" /> : null}
-            提交评价
+            {feedbackCopy.submit}
           </button>
         </div>
       ) : null}
@@ -819,7 +851,7 @@ function InspectionReportReviewsSection({
           {reviews.map((rv) => (
             <div key={rv.id} className="rounded-xl bg-white border border-gray-100 px-4 py-2.5">
               <div className="flex items-center gap-2 text-xs text-gray-500">
-                {typeof rv.rating === 'number' ? (
+                {typeof rv.rating === 'number' && rv.rating >= 1 ? (
                   <span className="text-amber-400">{'★'.repeat(rv.rating)}{'☆'.repeat(5 - rv.rating)}</span>
                 ) : (
                   <span className="text-gray-400">—</span>
@@ -1030,6 +1062,9 @@ function PublicMatterReviewsSection({
   canSubmitReview: boolean;
   onReloadReviews: () => void | Promise<void>;
 }) {
+  const { language } = useLanguage();
+  const en = language === 'en';
+  const feedbackCopy = feedbackCopyText(en);
   const [myRating, setMyRating] = useState(0);
   const [myComment, setMyComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -1037,7 +1072,8 @@ function PublicMatterReviewsSection({
   const avgRating = publicMatterReviewsAvg(reviews);
 
   const submit = async () => {
-    if (!myRating || !currentUserId) return;
+    const comment = myComment.trim();
+    if (!comment || !currentUserId) return;
     setSubmitting(true);
     const { error } = await supabase.from('manager_public_matter_reviews').upsert(
       {
@@ -1045,8 +1081,8 @@ function PublicMatterReviewsSection({
         property_id: currentPropertyId,
         reviewer_id: currentUserId,
         reviewer_role: currentRole,
-        rating: myRating,
-        comment: myComment.trim() || null,
+        rating: ownerFeedbackRatingPayload(myRating),
+        comment,
       },
       { onConflict: 'public_matter_id,reviewer_id' },
     );
@@ -1066,7 +1102,7 @@ function PublicMatterReviewsSection({
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-700 mb-2">
         <span className="font-semibold text-gray-600 flex items-center gap-1">
           <Star size={11} className="text-amber-400 shrink-0" />
-          公共评价与监督
+          {feedbackCopy.sectionTitle}
         </span>
         <span className="text-gray-300 hidden sm:inline">｜</span>
         {avgRating != null ? (
@@ -1086,17 +1122,17 @@ function PublicMatterReviewsSection({
             value={myComment}
             onChange={(e) => setMyComment(e.target.value)}
             rows={1}
-            placeholder="补充情况（可选）"
+            placeholder={feedbackCopy.placeholder}
             className="flex-1 min-w-[140px] min-h-[34px] max-h-[120px] rounded-lg border border-gray-300 px-2 py-1.5 text-sm leading-snug resize-y overflow-y-auto"
           />
           <button
             type="button"
-            disabled={submitting || !myRating}
+            disabled={submitting || !myComment.trim()}
             onClick={() => void submit()}
             className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 hover:bg-amber-600"
           >
             {submitting ? <Loader2 size={13} className="animate-spin" /> : null}
-            提交评价
+            {feedbackCopy.submit}
           </button>
         </div>
       ) : null}
@@ -1106,7 +1142,7 @@ function PublicMatterReviewsSection({
           {reviews.map((rv) => (
             <div key={rv.id} className="rounded-xl bg-white border border-gray-100 px-4 py-2.5">
               <div className="flex items-center gap-2 text-xs text-gray-500">
-                {typeof rv.rating === 'number' ? (
+                {typeof rv.rating === 'number' && rv.rating >= 1 ? (
                   <span className="text-amber-400">{'★'.repeat(rv.rating)}{'☆'.repeat(5 - rv.rating)}</span>
                 ) : (
                   <span className="text-gray-400">—</span>
@@ -1328,7 +1364,9 @@ function PublicMatterCard({
   );
 }
 function monthlyReportReviewsAvg(reviews: ManagerMonthlyReportReview[]): number | null {
-  const rated = reviews.filter((r) => r.rating >= 1 && r.rating <= 5);
+  const rated = reviews.filter(
+    (r) => typeof r.rating === 'number' && r.rating >= 1 && r.rating <= 5,
+  );
   if (rated.length === 0) return null;
   return Number((rated.reduce((s, r) => s + r.rating, 0) / rated.length).toFixed(1));
 }
@@ -1352,6 +1390,9 @@ function ManagerMonthlyReportReviewsSection({
   canSubmitReview: boolean;
   onReloadReviews: () => void | Promise<void>;
 }) {
+  const { language } = useLanguage();
+  const en = language === 'en';
+  const feedbackCopy = feedbackCopyText(en);
   const [myRating, setMyRating] = useState(0);
   const [myComment, setMyComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -1359,7 +1400,8 @@ function ManagerMonthlyReportReviewsSection({
   const avgRating = monthlyReportReviewsAvg(reviews);
 
   const submit = async () => {
-    if (!myRating || !currentUserId) return;
+    const comment = myComment.trim();
+    if (!comment || !currentUserId) return;
     setSubmitting(true);
     const { error } = await supabase.from('manager_monthly_report_reviews').upsert(
       {
@@ -1367,8 +1409,8 @@ function ManagerMonthlyReportReviewsSection({
         property_id: currentPropertyId,
         reviewer_id: currentUserId,
         reviewer_role: currentRole,
-        rating: myRating,
-        comment: myComment.trim() || null,
+        rating: ownerFeedbackRatingPayload(myRating),
+        comment,
       },
       { onConflict: 'report_id,reviewer_id' },
     );
@@ -1388,7 +1430,7 @@ function ManagerMonthlyReportReviewsSection({
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-700 mb-2">
         <span className="font-semibold text-gray-600 flex items-center gap-1">
           <Star size={11} className="text-amber-400 shrink-0" />
-          公共评价与监督
+          {feedbackCopy.sectionTitle}
         </span>
         <span className="text-gray-300 hidden sm:inline">｜</span>
         {avgRating != null ? (
@@ -1408,17 +1450,17 @@ function ManagerMonthlyReportReviewsSection({
             value={myComment}
             onChange={(e) => setMyComment(e.target.value)}
             rows={1}
-            placeholder="评价输入（可选）"
+            placeholder={feedbackCopy.placeholder}
             className="flex-1 min-w-[140px] min-h-[34px] max-h-[120px] rounded-lg border border-gray-300 px-2 py-1.5 text-sm leading-snug resize-y overflow-y-auto"
           />
           <button
             type="button"
-            disabled={submitting || !myRating}
+            disabled={submitting || !myComment.trim()}
             onClick={() => void submit()}
             className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50 hover:bg-amber-600"
           >
             {submitting ? <Loader2 size={13} className="animate-spin" /> : null}
-            提交评价
+            {feedbackCopy.submit}
           </button>
         </div>
       ) : null}
@@ -1428,10 +1470,14 @@ function ManagerMonthlyReportReviewsSection({
           {reviews.map((rv) => (
             <div key={rv.id} className="rounded-xl bg-white border border-gray-100 px-4 py-2.5">
               <div className="flex items-center gap-2 text-xs text-gray-500">
-                <span className="text-amber-400">
-                  {'★'.repeat(rv.rating)}
-                  {'☆'.repeat(5 - rv.rating)}
-                </span>
+                {typeof rv.rating === 'number' && rv.rating >= 1 ? (
+                  <span className="text-amber-400">
+                    {'★'.repeat(rv.rating)}
+                    {'☆'.repeat(5 - rv.rating)}
+                  </span>
+                ) : (
+                  <span className="text-gray-400">—</span>
+                )}
                 <span>{rv.reviewer_role ?? '业主'}</span>
                 <span className="text-gray-300">·</span>
                 <span>{rv.reviewer_id.slice(0, 8)}</span>
@@ -2762,7 +2808,7 @@ export function ManagerTasks() {
                   检查情况（示例）：风机运行正常，台账已更新；下期跟进排烟末端防火阀例行测试。
                 </p>
                 <p className="text-xs text-amber-600 pt-1 border-t border-emerald-100/80">
-                  ★★★★☆ 公共评价与监督（示意）· Owners may rate and comment below each real record.
+                  ★★★★☆ 公开意见与监督（示意）· Public Feedback & Oversight — owners may rate and comment below each real record.
                 </p>
               </div>
             </ManagerDeskSampleCard>
