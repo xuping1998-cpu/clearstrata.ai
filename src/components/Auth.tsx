@@ -432,17 +432,21 @@ export function Auth() {
   const valueCards = [
     {
       icon: ShieldCheck,
-      titleZh: '业主监督工具',
-      titleEn: 'Owner oversight',
-      descZh: '查看发票、公告、会议投票与物业支出，掌握社区大小事。',
-      descEn: 'Review invoices, notices, meeting votes and spending — stay informed.',
+      titleZh: '业主授权监督工具',
+      titleEn: 'Owner Authorization & Oversight',
+      descZh:
+        '采购授权、发票审核及异常监督三层治理，从源头治理防患于未然，而不是事后追责。',
+      descEn:
+        'Three layers of governance — procurement authorization, invoice review and anomaly oversight — designed to prevent problems before they happen, rather than assigning blame afterwards.',
     },
     {
       icon: UsersRound,
-      titleZh: '业委会透明管理助手',
-      titleEn: 'Council transparency',
-      descZh: '会议通知、电子投票、采购询价、支出审核，让决策更公开透明。',
-      descEn: 'Notices, e-voting, procurement RFQs and expense review — open decisions.',
+      titleZh: '业委会智能管理助手',
+      titleEn: 'AI Governance Assistant for Council',
+      descZh:
+        '会议自动归档，AGM 预算、保险与采购授权自动查验，异常支出主动预警。让决策更轻松，远程书面会议不受时间与地域限制。',
+      descEn:
+        'Automatically archives meetings, validates AGM budgets, insurance requirements and procurement authorizations, and proactively flags unusual spending. Remote written meetings make participation easier from anywhere.',
     },
     {
       icon: ClipboardList,
@@ -567,7 +571,7 @@ export function Auth() {
                   <h3 className="text-[11px] font-bold leading-tight text-slate-900 sm:text-xs">
                     {zh ? card.titleZh : card.titleEn}
                   </h3>
-                  <p className="mt-0.5 text-[10px] leading-snug text-slate-600 sm:text-[11px]">
+                  <p className="mt-0.5 text-[10px] leading-tight text-slate-600 sm:text-[11px]">
                     {zh ? card.descZh : card.descEn}
                   </p>
                 </div>
