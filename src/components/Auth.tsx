@@ -1,6 +1,6 @@
 ﻿import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
+import { ClipboardList, Loader2, ShieldCheck, UsersRound } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { supabase } from '../lib/supabase';
@@ -421,78 +421,170 @@ export function Auth() {
     navigate('/demo-property');
   };
 
-  return (
-    <div className="flex min-h-screen w-full flex-col bg-gray-50">
-      {/* Top bar: owner entry (property code) + language toggle. */}
-      <div className="w-full">
-        <div className="mx-auto flex max-w-7xl items-center justify-end gap-2 px-4 pt-4 sm:px-6">
-          <button
-            type="button"
-            onClick={toggleLanguage}
-            className="rounded-lg px-3 py-2 text-sm font-medium text-gray-500 transition-colors hover:text-gray-700"
-          >
-            {language === 'en' ? '中文' : 'EN'}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setError('');
-              setResetSuccess('');
-              setShowOwnerEntry(true);
-            }}
-            className="rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-right text-sm font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50"
-          >
-            进入已有物业
-            <span className="block text-xs font-normal text-gray-400">Join Existing Property</span>
-          </button>
-        </div>
-      </div>
+  const openJoinProperty = () => {
+    setError('');
+    setResetSuccess('');
+    setShowOwnerEntry(true);
+  };
 
-      {/* Marketing landing hero — first visual on the public homepage. */}
-      <section className="w-full bg-gradient-to-b from-white to-clearstrata-ui-soft/30">
-        <div className="mx-auto max-w-5xl px-4 pt-10 pb-8 text-center sm:px-6">
-          <img
-            src="/clearstrata-hero-logo.png"
-            alt="ClearStrata"
-            className="mx-auto h-auto w-[200px] object-contain sm:w-[240px]"
-          />
-          <h1 className="mt-6 text-2xl font-extrabold tracking-tight text-gray-900 sm:text-3xl">
-            AI驱动的业主自管平台
-            <span className="mt-1 block text-base font-semibold text-gray-500 sm:text-lg">
-              AI-Powered Owner Self-Governance Platform
+  const zh = language === 'zh';
+
+  const valueCards = [
+    {
+      icon: ShieldCheck,
+      titleZh: '业主监督工具',
+      titleEn: 'Owner oversight',
+      descZh: '查看发票、公告、会议投票与物业支出，掌握社区大小事。',
+      descEn: 'Review invoices, notices, meeting votes and spending — stay informed.',
+    },
+    {
+      icon: UsersRound,
+      titleZh: '业委会透明管理助手',
+      titleEn: 'Council transparency',
+      descZh: '会议通知、电子投票、采购询价、支出审核，让决策更公开透明。',
+      descEn: 'Notices, e-voting, procurement RFQs and expense review — open decisions.',
+    },
+    {
+      icon: ClipboardList,
+      titleZh: '物业经理的工作日志',
+      titleEn: 'Manager work log',
+      descZh: '诉求处理、巡检记录、公共事项、月报归档，提升管理效率。',
+      descEn: 'Requests, inspections, public matters and monthly reports — all on record.',
+    },
+  ];
+
+  return (
+    <div className="flex min-h-screen w-full flex-col bg-gradient-to-b from-[#EAF7FB] via-[#E6F3F8] to-white text-slate-800">
+      {/* Header */}
+      <header className="relative z-10 w-full border-b border-sky-100/80 bg-[#EAF7FB]/90 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-2.5 sm:px-6 sm:py-3">
+          <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
+            <img
+              src="/clearstrata-hero-logo.png"
+              alt="ClearStrata.Ai"
+              className="h-8 w-auto shrink-0 object-contain sm:h-9"
+            />
+            <span className="truncate text-xs font-semibold text-slate-700 sm:text-sm">
+              {zh ? '物业透明管理平台' : 'Transparent property management'}
             </span>
-          </h1>
-          <div className="mx-auto mt-5 max-w-2xl space-y-1.5 text-sm text-gray-600 sm:text-base">
-            <p>让业主的每一笔支出干净透明</p>
-            <p>让全球 Council 决策轻松、便捷、高效</p>
-            <p>让本地物业服务可追踪、可监督、可查询</p>
           </div>
-          <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            <button
+              type="button"
+              onClick={toggleLanguage}
+              className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-white/60 hover:text-slate-900 sm:px-3 sm:text-sm"
+            >
+              {zh ? 'EN' : '中文'}
+            </button>
+            <button
+              type="button"
+              onClick={openJoinProperty}
+              className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 active:bg-blue-800 sm:px-4 sm:text-sm"
+            >
+              {zh ? '进入物业' : 'Join Property'}
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Hero */}
+      <section className="relative w-full overflow-hidden">
+        <div
+          className="pointer-events-none absolute -left-16 top-8 h-48 w-48 rounded-full bg-sky-200/40 blur-2xl sm:h-64 sm:w-64"
+          aria-hidden
+        />
+        <div
+          className="pointer-events-none absolute -right-10 top-20 h-40 w-40 rounded-full bg-cyan-100/50 blur-2xl sm:h-56 sm:w-56"
+          aria-hidden
+        />
+        <div className="relative mx-auto max-w-3xl px-4 py-6 text-center sm:px-6 sm:py-8 md:py-10">
+          <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl md:text-4xl">
+            {zh ? 'AI驱动的业主自管平台' : 'AI驱动的业主自管平台'}
+          </h1>
+          <p className="mt-2 text-sm font-semibold text-slate-600 sm:text-base md:text-lg">
+            AI-Powered Owner Self-Governance Platform
+          </p>
+          <p className="mt-1.5 font-mono text-xs tracking-wide text-sky-700/80 sm:text-sm">
+            app.clearstrata.ai
+          </p>
+          <ul className="mx-auto mt-4 max-w-xl space-y-1.5 text-sm text-slate-700 sm:mt-5 sm:text-base">
+            <li>{zh ? '让业主的每一笔支出干净透明' : '让业主的每一笔支出干净透明'}</li>
+            <li>{zh ? '让全球 Council 决策轻松、便捷、高效' : '让全球 Council 决策轻松、便捷、高效'}</li>
+            <li>{zh ? '让本地物业服务可追踪、可监督、可查询' : '让本地物业服务可追踪、可监督、可查询'}</li>
+          </ul>
+          <div className="mt-5 flex flex-col items-stretch justify-center gap-3 sm:mt-6 sm:flex-row sm:items-center">
             <button
               type="button"
               onClick={goCreateProperty}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-clearstrata-ui-primary px-6 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive sm:text-base"
+              className="inline-flex min-h-[44px] flex-col items-center justify-center rounded-xl bg-clearstrata-ui-primary px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive sm:min-h-0 sm:py-3 sm:text-base"
             >
-              创建我的物业 / Create My Property
+              <span>{zh ? '创建我的物业' : '创建我的物业'}</span>
+              <span className="text-xs font-medium text-white/90 sm:text-sm">Create My Property</span>
             </button>
             <button
               type="button"
               onClick={goExploreDemo}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-6 py-3 text-sm font-semibold text-gray-900 transition-colors hover:bg-gray-50 sm:text-base"
+              className="inline-flex min-h-[44px] flex-col items-center justify-center rounded-xl border-2 border-blue-600 bg-white px-6 py-2.5 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-50 sm:min-h-0 sm:py-3 sm:text-base"
             >
-              体验演示物业 / Explore Demo Property
+              <span>{zh ? '体验演示物业' : '体验演示物业'}</span>
+              <span className="text-xs font-medium text-blue-600/90 sm:text-sm">Explore Demo Property</span>
             </button>
           </div>
         </div>
       </section>
 
-      {/* Footer: admin / staff sign-in as a low-key secondary link. */}
-      <footer className="mt-auto w-full px-4 pb-8 pt-6 text-center sm:px-6">
+      {/* Value cards */}
+      <section className="w-full px-4 pb-6 sm:px-6 sm:pb-8">
+        <div className="mx-auto grid max-w-5xl gap-4 sm:grid-cols-3">
+          {valueCards.map((card) => {
+            const Icon = card.icon;
+            return (
+              <div
+                key={card.titleZh}
+                className="rounded-2xl border border-sky-100 bg-white/90 p-4 shadow-sm sm:p-5"
+              >
+                <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-sky-50 text-blue-600">
+                  <Icon size={20} strokeWidth={2} />
+                </div>
+                <h3 className="mt-3 text-sm font-bold text-slate-900 sm:text-base">
+                  {zh ? card.titleZh : card.titleEn}
+                </h3>
+                <p className="mt-1.5 text-xs leading-relaxed text-slate-600 sm:text-sm">
+                  {zh ? card.descZh : card.descEn}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* Philosophy */}
+      <section className="w-full px-4 pb-6 sm:px-6 sm:pb-8">
+        <div className="mx-auto max-w-3xl rounded-2xl border border-sky-200/80 bg-[#E6F3F8] px-5 py-6 text-center sm:px-8 sm:py-8">
+          <p className="text-sm font-semibold italic leading-relaxed text-slate-800 sm:text-base">
+            &ldquo;Change the system, not the person.&rdquo;
+          </p>
+          <p className="mt-2 text-xs leading-relaxed text-slate-700 sm:text-sm">
+            Replacing a closed, obstructive and passive system with one that is open, transparent and
+            owner-driven by AI.
+          </p>
+          <p className="mt-4 text-sm font-medium text-slate-800">改变制度，而不是人。</p>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="mt-auto w-full border-t border-sky-100/80 px-4 pb-8 pt-5 text-center sm:px-6">
+        <p className="text-xs text-slate-500">
+          {zh ? '业主入口请使用上方「进入物业」' : 'Owner entry: use the “Join Property” button above'}
+        </p>
+        <p className="mt-0.5 text-[11px] text-slate-400">
+          {zh ? 'Owner entry: use the “Join Property” button above' : '业主入口请使用上方「进入物业」'}
+        </p>
         <a
           href="/login"
-          className="inline-block text-xs text-gray-400 transition-colors underline-offset-2 hover:text-gray-600 hover:underline"
+          className="mt-4 inline-block text-xs font-medium text-slate-500 underline-offset-2 transition-colors hover:text-slate-700 hover:underline"
         >
-          管理员/职员登录 / Admin or Staff Sign In
+          {zh ? '管理员入口 / Admin Sign In' : '管理员入口 / Admin Sign In'}
         </a>
       </footer>
 
