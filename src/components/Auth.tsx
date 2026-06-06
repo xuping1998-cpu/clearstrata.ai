@@ -454,7 +454,7 @@ export function Auth() {
   ];
 
   return (
-    <div className="flex min-h-screen w-full flex-col bg-gradient-to-b from-[#EAF7FB] via-[#E6F3F8] to-white text-slate-800">
+    <div className="flex w-full flex-col bg-gradient-to-b from-[#EAF7FB] via-[#E6F3F8] to-white text-slate-800">
       {/* Header */}
       <header className="relative z-10 w-full shrink-0 border-b border-sky-100/80 bg-[#EAF7FB]/90 backdrop-blur-sm">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-2 px-3 py-1.5 sm:px-5 sm:py-2">
@@ -565,8 +565,8 @@ export function Auth() {
       </section>
 
       {/* Philosophy */}
-      <section className="w-full shrink-0 px-3 pb-2 sm:px-5 sm:pb-3">
-        <div className="mx-auto max-w-3xl rounded-xl border border-sky-200/80 bg-[#E6F3F8] px-3 py-3 text-center sm:px-5 sm:py-3.5">
+      <section className="w-full shrink-0 px-3 pb-0 sm:px-5 sm:pb-1">
+        <div className="mx-auto max-w-3xl rounded-xl border border-sky-200/80 bg-[#E6F3F8] px-3 py-2.5 text-center sm:px-5 sm:py-3">
           <p className="text-xs font-semibold italic leading-snug text-slate-800 sm:text-sm">
             &ldquo;Change the system, not the person.&rdquo;
           </p>
@@ -579,7 +579,7 @@ export function Auth() {
       </section>
 
       {/* Footer */}
-      <footer className="mt-auto w-full shrink-0 border-t border-sky-100/80 px-3 pb-3 pt-2 text-center sm:px-5 sm:pb-4 sm:pt-2.5">
+      <footer className="mt-2 w-full shrink-0 border-t border-sky-100/80 px-3 py-2 pb-2.5 text-center sm:mt-3 sm:px-5 sm:py-3">
         <p className="text-[10px] leading-tight text-slate-500 sm:text-xs">
           {zh ? '业主入口请使用上方「进入物业」' : 'Owner entry: use the “Join Property” button above'}
         </p>
@@ -588,7 +588,7 @@ export function Auth() {
         </p>
         <a
           href="/login"
-          className="mt-1.5 inline-block text-[10px] font-medium text-slate-500 underline-offset-2 transition-colors hover:text-slate-700 hover:underline sm:mt-2 sm:text-xs"
+          className="mt-1 inline-block text-[10px] font-medium text-slate-500 underline-offset-2 transition-colors hover:text-slate-700 hover:underline sm:text-xs"
         >
           {zh ? '管理员入口 / Admin Sign In' : '管理员入口 / Admin Sign In'}
         </a>
