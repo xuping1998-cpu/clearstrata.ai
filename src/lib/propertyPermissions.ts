@@ -62,8 +62,10 @@ export function canDeleteInvoice(
   const r = normalizeRoleKey(role);
   /** Owner (and similar) have read-only finance; never delete from this UI. */
   if (r === 'owner' || r === 'tenant' || r === 'viewer') return false;
-  if (r === 'manager') return false;
+  /** 上传者本人永远可以删除自己上传的发票 */
   if (profileId === uploadedBy) return true;
+  /** Manager 不能删除他人发票 */
+  if (r === 'manager') return false;
   return canManageInvoiceWorkflow(role);
 }
 

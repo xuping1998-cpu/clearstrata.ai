@@ -121,7 +121,6 @@ AS $fn$
 DECLARE
   v_actor uuid := auth.uid();
   v_invoice public.invoices%ROWTYPE;
-  v_allowed boolean := false;
 BEGIN
   IF v_actor IS NULL THEN
     RAISE EXCEPTION 'insufficient_privilege' USING ERRCODE = '42501';
@@ -140,32 +139,17 @@ BEGIN
     RAISE EXCEPTION 'not_found' USING ERRCODE = 'P0002';
   END IF;
 
-  v_allowed := (
-    v_invoice.uploaded_by = v_actor
-    OR EXISTS (
-      SELECT 1
-      FROM public.property_members pm
-      WHERE pm.user_id = v_actor
-        AND pm.property_id = v_invoice.property_id
-        AND pm.status = 'active'::public.member_status
-        AND pm.role IN (
-          'council'::public.user_role,
-          'admin'::public.user_role,
-          'manager'::public.user_role,
-          'property_admin'::public.user_role
-        )
-    )
-  );
-
-  IF NOT v_allowed
-     OR NOT EXISTS (
-       SELECT 1
-       FROM public.property_members pm
-       WHERE pm.user_id = v_actor
-         AND pm.property_id = v_invoice.property_id
-         AND pm.status = 'active'::public.member_status
-     )
-  THEN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.property_members pm
+    WHERE pm.property_id = v_invoice.property_id
+      AND pm.user_id = v_actor
+      AND pm.status::text = 'active'
+      AND (
+        v_invoice.uploaded_by = v_actor
+        OR pm.role::text IN ('council', 'admin', 'property_admin', 'manager')
+      )
+  ) THEN
     RAISE EXCEPTION 'insufficient_privilege' USING ERRCODE = '42501';
   END IF;
 
