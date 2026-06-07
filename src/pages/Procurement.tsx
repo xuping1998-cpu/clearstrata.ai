@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Plus, Clock, Eye, ArrowLeft, ShoppingCart, CheckCircle, AlertCircle, Wrench, Camera, FileText, Star, XCircle, Send, Loader2, Trash2 } from 'lucide-react';
+import { Plus, Clock, Eye, ArrowLeft, ShoppingCart, CheckCircle, AlertCircle, Wrench, Camera, FileText, Star, XCircle, Send, Loader2, Trash2, ScrollText } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useProperty } from '../contexts/PropertyContext';
@@ -20,6 +20,10 @@ import {
   getAuthorizationTypeLabel,
   isCrfSgmSuggested,
 } from '../lib/procurement/authorizationType';
+import {
+  buildProcurementSgmMeetingPrefill,
+  canShowProcurementSgmDraftButton,
+} from '../lib/procurement/sgmDraftPrefill';
 
 interface ProcurementJob {
   id: string;
@@ -481,6 +485,8 @@ function JobCard({
   const stepIdx = getStepIndex(job.status);
   const selectedQuote = job.quotes?.find(q => q.id === job.selected_quote_id);
   const sgmSuggested = isCrfSgmSuggested(job.estimated_budget, crfBalance);
+  const showSgmDraftButton = isCouncil && canShowProcurementSgmDraftButton(job, crfBalance);
+  const navigate = useNavigate();
 
   return (
     <div
@@ -602,6 +608,20 @@ function JobCard({
       )}
 
       <div className="px-6 pb-5 flex flex-wrap gap-2">
+        {showSgmDraftButton && crfBalance != null && (
+          <button
+            type="button"
+            onClick={() => {
+              const prefill = buildProcurementSgmMeetingPrefill(job, crfBalance, l);
+              navigate('/meetings/new', { state: { meetingDraftPrefill: prefill } });
+            }}
+            className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-red-700 text-white rounded-lg hover:bg-red-800 transition-colors"
+          >
+            <ScrollText size={16} />
+            {l ? 'Create SGM Draft' : '创建 SGM 草案'}
+          </button>
+        )}
+
         {canUploadProcurementInquiry && job.status === 'collecting_quotes' && (
           <button onClick={() => onOpenModal('addQuote', job)}
             className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-clearstrata-ui-primary bg-clearstrata-ui-soft rounded-lg hover:bg-clearstrata-brand-100 transition-colors">

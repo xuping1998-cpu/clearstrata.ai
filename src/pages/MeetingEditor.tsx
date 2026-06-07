@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useProperty } from '../contexts/PropertyContext';
@@ -62,6 +62,11 @@ import {
   stripResolutionCommentFromZh,
 } from '../features/meetings/electionAgendaModel';
 import { canManagePropertyMeetings } from '@/lib/meetingPermissions';
+import {
+  isMeetingEditorDraftPrefill,
+  mapPrefillAgendaRows,
+  type MeetingEditorLocationState,
+} from '@/lib/meetings/meetingEditorPrefill';
 import { supabase } from '../lib/supabase';
 
 function datetimeLocalFromDate(d: Date): string {
@@ -206,6 +211,27 @@ function applyMeetingKindToForm(kind: MeetingKindUi, prev: typeof defaultForm): 
     description_zh = stripWrittenRemoteMeta(prev.description_zh);
   }
   return { ...prev, meeting_type, initiation_type, meeting_format_ui, scheduled_at, description_zh };
+}
+
+function formFromMeetingDraftPrefill(prefill: NonNullable<MeetingEditorLocationState['meetingDraftPrefill']>): typeof defaultForm {
+  const kind: MeetingKindUi =
+    prefill.meeting_type === 'sgm' && prefill.initiation_type === 'council_initiated'
+      ? 'council_sgm_remote'
+      : prefill.meeting_type === 'sgm' && prefill.initiation_type === 'owner_requisitioned'
+        ? 'owner_sgm_remote'
+        : prefill.meeting_type === 'agm'
+          ? 'council_agm_remote'
+          : 'council_meeting_remote';
+  const base = applyMeetingKindToForm(kind, { ...defaultForm });
+  return {
+    ...base,
+    title_en: prefill.title_en,
+    title_zh: prefill.title_zh,
+    description_en: prefill.description_en,
+    description_zh: prefill.description_zh,
+    scheduled_at: base.scheduled_at.trim() ? base.scheduled_at : nowDatetimeLocalSlice(),
+    status: 'draft',
+  };
 }
 
 function buildGovernanceMetaForSave(form: typeof defaultForm): MeetingGovernanceMetaV1 {
@@ -546,6 +572,7 @@ export function MeetingEditor() {
   const { language, t } = useLanguage();
   const en = language === 'en';
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [form, setForm] = useState(defaultForm);
   const [fiscalYear] = useState(() => new Date().getFullYear());
@@ -589,16 +616,27 @@ export function MeetingEditor() {
   const agendaIdsWithCouncilVote = useMemo(() => new Set(meetingVotes.map((v) => v.agenda_item_id)), [meetingVotes]);
 
   useEffect(() => {
-    if (!isEdit) {
+    if (isEdit) return;
+    const locState = location.state as MeetingEditorLocationState | null;
+    const prefill = locState?.meetingDraftPrefill;
+    if (prefill && isMeetingEditorDraftPrefill(prefill)) {
+      setForm(formFromMeetingDraftPrefill(prefill));
+      setShowOpeningStatementPrefillHint(false);
+      const seeded = mapPrefillAgendaRows(prefill.agenda_items);
+      setAgendaItems(seeded);
+      editSnapshotsRef.current = new Map(seeded.map((r) => [r.clientId, cloneAgendaRow(r)]));
+    } else {
       setForm(defaultForm);
       setShowOpeningStatementPrefillHint(false);
       setAgendaItems([]);
-      setPendingDeleteServerIds([]);
-      setMeetingVotes([]);
-      setBallotsByVoteId({});
-      setEditingClientId(null);
       editSnapshotsRef.current = new Map();
     }
+    setPendingDeleteServerIds([]);
+    setMeetingVotes([]);
+    setBallotsByVoteId({});
+    setEditingClientId(null);
+    // Only read navigation state on new-meeting mount (not on every location.state change).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEdit]);
 
   useEffect(() => {
@@ -1491,6 +1529,36 @@ export function MeetingEditor() {
                           </select>
                         </label>
                       ) : null}
+                      {(row.kind === 'resolution' || row.kind === 'normal') ? (
+                        <div className="space-y-2">
+                          <label className="block text-sm">
+                            <span className="font-medium text-gray-800">
+                              {en ? 'Agenda notes & resolution draft (Chinese)' : '议题说明与决议草案（中文）'}
+                            </span>
+                            <textarea
+                              value={row.description_zh ?? ''}
+                              onChange={(e) =>
+                                patchAgendaRow(row.clientId, { description_zh: e.target.value || null })
+                              }
+                              rows={10}
+                              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono leading-relaxed"
+                            />
+                          </label>
+                          <label className="block text-sm">
+                            <span className="font-medium text-gray-800">
+                              {en ? 'Agenda notes & resolution draft (English)' : '议题说明与决议草案（英文）'}
+                            </span>
+                            <textarea
+                              value={row.description_en ?? ''}
+                              onChange={(e) =>
+                                patchAgendaRow(row.clientId, { description_en: e.target.value || null })
+                              }
+                              rows={10}
+                              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono leading-relaxed"
+                            />
+                          </label>
+                        </div>
+                      ) : null}
                       <div className="flex flex-wrap gap-2 pt-1">
                         <button
                           type="button"
@@ -1515,6 +1583,13 @@ export function MeetingEditor() {
                           String(row.title_en).trim() ||
                           (en ? 'Untitled agenda item' : '未命名议程')}
                       </p>
+                      {(row.description_zh?.trim() || row.description_en?.trim()) ? (
+                        <pre className="text-xs text-gray-600 whitespace-pre-wrap font-sans leading-relaxed max-h-48 overflow-y-auto rounded-md border border-gray-100 bg-white px-2 py-2">
+                          {(en ? row.description_en : row.description_zh) ||
+                            row.description_zh ||
+                            row.description_en}
+                        </pre>
+                      ) : null}
                       <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
