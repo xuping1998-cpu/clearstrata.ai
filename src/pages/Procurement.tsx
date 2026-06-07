@@ -15,6 +15,11 @@ import { VendorSearchPanel } from './procurement/VendorSearchPanel';
 import { getCategoryLabel } from './procurement/VendorRegistry';
 import { fetchPropertyManagersForProperty } from '../lib/fetchPropertyManagersForProperty';
 import { StatusBadge, type StatusTone } from '@/components/status';
+import {
+  authorizationTypeBadgeClass,
+  getAuthorizationTypeLabel,
+  isCrfSgmSuggested,
+} from '../lib/procurement/authorizationType';
 
 interface ProcurementJob {
   id: string;
@@ -44,6 +49,7 @@ interface ProcurementJob {
   ai_estimate_high?: number;
   ai_estimate_reasoning?: string;
   ai_material_calc?: string;
+  authorization_type?: string | null;
   quotes?: ProcurementQuote[];
   manager?: { full_name_en: string; full_name_zh: string };
 }
@@ -67,19 +73,19 @@ interface PropertyManager {
 }
 
 const STATUS_CONFIG: Record<string, { en: string; zh: string; tone: StatusTone; icon: string }> = {
-  collecting_quotes: { en: 'Collecting Quotes', zh: '收集报价中', tone: 'warning', icon: 'clock' },
-  pending_approval: { en: 'Pending Approval', zh: '待审批', tone: 'warning', icon: 'clock' },
-  pm_executing: { en: 'PM Executing', zh: '物业经理执行中', tone: 'neutral', icon: 'wrench' },
+  collecting_quotes: { en: 'Preparing authorization materials', zh: '收集报价 / 准备授权资料', tone: 'warning', icon: 'clock' },
+  pending_approval: { en: 'Pending council authorization', zh: '待业委会授权', tone: 'warning', icon: 'clock' },
+  pm_executing: { en: 'Executing', zh: '执行中', tone: 'neutral', icon: 'wrench' },
   pending_inspection: { en: 'Pending Inspection', zh: '待验收', tone: 'warning', icon: 'eye' },
   inspection_passed: { en: 'Inspection Passed', zh: '验收通过', tone: 'success', icon: 'check' },
   inspection_failed: { en: 'Inspection Failed', zh: '验收不通过', tone: 'danger', icon: 'x' },
-  approved: { en: 'Approved', zh: '已批准', tone: 'success', icon: 'check' },
+  approved: { en: 'Authorized', zh: '已授权', tone: 'success', icon: 'check' },
   completed: { en: 'Completed', zh: '已完成', tone: 'neutral', icon: 'check' },
   cancelled: { en: 'Cancelled', zh: '已取消', tone: 'neutral', icon: 'x' },
 };
 
 const WORKFLOW_STEPS = [
-  { key: 'collecting_quotes', en: 'Collect Quotes', zh: '收集报价' },
+  { key: 'collecting_quotes', en: 'Prepare authorization', zh: '准备授权资料' },
   { key: 'pm_executing', en: 'PM Executing', zh: '物业执行' },
   { key: 'pending_inspection', en: 'Inspection', zh: '验收' },
   { key: 'inspection_passed', en: 'Invoice & Pay', zh: '发票付款' },
@@ -115,6 +121,7 @@ export function Procurement() {
   const [jobs, setJobs] = useState<ProcurementJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [propertyManagers, setPropertyManagers] = useState<PropertyManager[]>([]);
+  const [crfBalance, setCrfBalance] = useState<number | null>(null);
 
   const [modal, setModal] = useState<string | null>(null);
   const [selectedJob, setSelectedJob] = useState<ProcurementJob | null>(null);
@@ -127,7 +134,7 @@ export function Procurement() {
     roleInProperty === 'council' ||
     roleInProperty === 'property_admin' ||
     roleInProperty === 'admin';
-  /** 采购询价相关上传：含物业经理；普通业主不可 */
+  /** 采购授权相关上传：含物业经理；普通业主不可 */
   const canUploadProcurementInquiry =
     isCouncil || roleInProperty === 'manager';
 
@@ -253,10 +260,25 @@ export function Procurement() {
     loadJobs();
   };
 
+  const loadPropertyCrf = async () => {
+    if (!currentPropertyId) {
+      setCrfBalance(null);
+      return;
+    }
+    const { data } = await supabase
+      .from('properties')
+      .select('crf_balance')
+      .eq('id', currentPropertyId)
+      .maybeSingle();
+    const raw = data?.crf_balance;
+    setCrfBalance(raw != null && Number.isFinite(Number(raw)) ? Number(raw) : null);
+  };
+
   useEffect(() => {
     if (profile && currentPropertyId) {
       void loadJobs();
       void loadPropertyManagers();
+      void loadPropertyCrf();
     }
   }, [profile, currentPropertyId]);
 
@@ -302,28 +324,34 @@ export function Procurement() {
         </button>
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">{l ? 'Procurement Inquiry' : '采购询价'}</h1>
-            <p className="text-gray-600 mt-2">
+            <h1 className="text-3xl font-bold text-gray-900">{l ? 'Procurement Authorization' : '采购授权'}</h1>
+            <p className="text-gray-600 mt-2 max-w-3xl">
               {l
-                ? 'Collect market quotes in real time — open inquiry, open comparison, and keep every spend transparent.'
-                : '即时采集市场报价，公开询价公开比价，让每一笔支出干净透明。'}
+                ? 'Unplanned purchases, expenses over $500, emergency repairs and insurance-related work should be authorized by council before execution and payment.'
+                : '计划外采购、超 $500 支出、紧急维修及保险相关项目，应先经业委会授权，再进入执行与付款流程。'}
             </p>
           </div>
           {canUploadProcurementInquiry && (
             <div className="flex gap-3 flex-wrap">
               <button onClick={() => openModal('newJob')} className="flex items-center gap-2 bg-clearstrata-ui-primary text-white px-4 py-2 rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors">
                 <Plus size={20} />
-                {l ? 'New Request' : '新建申请'}
+                {l ? 'New Authorization Request' : '新建授权申请'}
               </button>
             </div>
           )}
         </div>
       </div>
 
+      <div className="mb-6 rounded-xl border border-blue-200 bg-blue-50/80 px-4 py-3 text-sm leading-snug text-blue-950">
+        {l
+          ? 'Procurement Authorization is the first line of expense governance. Unplanned projects, expenses over $500, emergency repairs, insurance-related matters and items exceeding the AGM budget should be submitted here first. Invoice Review should only process AGM-budgeted or authorized expenses; invoices without authorization should not enter the normal payment workflow.'
+          : '采购授权是支出治理的第一道防线。计划外项目、超 $500 支出、紧急维修、保险相关事项及超 AGM 预算项目，应先在此提交授权申请。发票审核只应处理 AGM 预算内或已授权的支出；没有授权依据的发票不应进入正常付款流程。'}
+      </div>
+
       {jobs.length === 0 ? (
         <div className="bg-white rounded-xl shadow-sm p-12 text-center">
           <ShoppingCart className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-          <p className="text-gray-500 text-lg">{l ? 'No requests' : '暂无申请'}</p>
+          <p className="text-gray-500 text-lg">{l ? 'No authorization requests' : '暂无授权申请'}</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -340,6 +368,7 @@ export function Procurement() {
                 isCouncil={isCouncil}
                 canUploadProcurementInquiry={canUploadProcurementInquiry}
                 propertyId={currentPropertyId}
+                crfBalance={crfBalance}
                 highlighted={focusJobId === job.id}
                 onOpenModal={openModal}
                 onMarkCompleted={markCompleted}
@@ -401,6 +430,7 @@ function JobCard({
   isCouncil,
   canUploadProcurementInquiry,
   propertyId,
+  crfBalance,
   highlighted = false,
   onOpenModal,
   onMarkCompleted,
@@ -412,6 +442,7 @@ function JobCard({
   isCouncil: boolean;
   canUploadProcurementInquiry: boolean;
   propertyId: string;
+  crfBalance: number | null;
   highlighted?: boolean;
   onOpenModal: (name: string, job?: ProcurementJob) => void;
   onMarkCompleted: (id: string) => void;
@@ -449,6 +480,7 @@ function JobCard({
   const sc = STATUS_CONFIG[job.status] || STATUS_CONFIG.collecting_quotes;
   const stepIdx = getStepIndex(job.status);
   const selectedQuote = job.quotes?.find(q => q.id === job.selected_quote_id);
+  const sgmSuggested = isCrfSgmSuggested(job.estimated_budget, crfBalance);
 
   return (
     <div
@@ -461,11 +493,21 @@ function JobCard({
           <div className="flex-1">
             <div className="flex items-center gap-3 mb-2 flex-wrap">
               <span className={`px-2 py-1 rounded text-xs font-semibold ${job.job_type === 'maintenance' ? 'bg-orange-100 text-orange-700' : 'bg-clearstrata-brand-100 text-clearstrata-brand-700'}`}>
-                {job.job_type === 'maintenance' ? (l ? 'Maintenance' : '维修') : (l ? 'Procurement' : '采购')}
+                {job.job_type === 'maintenance' ? (l ? 'Repair authorization' : '维修授权') : (l ? 'Authorized procurement' : '授权采购')}
               </span>
               {job.category && (
                 <span className="px-2 py-1 rounded text-xs font-medium bg-clearstrata-ui-soft text-clearstrata-brand-700 border border-clearstrata-ui-softBorder">
                   {getCategoryLabel(job.category, language)}
+                </span>
+              )}
+              <span
+                className={`px-2 py-1 rounded text-xs font-semibold ${authorizationTypeBadgeClass(job.authorization_type)}`}
+              >
+                {getAuthorizationTypeLabel(job.authorization_type, l)}
+              </span>
+              {sgmSuggested && (
+                <span className="px-2 py-1 rounded text-xs font-semibold bg-red-100 text-red-800">
+                  {l ? 'SGM Suggested' : 'SGM 建议'}
                 </span>
               )}
               <h3 className="text-xl font-semibold text-gray-900">
@@ -486,7 +528,7 @@ function JobCard({
             <p className="text-gray-600 text-sm mb-3">{l ? job.description_en : job.description_zh || job.description_en}</p>
             <div className="flex items-center gap-4 text-sm flex-wrap">
               <span className="text-gray-700">
-                {l ? 'Budget' : '预算'}: <span className="text-clearstrata-ui-primary font-semibold">${job.estimated_budget?.toLocaleString()}</span>
+                {l ? 'Est. authorization' : '预计授权金额'}: <span className="text-clearstrata-ui-primary font-semibold">${job.estimated_budget?.toLocaleString()}</span>
               </span>
               {selectedQuote && (
                 <span className="text-gray-700">
@@ -527,7 +569,7 @@ function JobCard({
           {(job.quotes?.length || 0) > 0 && (
             <>
               <div className="flex items-center gap-2 mb-3">
-                <h4 className="font-semibold text-gray-900 text-sm">供应商报价</h4>
+                <h4 className="font-semibold text-gray-900 text-sm">{l ? 'Quotes & authorization basis' : '报价与授权依据'}</h4>
                 <StatusBadge tone={(job.quotes?.length || 0) >= 3 ? 'success' : 'warning'} size="sm">
                   {job.quotes?.length || 0} / 3
                 </StatusBadge>
@@ -564,7 +606,7 @@ function JobCard({
           <button onClick={() => onOpenModal('addQuote', job)}
             className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-clearstrata-ui-primary bg-clearstrata-ui-soft rounded-lg hover:bg-clearstrata-brand-100 transition-colors">
             <Plus size={16} />
-            {l ? 'Add Quote' : '添加报价'}
+            {l ? 'Add quote / authorization materials' : '上传报价/授权资料'}
           </button>
         )}
 

@@ -13,6 +13,8 @@ type QuickTile = {
   to: string;
   labelZh: string;
   labelEn: string;
+  descZh?: string;
+  descEn?: string;
   Icon: LucideIcon;
   /** 与 Layout 左侧模块卡片 icon 容器同色（仅快捷入口图标区，不累染整卡） */
   iconWrapClass: string;
@@ -56,8 +58,10 @@ const TILES: readonly QuickTile[] = [
   {
     id: 'procurement',
     to: '/procurement',
-    labelZh: '采购询价',
-    labelEn: 'Procurement Quotes',
+    labelZh: '采购授权',
+    labelEn: 'Procurement Authorization',
+    descZh: '计划外支出、紧急维修和超 $500 项目先授权，再执行。',
+    descEn: 'Authorize unplanned spend, emergencies and items over $500 before execution.',
     Icon: ShoppingCart,
     iconWrapClass:
       'bg-blue-500 ring-1 ring-blue-400/35 transition-colors duration-150 group-hover:bg-blue-600 group-hover:ring-blue-300/45',
@@ -81,7 +85,7 @@ export function QuickAccessDashboardCard({ langEn, meetingsHref }: QuickAccessDa
       </h2>
 
       <div className="mt-3 grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
-        {TILES.map(({ id, to, labelZh, labelEn, Icon, iconWrapClass }) => {
+        {TILES.map(({ id, to, labelZh, labelEn, descZh, descEn, Icon, iconWrapClass }) => {
           const toProp =
             to === '__MEETINGS__'
               ? meetingsHref
@@ -89,12 +93,13 @@ export function QuickAccessDashboardCard({ langEn, meetingsHref }: QuickAccessDa
                 ? MANAGER_TASKS_OWNER_REQUEST_TAB
                 : to;
           const label = langEn ? labelEn : labelZh;
+          const desc = langEn ? descEn : descZh;
           return (
             <Link
               key={id}
               to={toProp}
               className={[
-                'group flex min-h-[4.5rem] flex-col items-stretch justify-between gap-2 rounded-xl border border-gray-200 bg-white px-3 py-3 shadow-sm sm:min-h-[5rem] lg:min-h-[5.25rem]',
+                'group flex min-h-[4.5rem] flex-col items-stretch justify-between gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-3 shadow-sm sm:min-h-[5rem] lg:min-h-[5.25rem]',
                 'outline-none ring-clearstrata-ui-primary/35 transition-colors',
                 'hover:border-clearstrata-ui-softBorder hover:bg-clearstrata-ui-soft/50 hover:shadow-md',
                 'focus-visible:ring-2 focus-visible:ring-offset-2',
@@ -109,6 +114,11 @@ export function QuickAccessDashboardCard({ langEn, meetingsHref }: QuickAccessDa
               <span className="min-w-0 text-left text-[13px] font-semibold leading-snug text-gray-900 group-hover:text-clearstrata-brand-900">
                 {label}
               </span>
+              {desc ? (
+                <span className="min-w-0 text-left text-[10px] leading-tight text-gray-500 sm:text-[11px]">
+                  {desc}
+                </span>
+              ) : null}
             </Link>
           );
         })}

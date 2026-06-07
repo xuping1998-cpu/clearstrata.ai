@@ -6,6 +6,10 @@ import {
 } from './analyzeProcurementQuotePdf';
 import { callSearchQuotes, type SearchQuotesVendor } from './callSearchQuotes';
 import { saveVendorSearchResults } from './saveVendorSearchResults';
+import {
+  suggestAuthorizationType,
+  type ProcurementAuthorizationType,
+} from './authorizationType';
 
 export type { ProcurementQuoteAnalysis };
 
@@ -87,6 +91,8 @@ export type CreateProcurementJobParams = {
   linkedTaskId: string;
   priority: string;
   unitNumber: string;
+  authorizationType?: ProcurementAuthorizationType | null;
+  crfBalance?: number | null;
 };
 
 export async function createProcurementJobFromAnalysis(
@@ -94,6 +100,13 @@ export async function createProcurementJobFromAnalysis(
 ): Promise<{ jobId: string }> {
   const fields = applyAnalysisToJobFields(params.analysis);
   const budgetNum = fields.estimated_budget ? parseFloat(fields.estimated_budget) : 0;
+  const authorizationType =
+    params.authorizationType ??
+    suggestAuthorizationType({
+      estimatedBudget: budgetNum,
+      priority: params.priority,
+      crfBalance: params.crfBalance,
+    });
 
   const { data, error: insertError } = await supabase
     .from('procurement_jobs')
@@ -111,6 +124,7 @@ export async function createProcurementJobFromAnalysis(
       category: fields.category || '',
       unit_number: params.unitNumber,
       task_id: params.linkedTaskId.trim() || null,
+      authorization_type: authorizationType,
       parsed_quote_json: {
         analysis_source: 'analyze-procurement-quote',
         ...params.analysis,

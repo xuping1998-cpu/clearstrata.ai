@@ -27,6 +27,12 @@ import { saveVendorSearchResults } from '../../lib/procurement/saveVendorSearchR
 import { computeMarketBenchmark, fetchVendorSearchResults } from '../../lib/procurement/vendorMarketBenchmark';
 import { getTrafficLight, TrafficLightBadge } from './AiPricingPanel';
 import { SERVICE_CATEGORIES } from './VendorRegistry';
+import {
+  AUTHORIZATION_TYPE_OPTIONS,
+  isCrfSgmSuggested,
+  suggestAuthorizationType,
+  type ProcurementAuthorizationType,
+} from '../../lib/procurement/authorizationType';
 
 interface ProcurementJob {
   id: string;
@@ -87,10 +93,10 @@ function resolveProcurementSubmitTitles(
   if (!en && zh) return { titleEn: en || zh, titleZh: zh };
 
   const cleaned = cleanQuoteAttachmentBaseName(firstAttachmentName ?? '');
-  const baseName = cleaned || (languageEn ? 'Vendor Quote' : '供应商报价');
+  const baseName = cleaned || (languageEn ? 'Authorization materials' : '授权资料');
   return {
-    titleEn: `Quote - ${baseName}`,
-    titleZh: `供应商报价 - ${baseName}`,
+    titleEn: `Quote / authorization - ${baseName}`,
+    titleZh: `报价与授权依据 - ${baseName}`,
   };
 }
 
@@ -159,6 +165,42 @@ export function NewJobModal({
   });
   const [linkedTaskId, setLinkedTaskId] = useState('');
   const [managerTasks, setManagerTasks] = useState<{ id: string; title: string }[]>([]);
+  const [crfBalance, setCrfBalance] = useState<number | null>(null);
+  const [authorizationType, setAuthorizationType] = useState<ProcurementAuthorizationType>('major_unplanned');
+  const authorizationTypeManualRef = useRef(false);
+
+  useEffect(() => {
+    if (!currentPropertyId) {
+      setCrfBalance(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase
+        .from('properties')
+        .select('crf_balance')
+        .eq('id', currentPropertyId)
+        .maybeSingle();
+      if (!cancelled) {
+        const raw = data?.crf_balance;
+        setCrfBalance(raw != null && Number.isFinite(Number(raw)) ? Number(raw) : null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentPropertyId]);
+
+  useEffect(() => {
+    if (authorizationTypeManualRef.current) return;
+    setAuthorizationType(
+      suggestAuthorizationType({
+        estimatedBudget: newJob.estimated_budget,
+        priority: newJob.priority,
+        crfBalance,
+      }),
+    );
+  }, [newJob.estimated_budget, newJob.priority, crfBalance]);
 
   useEffect(() => {
     if (!currentPropertyId) {
@@ -213,6 +255,8 @@ export function NewJobModal({
         linkedTaskId,
         priority: newJob.priority,
         unitNumber: newJob.unit_number,
+        authorizationType,
+        crfBalance,
       });
       setCreatedJobId(jobId);
 
@@ -316,6 +360,7 @@ export function NewJobModal({
         category: pdfAnalysis?.category || newJob.category,
         unit_number: newJob.unit_number,
         task_id: linkedTaskId.trim() || null,
+        authorization_type: authorizationType,
         parsed_quote_json: pdfAnalysis
           ? ({ analysis_source: 'analyze-procurement-quote', ...pdfAnalysis } as Record<string, unknown>)
           : undefined,
@@ -486,14 +531,14 @@ export function NewJobModal({
         <div className="bg-white rounded-xl p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-xl font-bold text-gray-900">
-              {l ? 'Select Vendors to Invite' : '选择供应商发送询价'}
+              {l ? 'Select vendors (market reference)' : '选择供应商（市场参考）'}
             </h2>
             <button onClick={skipAndClose} className="text-gray-500 hover:text-gray-700"><X size={24} /></button>
           </div>
           <p className="text-sm text-gray-500 mb-4">
             {l
-              ? `Found ${searchCount} vendor(s) via real-time AI web search. Select which vendors to send quote invitations to.`
-              : `通过AI实时网络搜索找到 ${searchCount} 家供应商。请选择要发送询价邀请的供应商。`}
+              ? `Found ${searchCount} vendor(s) via AI market search. Select vendors to record as authorization support.`
+              : `通过 AI 市场参考找到 ${searchCount} 家供应商。请选择要纳入授权依据的供应商。`}
           </p>
 
           {searchedVendors.length === 0 ? (
@@ -521,7 +566,7 @@ export function NewJobModal({
                 <div className="flex items-center gap-2 mb-2">
                   <Globe className="text-blue-600" size={15} />
                   <span className="text-sm font-semibold text-gray-700">
-                    {l ? 'Real-time Search Results' : 'AI实时搜索结果'}
+                    {l ? 'AI market reference results' : 'AI 市场参考结果'}
                   </span>
                 </div>
                 <div className="space-y-2">
@@ -548,7 +593,7 @@ export function NewJobModal({
               {step === 'sending' ? (
                 <><Loader2 className="animate-spin" size={16} /> {l ? 'Sending...' : '发送中...'}</>
               ) : (
-                <><Send size={16} /> {l ? `Send to ${selectedVendorIdxs.size} Vendor(s)` : `向 ${selectedVendorIdxs.size} 家发送询价`}</>
+                <><Send size={16} /> {l ? `Save ${selectedVendorIdxs.size} vendor(s)` : `保存 ${selectedVendorIdxs.size} 家供应商参考`}</>
               )}
             </button>
             <button onClick={skipAndClose}
@@ -565,8 +610,14 @@ export function NewJobModal({
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-2xl font-bold text-gray-900">{l ? 'New Request' : '新建申请'}</h2>
+          <h2 className="text-2xl font-bold text-gray-900">{l ? 'New Authorization Request' : '新建授权申请'}</h2>
           <button onClick={onClose}><X size={24} /></button>
+        </div>
+
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-snug text-amber-950">
+          {l
+            ? 'Before submitting, confirm whether this item is unplanned, exceeds the manager’s $500 authority, involves emergency repair or insurance, or exceeds the AGM budget. The system will preserve the authorization request, quote materials and approval records as the basis for invoice review.'
+            : '提交前请确认：该事项是否属于计划外支出、是否超过物业经理 $500 授权上限、是否涉及紧急维修或保险、是否超出 AGM 预算。系统将保留授权申请、报价资料和后续审批记录，作为发票审核依据。'}
         </div>
 
         {error && (
@@ -583,13 +634,13 @@ export function NewJobModal({
             <label className="block text-sm font-medium text-gray-700 mb-1">{l ? 'Type' : '类型'}</label>
             <select value={newJob.job_type} onChange={(e) => setNewJob({ ...newJob, job_type: e.target.value as any })}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent">
-              <option value="maintenance">{l ? 'Maintenance Request' : '维修申请'}</option>
-              <option value="procurement">{l ? 'Procurement Project' : '采购项目'}</option>
+              <option value="maintenance">{l ? 'Repair authorization' : '维修授权'}</option>
+              <option value="procurement">{l ? 'Authorized procurement' : '授权采购'}</option>
             </select>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">{l ? 'Service Category' : '服务类别'}</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">{l ? 'Budget or work category' : '支出类别'}</label>
             <select
               value={newJob.category}
               onChange={(e) => setNewJob({ ...newJob, category: e.target.value })}
@@ -611,7 +662,7 @@ export function NewJobModal({
                   <option value="low">{l ? 'Low' : '低'}</option>
                   <option value="medium">{l ? 'Medium' : '中'}</option>
                   <option value="high">{l ? 'High' : '高'}</option>
-                  <option value="urgent">{l ? 'Urgent' : '紧急'}</option>
+                  <option value="urgent">{l ? 'Emergency repair' : '紧急维修'}</option>
                 </select>
               </div>
               <div>
@@ -648,11 +699,81 @@ export function NewJobModal({
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">{l ? 'Estimated Budget (Optional)' : '预算金额（可选）'}</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">{l ? 'Estimated authorization amount (optional)' : '预计授权金额（可选）'}</label>
             <input type="number" value={newJob.estimated_budget} onChange={(e) => { setNewJob({ ...newJob, estimated_budget: e.target.value }); setError(''); }}
               placeholder={l ? 'Leave blank if unknown' : '不清楚可留空'} min="0" step="1"
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-clearstrata-ui-primary focus:border-transparent" />
           </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              {l ? 'Authorization type' : '授权类型'}
+            </label>
+            <div className="space-y-2">
+              {AUTHORIZATION_TYPE_OPTIONS.map((opt) => (
+                <label
+                  key={opt.value}
+                  className={`block rounded-lg border p-3 cursor-pointer transition-colors ${
+                    authorizationType === opt.value
+                      ? 'border-clearstrata-ui-primary bg-clearstrata-ui-soft/40'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-start gap-2">
+                    <input
+                      type="radio"
+                      name="authorization_type"
+                      value={opt.value}
+                      checked={authorizationType === opt.value}
+                      onChange={() => {
+                        authorizationTypeManualRef.current = true;
+                        setAuthorizationType(opt.value);
+                      }}
+                      className="mt-1 shrink-0"
+                    />
+                    <div>
+                      <div className="text-sm font-semibold text-gray-900">
+                        {l ? opt.label.en : opt.label.zh}
+                      </div>
+                      <p className="mt-0.5 text-xs leading-snug text-gray-600">
+                        {l ? opt.description.en : opt.description.zh}
+                      </p>
+                    </div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {authorizationType === 'small_unplanned' && (
+            <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2.5 text-xs leading-snug text-sky-950">
+              {l
+                ? 'Small unplanned expenses may be executed by the property manager, but they are still subject to oversight through invoice review, AI market reference, repeat-purchase alerts and monthly audit.'
+                : '小额计划外支出可由物业经理执行，但不代表不受监督。系统将通过发票审核、AI 市场参考、重复采购提醒和月度审计进行监督。'}
+            </div>
+          )}
+
+          {authorizationType === 'emergency' && (
+            <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2.5 text-xs leading-snug text-orange-950">
+              {l
+                ? 'Emergency events should first be inspected and quoted. For water damage, fire, fire-safety, elevator or major property-loss events, insurance review and council authorization should be considered.'
+                : '突发事件应先安排检查并形成报价。涉及水损、火灾、消防、电梯或重大财产损失时，应同步评估保险及 Council 授权。'}
+            </div>
+          )}
+
+          {isCrfSgmSuggested(newJob.estimated_budget, crfBalance) ? (
+            <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2.5 text-xs leading-snug text-red-900">
+              {l
+                ? 'This unplanned expense reaches or exceeds 10% of the current CRF balance. Consider calling an SGM or uploading council resolution support. If no SGM is called, record the reason in the authorization file.'
+                : '该计划外支出已达到或超过当前 CRF 的 10%。建议召开 SGM 或上传 Council 决议依据；如不召开，请在授权记录中说明理由。'}
+            </div>
+          ) : crfBalance == null ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-snug text-amber-950">
+              {l
+                ? 'CRF balance is not set. The system cannot assess major-expense SGM threshold. Please add the CRF balance in property or finance settings.'
+                : '未设置 CRF 余额，系统无法判断是否触发重大支出提醒。请在物业设置或财务设置中补充 CRF 余额。'}
+            </div>
+          ) : null}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -673,7 +794,7 @@ export function NewJobModal({
             <p className="mt-1 text-xs text-gray-500">
               {l
                 ? 'Connects this quote workflow to a task (why we are doing this work).'
-                : '将本采购/维修报价流程与任务关联，便于形成「任务 → 报价 → 发票」链路。'}
+                : '将本授权申请与任务关联，便于形成「任务 → 授权 → 发票」链路。'}
             </p>
           </div>
 
@@ -681,7 +802,7 @@ export function NewJobModal({
             <div className="flex items-center gap-2 mb-3">
               <FileText className="text-gray-600" size={20} />
               <h3 className="text-sm font-semibold text-gray-900">
-                {l ? 'Upload quote materials (optional)' : '上传报价资料（可选）'}
+                {l ? 'Upload quote / authorization materials (optional)' : '上传报价/授权资料（可选）'}
               </h3>
             </div>
             <PhotoUpload
@@ -698,12 +819,12 @@ export function NewJobModal({
               <Search className="text-blue-600 shrink-0 mt-0.5" size={16} />
               <div>
                 <p className="text-sm font-medium text-blue-900">
-                  {l ? 'AI will search for vendors' : 'AI将自动搜索供应商'}
+                  {l ? 'AI market reference' : 'AI 市场参考'}
                 </p>
                 <p className="text-xs text-blue-700 mt-0.5">
                   {l
-                    ? 'After submitting, AI will search the web for local Vancouver vendors matching your requirements. You can then choose which vendors to invite for quotes.'
-                    : '提交后，AI将在网上搜索温哥华本地匹配的供应商。您可以选择向哪些供应商发送询价邀请。'}
+                    ? 'After submitting, AI searches for local Vancouver vendors and public pricing as authorization support — not as the only approval basis.'
+                    : '提交后，AI 将搜索本地供应商与公开市场参考，作为授权依据之一（非唯一审批依据）。'}
                 </p>
               </div>
             </div>
@@ -842,7 +963,7 @@ export function AddQuoteModal({
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-xl p-6 max-w-2xl w-full">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-2xl font-bold text-gray-900">{l ? 'Add Vendor Quote' : '添加供应商报价'}</h2>
+          <h2 className="text-2xl font-bold text-gray-900">{l ? 'Add quote / authorization materials' : '上传报价/授权资料'}</h2>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-700"><X size={24} /></button>
         </div>
         <div className="space-y-4">
@@ -868,7 +989,7 @@ export function AddQuoteModal({
           </div>
           <div className="flex gap-3 pt-4">
             <button onClick={addQuote} className="flex-1 bg-clearstrata-ui-primary text-white py-2 rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors font-medium">
-              {l ? 'Add Quote' : '添加报价'}
+              {l ? 'Add materials' : '添加资料'}
             </button>
             <button onClick={onClose} className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300 transition-colors font-medium">
               {l ? 'Cancel' : '取消'}

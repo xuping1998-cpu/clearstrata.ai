@@ -361,17 +361,21 @@ export function Compliance() {
     }
   };
 
+  const docCategories = [
+    { value: 'insurance', label: { en: 'Insurance', zh: '保险' } },
+    { value: 'contracts', label: { en: 'Contracts', zh: '合同' } },
+    { value: 'bylaw', label: { en: 'Bylaws', zh: '章程' } },
+    { value: 'financial', label: { en: 'Engineering Reports', zh: '工程报告' } },
+    { value: 'safety', label: { en: 'Safety', zh: '安全' } },
+    { value: 'legal', label: { en: 'Legal', zh: '法规文件' } },
+    { value: 'meeting_archive', label: { en: 'Meeting Archive', zh: '会议存档' } },
+    { value: 'other', label: { en: 'Other', zh: '其他' } },
+  ];
+
   const getCategoryLabel = (category: string) => {
-    const labels: Record<string, { en: string; zh: string }> = {
-      insurance: { en: 'Insurance', zh: '保险' },
-      bylaw: { en: 'Bylaws', zh: '章程' },
-      financial: { en: 'Engineering Reports', zh: '工程报告' },
-      safety: { en: 'Safety', zh: '安全' },
-      legal: { en: 'Legal', zh: '法规文件' },
-      meeting_archive: { en: 'Meeting Archive', zh: '会议存档' },
-      other: { en: 'Other', zh: '其他' },
-    };
-    return language === 'zh' ? labels[category]?.zh : labels[category]?.en;
+    const found = docCategories.find((c) => c.value === category);
+    if (!found) return category;
+    return language === 'zh' ? found.label.zh : found.label.en;
   };
 
   const getStatusInfo = (doc: ComplianceDoc) => {
@@ -410,13 +414,7 @@ export function Compliance() {
 
   const categories = [
     { value: 'all', label: { en: 'All', zh: '全部' } },
-    { value: 'insurance', label: { en: 'Insurance', zh: '保险' } },
-    { value: 'bylaw', label: { en: 'Bylaws', zh: '章程' } },
-    { value: 'financial', label: { en: 'Engineering Reports', zh: '工程报告' } },
-    { value: 'safety', label: { en: 'Safety', zh: '安全' } },
-    { value: 'legal', label: { en: 'Legal', zh: '法规文件' } },
-    { value: 'meeting_archive', label: { en: 'Meeting Archive', zh: '会议存档' } },
-    { value: 'other', label: { en: 'Other', zh: '其他' } },
+    ...docCategories,
   ];
 
   const stats = {
@@ -747,14 +745,14 @@ export function Compliance() {
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent"
                     required
                   >
-                    <option value="">-- 请选择类别 --</option>
-                    <option value="insurance">保险</option>
-                    <option value="bylaw">章程</option>
-                    <option value="financial">工程报告</option>
-                    <option value="safety">安全</option>
-                    <option value="legal">法规文件</option>
-                    <option value="meeting_archive">会议存档</option>
-                    <option value="other">其他</option>
+                    <option value="">
+                      {language === 'zh' ? '-- 请选择类别 --' : '-- Select category --'}
+                    </option>
+                    {docCategories.map((cat) => (
+                      <option key={cat.value} value={cat.value}>
+                        {language === 'zh' ? cat.label.zh : cat.label.en}
+                      </option>
+                    ))}
                   </select>
                 </div>
 

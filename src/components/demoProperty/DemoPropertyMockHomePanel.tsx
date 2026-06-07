@@ -39,9 +39,9 @@ export function DemoPropertyMockHomePanel() {
     {
       zh: '让本地物业服务可追踪、可监督、可查询',
       en: 'Local services you can track, monitor and audit',
-      descZh: '业主诉求、巡检记录、采购询价、公共事项和月报全程留痕。',
+      descZh: '业主诉求、巡检记录、采购授权、公共事项和月报全程留痕。',
       descEn:
-        'Owner requests, inspections, procurement RFQs, public matters and monthly reports — all on the record.',
+        'Owner requests, inspections, procurement authorization, public matters and monthly reports — all on the record.',
     },
   ];
 
@@ -109,10 +109,10 @@ export function DemoPropertyMockHomePanel() {
       status: '已安排 / Scheduled',
     },
     {
-      labelZh: '采购询价',
-      labelEn: 'Procurement RFQ',
-      zh: '园林维护三家报价比选中',
-      en: 'Landscaping — comparing three vendor quotes',
+      labelZh: '采购授权',
+      labelEn: 'Procurement Authorization',
+      zh: '园林维护授权申请 — 市场参考比选中',
+      en: 'Landscaping authorization — comparing market references',
       status: '比选中 / Comparing',
     },
     {
