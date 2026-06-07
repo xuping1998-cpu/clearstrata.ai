@@ -1,18 +1,25 @@
 import { useState, useEffect } from 'react';
-import { Plus, FileText, AlertTriangle, CheckCircle, X, Upload, Loader2, MessageCircle, Send, Trash2 } from 'lucide-react';
+import { Plus, FileText, AlertTriangle, CheckCircle, X, Upload, Loader2, MessageCircle, Send, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useProperty } from '../contexts/PropertyContext';
 import { supabase } from '../lib/supabase';
 import { BackButton } from '../components/BackButton';
+import { ComplianceContractSummaryCard } from '../components/compliance/ComplianceContractSummaryCard';
 import {
   COMPLIANCE_CONTRACT_TYPE_OPTIONS,
-  embedContractTypeInDescription,
-  extractContractTypeFromDescription,
   getContractTypeLabel,
-  stripContractTypeFromDescription,
   type ComplianceContractType,
 } from '../lib/compliance/complianceContractType';
+import {
+  buildContractDescriptionZh,
+  CONTRACT_SUMMARY_FIELD_LABELS,
+  EMPTY_COMPLIANCE_CONTRACT_META,
+  normalizeComplianceContractMeta,
+  parseContractDescription,
+  type ComplianceContractMeta,
+  type ContractSummaryFieldKey,
+} from '../lib/compliance/complianceContractMeta';
 
 interface ComplianceDoc {
   id: string;
@@ -49,6 +56,10 @@ function normalizeDocCategory(category: string): string {
   return category;
 }
 
+function isContractDocCategory(category: string): boolean {
+  return normalizeDocCategory(category) === 'contracts';
+}
+
 export function Compliance() {
   const { language, t } = useLanguage();
   const l = language === 'en';
@@ -76,6 +87,19 @@ export function Compliance() {
   const [chatLoading, setChatLoading] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [contractSummary, setContractSummary] = useState<ComplianceContractMeta>(
+    () => ({ ...EMPTY_COMPLIANCE_CONTRACT_META }),
+  );
+  const [showContractSummaryForm, setShowContractSummaryForm] = useState(false);
+
+  const resetContractSummaryForm = () => {
+    setContractSummary({ ...EMPTY_COMPLIANCE_CONTRACT_META });
+    setShowContractSummaryForm(false);
+  };
+
+  const patchContractSummary = (key: ContractSummaryFieldKey, value: string) => {
+    setContractSummary((prev) => ({ ...prev, [key]: value }));
+  };
 
   const loadDocs = async () => {
     if (!profile) return;
@@ -342,8 +366,15 @@ export function Compliance() {
       }
 
       const descriptionZh =
-        newDoc.category === 'contracts' && newDoc.contract_type
-          ? embedContractTypeInDescription(newDoc.description_zh.trim() || null, newDoc.contract_type)
+        newDoc.category === 'contracts'
+          ? buildContractDescriptionZh({
+              userDescription: newDoc.description_zh.trim() || null,
+              contractType: newDoc.contract_type || null,
+              meta: {
+                ...contractSummary,
+                contractType: newDoc.contract_type || contractSummary.contractType,
+              },
+            })
           : newDoc.description_zh.trim() || null;
 
       const { error: dbError } = await supabase
@@ -378,6 +409,7 @@ export function Compliance() {
         description_zh: '',
         expiry_date: '',
       });
+      resetContractSummaryForm();
       await loadDocs();
       alert(language === 'zh' ? '上传成功！' : 'Upload successful!');
     } catch (error: unknown) {
@@ -658,9 +690,10 @@ export function Compliance() {
             {filteredDocs.map((doc) => {
               const statusInfo = getStatusInfo(doc);
               const StatusIcon = statusInfo.icon;
-              const contractType = extractContractTypeFromDescription(doc.description_zh);
-              const visibleDescriptionZh = stripContractTypeFromDescription(doc.description_zh);
+              const parsed = parseContractDescription(doc.description_zh);
+              const visibleDescriptionZh = parsed.visibleText;
               const visibleDescriptionEn = doc.description_en;
+              const isContractDoc = isContractDocCategory(doc.category);
 
               return (
                 <div key={doc.id} className="bg-white rounded-xl p-6 shadow-sm border-l-4 border-[#1D9E75] hover:shadow-md transition-shadow relative">
@@ -679,9 +712,9 @@ export function Compliance() {
                         <span className="text-xs font-semibold text-gray-500 uppercase">
                           {getCategoryLabel(doc.category)}
                         </span>
-                        {contractType ? (
+                        {parsed.contractType ? (
                           <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-800">
-                            {getContractTypeLabel(contractType, l)}
+                            {getContractTypeLabel(parsed.contractType, l)}
                           </span>
                         ) : null}
                       </div>
@@ -698,6 +731,16 @@ export function Compliance() {
                       </span>
                     </div>
                   </div>
+
+                  {isContractDoc ? (
+                    <ComplianceContractSummaryCard
+                      meta={normalizeComplianceContractMeta({
+                        ...(parsed.meta ?? {}),
+                        contractType: parsed.meta?.contractType || parsed.contractType || '',
+                      })}
+                      languageEn={l}
+                    />
+                  ) : null}
 
                   {(visibleDescriptionEn || visibleDescriptionZh) && (
                     <p className="text-gray-600 mb-4">
@@ -739,7 +782,10 @@ export function Compliance() {
                   {language === 'zh' ? '上传合规文件' : 'Upload Compliance Document'}
                 </h2>
                 <button
-                  onClick={() => setShowUploadModal(false)}
+                  onClick={() => {
+                    setShowUploadModal(false);
+                    resetContractSummaryForm();
+                  }}
                   className="text-gray-400 hover:text-gray-600"
                 >
                   <X size={24} />
@@ -810,12 +856,11 @@ export function Compliance() {
                     </label>
                     <select
                       value={newDoc.contract_type}
-                      onChange={(e) =>
-                        setNewDoc({
-                          ...newDoc,
-                          contract_type: e.target.value as ComplianceContractType,
-                        })
-                      }
+                      onChange={(e) => {
+                        const ct = e.target.value as ComplianceContractType;
+                        setNewDoc({ ...newDoc, contract_type: ct });
+                        if (ct) patchContractSummary('contractType', ct);
+                      }}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent"
                       required
                     >
@@ -826,6 +871,77 @@ export function Compliance() {
                         </option>
                       ))}
                     </select>
+                  </div>
+                ) : null}
+
+                {newDoc.category === 'contracts' ? (
+                  <div className="rounded-xl border border-sky-200 bg-slate-50/80 overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setShowContractSummaryForm((v) => !v)}
+                      className="w-full flex items-center justify-between px-4 py-3 text-left text-sm font-semibold text-sky-900 hover:bg-sky-50/80 transition-colors"
+                    >
+                      <span>{l ? 'Contract summary (optional)' : '合同摘要（可选）'}</span>
+                      {showContractSummaryForm ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                    </button>
+                    {showContractSummaryForm ? (
+                      <div className="px-4 pb-4 pt-1 border-t border-sky-100 grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {(
+                          [
+                            'vendorName',
+                            'startDate',
+                            'endDate',
+                            'autoRenewal',
+                            'terminationNotice',
+                            'fixedFee',
+                            'escalationClause',
+                            'serviceScope',
+                            'extraCharges',
+                          ] as ContractSummaryFieldKey[]
+                        ).map((key) => {
+                          const labels = CONTRACT_SUMMARY_FIELD_LABELS[key];
+                          const isWide = key === 'serviceScope' || key === 'extraCharges';
+                          const isDate = key === 'startDate' || key === 'endDate';
+                          return (
+                            <label
+                              key={key}
+                              className={`block text-sm ${isWide ? 'md:col-span-2' : ''}`}
+                            >
+                              <span className="font-medium text-gray-700">
+                                {l ? labels.en : labels.zh}
+                              </span>
+                              {isDate ? (
+                                <input
+                                  type="date"
+                                  value={contractSummary[key]}
+                                  onChange={(e) => patchContractSummary(key, e.target.value)}
+                                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                />
+                              ) : key === 'serviceScope' || key === 'extraCharges' || key === 'escalationClause' ? (
+                                <textarea
+                                  value={contractSummary[key]}
+                                  onChange={(e) => patchContractSummary(key, e.target.value)}
+                                  rows={2}
+                                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                />
+                              ) : (
+                                <input
+                                  type="text"
+                                  value={contractSummary[key]}
+                                  onChange={(e) => patchContractSummary(key, e.target.value)}
+                                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                />
+                              )}
+                            </label>
+                          );
+                        })}
+                        <p className="md:col-span-2 text-xs text-slate-500 leading-relaxed">
+                          {l
+                            ? 'Contract type is taken from the required selector above. Summary fields are stored with the document for manual contract ledger tracking.'
+                            : '合同类型取自上方必填选项。摘要字段将随文档保存，用于人工建立合同台账。'}
+                        </p>
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
 
@@ -929,7 +1045,10 @@ export function Compliance() {
 
                 <div className="flex gap-3 pt-4">
                   <button
-                    onClick={() => setShowUploadModal(false)}
+                    onClick={() => {
+                      setShowUploadModal(false);
+                      resetContractSummaryForm();
+                    }}
                     disabled={uploading}
                     className="flex-1 px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                   >
