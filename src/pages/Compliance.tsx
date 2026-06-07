@@ -5,6 +5,14 @@ import { useAuth } from '../contexts/AuthContext';
 import { useProperty } from '../contexts/PropertyContext';
 import { supabase } from '../lib/supabase';
 import { BackButton } from '../components/BackButton';
+import {
+  COMPLIANCE_CONTRACT_TYPE_OPTIONS,
+  embedContractTypeInDescription,
+  extractContractTypeFromDescription,
+  getContractTypeLabel,
+  stripContractTypeFromDescription,
+  type ComplianceContractType,
+} from '../lib/compliance/complianceContractType';
 
 interface ComplianceDoc {
   id: string;
@@ -25,8 +33,25 @@ interface ChatMessage {
   content: string;
 }
 
+const DOC_CATEGORIES = [
+  { value: 'contracts', label: { en: 'Contracts', zh: '合同' } },
+  { value: 'insurance', label: { en: 'Insurance', zh: '保险' } },
+  { value: 'bylaw', label: { en: 'Bylaws', zh: '章程' } },
+  { value: 'financial', label: { en: 'Engineering Reports', zh: '工程报告' } },
+  { value: 'safety', label: { en: 'Safety', zh: '安全' } },
+  { value: 'legal', label: { en: 'Compliance', zh: '法规文件' } },
+  { value: 'meeting_archive', label: { en: 'Meeting Archives', zh: '会议存档' } },
+  { value: 'other', label: { en: 'Others', zh: '其他' } },
+] as const;
+
+function normalizeDocCategory(category: string): string {
+  if (category === 'contract') return 'contracts';
+  return category;
+}
+
 export function Compliance() {
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
+  const l = language === 'en';
   const { profile } = useAuth();
   const { isDemoMode } = useProperty();
 
@@ -40,6 +65,7 @@ export function Compliance() {
     title_en: '',
     title_zh: '',
     category: '',
+    contract_type: '' as ComplianceContractType | '',
     description_en: '',
     description_zh: '',
     expiry_date: '',
@@ -187,6 +213,11 @@ export function Compliance() {
       return;
     }
 
+    if (newDoc.category === 'contracts' && !newDoc.contract_type) {
+      alert(language === 'zh' ? '请选择合同类型' : 'Please select a contract type');
+      return;
+    }
+
     setUploading(true);
     try {
       let fileToUpload = selectedFile;
@@ -310,6 +341,11 @@ export function Compliance() {
         }
       }
 
+      const descriptionZh =
+        newDoc.category === 'contracts' && newDoc.contract_type
+          ? embedContractTypeInDescription(newDoc.description_zh.trim() || null, newDoc.contract_type)
+          : newDoc.description_zh.trim() || null;
+
       const { error: dbError } = await supabase
         .from('compliance_docs')
         .insert({
@@ -317,7 +353,7 @@ export function Compliance() {
           title_zh: newDoc.title_zh,
           category: newDoc.category,
           description_en: newDoc.description_en.trim() || null,
-          description_zh: newDoc.description_zh.trim() || null,
+          description_zh: descriptionZh,
           expiry_date: expiryDate,
           status,
           document_url: publicUrl,
@@ -337,6 +373,7 @@ export function Compliance() {
         title_en: '',
         title_zh: '',
         category: '',
+        contract_type: '',
         description_en: '',
         description_zh: '',
         expiry_date: '',
@@ -361,21 +398,11 @@ export function Compliance() {
     }
   };
 
-  const docCategories = [
-    { value: 'insurance', label: { en: 'Insurance', zh: '保险' } },
-    { value: 'contracts', label: { en: 'Contracts', zh: '合同' } },
-    { value: 'bylaw', label: { en: 'Bylaws', zh: '章程' } },
-    { value: 'financial', label: { en: 'Engineering Reports', zh: '工程报告' } },
-    { value: 'safety', label: { en: 'Safety', zh: '安全' } },
-    { value: 'legal', label: { en: 'Legal', zh: '法规文件' } },
-    { value: 'meeting_archive', label: { en: 'Meeting Archive', zh: '会议存档' } },
-    { value: 'other', label: { en: 'Other', zh: '其他' } },
-  ];
-
   const getCategoryLabel = (category: string) => {
-    const found = docCategories.find((c) => c.value === category);
+    const normalized = normalizeDocCategory(category);
+    const found = DOC_CATEGORIES.find((c) => c.value === normalized);
     if (!found) return category;
-    return language === 'zh' ? found.label.zh : found.label.en;
+    return l ? found.label.en : found.label.zh;
   };
 
   const getStatusInfo = (doc: ComplianceDoc) => {
@@ -410,11 +437,11 @@ export function Compliance() {
 
   const filteredDocs = selectedCategory === 'all'
     ? docs
-    : docs.filter(doc => doc.category === selectedCategory);
+    : docs.filter((doc) => normalizeDocCategory(doc.category) === selectedCategory);
 
   const categories = [
     { value: 'all', label: { en: 'All', zh: '全部' } },
-    ...docCategories,
+    ...DOC_CATEGORIES,
   ];
 
   const stats = {
@@ -500,8 +527,8 @@ export function Compliance() {
       <div className="mx-auto max-w-2xl rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-700">
         <p>
           {en
-            ? 'Demo mode: compliance documents and uploads are hidden. Register to access permitted content.'
-            : '演示模式：法规与合规文件含管理资料，不在此展示。注册加入后可按权限查看。'}
+            ? 'Demo mode: legal & contract documents are hidden. Register to access permitted content.'
+            : '演示模式：法规合同文件含管理资料，不在此展示。注册加入后可按权限查看。'}
         </p>
       </div>
     );
@@ -514,12 +541,12 @@ export function Compliance() {
 
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">
-            {language === 'zh' ? '法規文檔' : 'Regulatory Documents'}
+            {t('compliance_title')}
           </h1>
           <p className="text-gray-600">
-            {language === 'zh'
-              ? '集中管理和追蹤所有重要物業文件'
-              : 'Manage and track important strata records and compliance documents.'}
+            {l
+              ? 'Central registry for service contracts, insurance, bylaws, engineering reports and compliance records.'
+              : '集中管理合同、保险、章程、工程报告与法规文件，支撑采购授权与发票审核治理。'}
           </p>
         </div>
 
@@ -585,7 +612,7 @@ export function Compliance() {
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
-                {cat.label.zh}
+                {l ? cat.label.en : cat.label.zh}
               </button>
             ))}
           </div>
@@ -596,14 +623,20 @@ export function Compliance() {
               className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
             >
               <MessageCircle size={20} />
-              AI法规助手
+              {l ? 'AI Legal Assistant' : 'AI 法规助手'}
             </button>
             <button
-              onClick={() => setShowUploadModal(true)}
+              onClick={() => {
+                setNewDoc((prev) => ({
+                  ...prev,
+                  category: selectedCategory === 'contracts' ? 'contracts' : prev.category,
+                }));
+                setShowUploadModal(true);
+              }}
               className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-[#1D9E75] text-white rounded-lg hover:bg-[#178562] transition-colors font-medium"
             >
               <Plus size={20} />
-              上传文件
+              {l ? 'Upload document' : '上传文件'}
             </button>
           </div>
         </div>
@@ -625,6 +658,9 @@ export function Compliance() {
             {filteredDocs.map((doc) => {
               const statusInfo = getStatusInfo(doc);
               const StatusIcon = statusInfo.icon;
+              const contractType = extractContractTypeFromDescription(doc.description_zh);
+              const visibleDescriptionZh = stripContractTypeFromDescription(doc.description_zh);
+              const visibleDescriptionEn = doc.description_en;
 
               return (
                 <div key={doc.id} className="bg-white rounded-xl p-6 shadow-sm border-l-4 border-[#1D9E75] hover:shadow-md transition-shadow relative">
@@ -643,6 +679,11 @@ export function Compliance() {
                         <span className="text-xs font-semibold text-gray-500 uppercase">
                           {getCategoryLabel(doc.category)}
                         </span>
+                        {contractType ? (
+                          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-800">
+                            {getContractTypeLabel(contractType, l)}
+                          </span>
+                        ) : null}
                       </div>
                       <h3 className="text-lg font-bold text-gray-900 mt-2">
                         {language === 'zh'
@@ -658,11 +699,11 @@ export function Compliance() {
                     </div>
                   </div>
 
-                  {(doc.description_en || doc.description_zh) && (
+                  {(visibleDescriptionEn || visibleDescriptionZh) && (
                     <p className="text-gray-600 mb-4">
-                      {language === 'zh'
-                        ? (doc.description_zh || doc.description_en)
-                        : (doc.description_en || doc.description_zh)}
+                      {l
+                        ? (visibleDescriptionEn || visibleDescriptionZh)
+                        : (visibleDescriptionZh || visibleDescriptionEn)}
                     </p>
                   )}
 
@@ -741,20 +782,52 @@ export function Compliance() {
                   </label>
                   <select
                     value={newDoc.category}
-                    onChange={(e) => setNewDoc({ ...newDoc, category: e.target.value })}
+                    onChange={(e) =>
+                      setNewDoc({
+                        ...newDoc,
+                        category: e.target.value,
+                        contract_type: e.target.value === 'contracts' ? newDoc.contract_type : '',
+                      })
+                    }
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent"
                     required
                   >
                     <option value="">
-                      {language === 'zh' ? '-- 请选择类别 --' : '-- Select category --'}
+                      {l ? '-- Select category --' : '-- 请选择类别 --'}
                     </option>
-                    {docCategories.map((cat) => (
+                    {DOC_CATEGORIES.map((cat) => (
                       <option key={cat.value} value={cat.value}>
-                        {language === 'zh' ? cat.label.zh : cat.label.en}
+                        {l ? cat.label.en : cat.label.zh}
                       </option>
                     ))}
                   </select>
                 </div>
+
+                {newDoc.category === 'contracts' ? (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      {l ? 'Contract type*' : '合同类型*'}
+                    </label>
+                    <select
+                      value={newDoc.contract_type}
+                      onChange={(e) =>
+                        setNewDoc({
+                          ...newDoc,
+                          contract_type: e.target.value as ComplianceContractType,
+                        })
+                      }
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1D9E75] focus:border-transparent"
+                      required
+                    >
+                      <option value="">{l ? '-- Select contract type --' : '-- 请选择合同类型 --'}</option>
+                      {COMPLIANCE_CONTRACT_TYPE_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {l ? opt.label.en : opt.label.zh}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">

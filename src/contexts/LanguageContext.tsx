@@ -69,7 +69,7 @@ const translations: Record<string, Record<Language, string>> = {
   nav_group_primary: { en: 'Main', zh: '主导航' },
   nav_group_system: { en: 'System', zh: '系统管理' },
   nav_group_help: { en: 'Help', zh: '帮助中心' },
-  nav_help_compliance: { en: 'Regulatory Documents', zh: '法規文檔' },
+  nav_help_compliance: { en: 'Legal & Contract Governance', zh: '法规合同' },
   nav_invite_codes: { en: 'Invite codes', zh: '邀请码管理' },
   nav_join_requests: { en: 'Join requests', zh: '加入申请审核' },
   nav_property_admin_sidebar: { en: 'Property settings', zh: '物业设置' },
@@ -611,7 +611,7 @@ const translations: Record<string, Record<Language, string>> = {
   owner_info_approved_success: { en: 'Owner information approved successfully', zh: '业主信息已成功审核通过' },
   owner_info_approve_failed: { en: 'Could not approve owner information.', zh: '审核失败，请重试。' },
 
-  compliance_title: { en: 'Compliance & Insurance', zh: '法规保险' },
+  compliance_title: { en: 'Legal & Contract Governance', zh: '法规合同' },
   compliance_new_doc: { en: 'New Document', zh: '新建文档' },
   compliance_doc_title: { en: 'Document Title', zh: '文档标题' },
   compliance_category: { en: 'Category', zh: '分类' },
