@@ -275,7 +275,7 @@ const NAV_TABS = [
   { key: 'all', label: '全部', labelEn: 'All' },
   { key: 'owner_request', label: '业主诉求', labelEn: 'Owner request' },
   { key: 'inspection', label: '巡检记录', labelEn: 'Inspection records' },
-  { key: 'public_matter', label: '公共事项', labelEn: 'Public matters' },
+  { key: 'public_matter', label: '重要事项', labelEn: 'Important Updates' },
   { key: 'manager_report', label: '经理月报', labelEn: 'Manager report' },
 ] as const;
 
@@ -1188,6 +1188,8 @@ function PublicMatterCard({
   onReloadReviews,
   showTypeBadge,
 }: PublicMatterCardProps) {
+  const { language } = useLanguage();
+  const en = language === 'en';
   const [cardStatus, setCardStatus] = useState(matter.status);
   const [savingStatus, setSavingStatus] = useState(false);
 
@@ -1234,7 +1236,7 @@ function PublicMatterCard({
       <div className="px-5 py-4 border-b border-gray-100 flex flex-wrap items-center gap-2">
         {showTypeBadge ? (
           <span className="rounded-full bg-teal-700 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shrink-0">
-            公共事项
+            {en ? 'Important Updates' : '重要事项'}
           </span>
         ) : null}
         <span className="font-semibold text-gray-900">{matter.title}</span>
@@ -2171,7 +2173,7 @@ export function ManagerTasks() {
         showToast(`保存失败：${error.message}`, false);
         return;
       }
-      showToast('公共事项草稿已保存');
+      showToast(en ? 'Important update draft saved' : '重要事项草稿已保存');
     } else {
       const { data, error } = await supabase
         .from('manager_public_matters')
@@ -2188,7 +2190,7 @@ export function ManagerTasks() {
         showToast(`保存失败：${error.message}`, false);
         return;
       }
-      showToast('公共事项草稿已保存');
+      showToast(en ? 'Important update draft saved' : '重要事项草稿已保存');
       if (data?.id) setPmForm((p) => ({ ...p, editingId: data.id as string }));
     }
     void loadPublicMatters();
@@ -2230,7 +2232,7 @@ export function ManagerTasks() {
         return;
       }
     }
-    showToast('公共事项已发布');
+    showToast(en ? 'Important update published' : '重要事项已发布');
     resetPmForm();
     void loadPublicMatters();
   };
@@ -2441,8 +2443,8 @@ export function ManagerTasks() {
         </h1>
         <p className="mt-1 text-sm text-gray-600">
           {en
-            ? 'Property manager service desk — owner requests, inspection records, public matters and manager monthly reports are recorded openly; progress and reviews are visible to owners.'
-            : '物业经理服务台，公开记录业主诉求、巡检记录、公共事项与经理月报，处理进程和评价接受业主监督。'}
+            ? 'Property manager service desk — owner requests, inspection records, important updates and manager monthly reports are recorded openly; progress and reviews are visible to owners.'
+            : '物业经理服务台，公开记录业主诉求、巡检记录、重要事项与经理月报，处理进程和评价接受业主监督。'}
         </p>
       </div>
 
@@ -2663,7 +2665,9 @@ export function ManagerTasks() {
 
               {publicMattersVisibleInAllTab.length > 0 ? (
                 <section className="space-y-4">
-                  <h2 className="text-sm font-bold text-gray-800 border-b border-gray-200 pb-2">公共事项</h2>
+                  <h2 className="text-sm font-bold text-gray-800 border-b border-gray-200 pb-2">
+                    {en ? 'Important Updates' : '重要事项'}
+                  </h2>
                   <div className="space-y-4">
                     {publicMattersVisibleInAllTab.map((m) => (
                       <PublicMatterCard
@@ -2852,9 +2856,13 @@ export function ManagerTasks() {
       {isPublicMatterTab && (
         <div className="space-y-6">
           <div className="rounded-2xl border border-[#1D9E75]/30 bg-white shadow-sm p-6">
-            <h2 className="text-lg font-bold text-gray-900">公共事项 · 空白单</h2>
+            <h2 className="text-lg font-bold text-gray-900">
+              {en ? 'Important Updates · blank form' : '重要事项 · 空白单'}
+            </h2>
             <p className="mt-2 text-sm text-gray-600 leading-relaxed">
-              公开记录影响全体业主生活的社区事项、公告、安全提醒与长期跟进问题，让处理进程接受业主监督。
+              {en
+                ? 'Publish important community notices, project updates, safety alerts and service updates.'
+                : '发布社区重要通知、工程进展、安全提醒与服务更新。'}
             </p>
             <p className="mt-2 text-xs text-gray-500">
               {ownerFormReadOnly
@@ -2939,7 +2947,7 @@ export function ManagerTasks() {
                   onClick={() => void publishPublicMatterReport()}
                   className="inline-flex items-center gap-1.5 rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
                 >
-                  发布公共事项
+                  {en ? 'Publish important update' : '发布重要事项'}
                 </button>
                 <button
                   type="button"
@@ -2956,7 +2964,7 @@ export function ManagerTasks() {
           </div>
 
           {!loadingPM && publicMatters.length === 0 ? (
-            <ManagerDeskSampleCard titleLine="公共事项 · 未来真实公示样式">
+            <ManagerDeskSampleCard titleLine={en ? 'Important Updates · future published style' : '重要事项 · 未来真实公示样式'}>
               <div className="rounded-xl border border-teal-100 bg-white/95 px-4 py-3 space-y-2 text-sm text-gray-800">
                 <p className="text-[11px] font-semibold text-teal-800">公共问题跟进 · 示例标题</p>
                 <p className="text-xs text-gray-600 leading-relaxed">
@@ -2977,7 +2985,7 @@ export function ManagerTasks() {
             </div>
           ) : visiblePublicMatters.length === 0 ? (
             <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-500 text-sm">
-              暂无公共事项
+              {en ? 'No important updates yet' : '暂无重要事项'}
             </div>
           ) : (
             <div className="space-y-4">

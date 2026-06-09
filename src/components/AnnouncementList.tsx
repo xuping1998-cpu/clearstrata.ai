@@ -74,7 +74,7 @@ export function AnnouncementList({ limit = 3 }: AnnouncementListProps) {
       <div className="flex items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-2">
           <Megaphone className="text-[#1D9E75]" size={22} aria-hidden />
-          <h2 className="text-lg font-bold text-gray-900">{en ? 'Latest announcements' : '最新公告'}</h2>
+          <h2 className="text-lg font-bold text-gray-900">{en ? 'Important Announcements' : '重大公告'}</h2>
         </div>
         <button
           type="button"

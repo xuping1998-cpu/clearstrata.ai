@@ -16,6 +16,7 @@ type TabType = 'profile' | 'ledger' | 'forms' | 'announcements';
 interface TabConfig {
   key: TabType;
   label: string;
+  labelEn?: string;
   icon: React.ReactNode;
 }
 
@@ -23,7 +24,12 @@ const tabs: TabConfig[] = [
   { key: 'profile', label: '我的资料', icon: <User size={18} /> },
   { key: 'ledger', label: '账务记录', icon: <Receipt size={18} /> },
   { key: 'forms', label: '表单', icon: <FileText size={18} /> },
-  { key: 'announcements', label: '公告', icon: <Megaphone size={18} /> },
+  {
+    key: 'announcements',
+    label: '重大公告',
+    labelEn: 'Important Announcements',
+    icon: <Megaphone size={18} />,
+  },
 ];
 
 /** 隔离子 Tab 运行时错误，避免整页白屏（「我的资料」等仍可用）。 */
@@ -128,7 +134,7 @@ export function OwnerInfo() {
               }`}
             >
               {tab.icon}
-              {tab.label}
+              {language === 'en' && tab.labelEn ? tab.labelEn : tab.label}
             </button>
           ))}
         </nav>

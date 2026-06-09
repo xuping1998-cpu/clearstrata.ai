@@ -13,7 +13,7 @@ export type ImportantUpdatesBullet = {
   kind?: ImportantUpdateKind;
   /** 立即查看跳转；缺省走公告 tab */
   actionUrl?: string;
-  source?: 'vote' | 'announcement';
+  source?: 'vote' | 'announcement' | 'agm_sgm';
   createdAt?: string;
   priority?: number;
 };

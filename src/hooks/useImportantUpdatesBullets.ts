@@ -11,10 +11,12 @@ import {
   type MeetingRow,
   type OwnerVoteMeetingLite,
 } from '@/features/meetings/api';
-import { extractElectionAgendaMeta } from '@/features/meetings/electionAgendaModel';
+import { extractElectionAgendaMeta, isStrictAgmOrSgmMeeting } from '@/features/meetings/electionAgendaModel';
 import { isOwnerVotingMeeting } from '@/features/meetings/ownerVotingCouncil';
+import { fetchAgmSgmGovernanceBullets } from '@/lib/dashboard/agmSgmGovernanceBullets';
+import type { meetingsNavHref } from '@/lib/meetingPermissions';
 
-const ACTION_PRIORITY = 100;
+const GENERIC_VOTE_PRIORITY = 100;
 const MAX_BULLETS = 5;
 const MAX_ANNOUNCEMENTS = 3;
 
@@ -68,6 +70,7 @@ function buildAgendaCountsByMeetingId(
   return { electionByMeeting, resolutionByMeeting };
 }
 
+/** Non-AGM/SGM owner voting only — AGM/SGM covered by governance bullets. */
 async function fetchPendingVoteBullet(
   propertyId: string,
   userId: string,
@@ -77,7 +80,9 @@ async function fetchPendingVoteBullet(
   const { meetings, error: meetingsErr } = await getMeetingsByPropertyAndYear(propertyId, fiscalYear);
   if (meetingsErr) throw meetingsErr;
 
-  const votingMeetings = meetings.filter(isOwnerVotingMeeting);
+  const votingMeetings = meetings.filter(
+    (m) => isOwnerVotingMeeting(m) && !isStrictAgmOrSgmMeeting(m),
+  );
   if (!votingMeetings.length) return null;
 
   const meetingIds = votingMeetings.map((m) => String(m.id).trim()).filter(Boolean);
@@ -163,7 +168,7 @@ async function fetchPendingVoteBullet(
       kind: 'action',
       actionUrl: votingDetailUrl(propertyId, String(t.councilMeeting.id)),
       source: 'vote',
-      priority: ACTION_PRIORITY,
+      priority: GENERIC_VOTE_PRIORITY,
       createdAt: t.ovMeeting.voting_opens_at ?? t.councilMeeting.created_at ?? undefined,
     };
   }
@@ -177,7 +182,7 @@ async function fetchPendingVoteBullet(
     kind: 'action',
     actionUrl: votingHubUrl(propertyId),
     source: 'vote',
-    priority: ACTION_PRIORITY,
+    priority: GENERIC_VOTE_PRIORITY,
     createdAt: new Date().toISOString(),
   };
 }
@@ -238,6 +243,7 @@ export type UseImportantUpdatesBulletsParams = {
   userId: string | null | undefined;
   propertyReady: boolean;
   langEn: boolean;
+  meetingsHref: ReturnType<typeof meetingsNavHref>;
 };
 
 export function useImportantUpdatesBullets({
@@ -245,6 +251,7 @@ export function useImportantUpdatesBullets({
   userId,
   propertyReady,
   langEn,
+  meetingsHref,
 }: UseImportantUpdatesBulletsParams) {
   const [bullets, setBullets] = useState<ImportantUpdatesBullet[]>([]);
   const [loading, setLoading] = useState(true);
@@ -265,12 +272,13 @@ export function useImportantUpdatesBullets({
       const pid = propertyId.trim();
       const uid = userId.trim();
 
-      const [voteBullet, announcementBullets] = await Promise.all([
+      const [agmSgmBullets, voteBullet, announcementBullets] = await Promise.all([
+        fetchAgmSgmGovernanceBullets({ propertyId: pid, langEn, meetingsHref }),
         fetchPendingVoteBullet(pid, uid, langEn),
         fetchAnnouncementBullets(pid),
       ]);
 
-      const merged: ImportantUpdatesBullet[] = [];
+      const merged: ImportantUpdatesBullet[] = [...agmSgmBullets];
       if (voteBullet) merged.push(voteBullet);
       merged.push(...announcementBullets);
 
@@ -282,7 +290,7 @@ export function useImportantUpdatesBullets({
     } finally {
       setLoading(false);
     }
-  }, [propertyId, userId, propertyReady, langEn]);
+  }, [propertyId, userId, propertyReady, langEn, meetingsHref]);
 
   useEffect(() => {
     void load();

@@ -41,6 +41,7 @@ export function Dashboard() {
     userId: user?.id,
     propertyReady,
     langEn: en,
+    meetingsHref: meetingsNavHref(roleInProperty),
   });
 
   useEffect(() => {

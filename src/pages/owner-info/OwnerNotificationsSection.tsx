@@ -295,10 +295,12 @@ export function OwnerNotificationsSection() {
           </div>
           <div>
             <h2 id="owner-announcements-heading" className="text-lg font-bold text-gray-900">
-              {en ? 'Community announcements' : '社区公告'}
+              {en ? 'Important Announcements' : '重大公告'}
             </h2>
             <p className="text-sm text-gray-500">
-              {en ? 'Published by administrators, strata council, and property management.' : '由管理员、业委会与物业发布。'}
+              {en
+                ? 'View officially published community announcements and notices.'
+                : '查看社区正式发布的重要公告与通知。'}
             </p>
           </div>
         </div>
