@@ -8,7 +8,8 @@ export function formatVendorPriceExclGst(v: {
 }): string | null {
   if (v.price_low == null || v.price_high == null) return null;
   const cur = v.price_currency || 'CAD';
-  const unitSuffix = v.price_unit ? ` / ${v.price_unit}` : '';
+  const unit = typeof v.price_unit === 'string' ? v.price_unit.trim() : '';
+  const unitSuffix = unit ? ` / ${unit}` : '';
   return `${cur} $${Number(v.price_low).toLocaleString()}–$${Number(v.price_high).toLocaleString()}${unitSuffix}，不含税`;
 }
 
@@ -22,6 +23,7 @@ export function formatVendorPriceInclGst(v: {
   const cur = v.price_currency || 'CAD';
   const low = Math.round(Number(v.price_low) * (1 + GST_RATE));
   const high = Math.round(Number(v.price_high) * (1 + GST_RATE));
-  const unitSuffix = v.price_unit ? ` / ${v.price_unit}` : '';
+  const unit = typeof v.price_unit === 'string' ? v.price_unit.trim() : '';
+  const unitSuffix = unit ? ` / ${unit}` : '';
   return `${cur} $${low.toLocaleString()}–$${high.toLocaleString()}${unitSuffix}，含 GST`;
 }

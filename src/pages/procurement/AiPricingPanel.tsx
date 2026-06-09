@@ -4,7 +4,18 @@ import { supabase } from '../../lib/supabase';
 import {
   computeMarketBenchmark,
   fetchVendorSearchResults,
+  type VendorEvidenceRow,
 } from '../../lib/procurement/vendorMarketBenchmark';
+
+/** When all priced vendors share one non-empty price_unit, return it; else omit unit. */
+function unifiedMarketPriceUnit(vendors: VendorEvidenceRow[]): string | null {
+  const units = vendors
+    .map((v) => (typeof v.price_unit === 'string' ? v.price_unit.trim() : ''))
+    .filter(Boolean);
+  if (units.length === 0 || units.length !== vendors.length) return null;
+  const first = units[0]!;
+  return units.every((u) => u === first) ? first : null;
+}
 
 interface AiPricingPanelProps {
   jobId: string;
@@ -182,6 +193,9 @@ export function AiPricingPanel({ jobId, language }: AiPricingPanelProps) {
   }
 
   const pricedCount = benchmark.pricedVendors.length;
+  const sharedUnit = unifiedMarketPriceUnit(benchmark.pricedVendors);
+  const rangeCore = `CAD $${benchmark.marketLow.toLocaleString()} – $${benchmark.marketHigh.toLocaleString()}`;
+  const rangeDisplay = sharedUnit ? `${rangeCore} / ${sharedUnit}` : rangeCore;
 
   return (
     <div className="bg-gradient-to-r from-blue-50 to-sky-50 border border-blue-200 rounded-lg p-4 mb-4">
@@ -202,9 +216,7 @@ export function AiPricingPanel({ jobId, language }: AiPricingPanelProps) {
         </button>
       </div>
 
-      <p className="text-2xl font-bold text-blue-700 mb-1">
-        CAD ${benchmark.marketLow.toLocaleString()} – ${benchmark.marketHigh.toLocaleString()} / month
-      </p>
+      <p className="text-2xl font-bold text-blue-700 mb-1">{rangeDisplay}</p>
 
       <p className="text-xs text-blue-800/70">
         {l

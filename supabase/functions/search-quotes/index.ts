@@ -16,14 +16,25 @@ const ANTHROPIC_SYSTEM_PROMPT = `你是一个物业采购助手。
 使用 web_search 工具搜索温哥华（Vancouver, BC）本地
 提供指定服务的真实供应商公司。
 
+priceRange / priceWithTax 必须反映来源中的真实计费单位。
+不要默认按月报价；仅当来源明确为月度或周期性服务时才使用 /month。
+Do not assume monthly pricing unless the source explicitly describes a monthly or recurring service.
+
+priceRange 示例（按实际服务选用，不要照搬）：
+- CAD $2,000–$3,000 one-time
+- CAD $40–$70 / cubic yard
+- CAD $120–$180 / visit
+- CAD $1,500–$2,500 / month
+- CAD $12,000–$18,000 / year
+
 返回严格 JSON 格式（不要有其他文字）：
 {
   "vendors": [
     {
       "name": "公司名称",
       "matchReason": "服务匹配说明",
-      "priceRange": "参考报价（不含税，如 CAD $620-$730/month）",
-      "priceWithTax": "含税总价（如 CAD $670-$790/month，含 5% GST）",
+      "priceRange": "参考报价（不含税，含正确计费单位）",
+      "priceWithTax": "含税总价（含正确计费单位，含 5% GST 时注明）",
       "contact": "官网或电话",
       "advantage": "主要优势（1-2句）"
     }
@@ -238,26 +249,50 @@ function parsePricesFromRange(priceRange: string): { low: number | null; high: n
   return { low: null, high: null };
 }
 
-/** Infer billing period from priceRange text; defaults to month. Does not scale amounts. */
+/** Infer billing unit from price text; returns '' when unknown. Does not scale amounts. */
 function inferPriceUnitFromRange(priceRange: string): string {
-  let price_unit = "month";
-  if (!priceRange.trim()) return price_unit;
+  if (!priceRange.trim()) return "";
 
   const lower = priceRange.toLowerCase();
-  if (lower.includes("/year") || lower.includes("/ year") || lower.includes("per year")) {
-    price_unit = "year";
-  } else if (
-    lower.includes("/month") ||
-    lower.includes("/ month") ||
-    lower.includes("per month") ||
-    lower.includes("/mo")
+
+  if (
+    /cubic\s*yard|\/\s*cubic\s*yard|per\s+cubic\s*yard|yd³|yd3|\/\s*yard\b|per\s+yard\b/.test(
+      lower,
+    )
   ) {
-    price_unit = "month";
-  } else if (lower.includes("/visit") || lower.includes("per visit")) {
-    price_unit = "visit";
+    return "cubic yard";
+  }
+  if (
+    /\bone[-\s]?time\b|lump\s*sum|\/\s*project\b|per\s+project\b|\/\s*job\b|per\s+job\b/.test(
+      lower,
+    )
+  ) {
+    return "one-time";
+  }
+  if (/\/\s*year\b|per\s+year\b|\bannual\b|\byearly\b/.test(lower)) {
+    return "year";
+  }
+  if (
+    /\/\s*month\b|per\s+month\b|\bmonthly\b|\/\s*mo\b/.test(lower)
+  ) {
+    return "month";
+  }
+  if (/\/\s*visit\b|per\s+visit\b/.test(lower)) {
+    return "visit";
+  }
+  if (/\/\s*hour\b|per\s+hour\b|\bhourly\b/.test(lower)) {
+    return "hour";
+  }
+  if (/\/\s*day\b|per\s+day\b|\bdaily\b/.test(lower)) {
+    return "day";
+  }
+  if (
+    /\/\s*unit\b|per\s+unit\b|\/\s*each\b|per\s+item\b|per\s+each\b/.test(lower)
+  ) {
+    return "unit";
   }
 
-  return price_unit;
+  return "";
 }
 
 function splitContactField(contact: string): { phone: string; website: string; sourceUrl: string } {
@@ -298,14 +333,14 @@ function normalizeVendor(raw: unknown): VendorResult | null {
   );
 
   // Prefer explicit unit in priceRange; do not scale price_low/price_high (no ×12).
-  let priceUnit = "month";
-  if (priceRangeDisplay) {
-    priceUnit = inferPriceUnitFromRange(priceRangeDisplay);
-  } else if (priceWithTaxDisplay) {
-    priceUnit = inferPriceUnitFromRange(priceWithTaxDisplay);
-  } else {
+  let priceUnit = "";
+  const combinedForUnit = `${priceRangeDisplay} ${priceWithTaxDisplay}`.trim();
+  if (combinedForUnit) {
+    priceUnit = inferPriceUnitFromRange(combinedForUnit);
+  }
+  if (!priceUnit) {
     const fromApi = strField(o.price_unit);
-    if (fromApi) priceUnit = fromApi;
+    if (fromApi) priceUnit = inferPriceUnitFromRange(fromApi) || fromApi;
   }
 
   return {

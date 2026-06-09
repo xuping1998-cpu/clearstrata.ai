@@ -63,7 +63,8 @@ function formatVendorPriceRange(v: {
   if (v.price_low == null || v.price_high == null) return null;
   const cur = v.price_currency || 'CAD';
   const range = `${cur} $${Number(v.price_low).toLocaleString()} – $${Number(v.price_high).toLocaleString()}`;
-  return v.price_unit ? `${range} (${v.price_unit})` : range;
+  const unit = typeof v.price_unit === 'string' ? v.price_unit.trim() : '';
+  return unit ? `${range} (${unit})` : range;
 }
 
 export function VendorSearchPanel({
