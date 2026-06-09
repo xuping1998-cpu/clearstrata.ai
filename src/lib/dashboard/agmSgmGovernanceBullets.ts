@@ -10,12 +10,13 @@ import {
 } from '@/features/meetings/api';
 import { extractElectionAgendaMeta, isStrictAgmOrSgmMeeting } from '@/features/meetings/electionAgendaModel';
 import {
-  deriveAgmSgmCanonDisplayWindows,
-  deriveRemoteWrittenV3CanonFromScheduledAt,
+  ELECTION_FIXED_PHASE_DAYS,
+  REMOTE_WRITTEN_V3_PARTICIPATION_DAYS,
 } from '@/features/meetings/electionTimelineMath';
 import { isWrittenRemoteV3Meeting } from '@/features/meetings/meetingFormatModel';
 import { FORMAL_NOTICE_SNAPSHOT_TITLE_EN } from '@/features/meetings/meetingDocumentsRead';
 import { councilMeetingTitleForOwnerVoteBinding } from '@/features/meetings/ownerVotingCouncil';
+
 type MeetingsNavHref = '/voting' | '/meetings';
 
 /** AGM/SGM governance bullets outrank community announcements (max 80). */
@@ -23,14 +24,93 @@ export const AGM_SGM_NOTICE_PRIORITY = 110;
 export const AGM_SGM_VOTING_PRIORITY = 130;
 
 const RESULTS_DISCLOSURE_MS = 14 * 24 * 60 * 60 * 1000;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-type AgmSgmLifecyclePhase = 'discussion' | 'nomination' | 'voting' | 'results';
+type AgmSgmLifecyclePhase = 'notice_period' | 'discussion' | 'nomination' | 'voting' | 'results';
 
 function msIso(iso: string | null | undefined): number | null {
   const t = iso?.trim();
   if (!t) return null;
   const d = new Date(t).getTime();
   return Number.isNaN(d) ? null : d;
+}
+
+function addDaysMs(baseMs: number, days: number): number {
+  return baseMs + days * MS_PER_DAY;
+}
+
+/** Voting is officially open only when DB status is open and now is within [voting_opens_at, voting_closes_at). */
+function isOwnerVoteVotingOfficiallyOpen(
+  ovLite: OwnerVoteMeetingCardRow | undefined,
+  now: Date,
+): boolean {
+  const ovSt = ovLite?.status?.trim().toLowerCase() ?? '';
+  if (ovSt !== 'open') return false;
+  const openMs = msIso(ovLite?.voting_opens_at);
+  if (openMs === null || now.getTime() < openMs) return false;
+  const closeMs = msIso(ovLite?.voting_closes_at);
+  if (closeMs !== null && now.getTime() >= closeMs) return false;
+  return true;
+}
+
+function resolveVoteCloseMs(
+  ovLite: OwnerVoteMeetingCardRow | undefined,
+  voteOpenMs: number,
+  hasElectionAgenda: boolean,
+  isV3: boolean,
+): number {
+  const ovClose = msIso(ovLite?.voting_closes_at);
+  if (ovClose !== null) return ovClose;
+  if (isV3) return addDaysMs(voteOpenMs, REMOTE_WRITTEN_V3_PARTICIPATION_DAYS);
+  const flowDays = hasElectionAgenda
+    ? ELECTION_FIXED_PHASE_DAYS * 3
+    : ELECTION_FIXED_PHASE_DAYS * 2;
+  return addDaysMs(voteOpenMs, flowDays);
+}
+
+function deriveAgmSgmLifecyclePhase(
+  meeting: MeetingRow,
+  hasElectionAgenda: boolean,
+  ovLite: OwnerVoteMeetingCardRow | undefined,
+  now: Date,
+): AgmSgmLifecyclePhase | null {
+  const n = now.getTime();
+  const voteOpenMs = msIso(ovLite?.voting_opens_at);
+  const isV3 = isWrittenRemoteV3Meeting(meeting);
+
+  if (!isOwnerVoteVotingOfficiallyOpen(ovLite, now)) {
+    const ovCloseMs = msIso(ovLite?.voting_closes_at);
+    if (voteOpenMs !== null && ovCloseMs !== null && n >= ovCloseMs) {
+      return n < ovCloseMs + RESULTS_DISCLOSURE_MS ? 'results' : null;
+    }
+    if (voteOpenMs !== null && n >= voteOpenMs && ovCloseMs === null) {
+      const inferredClose = resolveVoteCloseMs(ovLite, voteOpenMs, hasElectionAgenda, isV3);
+      if (n >= inferredClose) {
+        return n < inferredClose + RESULTS_DISCLOSURE_MS ? 'results' : null;
+      }
+    }
+    return 'notice_period';
+  }
+
+  const flowStartMs = voteOpenMs!;
+  const voteCloseMs = resolveVoteCloseMs(ovLite, flowStartMs, hasElectionAgenda, isV3);
+
+  if (n >= voteCloseMs) {
+    return n < voteCloseMs + RESULTS_DISCLOSURE_MS ? 'results' : null;
+  }
+
+  if (isV3) {
+    return 'voting';
+  }
+
+  const discussionEnd = addDaysMs(flowStartMs, ELECTION_FIXED_PHASE_DAYS);
+  const nominationEnd = hasElectionAgenda
+    ? addDaysMs(flowStartMs, ELECTION_FIXED_PHASE_DAYS * 2)
+    : discussionEnd;
+
+  if (n < discussionEnd) return 'discussion';
+  if (hasElectionAgenda && n < nominationEnd) return 'nomination';
+  return 'voting';
 }
 
 function isFormalNoticeDocumentTitle(titleEn: string | null | undefined): boolean {
@@ -65,68 +145,13 @@ function countElectionAgendasByMeetingId(
   return byMeeting;
 }
 
-function deriveAgmSgmLifecyclePhase(
-  meeting: MeetingRow,
-  hasElectionAgenda: boolean,
-  ovLite: OwnerVoteMeetingCardRow | undefined,
-  now: Date,
-): AgmSgmLifecyclePhase | null {
-  const n = now.getTime();
-
-  if (isWrittenRemoteV3Meeting(meeting)) {
-    const v3 = deriveRemoteWrittenV3CanonFromScheduledAt(meeting.scheduled_at);
-    if (!v3) return null;
-    const open = msIso(v3.publicNoticeOpenIso);
-    const voteClose = msIso(v3.votingCloseIso);
-    if (open === null || voteClose === null) return null;
-    if (n >= voteClose) {
-      return n < voteClose + RESULTS_DISCLOSURE_MS ? 'results' : null;
-    }
-    if (n < open) return 'discussion';
-    const ovSt = ovLite?.status?.trim().toLowerCase() ?? '';
-    const ovClose = msIso(ovLite?.voting_closes_at);
-    if (ovSt === 'open' && (ovClose === null || n < ovClose)) return 'voting';
-    return 'discussion';
-  }
-
-  const disp = deriveAgmSgmCanonDisplayWindows(meeting.scheduled_at, hasElectionAgenda);
-  if (!disp) return null;
-
-  const noticeOpen = msIso(disp.publicNoticeOpenIso);
-  const noticeClose = msIso(disp.publicNoticeCloseIso);
-  const voteOpen = msIso(disp.votingOpenIso);
-  const voteClose = msIso(disp.votingCloseIso);
-  if (noticeOpen === null || noticeClose === null || voteOpen === null || voteClose === null) {
-    return null;
-  }
-
-  if (n >= voteClose) {
-    return n < voteClose + RESULTS_DISCLOSURE_MS ? 'results' : null;
-  }
-
-  const ovSt = ovLite?.status?.trim().toLowerCase() ?? '';
-  const ovClose = msIso(ovLite?.voting_closes_at);
-  const inCanonVote = n >= voteOpen && n < voteClose;
-  const inOvVote = ovSt === 'open' && (ovClose === null || n < ovClose);
-  if (inCanonVote || inOvVote) return 'voting';
-
-  if (hasElectionAgenda && disp.nominationOpenIso && disp.nominationCloseIso) {
-    const nomOpen = msIso(disp.nominationOpenIso);
-    const nomClose = msIso(disp.nominationCloseIso);
-    if (nomOpen !== null && nomClose !== null && n >= nomOpen && n < nomClose) {
-      return 'nomination';
-    }
-  }
-
-  if (n < noticeOpen) return 'discussion';
-  return 'discussion';
-}
-
 function buildAgmSgmBulletText(meeting: MeetingRow, phase: AgmSgmLifecyclePhase, langEn: boolean): string {
   const title = meetingTitleZhFirst(meeting) || (langEn ? 'General meeting' : '大会');
   switch (phase) {
+    case 'notice_period':
+      return langEn ? `${title} is in the notice period` : `${title} 正处于通知期`;
     case 'discussion':
-      return langEn ? `${title} — discussion period` : `${title} 正处于讨论期`;
+      return langEn ? `${title} — public notice period` : `${title} 正处于公示期`;
     case 'nomination':
       return langEn ? `${title} — nomination period` : `${title} 提名期进行中`;
     case 'voting':
@@ -215,7 +240,7 @@ export async function fetchAgmSgmGovernanceBullets(params: {
       actionUrl: meetingDetailUrl(propertyId, councilId, meetingsHref),
       source: 'agm_sgm',
       priority: isVoting ? AGM_SGM_VOTING_PRIORITY : AGM_SGM_NOTICE_PRIORITY,
-      createdAt: meeting.scheduled_at ?? meeting.created_at ?? undefined,
+      createdAt: ovLite?.voting_opens_at ?? meeting.scheduled_at ?? meeting.created_at ?? undefined,
     });
   }
 
