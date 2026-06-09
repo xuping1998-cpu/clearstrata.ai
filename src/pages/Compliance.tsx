@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, FileText, AlertTriangle, CheckCircle, X, Upload, Loader2, MessageCircle, Send, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, FileText, AlertTriangle, CheckCircle, X, Upload, Loader2, MessageCircle, Send, Trash2, ChevronDown, ChevronUp, Pencil, ExternalLink } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useProperty } from '../contexts/PropertyContext';
@@ -7,17 +7,27 @@ import { supabase } from '../lib/supabase';
 import { BackButton } from '../components/BackButton';
 import { ComplianceContractSummaryCard } from '../components/compliance/ComplianceContractSummaryCard';
 import {
+  ComplianceContractEditModal,
+  type ContractEditFormState,
+} from '../components/compliance/ComplianceContractEditModal';
+import {
   COMPLIANCE_CONTRACT_TYPE_OPTIONS,
   getContractTypeLabel,
   type ComplianceContractType,
 } from '../lib/compliance/complianceContractType';
 import {
   buildContractDescriptionZh,
+  CONTRACT_STATUS_BADGE_CLASS,
+  CONTRACT_STATUS_LABELS,
   CONTRACT_SUMMARY_FIELD_LABELS,
+  contractStatusToDocStatus,
   EMPTY_COMPLIANCE_CONTRACT_META,
   normalizeComplianceContractMeta,
   parseContractDescription,
+  resolveContractStatus,
+  suggestContractStatus,
   type ComplianceContractMeta,
+  type ComplianceContractStatus,
   type ContractSummaryFieldKey,
 } from '../lib/compliance/complianceContractMeta';
 
@@ -91,6 +101,8 @@ export function Compliance() {
     () => ({ ...EMPTY_COMPLIANCE_CONTRACT_META }),
   );
   const [showContractSummaryForm, setShowContractSummaryForm] = useState(false);
+  const [editingContractDoc, setEditingContractDoc] = useState<ComplianceDoc | null>(null);
+  const [savingContractEdit, setSavingContractEdit] = useState(false);
 
   const resetContractSummaryForm = () => {
     setContractSummary({ ...EMPTY_COMPLIANCE_CONTRACT_META });
@@ -365,17 +377,31 @@ export function Compliance() {
         }
       }
 
-      const descriptionZh =
-        newDoc.category === 'contracts'
-          ? buildContractDescriptionZh({
-              userDescription: newDoc.description_zh.trim() || null,
-              contractType: newDoc.contract_type || null,
-              meta: {
-                ...contractSummary,
-                contractType: newDoc.contract_type || contractSummary.contractType,
-              },
-            })
-          : newDoc.description_zh.trim() || null;
+      const isContractUpload = newDoc.category === 'contracts';
+      const contractMetaForUpload = isContractUpload
+        ? normalizeComplianceContractMeta({
+            ...contractSummary,
+            contractType: newDoc.contract_type || contractSummary.contractType,
+          })
+        : null;
+      const contractLedgerStatus = isContractUpload
+        ? suggestContractStatus(contractMetaForUpload ?? {})
+        : null;
+
+      const descriptionZh = isContractUpload
+        ? buildContractDescriptionZh({
+            userDescription: newDoc.description_zh.trim() || null,
+            contractType: newDoc.contract_type || null,
+            meta: {
+              ...contractMetaForUpload!,
+              status: contractLedgerStatus!,
+            },
+          })
+        : newDoc.description_zh.trim() || null;
+
+      const docStatus = isContractUpload && contractLedgerStatus
+        ? contractStatusToDocStatus(contractLedgerStatus)
+        : status;
 
       const { error: dbError } = await supabase
         .from('compliance_docs')
@@ -386,7 +412,7 @@ export function Compliance() {
           description_en: newDoc.description_en.trim() || null,
           description_zh: descriptionZh,
           expiry_date: expiryDate,
-          status,
+          status: docStatus,
           document_url: publicUrl,
           uploaded_by: profile.id,
         });
@@ -435,6 +461,61 @@ export function Compliance() {
     const found = DOC_CATEGORIES.find((c) => c.value === normalized);
     if (!found) return category;
     return l ? found.label.en : found.label.zh;
+  };
+
+  const handleSaveContractEdit = async (form: ContractEditFormState) => {
+    if (!editingContractDoc) return;
+
+    setSavingContractEdit(true);
+    try {
+      const meta = normalizeComplianceContractMeta({
+        ...form.summary,
+        contractType: form.contract_type || form.summary.contractType,
+        status: form.status,
+      });
+      const descriptionZh = buildContractDescriptionZh({
+        userDescription: form.description_zh.trim() || null,
+        contractType: form.contract_type || null,
+        meta,
+      });
+
+      const { error } = await supabase
+        .from('compliance_docs')
+        .update({
+          title_zh: form.title_zh.trim(),
+          title_en: form.title_en.trim() || null,
+          description_zh: descriptionZh,
+          description_en: form.description_en.trim() || null,
+          status: contractStatusToDocStatus(form.status),
+        })
+        .eq('id', editingContractDoc.id);
+
+      if (error) throw error;
+
+      setEditingContractDoc(null);
+      await loadDocs();
+    } catch (error) {
+      console.error('Error saving contract edit:', error);
+      alert(language === 'zh' ? '保存失败，请重试' : 'Failed to save changes. Please try again.');
+    } finally {
+      setSavingContractEdit(false);
+    }
+  };
+
+  const getContractStatusBadge = (
+    meta: ComplianceContractMeta | null,
+    contractType: string | null,
+  ): { status: ComplianceContractStatus; label: string; badgeClass: string } => {
+    const normalized = normalizeComplianceContractMeta({
+      ...(meta ?? {}),
+      contractType: meta?.contractType || contractType || '',
+    });
+    const status = resolveContractStatus(normalized);
+    return {
+      status,
+      label: l ? CONTRACT_STATUS_LABELS[status].en : CONTRACT_STATUS_LABELS[status].zh,
+      badgeClass: CONTRACT_STATUS_BADGE_CLASS[status],
+    };
   };
 
   const getStatusInfo = (doc: ComplianceDoc) => {
@@ -694,42 +775,95 @@ export function Compliance() {
               const visibleDescriptionZh = parsed.visibleText;
               const visibleDescriptionEn = doc.description_en;
               const isContractDoc = isContractDocCategory(doc.category);
+              const contractStatusBadge = isContractDoc
+                ? getContractStatusBadge(parsed.meta, parsed.contractType)
+                : null;
+              const displayTitle = language === 'zh'
+                ? (doc.title_zh || doc.title_en)
+                : (doc.title_en || doc.title_zh);
 
               return (
                 <div key={doc.id} className="bg-white rounded-xl p-6 shadow-sm border-l-4 border-[#1D9E75] hover:shadow-md transition-shadow relative">
-                  <button
-                    onClick={() => setDeleteConfirmId(doc.id)}
-                    className="absolute top-4 right-4 p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                    title={language === 'zh' ? '删除' : 'Delete'}
-                  >
-                    <Trash2 size={18} />
-                  </button>
+                  {isContractDoc ? (
+                    <div className="absolute top-4 right-4 flex items-center gap-1">
+                      {doc.document_url ? (
+                        <a
+                          href={doc.document_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2 py-1.5 text-sm text-[#1D9E75] hover:bg-emerald-50 rounded-lg transition-colors font-medium"
+                          title={language === 'zh' ? '查看文件' : 'View file'}
+                        >
+                          <ExternalLink size={16} />
+                          {language === 'zh' ? '查看文件' : 'View file'}
+                        </a>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => setEditingContractDoc(doc)}
+                        className="inline-flex items-center gap-1 px-2 py-1.5 text-sm text-gray-600 hover:text-[#1D9E75] hover:bg-emerald-50 rounded-lg transition-colors font-medium"
+                        title={language === 'zh' ? '编辑合同' : 'Edit contract'}
+                      >
+                        <Pencil size={16} />
+                        {language === 'zh' ? '编辑合同' : 'Edit'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteConfirmId(doc.id)}
+                        className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        title={language === 'zh' ? '删除' : 'Delete'}
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setDeleteConfirmId(doc.id)}
+                      className="absolute top-4 right-4 p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      title={language === 'zh' ? '删除' : 'Delete'}
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  )}
 
-                  <div className="flex items-start justify-between mb-3 pr-10">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <FileText className="text-[#1D9E75]" size={20} />
-                        <span className="text-xs font-semibold text-gray-500 uppercase">
-                          {getCategoryLabel(doc.category)}
-                        </span>
-                        {parsed.contractType ? (
-                          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-800">
-                            {getContractTypeLabel(parsed.contractType, l)}
+                  <div className={`flex items-start justify-between mb-3 ${isContractDoc ? 'pr-56' : 'pr-10'}`}>
+                    <div className="min-w-0 flex-1">
+                      {!isContractDoc ? (
+                        <div className="flex items-center gap-2">
+                          <FileText className="text-[#1D9E75]" size={20} />
+                          <span className="text-xs font-semibold text-gray-500 uppercase">
+                            {getCategoryLabel(doc.category)}
                           </span>
-                        ) : null}
-                      </div>
-                      <h3 className="text-lg font-bold text-gray-900 mt-2">
-                        {language === 'zh'
-                          ? (doc.title_zh || doc.title_en)
-                          : (doc.title_en || doc.title_zh)}
+                        </div>
+                      ) : null}
+                      <h3 className={`text-lg font-bold text-gray-900 ${isContractDoc ? '' : 'mt-2'}`}>
+                        {displayTitle}
                       </h3>
+                      {isContractDoc ? (
+                        <div className="flex flex-wrap items-center gap-2 mt-2">
+                          {parsed.contractType ? (
+                            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-800">
+                              {getContractTypeLabel(parsed.contractType, l)}
+                            </span>
+                          ) : null}
+                          {contractStatusBadge ? (
+                            <span
+                              className={`text-xs font-medium px-2 py-0.5 rounded-full ${contractStatusBadge.badgeClass}`}
+                            >
+                              {contractStatusBadge.label}
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
-                    <div className={`flex items-center gap-2 px-3 py-1 rounded-full ${statusInfo.bgColor} flex-shrink-0`}>
-                      <StatusIcon className={statusInfo.color} size={16} />
-                      <span className={`text-sm font-medium ${statusInfo.color}`}>
-                        {statusInfo.label}
-                      </span>
-                    </div>
+                    {!isContractDoc ? (
+                      <div className={`flex items-center gap-2 px-3 py-1 rounded-full ${statusInfo.bgColor} flex-shrink-0`}>
+                        <StatusIcon className={statusInfo.color} size={16} />
+                        <span className={`text-sm font-medium ${statusInfo.color}`}>
+                          {statusInfo.label}
+                        </span>
+                      </div>
+                    ) : null}
                   </div>
 
                   {isContractDoc ? (
@@ -750,24 +884,26 @@ export function Compliance() {
                     </p>
                   )}
 
-                  <div className="flex items-center gap-6 text-sm text-gray-500">
-                    {doc.expiry_date && (
-                      <span>
-                        {language === 'zh' ? '到期日期: ' : 'Expires: '}
-                        {new Date(doc.expiry_date).toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US')}
-                      </span>
-                    )}
-                    {doc.document_url && (
-                      <a
-                        href={doc.document_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[#1D9E75] hover:underline font-medium"
-                      >
-                        查看文件
-                      </a>
-                    )}
-                  </div>
+                  {!isContractDoc ? (
+                    <div className="flex items-center gap-6 text-sm text-gray-500">
+                      {doc.expiry_date && (
+                        <span>
+                          {language === 'zh' ? '到期日期: ' : 'Expires: '}
+                          {new Date(doc.expiry_date).toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US')}
+                        </span>
+                      )}
+                      {doc.document_url && (
+                        <a
+                          href={doc.document_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[#1D9E75] hover:underline font-medium"
+                        >
+                          {language === 'zh' ? '查看文件' : 'View file'}
+                        </a>
+                      )}
+                    </div>
+                  ) : null}
                 </div>
               );
             })}
@@ -1069,6 +1205,15 @@ export function Compliance() {
             </div>
           </div>
         )}
+
+        <ComplianceContractEditModal
+          open={editingContractDoc != null}
+          doc={editingContractDoc}
+          languageEn={l}
+          saving={savingContractEdit}
+          onClose={() => setEditingContractDoc(null)}
+          onSave={handleSaveContractEdit}
+        />
 
         {deleteConfirmId && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">

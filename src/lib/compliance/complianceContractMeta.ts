@@ -5,6 +5,8 @@ import {
   type ComplianceContractType,
 } from './complianceContractType';
 
+export type ComplianceContractStatus = 'active' | 'expiring' | 'terminated' | 'unknown';
+
 export type ComplianceContractMeta = {
   vendorName: string;
   contractType: string;
@@ -16,6 +18,8 @@ export type ComplianceContractMeta = {
   escalationClause: string;
   serviceScope: string;
   extraCharges: string;
+  /** Ledger status; stored in contract-meta JSON (no dedicated DB column). */
+  status?: string;
 };
 
 export const EMPTY_COMPLIANCE_CONTRACT_META: ComplianceContractMeta = {
@@ -38,10 +42,105 @@ function optStr(v: unknown): string {
   return String(v).trim();
 }
 
+const CONTRACT_STATUS_VALUES: ComplianceContractStatus[] = [
+  'active',
+  'expiring',
+  'terminated',
+  'unknown',
+];
+
+export function isComplianceContractStatus(v: string | null | undefined): v is ComplianceContractStatus {
+  return CONTRACT_STATUS_VALUES.includes(v as ComplianceContractStatus);
+}
+
+export const CONTRACT_STATUS_LABELS: Record<
+  ComplianceContractStatus,
+  { en: string; zh: string }
+> = {
+  active: { en: 'Active', zh: '有效' },
+  expiring: { en: 'Expiring', zh: '即将到期' },
+  terminated: { en: 'Terminated', zh: '已终止' },
+  unknown: { en: 'Pending review', zh: '待确认' },
+};
+
+export const CONTRACT_STATUS_BADGE_CLASS: Record<ComplianceContractStatus, string> = {
+  active: 'bg-emerald-50 text-emerald-800',
+  expiring: 'bg-amber-50 text-amber-900',
+  terminated: 'bg-red-50 text-red-800',
+  unknown: 'bg-slate-100 text-slate-700',
+};
+
+function parseDateOnlyLocal(iso: string): Date | null {
+  const t = iso.trim();
+  if (!t) return null;
+  const d = new Date(`${t}T12:00:00`);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function startOfLocalDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+export function isAutoRenewalEnabled(autoRenewal: string | null | undefined): boolean {
+  const s = optStr(autoRenewal).toLowerCase();
+  if (!s) return false;
+  return (
+    s === 'true' ||
+    s === 'yes' ||
+    s === 'y' ||
+    s === '1' ||
+    s.includes('auto') ||
+    s.includes('自动') ||
+    s === '是'
+  );
+}
+
+/** Auto-suggest ledger status from term dates and auto-renewal (Council may override). */
+export function suggestContractStatus(
+  meta: Partial<ComplianceContractMeta> | null | undefined,
+  refDate: Date = new Date(),
+): ComplianceContractStatus {
+  const end = optStr(meta?.endDate);
+  if (!end) return 'unknown';
+
+  const endD = parseDateOnlyLocal(end);
+  if (!endD) return 'unknown';
+
+  const today = startOfLocalDay(refDate);
+  const endDay = startOfLocalDay(endD);
+
+  if (today.getTime() > endDay.getTime()) {
+    if (isAutoRenewalEnabled(meta?.autoRenewal)) return 'unknown';
+    return 'terminated';
+  }
+
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const daysUntilEnd = Math.floor((endDay.getTime() - today.getTime()) / msPerDay);
+  if (daysUntilEnd <= 30) return 'expiring';
+  return 'active';
+}
+
+export function resolveContractStatus(
+  meta: Partial<ComplianceContractMeta> | null | undefined,
+  refDate: Date = new Date(),
+): ComplianceContractStatus {
+  const stored = optStr(meta?.status);
+  if (isComplianceContractStatus(stored)) return stored;
+  return suggestContractStatus(meta, refDate);
+}
+
+/** Map ledger status to compliance_docs.status for existing list stats. */
+export function contractStatusToDocStatus(status: ComplianceContractStatus): string {
+  if (status === 'terminated') return 'expired';
+  if (status === 'expiring') return 'expiring';
+  return 'valid';
+}
+
 export function normalizeComplianceContractMeta(
   partial?: Partial<ComplianceContractMeta> | null,
 ): ComplianceContractMeta {
   const p = partial ?? {};
+  const statusRaw = optStr(p.status);
   return {
     vendorName: optStr(p.vendorName),
     contractType: optStr(p.contractType),
@@ -53,11 +152,20 @@ export function normalizeComplianceContractMeta(
     escalationClause: optStr(p.escalationClause),
     serviceScope: optStr(p.serviceScope),
     extraCharges: optStr(p.extraCharges),
+    status: isComplianceContractStatus(statusRaw) ? statusRaw : '',
   };
 }
 
 export function hasComplianceContractMetaContent(meta: ComplianceContractMeta): boolean {
-  return Object.values(meta).some((v) => String(v).trim() !== '');
+  if (isComplianceContractStatus(optStr(meta.status))) return true;
+  const { status: _status, ...fields } = meta;
+  return Object.values(fields).some((v) => String(v).trim() !== '');
+}
+
+/** Summary card empty state — ledger status alone does not count as filled summary. */
+export function hasComplianceContractSummaryContent(meta: ComplianceContractMeta): boolean {
+  const { status: _status, ...fields } = meta;
+  return Object.values(fields).some((v) => String(v).trim() !== '');
 }
 
 export function extractContractMetaFromDescription(
@@ -144,7 +252,7 @@ export function parseContractDescription(description: string | null | undefined)
   };
 }
 
-export type ContractSummaryFieldKey = keyof ComplianceContractMeta;
+export type ContractSummaryFieldKey = Exclude<keyof ComplianceContractMeta, 'status'>;
 
 export const CONTRACT_SUMMARY_FIELD_LABELS: Record<
   ContractSummaryFieldKey,

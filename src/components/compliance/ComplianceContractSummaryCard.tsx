@@ -1,6 +1,6 @@
 import {
   CONTRACT_SUMMARY_FIELD_LABELS,
-  hasComplianceContractMetaContent,
+  hasComplianceContractSummaryContent,
   normalizeComplianceContractMeta,
   type ComplianceContractMeta,
   type ContractSummaryFieldKey,
@@ -39,7 +39,7 @@ export function ComplianceContractSummaryCard(props: {
 }) {
   const { meta, languageEn: l } = props;
   const normalized = normalizeComplianceContractMeta(meta);
-  const hasContent = hasComplianceContractMetaContent(normalized);
+  const hasContent = hasComplianceContractSummaryContent(normalized);
 
   const rows = DISPLAY_FIELD_ORDER.map((key) => {
     const value = resolveFieldValue(key, normalized, l);
