@@ -14,13 +14,14 @@ import { getTrialDaysRemaining, getTrialState } from '@/lib/subscription';
 import { realPropertyJoinPath } from '@/lib/propertyEntryRoutes';
 import { samePropertyId } from '@/lib/propertyIdMatch';
 import { meetingsNavHref } from '@/lib/meetingPermissions';
+import { useImportantUpdatesBullets } from '@/hooks/useImportantUpdatesBullets';
 
 export function Dashboard() {
   const { language } = useLanguage();
   const en = language === 'en';
   const navigate = useNavigate();
   const location = useLocation();
-  const { session } = useAuth();
+  const { session, user } = useAuth();
   const {
     isGuest,
     isDemoMode,
@@ -34,6 +35,13 @@ export function Dashboard() {
 
   const [trialRow, setTrialRow] = useState<{ subscription_status?: string | null; trial_ends_at?: string | null } | null>(null);
   const [trialLoading, setTrialLoading] = useState(false);
+
+  const { bullets: importantUpdatesBullets } = useImportantUpdatesBullets({
+    propertyId: currentPropertyId,
+    userId: user?.id,
+    propertyReady,
+    langEn: en,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -205,7 +213,7 @@ export function Dashboard() {
           </div>
         </div>
       </div>
-      <ImportantUpdatesDashboardCard langEn={en} />
+      <ImportantUpdatesDashboardCard langEn={en} bullets={importantUpdatesBullets} />
       <QuickAccessDashboardCard langEn={en} meetingsHref={meetingsNavHref(roleInProperty)} />
       <HomeServicesDashboardCard langEn={en} />
       {(() => {

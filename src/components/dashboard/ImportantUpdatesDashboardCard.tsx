@@ -13,6 +13,9 @@ export type ImportantUpdatesBullet = {
   kind?: ImportantUpdateKind;
   /** 立即查看跳转；缺省走公告 tab */
   actionUrl?: string;
+  source?: 'vote' | 'announcement';
+  createdAt?: string;
+  priority?: number;
 };
 
 export type ImportantUpdatesDashboardCardProps = {
@@ -145,7 +148,7 @@ export function ImportantUpdatesDashboardCard({ langEn, bullets }: ImportantUpda
   const noticeGroupTitle = langEn ? 'Latest notices' : '最新通知';
   const expandLabel = langEn ? (expanded ? 'Collapse updates' : 'Expand updates') : expanded ? '收起' : '展開';
 
-  const list = bullets ?? (langEn ? FALLBACK_EN : FALLBACK_ZH);
+  const list = Array.isArray(bullets) ? bullets : langEn ? FALLBACK_EN : FALLBACK_ZH;
   const { actions, notices } = useMemo(() => splitByKind(list), [list]);
 
   const previewItem = actions[0] ?? notices[0] ?? null;
