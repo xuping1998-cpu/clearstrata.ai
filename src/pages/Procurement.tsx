@@ -10,6 +10,7 @@ import {
   InspectionModal, ManagerListModal, AddManagerModal, RatingModal,
 } from './procurement/ProcurementModals';
 import { AiPricingPanel, getTrafficLight, TrafficLightBadge } from './procurement/AiPricingPanel';
+import { QuoteInterpretationPanel } from './procurement/QuoteInterpretationPanel';
 import { computeMarketBenchmark, fetchVendorSearchResults } from '../lib/procurement/vendorMarketBenchmark';
 import { VendorSearchPanel } from './procurement/VendorSearchPanel';
 import { getCategoryLabel } from './procurement/VendorRegistry';
@@ -53,6 +54,7 @@ interface ProcurementJob {
   ai_estimate_high?: number;
   ai_estimate_reasoning?: string;
   ai_material_calc?: string;
+  parsed_quote_json?: Record<string, unknown> | null;
   authorization_type?: string | null;
   quotes?: ProcurementQuote[];
   manager?: { full_name_en: string; full_name_zh: string };
@@ -560,6 +562,8 @@ function JobCard({
 
       {job.status === 'collecting_quotes' && (
         <div className="px-6 pb-4">
+          <QuoteInterpretationPanel parsedQuoteJson={job.parsed_quote_json} language={language} />
+
           <AiPricingPanel jobId={job.id} propertyId={propertyId} language={language} />
 
           <VendorSearchPanel

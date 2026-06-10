@@ -4,6 +4,10 @@ import {
   analyzeProcurementQuoteFromFile,
   type ProcurementQuoteAnalysis,
 } from './analyzeProcurementQuotePdf';
+import {
+  parseProcurementQuoteAttachment,
+  type ParsedProcurementQuote,
+} from './parseProcurementQuoteAttachment';
 import { callSearchQuotes, type SearchQuotesVendor } from './callSearchQuotes';
 import { saveVendorSearchResults } from './saveVendorSearchResults';
 import {
@@ -12,6 +16,39 @@ import {
 } from './authorizationType';
 
 export type { ProcurementQuoteAnalysis };
+export type { ParsedProcurementQuote };
+
+/**
+ * Bundled quote understanding for a single attachment.
+ * - `analysis`: thin analyze-procurement-quote result (category/description/currentPrice) — always present, used as fallback.
+ * - `parsedQuote`: rich invoice-ocr structured quote (vendor / amount / scope / line_items) — null when OCR fails.
+ */
+export type ProcurementQuoteInterpretation = {
+  analysis: ProcurementQuoteAnalysis;
+  parsedQuote: ParsedProcurementQuote | null;
+};
+
+/**
+ * Build procurement_jobs.parsed_quote_json.
+ * Prefers the rich invoice-ocr parse; falls back to the thin analyze-procurement-quote result.
+ * Never throws.
+ */
+export function buildParsedQuoteJson(
+  analysis: ProcurementQuoteAnalysis,
+  parsedQuote: ParsedProcurementQuote | null | undefined,
+): Record<string, unknown> {
+  if (parsedQuote) {
+    return {
+      analysis_source: 'invoice-ocr',
+      ...parsedQuote,
+      // Keep the thin analysis fields as supplementary context (category labelling, price hint).
+      category: analysis.category || '',
+      analysis_description: analysis.description || '',
+      currentPrice: analysis.currentPrice || '',
+    };
+  }
+  return { analysis_source: 'analyze-procurement-quote', ...analysis };
+}
 
 const VENDOR_SEARCH_WAIT_MS = 15_000;
 const INFLIGHT_SEARCH_KEY_PREFIX = 'vendor_search_inflight_';
@@ -83,11 +120,43 @@ export async function analyzeQuoteAttachment(
   return analyzeProcurementQuoteFromFile(file);
 }
 
+/**
+ * Fetch the attachment once, then run BOTH the thin analyze-procurement-quote
+ * (required, drives job fields) and the rich invoice-ocr parse (best-effort,
+ * drives parsed_quote_json / quote_context).
+ *
+ * If the rich OCR fails, `parsedQuote` is null and the flow continues on the
+ * thin analysis — OCR failure must never block job creation.
+ */
+export async function interpretQuoteAttachment(
+  attachmentUrl: string,
+  attachmentName: string,
+  langEn: boolean,
+): Promise<ProcurementQuoteInterpretation> {
+  const file = await fetchUrlAsInvoiceFile(attachmentUrl, attachmentName || 'quote.pdf');
+  const analysis = await analyzeProcurementQuoteFromFile(file);
+
+  let parsedQuote: ParsedProcurementQuote | null = null;
+  try {
+    parsedQuote = await parseProcurementQuoteAttachment(file, langEn);
+  } catch (err) {
+    console.warn('PROCUREMENT_QUOTE_OCR_PARSE_FAILED', {
+      attachmentUrl,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    parsedQuote = null;
+  }
+
+  return { analysis, parsedQuote };
+}
+
 export type CreateProcurementJobParams = {
   propertyId: string;
   profileId: string;
   attachmentUrl: string;
   analysis: ProcurementQuoteAnalysis;
+  /** Rich invoice-ocr parse; when present it is stored in parsed_quote_json. */
+  parsedQuote?: ParsedProcurementQuote | null;
   linkedTaskId: string;
   priority: string;
   unitNumber: string;
@@ -125,10 +194,7 @@ export async function createProcurementJobFromAnalysis(
       unit_number: params.unitNumber,
       task_id: params.linkedTaskId.trim() || null,
       authorization_type: authorizationType,
-      parsed_quote_json: {
-        analysis_source: 'analyze-procurement-quote',
-        ...params.analysis,
-      },
+      parsed_quote_json: buildParsedQuoteJson(params.analysis, params.parsedQuote),
     })
     .select()
     .single();

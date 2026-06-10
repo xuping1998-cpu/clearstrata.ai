@@ -11,15 +11,17 @@ import {
 import { InvoiceUpload } from '../../components/InvoiceUpload';
 import { VendorRating } from '../../components/VendorRating';
 import type { ProcurementQuoteAnalysis } from '../../lib/procurement/analyzeProcurementQuotePdf';
+import type { ParsedProcurementQuote } from '../../lib/procurement/parseProcurementQuoteAttachment';
 import { callSearchQuotes } from '../../lib/procurement/callSearchQuotes';
 import {
   formatVendorPriceExclGst,
   formatVendorPriceInclGst,
 } from '../../lib/procurement/formatVendorPriceDisplay';
 import {
-  analyzeQuoteAttachment,
   applyAnalysisToJobFields,
+  buildParsedQuoteJson,
   createProcurementJobFromAnalysis,
+  interpretQuoteAttachment,
   searchAndSaveVendorsForJob,
   waitForVendorSearchWithTimeout,
 } from '../../lib/procurement/newJobPdfAutoFlow';
@@ -153,6 +155,7 @@ export function NewJobModal({
   const [requestAttachmentNames, setRequestAttachmentNames] = useState<string[]>([]);
   const [step, setStep] = useState<'form' | 'analyzing' | 'searching' | 'select_vendors' | 'sending'>('form');
   const [pdfAnalysis, setPdfAnalysis] = useState<ProcurementQuoteAnalysis | null>(null);
+  const [pdfParsedQuote, setPdfParsedQuote] = useState<ParsedProcurementQuote | null>(null);
   const pipelineUrlRef = useRef<string | null>(null);
   const [searchedVendors, setSearchedVendors] = useState<SearchedVendor[]>([]);
   const [selectedVendorIdxs, setSelectedVendorIdxs] = useState<Set<number>>(new Set());
@@ -243,8 +246,13 @@ export function NewJobModal({
     setError('');
     setStep('analyzing');
     try {
-      const analysis = await analyzeQuoteAttachment(attachmentUrl, attachmentName);
+      const { analysis, parsedQuote } = await interpretQuoteAttachment(
+        attachmentUrl,
+        attachmentName,
+        l,
+      );
       setPdfAnalysis(analysis);
+      setPdfParsedQuote(parsedQuote);
       setNewJob((prev) => ({ ...prev, ...applyAnalysisToJobFields(analysis) }));
 
       const { jobId } = await createProcurementJobFromAnalysis({
@@ -252,6 +260,7 @@ export function NewJobModal({
         profileId: profile.id,
         attachmentUrl,
         analysis,
+        parsedQuote,
         linkedTaskId,
         priority: newJob.priority,
         unitNumber: newJob.unit_number,
@@ -362,7 +371,7 @@ export function NewJobModal({
         task_id: linkedTaskId.trim() || null,
         authorization_type: authorizationType,
         parsed_quote_json: pdfAnalysis
-          ? ({ analysis_source: 'analyze-procurement-quote', ...pdfAnalysis } as Record<string, unknown>)
+          ? buildParsedQuoteJson(pdfAnalysis, pdfParsedQuote)
           : undefined,
       }).select().single();
 
