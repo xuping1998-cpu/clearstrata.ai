@@ -156,6 +156,7 @@ export function NewJobModal({
   const [step, setStep] = useState<'form' | 'analyzing' | 'searching' | 'select_vendors' | 'sending'>('form');
   const [pdfAnalysis, setPdfAnalysis] = useState<ProcurementQuoteAnalysis | null>(null);
   const [pdfParsedQuote, setPdfParsedQuote] = useState<ParsedProcurementQuote | null>(null);
+  const [pdfOcrError, setPdfOcrError] = useState<string | null>(null);
   const pipelineUrlRef = useRef<string | null>(null);
   const [searchedVendors, setSearchedVendors] = useState<SearchedVendor[]>([]);
   const [selectedVendorIdxs, setSelectedVendorIdxs] = useState<Set<number>>(new Set());
@@ -246,13 +247,14 @@ export function NewJobModal({
     setError('');
     setStep('analyzing');
     try {
-      const { analysis, parsedQuote } = await interpretQuoteAttachment(
+      const { analysis, parsedQuote, ocrErrorMessage } = await interpretQuoteAttachment(
         attachmentUrl,
         attachmentName,
         l,
       );
       setPdfAnalysis(analysis);
       setPdfParsedQuote(parsedQuote);
+      setPdfOcrError(ocrErrorMessage ?? null);
       setNewJob((prev) => ({ ...prev, ...applyAnalysisToJobFields(analysis) }));
 
       const { jobId } = await createProcurementJobFromAnalysis({
@@ -261,6 +263,8 @@ export function NewJobModal({
         attachmentUrl,
         analysis,
         parsedQuote,
+        attachmentName,
+        ocrErrorMessage,
         linkedTaskId,
         priority: newJob.priority,
         unitNumber: newJob.unit_number,
@@ -372,7 +376,12 @@ export function NewJobModal({
         task_id: linkedTaskId.trim() || null,
         authorization_type: authorizationType,
         parsed_quote_json: pdfAnalysis
-          ? buildParsedQuoteJson(pdfAnalysis, pdfParsedQuote)
+          ? buildParsedQuoteJson(pdfAnalysis, pdfParsedQuote, {
+              title: finalTitleEn,
+              description: finalDescriptionEn || finalDescriptionZh,
+              fileName: requestAttachmentNames[0] ?? null,
+              ocrErrorMessage: pdfOcrError,
+            })
           : undefined,
       }).select().single();
 

@@ -27,16 +27,118 @@ export type { ParsedProcurementQuote };
 export type ProcurementQuoteInterpretation = {
   analysis: ProcurementQuoteAnalysis;
   parsedQuote: ParsedProcurementQuote | null;
+  /** Short, sanitized reason the rich invoice-ocr parse failed (no stack / tokens). */
+  ocrErrorMessage?: string;
 };
+
+/** Extra context used to enrich parsed_quote_json when rich OCR is unavailable. */
+export type ParsedQuoteFallbackMeta = {
+  title?: string | null;
+  description?: string | null;
+  fileName?: string | null;
+  ocrErrorMessage?: string | null;
+};
+
+/** Company-name suffix/keyword tokens used to spot a vendor in free text (uppercase names). */
+const VENDOR_SUFFIX_KEYWORDS = [
+  'INC',
+  'LTD',
+  'LIMITED',
+  'CORP',
+  'CORPORATION',
+  'MECHANICAL',
+  'PLUMBING',
+  'HEATING',
+  'ELECTRIC',
+  'ELECTRICAL',
+  'CONSTRUCTION',
+  'CONTRACTING',
+  'SERVICES',
+  'ENTERPRISES',
+];
+
+const VENDOR_COMPANY_RE = new RegExp(
+  `[A-Z][A-Z0-9&.,'’\\- ]*\\b(?:${VENDOR_SUFFIX_KEYWORDS.join('|')})\\b\\.?`,
+);
+
+const QUOTE_LABEL_RE =
+  /^(?:supplier\s+quote|vendor\s+quote|quote|供应商报价|报价单|报价)\s*[-–—:：]\s*/i;
+
+function tidyVendor(value: string): string {
+  return value.replace(/\s+/g, ' ').replace(/[\s,;:–\-]+$/g, '').trim();
+}
+
+/** Strip file extension, trailing price, and a leading "Quote -" style label. */
+function cleanVendorCandidate(raw: string): string {
+  let s = raw.trim();
+  s = s.replace(/\.(pdf|png|jpe?g|webp|heic|docx?)$/i, '');
+  s = s.replace(/\s*[-–—|]\s*\$?\s*[\d,]+(?:\.\d+)?.*$/, '').trim();
+  s = s.replace(QUOTE_LABEL_RE, '').trim();
+  return s;
+}
+
+function extractVendorFromText(text: string, hadLabel: boolean): string | null {
+  const t = text.trim();
+  if (!t) return null;
+  const match = t.match(VENDOR_COMPANY_RE);
+  if (match) return tidyVendor(match[0]);
+  // Explicit "Quote - X" remainder that is uppercase-dominant and short → treat as vendor.
+  if (hadLabel && /[A-Z]{2,}/.test(t) && t.length <= 80) return tidyVendor(t);
+  return null;
+}
+
+/**
+ * Best-effort vendor name from non-OCR sources (file name, title, description).
+ * Returns null when nothing plausible is found — never fabricates a vendor.
+ */
+export function extractVendorFromFallbackSources(opts: {
+  title?: string | null;
+  description?: string | null;
+  fileName?: string | null;
+  analysis?: ProcurementQuoteAnalysis | null;
+}): string | null {
+  const sources: string[] = [];
+  if (opts.fileName) sources.push(opts.fileName);
+  if (opts.title) sources.push(opts.title);
+  if (opts.description) sources.push(opts.description);
+  if (opts.analysis?.description) sources.push(opts.analysis.description);
+
+  for (const src of sources) {
+    if (!src) continue;
+    const hadLabel = QUOTE_LABEL_RE.test(src.trim());
+    const cleaned = cleanVendorCandidate(src);
+    const vendor = extractVendorFromText(cleaned, hadLabel);
+    if (vendor) return vendor;
+  }
+  return null;
+}
+
+/** Infer a coarse pricing basis from free text. Never defaults to monthly. */
+export function inferFallbackPricingBasis(text: string): string | null {
+  const t = (text || '').toLowerCase();
+  if (!t) return null;
+  if (/\b(monthly|per month|recurring|contract)\b/.test(t)) return 'monthly';
+  // Yearly mentions are not one-time; leave basis unknown rather than mislabel.
+  if (/\b(yearly|annual|annually|per year|per annum)\b/.test(t)) return null;
+  if (
+    /\b(installation|install|replacement|replace|supply and install|project|quoted amount|current quote)\b/.test(
+      t,
+    )
+  ) {
+    return 'one-time';
+  }
+  return null;
+}
 
 /**
  * Build procurement_jobs.parsed_quote_json.
- * Prefers the rich invoice-ocr parse; falls back to the thin analyze-procurement-quote result.
- * Never throws.
+ * Prefers the rich invoice-ocr parse; falls back to the thin analyze-procurement-quote
+ * result enriched with vendor / pricing-basis / scope / line-item hints. Never throws.
  */
 export function buildParsedQuoteJson(
   analysis: ProcurementQuoteAnalysis,
   parsedQuote: ParsedProcurementQuote | null | undefined,
+  fallbackMeta?: ParsedQuoteFallbackMeta,
 ): Record<string, unknown> {
   if (parsedQuote) {
     return {
@@ -48,7 +150,42 @@ export function buildParsedQuoteJson(
       currentPrice: analysis.currentPrice || '',
     };
   }
-  return { analysis_source: 'analyze-procurement-quote', ...analysis };
+
+  // Thin path: rich OCR did not produce structured data — enrich from available text.
+  const out: Record<string, unknown> = {
+    analysis_source: 'analyze-procurement-quote',
+    ocr_failed: true,
+    ...analysis,
+  };
+
+  const ocrErrorMessage = fallbackMeta?.ocrErrorMessage?.trim();
+  if (ocrErrorMessage) out.ocr_error_message = ocrErrorMessage;
+
+  const vendor = extractVendorFromFallbackSources({
+    title: fallbackMeta?.title,
+    description: fallbackMeta?.description,
+    fileName: fallbackMeta?.fileName,
+    analysis,
+  });
+  if (vendor) out.vendor_name = vendor;
+
+  const pricingBasis = inferFallbackPricingBasis(
+    [fallbackMeta?.title, analysis.description, fallbackMeta?.description]
+      .filter(Boolean)
+      .join(' '),
+  );
+  if (pricingBasis) out.pricing_basis = pricingBasis;
+
+  const serviceScope = (analysis.description || fallbackMeta?.description || '').trim();
+  if (serviceScope) {
+    out.service_scope = serviceScope;
+    // Only synthesize a line item when the scope is specific enough to be useful.
+    if (serviceScope.length >= 12) {
+      out.line_items = [{ description: serviceScope, amount: null }];
+    }
+  }
+
+  return out;
 }
 
 const VENDOR_SEARCH_WAIT_MS = 15_000;
@@ -138,9 +275,11 @@ export async function interpretQuoteAttachment(
   const analysis = await analyzeProcurementQuoteFromFile(file);
 
   let parsedQuote: ParsedProcurementQuote | null = null;
+  let ocrErrorMessage: string | undefined;
   try {
     parsedQuote = await parseProcurementQuoteAttachment(file, langEn);
   } catch (err) {
+    ocrErrorMessage = sanitizeOcrError(err);
     console.warn('PROCUREMENT_QUOTE_OCR_PARSE_FAILED', {
       attachmentUrl,
       error: err instanceof Error ? err.message : String(err),
@@ -148,7 +287,19 @@ export async function interpretQuoteAttachment(
     parsedQuote = null;
   }
 
-  return { analysis, parsedQuote };
+  return { analysis, parsedQuote, ocrErrorMessage };
+}
+
+/** Short, DB-safe OCR failure reason: name + message, tokens redacted, no stack trace. */
+function sanitizeOcrError(err: unknown): string {
+  const name = err instanceof Error ? err.name || 'Error' : 'Error';
+  const rawMsg = err instanceof Error ? err.message : String(err);
+  const msg = (rawMsg || '')
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [redacted]')
+    .replace(/eyJ[A-Za-z0-9._-]{10,}/g, '[redacted]')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return `${name}: ${msg}`.slice(0, 300);
 }
 
 export type CreateProcurementJobParams = {
@@ -158,6 +309,10 @@ export type CreateProcurementJobParams = {
   analysis: ProcurementQuoteAnalysis;
   /** Rich invoice-ocr parse; when present it is stored in parsed_quote_json. */
   parsedQuote?: ParsedProcurementQuote | null;
+  /** Original uploaded file name; primary source for fallback vendor extraction. */
+  attachmentName?: string | null;
+  /** Sanitized OCR failure reason from interpretQuoteAttachment. */
+  ocrErrorMessage?: string | null;
   linkedTaskId: string;
   priority: string;
   unitNumber: string;
@@ -195,7 +350,12 @@ export async function createProcurementJobFromAnalysis(
       unit_number: params.unitNumber,
       task_id: params.linkedTaskId.trim() || null,
       authorization_type: authorizationType,
-      parsed_quote_json: buildParsedQuoteJson(params.analysis, params.parsedQuote),
+      parsed_quote_json: buildParsedQuoteJson(params.analysis, params.parsedQuote, {
+        title: fields.title_en,
+        description: params.analysis.description,
+        fileName: params.attachmentName ?? null,
+        ocrErrorMessage: params.ocrErrorMessage ?? null,
+      }),
     })
     .select()
     .single();
