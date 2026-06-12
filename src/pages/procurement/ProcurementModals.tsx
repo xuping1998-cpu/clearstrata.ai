@@ -151,13 +151,15 @@ export function NewJobModal({
   const { currentPropertyId } = useProperty();
   const l = language === 'en';
   const [error, setError] = useState('');
-  const [requestPhotos, setRequestPhotos] = useState<string[]>([]);
-  const [requestAttachmentNames, setRequestAttachmentNames] = useState<string[]>([]);
+  /** Quote package stage — accumulated attachments only; no OCR/search until button click. */
+  const [pendingAttachments, setPendingAttachments] = useState<AttachmentItem[]>([]);
   const [step, setStep] = useState<'form' | 'analyzing' | 'searching' | 'select_vendors' | 'sending'>('form');
   const [pdfAnalysis, setPdfAnalysis] = useState<ProcurementQuoteAnalysis | null>(null);
   const [pdfParsedQuote, setPdfParsedQuote] = useState<ParsedProcurementQuote | null>(null);
   const [pdfOcrError, setPdfOcrError] = useState<string | null>(null);
   const pipelineUrlRef = useRef<string | null>(null);
+  /** Set true only by the explicit「开始解读报价」button — blocks any stray auto-start. */
+  const interpretationRequestedRef = useRef(false);
   const [searchedVendors, setSearchedVendors] = useState<SearchedVendor[]>([]);
   const [selectedVendorIdxs, setSelectedVendorIdxs] = useState<Set<number>>(new Set());
   const [createdJobId, setCreatedJobId] = useState<string | null>(null);
@@ -227,11 +229,8 @@ export function NewJobModal({
   }, [currentPropertyId]);
 
   const handleQuoteAttachmentsChange = (items: AttachmentItem[]) => {
-    // Quote Package stage: only accumulate the pending attachments.
-    // OCR / job creation / search must NOT auto-trigger on upload — they run
-    // only when the user clicks "Start quote interpretation".
-    setRequestPhotos(items.map((a) => a.url));
-    setRequestAttachmentNames(items.map((a) => a.name));
+    // Quote Package stage: only accumulate pending attachments — never OCR / search / create job.
+    setPendingAttachments(items);
   };
 
   const finishPdfFlowAndOpenJob = (jobId: string) => {
@@ -240,6 +239,13 @@ export function NewJobModal({
   };
 
   const startPdfAutoFlow = async (attachmentUrls: string[], attachmentNames: string[]) => {
+    if (!interpretationRequestedRef.current) {
+      console.warn('QUOTE_PACKAGE_AUTO_START_BLOCKED', {
+        reason: 'interpretation not requested via button',
+        attachmentCount: attachmentUrls.length,
+      });
+      return;
+    }
     if (!profile || !currentPropertyId) return;
     const primaryUrl = attachmentUrls[0];
     if (!primaryUrl) return;
@@ -302,17 +308,26 @@ export function NewJobModal({
     }
   };
 
+  const handleStartQuoteInterpretation = () => {
+    interpretationRequestedRef.current = true;
+    void createJobAndSearch().finally(() => {
+      interpretationRequestedRef.current = false;
+    });
+  };
+
   const createJobAndSearch = async () => {
+    const attachmentUrls = pendingAttachments.map((a) => a.url);
+    const attachmentNames = pendingAttachments.map((a) => a.name);
     console.log('NEW_JOB_SUBMIT_CLICKED', {
       jobType: newJob.job_type,
-      requestPhotosCount: requestPhotos.length,
+      pendingAttachmentCount: pendingAttachments.length,
       hasTitle: Boolean(newJob.title_en?.trim() || newJob.title_zh?.trim()),
     });
     if (!profile || !currentPropertyId) return;
     setError('');
 
     const hasTitle = Boolean(newJob.title_en?.trim() || newJob.title_zh?.trim());
-    const hasAttachments = requestPhotos.length > 0;
+    const hasAttachments = attachmentUrls.length > 0;
 
     if (newJob.job_type === 'procurement') {
       if (!hasTitle && !hasAttachments) {
@@ -340,20 +355,20 @@ export function NewJobModal({
       return;
     }
 
-    if (isProcurement && hasAttachments && requestPhotos[0]) {
-      if (createdJobId && pipelineUrlRef.current === requestPhotos[0]) {
+    if (isProcurement && hasAttachments && attachmentUrls[0]) {
+      if (createdJobId && pipelineUrlRef.current === attachmentUrls[0]) {
         finishPdfFlowAndOpenJob(createdJobId);
         return;
       }
-      // Interpret the FULL quote package (one job, all attachments) on click.
-      await startPdfAutoFlow(requestPhotos, requestAttachmentNames);
+      // Interpret the FULL quote package (one job, all attachments) on button click only.
+      await startPdfAutoFlow(attachmentUrls, attachmentNames);
       return;
     }
 
     const { titleEn: finalTitleEn, titleZh: finalTitleZh } = resolveProcurementSubmitTitles(
       newJob.title_en,
       newJob.title_zh,
-      requestAttachmentNames[0] ?? null,
+      attachmentNames[0] ?? null,
       l,
     );
 
@@ -388,7 +403,7 @@ export function NewJobModal({
               {
                 title: finalTitleEn,
                 description: finalDescriptionEn || finalDescriptionZh,
-                fileName: requestAttachmentNames[0] ?? null,
+                fileName: attachmentNames[0] ?? null,
                 ocrErrorMessage: pdfOcrError,
               },
               newJob.estimated_budget ? parseFloat(newJob.estimated_budget) : null,
@@ -413,7 +428,7 @@ export function NewJobModal({
           job_id: data.id,
           title: finalTitleZh || finalTitleEn,
           description: finalDescriptionZh || finalDescriptionEn,
-          attachment_urls: hasAttachments ? requestPhotos : undefined,
+          attachment_urls: hasAttachments ? attachmentUrls : undefined,
         });
         if (result.success && result.vendors) {
           setSearchedVendors(result.vendors);
@@ -838,21 +853,21 @@ export function NewJobModal({
             <PhotoUpload
               variant="quote_attachments"
               photoType="request"
-              onPhotosUploaded={(urls) => setRequestPhotos(urls)}
+              autoProcess={false}
               onQuoteAttachmentsChange={handleQuoteAttachmentsChange}
               maxPhotos={MAX_QUOTE_ATTACHMENTS}
             />
 
-            {requestPhotos.length > 0 && (
+            {pendingAttachments.length > 0 && (
               <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
                 <p className="text-xs font-semibold text-gray-700 mb-2">
-                  {l ? `Quote files (${requestPhotos.length})` : `报价文件（${requestPhotos.length}）`}
+                  {l ? `Quote files (${pendingAttachments.length})` : `报价文件（${pendingAttachments.length}）`}
                 </p>
                 <ul className="space-y-1">
-                  {requestAttachmentNames.map((name, idx) => (
-                    <li key={`${name}-${idx}`} className="flex items-center gap-2 text-xs text-gray-700">
+                  {pendingAttachments.map((item, idx) => (
+                    <li key={`${item.url}-${idx}`} className="flex items-center gap-2 text-xs text-gray-700">
                       <CheckCircle size={13} className="text-clearstrata-ui-primary shrink-0" />
-                      <span className="truncate">{name || `attachment-${idx + 1}`}</span>
+                      <span className="truncate">{item.name || `attachment-${idx + 1}`}</span>
                     </li>
                   ))}
                 </ul>
@@ -882,14 +897,16 @@ export function NewJobModal({
           </div>
 
           <div className="flex gap-3 pt-4">
-            <button onClick={createJobAndSearch}
+            <button
+              type="button"
+              onClick={handleStartQuoteInterpretation}
               className="flex-1 flex items-center justify-center gap-2 bg-clearstrata-ui-primary text-white py-2.5 rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors font-medium">
               <Search size={16} />
-              {newJob.job_type === 'procurement' && requestPhotos.length > 0
+              {newJob.job_type === 'procurement' && pendingAttachments.length > 0
                 ? l ? 'Start quote interpretation' : '开始解读报价'
                 : l ? 'Submit & Search Vendors' : '提交并搜索供应商'}
             </button>
-            <button onClick={onClose}
+            <button type="button" onClick={onClose}
               className="flex-1 bg-gray-200 text-gray-700 py-2.5 rounded-lg hover:bg-gray-300 transition-colors font-medium">
               {l ? 'Cancel' : '取消'}
             </button>

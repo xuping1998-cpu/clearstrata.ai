@@ -39,8 +39,18 @@ interface PhotoUploadProps {
   maxPhotos?: number;
   /** `quote_attachments`: images + PDF, paste screenshots, procurement new-job modal. */
   variant?: 'default' | 'quote_attachments';
+  /**
+   * When false (default for quote_attachments), upload only accumulates pending files.
+   * OCR / job creation / vendor search must be triggered by the parent button — never here.
+   */
+  autoProcess?: boolean;
   /** Quote modal: full attachment list (urls + original display names) whenever items change. */
   onQuoteAttachmentsChange?: (items: AttachmentItem[]) => void;
+  /**
+   * Optional post-upload hook — only invoked when autoProcess is true.
+   * Procurement quote packages must keep autoProcess false.
+   */
+  onUploadProcess?: (items: AttachmentItem[]) => void | Promise<void>;
 }
 
 function isAllowedDefaultImage(file: File): boolean {
@@ -132,11 +142,14 @@ export function PhotoUpload({
   onPhotosUploaded,
   maxPhotos = 5,
   variant = 'default',
+  autoProcess,
   onQuoteAttachmentsChange,
+  onUploadProcess,
 }: PhotoUploadProps) {
   const { currentPropertyId } = useProperty();
   const { language } = useLanguage();
   const isQuoteAttachments = variant === 'quote_attachments';
+  const shouldAutoProcess = autoProcess ?? !isQuoteAttachments;
   const [uploading, setUploading] = useState(false);
   const [uploadedPhotos, setUploadedPhotos] = useState<string[]>([]);
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
@@ -167,8 +180,11 @@ export function PhotoUpload({
     (items: AttachmentItem[]) => {
       onPhotosUploaded?.(items.map((a) => a.url));
       onQuoteAttachmentsChange?.(items);
+      if (shouldAutoProcess && onUploadProcess) {
+        void onUploadProcess(items);
+      }
     },
-    [onPhotosUploaded, onQuoteAttachmentsChange],
+    [onPhotosUploaded, onQuoteAttachmentsChange, onUploadProcess, shouldAutoProcess],
   );
 
   const notifyParent = useCallback(
