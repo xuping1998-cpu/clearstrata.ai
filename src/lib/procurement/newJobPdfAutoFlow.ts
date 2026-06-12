@@ -161,14 +161,16 @@ export function buildParsedQuoteJson(
       currentPrice: analysis.currentPrice || '',
     };
 
-    // Grand Total Recovery: the thin analyzer's currentPrice (or an explicit
-    // authorized amount) is the reference for re-checking the OCR total.
+    // Grand Total Recovery v2: the thin analyzer's currentPrice (or an explicit
+    // authorized amount) is the REFERENCE for re-checking the OCR total. The
+    // authorized amount is never written back — only real document figures.
     const authRef = authorizedAmount ?? parseAmountNumber(analysis.currentPrice);
     const recovery = recoverGrandTotal({ authorizedAmount: authRef, parsedQuoteJson: out });
-    out.grand_total_recovered = recovery.recoveredFrom === 'authorized_match';
+    out.grand_total_recovered = recovery.recovered;
     out.grand_total_recovered_from =
       recovery.recoveredFrom === 'none' ? null : recovery.recoveredFrom;
-    if (recovery.recoveredFrom === 'authorized_match' && recovery.recoveredAmount != null) {
+    out.grand_total_candidates = recovery.candidates;
+    if (recovery.recovered && recovery.recoveredAmount != null) {
       out.total_amount = recovery.recoveredAmount;
     }
 

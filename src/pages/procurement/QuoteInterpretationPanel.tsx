@@ -111,6 +111,22 @@ function readLineItems(pq: Record<string, unknown>): LineItem[] {
   return out;
 }
 
+/** Human-friendly label for the grand_total_recovered_from source. */
+function recoveredFromLabel(source: string, langEn: boolean): string {
+  switch (source) {
+    case 'keyword_match':
+      return langEn
+        ? 'Grand Total / Contract Price / Balance Due'
+        : '报价单总价栏位（Grand Total / Contract Price / Balance Due）';
+    case 'line_items_plus_tax':
+      return langEn ? 'Line items + tax' : '明细项合计 + 税额';
+    case 'authorized_match':
+      return langEn ? 'Closest document figure' : '报价单中最接近的金额';
+    default:
+      return '';
+  }
+}
+
 /** Compressed search basis summary; never raw_text. */
 function comparisonSummary(pq: Record<string, unknown>): string {
   const fromContext = str(pq.quote_context);
@@ -137,6 +153,7 @@ export function QuoteInterpretationPanel({
   });
   const warn = consistency.warnings;
   const grandTotalRecovered = pq.grand_total_recovered === true;
+  const grandTotalRecoveredFrom = str(pq.grand_total_recovered_from);
 
   const vendor = pick(pq, ['vendor_name', 'vendorName', 'supplier_name', 'supplierName']);
   const category = pick(pq, ['category', 'service_category', 'serviceType']);
@@ -222,11 +239,21 @@ export function QuoteInterpretationPanel({
       {grandTotalRecovered && (
         <div className="mb-3 flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 p-2.5 text-xs text-blue-700">
           <Info size={14} className="mt-0.5 shrink-0" />
-          <span>
-            {l
-              ? 'The quoted amount has been corrected using the grand total section of the document.'
-              : '总金额已根据报价单总价栏位自动校正。'}
-          </span>
+          <div>
+            <p>
+              {l
+                ? 'The quoted amount has been corrected based on the quote document.'
+                : '报价总金额已根据报价单内容自动校正。'}
+            </p>
+            {recoveredFromLabel(grandTotalRecoveredFrom, l) && (
+              <p className="mt-1">
+                {l ? 'Recovered from: ' : '校正来源：'}
+                <span className="font-medium">
+                  {recoveredFromLabel(grandTotalRecoveredFrom, l)}
+                </span>
+              </p>
+            )}
+          </div>
         </div>
       )}
 
