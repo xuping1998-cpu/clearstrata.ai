@@ -480,15 +480,17 @@ export async function createProcurementJobFromAnalysis(
     ).filter((u): u is string => Boolean(u && u.trim()));
     const uniqueUrls = Array.from(new Set(urls));
     if (uniqueUrls.length > 0) {
-      await supabase.from('procurement_photos').insert(
+      const { error: photoInsertError } = await supabase.from('procurement_photos').insert(
         uniqueUrls.map((photo_url) => ({
-          property_id: params.propertyId,
           job_id: data.id,
           photo_url,
           photo_type: 'request',
           uploaded_by: user.id,
         })),
       );
+      if (photoInsertError) {
+        console.warn('PROCUREMENT_PHOTOS_INSERT_FAILED', photoInsertError);
+      }
     }
   }
 
