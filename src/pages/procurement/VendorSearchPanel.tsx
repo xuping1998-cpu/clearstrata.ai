@@ -41,6 +41,8 @@ interface VendorSearchPanelProps {
   category?: string;
   language: string;
   autoSearchOnEmpty?: boolean;
+  /** Gate from quote interpretation consistency; false blocks market comparison. */
+  canSearch?: boolean;
 }
 
 /**
@@ -101,6 +103,7 @@ export function VendorSearchPanel({
   category,
   language,
   autoSearchOnEmpty = false,
+  canSearch = true,
 }: VendorSearchPanelProps) {
   const { currentPropertyId } = useProperty();
   const l = language === 'en';
@@ -208,11 +211,25 @@ export function VendorSearchPanel({
         | null;
       const quoteContext = parsedQuoteJson ? buildSearchQuoteContext(parsedQuoteJson) : '';
 
+      const pqCategory =
+        parsedQuoteJson && typeof parsedQuoteJson.category === 'string'
+          ? parsedQuoteJson.category
+          : '';
+      const pqCurrentPrice =
+        parsedQuoteJson &&
+        (typeof parsedQuoteJson.currentPrice === 'string'
+          ? parsedQuoteJson.currentPrice
+          : parsedQuoteJson.total_amount != null
+            ? String(parsedQuoteJson.total_amount)
+            : '');
+
       const json = await callSearchQuotes({
         property_id: scopedPropertyId,
         job_id: jobId,
         title: jobTitle,
         description: jobDescription,
+        category: category || pqCategory || undefined,
+        current_price: pqCurrentPrice || undefined,
         // When we have a structured quote_context, skip the raw PDF to avoid token overflow.
         attachment_urls:
           quoteContext || attachmentUrls.length === 0 ? undefined : attachmentUrls,
@@ -243,6 +260,7 @@ export function VendorSearchPanel({
 
   useEffect(() => {
     if (!autoSearchOnEmpty || initialLoading || loading) return;
+    if (!canSearch) return;
     if (autoSearchAttemptedRef.current || hasSavedResults) return;
 
     const hasDescription = Boolean(jobDescription?.trim());
@@ -264,6 +282,7 @@ export function VendorSearchPanel({
     void searchVendors();
   }, [
     autoSearchOnEmpty,
+    canSearch,
     initialLoading,
     loading,
     hasSavedResults,
@@ -331,10 +350,17 @@ export function VendorSearchPanel({
           </div>
           <button
             onClick={searchVendors}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-sky-600 text-white rounded-lg hover:bg-sky-700 transition-colors"
+            disabled={!canSearch}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+              canSearch
+                ? 'bg-sky-600 text-white hover:bg-sky-700'
+                : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+            }`}
           >
             <Search size={13} />
-            {l ? 'Search Vancouver Vendors' : '搜索温哥华供应商'}
+            {canSearch
+              ? l ? 'Search Vancouver Vendors' : '搜索温哥华供应商'
+              : l ? 'Confirm quote interpretation first' : '请先确认报价解读'}
           </button>
         </div>
         {error && (
@@ -343,9 +369,13 @@ export function VendorSearchPanel({
           </div>
         )}
         <p className="text-xs text-sky-700/70 mt-1.5">
-          {l
-            ? 'AI will search the web in real-time for local Vancouver vendors matching this job. Results are saved for future reference.'
-            : 'AI将实时搜索温哥华本地匹配此工单的供应商。搜索结果会自动保存，下次打开无需重新搜索。'}
+          {!canSearch
+            ? l
+              ? 'Please confirm the current vendor and service scope before running market comparison.'
+              : '需确认当前供应商与工作范围后，才能进行市场比较。'
+            : l
+              ? 'AI will search the web in real-time for local Vancouver vendors matching this job. Results are saved for future reference.'
+              : 'AI将实时搜索温哥华本地匹配此工单的供应商。搜索结果会自动保存，下次打开无需重新搜索。'}
         </p>
       </div>
     );
@@ -464,6 +494,24 @@ export function VendorSearchPanel({
                 <p className="text-xs text-gray-600 leading-relaxed">
                   {l ? v.description_en : (v.description_zh || v.description_en)}
                 </p>
+
+                {(() => {
+                  const whyComparable =
+                    v.price_evidence_note?.trim() ||
+                    (l ? v.description_en : v.description_zh || v.description_en)?.trim() ||
+                    '';
+                  if (!whyComparable) return null;
+                  return (
+                    <div className="mt-1.5 rounded-md border border-sky-100 bg-sky-50/60 px-2 py-1.5">
+                      <p className="text-[11px] font-medium text-sky-700 mb-0.5">
+                        {l ? 'Why comparable' : '可比原因'}
+                      </p>
+                      <p className="text-[11px] text-slate-600 leading-relaxed break-words">
+                        {whyComparable}
+                      </p>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           </div>

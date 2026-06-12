@@ -22,6 +22,10 @@ export type SearchQuotesPayload = {
   attachment_urls?: string[];
   /** Compressed, structured quote context (see buildSearchQuoteContext). Never raw OCR text. */
   quote_context?: string;
+  /** Job category (human-confirmed); helps the search stay in-scope. */
+  category?: string;
+  /** Current quoted amount reference for same-basis comparison. */
+  current_price?: string;
 };
 
 /** Hard cap for the quote_context sent to the Edge function. */

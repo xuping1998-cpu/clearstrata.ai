@@ -192,8 +192,45 @@ export function AiPricingPanel({ jobId, language }: AiPricingPanelProps) {
     );
   }
 
+  if (benchmark.case === 'unreliable') {
+    const msg =
+      benchmark.reason === 'quotes_too_wide'
+        ? l
+          ? 'Market quotes vary too widely to form a reliable benchmark.'
+          : '市场报价差异过大，暂无法形成有效参考价。'
+        : l
+          ? 'Not enough comparable quotes to form a reliable benchmark.'
+          : '当前可比报价不足，暂无法形成可靠市场参考。';
+    return (
+      <div className="bg-gradient-to-r from-blue-50 to-sky-50 border border-blue-200 rounded-lg p-4 mb-4">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="text-blue-600" size={18} />
+            <span className="text-sm font-semibold text-blue-900">
+              {l ? 'Public Market Pricing Benchmark' : '市场公开报价参考'}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => void loadEvidence()}
+            className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1"
+          >
+            <RefreshCw size={12} />
+            {l ? 'Refresh' : '刷新'}
+          </button>
+        </div>
+        <p className="text-sm font-medium text-amber-700">{msg}</p>
+        <p className="text-[11px] text-blue-700/60 mt-1">
+          {l
+            ? `${benchmark.vendors.length} comparable supplier(s) on file.`
+            : `已记录 ${benchmark.vendors.length} 家可比供应商。`}
+        </p>
+      </div>
+    );
+  }
+
   const pricedCount = benchmark.pricedVendors.length;
-  const sharedUnit = unifiedMarketPriceUnit(benchmark.pricedVendors);
+  const sharedUnit = benchmark.priceUnit ?? unifiedMarketPriceUnit(benchmark.pricedVendors);
   const rangeCore = `CAD $${benchmark.marketLow.toLocaleString()} – $${benchmark.marketHigh.toLocaleString()}`;
   const rangeDisplay = sharedUnit ? `${rangeCore} / ${sharedUnit}` : rangeCore;
 

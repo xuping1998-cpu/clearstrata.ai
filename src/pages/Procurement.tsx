@@ -11,6 +11,7 @@ import {
 } from './procurement/ProcurementModals';
 import { AiPricingPanel, getTrafficLight, TrafficLightBadge } from './procurement/AiPricingPanel';
 import { QuoteInterpretationPanel } from './procurement/QuoteInterpretationPanel';
+import { validateInterpretationConsistency } from '../lib/procurement/quoteInterpretationConsistency';
 import { computeMarketBenchmark, fetchVendorSearchResults } from '../lib/procurement/vendorMarketBenchmark';
 import { VendorSearchPanel } from './procurement/VendorSearchPanel';
 import { getCategoryLabel } from './procurement/VendorRegistry';
@@ -562,7 +563,12 @@ function JobCard({
 
       {job.status === 'collecting_quotes' && (
         <div className="px-6 pb-4">
-          <QuoteInterpretationPanel parsedQuoteJson={job.parsed_quote_json} language={language} />
+          <QuoteInterpretationPanel
+            parsedQuoteJson={job.parsed_quote_json}
+            language={language}
+            authorizedAmount={job.approved_cost ?? job.estimated_budget ?? null}
+            jobCategory={job.category}
+          />
 
           <AiPricingPanel jobId={job.id} propertyId={propertyId} language={language} />
 
@@ -573,6 +579,13 @@ function JobCard({
             jobDescription={job.description_zh || job.description_en}
             category={job.category}
             language={language}
+            canSearch={
+              validateInterpretationConsistency({
+                parsedQuoteJson: job.parsed_quote_json,
+                authorizedAmount: job.approved_cost ?? job.estimated_budget ?? null,
+                jobCategory: job.category,
+              }).canSearch
+            }
             autoSearchOnEmpty
           />
 

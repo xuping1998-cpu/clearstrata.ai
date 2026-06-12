@@ -1,9 +1,12 @@
-import { FileSearch } from 'lucide-react';
+import { FileSearch, AlertTriangle, AlertCircle } from 'lucide-react';
 import { buildSearchQuoteContext } from '../../lib/procurement/buildQuoteContext';
+import { validateInterpretationConsistency } from '../../lib/procurement/quoteInterpretationConsistency';
 
 interface QuoteInterpretationPanelProps {
   parsedQuoteJson: Record<string, unknown> | null | undefined;
   language: string;
+  authorizedAmount?: number | null;
+  jobCategory?: string | null;
 }
 
 type LineItem = { description: string; amount: number | null };
@@ -118,12 +121,21 @@ function comparisonSummary(pq: Record<string, unknown>): string {
 export function QuoteInterpretationPanel({
   parsedQuoteJson,
   language,
+  authorizedAmount,
+  jobCategory,
 }: QuoteInterpretationPanelProps) {
   const l = language === 'en';
 
   if (!parsedQuoteJson || typeof parsedQuoteJson !== 'object') return null;
 
   const pq = parsedQuoteJson;
+
+  const consistency = validateInterpretationConsistency({
+    parsedQuoteJson,
+    authorizedAmount,
+    jobCategory,
+  });
+  const warn = consistency.warnings;
 
   const vendor = pick(pq, ['vendor_name', 'vendorName', 'supplier_name', 'supplierName']);
   const category = pick(pq, ['category', 'service_category', 'serviceType']);
@@ -180,6 +192,84 @@ export function QuoteInterpretationPanel({
           {l ? '(from uploaded quote)' : '（来自上传报价单）'}
         </span>
       </div>
+
+      {(warn.includes('missing_vendor') || warn.includes('missing_scope')) && (
+        <div className="mb-3 space-y-2">
+          {warn.includes('missing_vendor') && (
+            <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700">
+              <AlertCircle size={14} className="mt-0.5 shrink-0" />
+              <span>
+                {l
+                  ? 'Current vendor could not be identified. Please re-upload the quote or confirm the vendor name before market comparison.'
+                  : '无法识别当前供应商。请重新上传报价单，或手动确认供应商名称后再进行市场比较。'}
+              </span>
+            </div>
+          )}
+          {warn.includes('missing_scope') && (
+            <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700">
+              <AlertCircle size={14} className="mt-0.5 shrink-0" />
+              <span>
+                {l
+                  ? 'Service scope could not be identified. Please add a service description before market comparison.'
+                  : '无法识别工作范围。请补充工作描述后再进行市场比较。'}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {(warn.includes('amount_mismatch') || warn.includes('category_mismatch')) && (
+        <div className="mb-3 space-y-2">
+          {warn.includes('amount_mismatch') && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
+              <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+              <div>
+                <p>
+                  {l
+                    ? 'Authorized amount differs from the OCR total. Please confirm the amount used for comparison.'
+                    : '授权金额与报价单总额不一致，请确认比较依据。'}
+                </p>
+                <p className="mt-1">
+                  {l ? 'Authorized amount: ' : '授权金额：'}
+                  <span className="font-medium">
+                    {formatAmount(authorizedAmount as number, currency)}
+                  </span>
+                </p>
+                {consistency.ocrAmount != null && (
+                  <p>
+                    {l ? 'OCR amount: ' : 'OCR 金额：'}
+                    <span className="font-medium">
+                      {formatAmount(consistency.ocrAmount, currency)}
+                    </span>
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+          {warn.includes('category_mismatch') && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
+              <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+              <div>
+                <p>
+                  {l
+                    ? 'The OCR category differs from the job category. Market search will use the job category.'
+                    : 'OCR 识别类别与工单分类不同。市场搜索将以工单分类为准。'}
+                </p>
+                <p className="mt-1">
+                  {l ? 'Job category: ' : '工单分类：'}
+                  <span className="font-medium">{jobCategory}</span>
+                </p>
+                {consistency.ocrCategory && (
+                  <p>
+                    {l ? 'OCR category: ' : 'OCR 分类：'}
+                    <span className="font-medium">{consistency.ocrCategory}</span>
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 text-sm">
         {rows.map((row) => (

@@ -12,31 +12,60 @@ const ANTHROPIC_MODEL = "claude-sonnet-4-20250514";
 const SEARCH_QUOTES_PROVIDER = "anthropic_web_search";
 const NO_PRICE_NOTE = "Pricing requires formal quote";
 
-const ANTHROPIC_SYSTEM_PROMPT = `你是一个物业采购助手。
-使用 web_search 工具搜索温哥华（Vancouver, BC）本地
-提供指定服务的真实供应商公司。
+const ANTHROPIC_SYSTEM_PROMPT = `You are a procurement assistant for BC strata / condo / multi-family / commercial property management.
+Use the web_search tool to find REAL local vendors in Vancouver, BC (fall back to wider BC only when necessary).
 
-priceRange / priceWithTax 必须反映来源中的真实计费单位。
-不要默认按月报价；仅当来源明确为月度或周期性服务时才使用 /month。
+PRIMARY SOURCE OF TRUTH: the "报价解读 / quote_context" structured summary in the user message.
+1. Use quote_context as the primary source of truth.
+2. Search for vendors that provide the SAME or highly comparable scope of work.
+3. Match the SERVICE SCOPE, not just the broad industry category.
+4. Match the PRICING BASIS exactly:
+   - one-time with one-time
+   - monthly with monthly
+   - annual with annual
+   - per-visit with per-visit
+5. Exclude the incumbent / current vendor if quote_context names one.
+6. Do NOT include generic contractors merely because they are in the same industry.
+7. Do NOT mix different cost types together:
+   - emergency call-out fee
+   - inspection fee
+   - monthly maintenance contract
+   - one-time project lump sum
+   - annual service contract
+8. Quality over quantity. Do NOT pad to 3 vendors with irrelevant companies.
+   If fewer than 3 comparable vendors exist, return fewer and explain why in matchReason.
+9. If price evidence is weak, still return the vendor but leave priceRange empty
+   and set price fields null (do not guess).
+10. Do not invent precise prices without source support.
+
+Pricing unit must reflect the real billing basis from the source.
 Do not assume monthly pricing unless the source explicitly describes a monthly or recurring service.
 
-priceRange 示例（按实际服务选用，不要照搬）：
-- CAD $2,000–$3,000 one-time
-- CAD $40–$70 / cubic yard
-- CAD $120–$180 / visit
-- CAD $1,500–$2,500 / month
-- CAD $12,000–$18,000 / year
+Search keyword guidance — combine: service_scope + key line_items + pricing_basis
++ property type (strata / condo / multi-family / commercial building) + city (Vancouver / BC fallback).
+Avoid generic queries such as "mechanical service company Vancouver BC strata" or "plumbing company Vancouver BC".
+Prefer specific queries, e.g.:
+- strata DHW heating system installation Vancouver BC
+- commercial domestic hot water system replacement Vancouver
+- multi-family building DHW piping installation contractor BC
+- boiler / DHW installation strata building Vancouver
 
-返回严格 JSON 格式（不要有其他文字）：
+Return STRICT JSON only (no other text):
 {
   "vendors": [
     {
-      "name": "公司名称",
-      "matchReason": "服务匹配说明",
-      "priceRange": "参考报价（不含税，含正确计费单位）",
-      "priceWithTax": "含税总价（含正确计费单位，含 5% GST 时注明）",
-      "contact": "官网或电话",
-      "advantage": "主要优势（1-2句）"
+      "companyName": "company legal name",
+      "phone": "phone or ''",
+      "website": "website url or ''",
+      "description": "what they do, 1-2 sentences",
+      "priceRange": "e.g. CAD $80,000–$95,000 one-time (use '' when no source)",
+      "priceUnit": "one-time | month | year | visit | cubic yard | hour | unit | ''",
+      "priceBasis": "one-time | monthly | annual | per_visit | per_cubic_yard | hourly | ''",
+      "comparableScope": true,
+      "samePricingBasis": true,
+      "matchReason": "why this vendor is comparable to the quoted scope and pricing basis",
+      "evidenceQuality": "high | medium | low",
+      "priceSourceUrl": "url backing the price, or ''"
     }
   ]
 }`;
@@ -87,6 +116,16 @@ type FetchedAttachment = {
 function strField(v: unknown): string {
   if (v == null) return "";
   return String(v).trim();
+}
+
+function boolField(v: unknown, dflt: boolean): boolean {
+  if (typeof v === "boolean") return v;
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase();
+    if (s === "true" || s === "yes" || s === "1") return true;
+    if (s === "false" || s === "no" || s === "0") return false;
+  }
+  return dflt;
 }
 
 function clipField(v: unknown, max: number): string {
@@ -208,14 +247,20 @@ function buildAnthropicUserText(params: {
   quoteContext?: string;
 }): string {
   const { category, description, currentPrice, quoteContext } = params;
-  const quoteBlock = quoteContext
-    ? `\n报价解读（结构化摘要）：\n${quoteContext}`
-    : "";
-  return `请搜索温哥华本地提供以下服务的真实供应商，找出至少3家：
-服务类别：${category}
-服务描述：${description}
-参考现有报价：${currentPrice}${quoteBlock}
-搜索关键词建议：${category} service company Vancouver BC strata`;
+  const primary = quoteContext
+    ? `报价解读 / quote_context（主依据，请据此匹配同类服务与同计费方式）：\n${quoteContext}`
+    : `（无结构化 quote_context，请基于以下类别/描述谨慎匹配同类服务）`;
+  return `请基于以下报价解读，搜索温哥华本地「同类服务、同计费方式」的可比供应商。
+宁可返回 1–2 家真正可比供应商，也不要为凑满 3 家返回不相关供应商。
+
+${primary}
+
+服务类别（辅助）：${category}
+服务描述（辅助）：${description}
+参考现有报价：${currentPrice}
+
+请用具体查询（结合 service_scope / 关键 line_items / pricing_basis / 物业类型 / Vancouver, BC），
+不要使用泛化的 "${category} service company Vancouver BC" 这类查询。`;
 }
 
 function buildAnthropicUserContent(params: {
@@ -327,12 +372,21 @@ function splitContactField(contact: string): { phone: string; website: string; s
 function normalizeVendor(raw: unknown): VendorResult | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
-  const company_name = strField(o.company_name ?? o.name);
+  const company_name = strField(o.companyName ?? o.company_name ?? o.name);
   if (!company_name) return null;
+
+  // Same-scope comparability gate (Phase 2B). Defaults are permissive so older
+  // responses without these flags are not silently dropped.
+  const comparableScope = boolField(o.comparableScope ?? o.comparable_scope, true);
+  // Never pad results with non-comparable vendors — exclude entirely.
+  if (!comparableScope) return null;
+
+  const samePricingBasis = boolField(o.samePricingBasis ?? o.same_pricing_basis, true);
+  const evidenceQuality = strField(o.evidenceQuality ?? o.evidence_quality).toLowerCase();
 
   const priceRangeDisplay = strField(o.priceRange ?? o.price_range_display);
   const priceWithTaxDisplay = strField(o.priceWithTax ?? o.price_with_tax_display);
-  const contactRaw = strField(o.contact ?? o.phone);
+  const contactRaw = strField(o.contact);
   const contactParts = splitContactField(contactRaw);
 
   let priceLow = numOrNull(o.price_low);
@@ -344,28 +398,36 @@ function normalizeVendor(raw: unknown): VendorResult | null {
     priceHigh = fromRange.high;
   }
 
-  const sourceUrl = strField(o.price_source_url) || contactParts.sourceUrl;
+  // Keep the vendor on the list, but null out prices that must not pollute the
+  // market benchmark: mismatched pricing basis, weak evidence, or no priceRange.
+  if (!samePricingBasis || evidenceQuality === "low" || !priceRangeDisplay) {
+    priceLow = null;
+    priceHigh = null;
+  }
+
+  const sourceUrl =
+    strField(o.priceSourceUrl ?? o.price_source_url) || contactParts.sourceUrl;
   const evidenceNote = strField(
-    o.price_evidence_note ?? o.matchReason ?? o.match_reason,
+    o.matchReason ?? o.match_reason ?? o.price_evidence_note,
   );
 
-  // Prefer explicit unit in priceRange; do not scale price_low/price_high (no ×12).
+  // Prefer explicit unit/basis; do not scale price_low/price_high (no ×12).
+  const explicitUnit = strField(o.priceUnit ?? o.price_unit);
+  const explicitBasis = strField(o.priceBasis ?? o.price_basis);
   let priceUnit = "";
-  const combinedForUnit = `${priceRangeDisplay} ${priceWithTaxDisplay}`.trim();
+  const combinedForUnit =
+    `${priceRangeDisplay} ${priceWithTaxDisplay} ${explicitUnit} ${explicitBasis}`.trim();
   if (combinedForUnit) {
     priceUnit = inferPriceUnitFromRange(combinedForUnit);
   }
-  if (!priceUnit) {
-    const fromApi = strField(o.price_unit);
-    if (fromApi) priceUnit = inferPriceUnitFromRange(fromApi) || fromApi;
-  }
+  if (!priceUnit && explicitUnit) priceUnit = explicitUnit;
 
   return {
     company_name,
     phone: strField(o.phone) || contactParts.phone,
     website: strField(o.website) || contactParts.website,
     address: strField(o.address),
-    description_en: strField(o.description_en ?? o.advantage),
+    description_en: strField(o.description ?? o.description_en ?? o.advantage),
     description_zh: strField(o.description_zh),
     price_reference: priceRangeDisplay || priceWithTaxDisplay,
     price_low: priceLow,
@@ -373,7 +435,7 @@ function normalizeVendor(raw: unknown): VendorResult | null {
     price_currency: strField(o.price_currency) || "CAD",
     price_unit: priceUnit,
     price_source_url: sourceUrl,
-    price_confidence: strField(o.price_confidence),
+    price_confidence: evidenceQuality || strField(o.price_confidence),
     price_evidence_note: evidenceNote,
     price_range_display: priceRangeDisplay || undefined,
     price_with_tax_display: priceWithTaxDisplay || undefined,

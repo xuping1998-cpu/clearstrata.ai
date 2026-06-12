@@ -424,6 +424,8 @@ async function searchAndSaveVendorsForJobInner(
     job_id: params.jobId,
     title: fields.title_zh || fields.title_en,
     description: searchDescription,
+    category: fields.category || params.analysis.category || undefined,
+    current_price: params.analysis.currentPrice || undefined,
     attachment_urls: quoteContext ? undefined : [params.attachmentUrl],
     quote_context: quoteContext || undefined,
   });
