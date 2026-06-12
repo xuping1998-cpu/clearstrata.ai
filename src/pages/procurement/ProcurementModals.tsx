@@ -376,12 +376,17 @@ export function NewJobModal({
         task_id: linkedTaskId.trim() || null,
         authorization_type: authorizationType,
         parsed_quote_json: pdfAnalysis
-          ? buildParsedQuoteJson(pdfAnalysis, pdfParsedQuote, {
-              title: finalTitleEn,
-              description: finalDescriptionEn || finalDescriptionZh,
-              fileName: requestAttachmentNames[0] ?? null,
-              ocrErrorMessage: pdfOcrError,
-            })
+          ? buildParsedQuoteJson(
+              pdfAnalysis,
+              pdfParsedQuote,
+              {
+                title: finalTitleEn,
+                description: finalDescriptionEn || finalDescriptionZh,
+                fileName: requestAttachmentNames[0] ?? null,
+                ocrErrorMessage: pdfOcrError,
+              },
+              newJob.estimated_budget ? parseFloat(newJob.estimated_budget) : null,
+            )
           : undefined,
       }).select().single();
 

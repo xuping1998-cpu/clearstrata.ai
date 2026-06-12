@@ -7,6 +7,8 @@
  * always treated as the human-confirmed source of truth for comparison.
  */
 
+import { normalizeServiceBucket } from './serviceCategoryBuckets';
+
 export type InterpretationWarning =
   | 'amount_mismatch'
   | 'category_mismatch'
@@ -25,23 +27,6 @@ export interface InterpretationConsistencyResult {
 }
 
 const AMOUNT_DIFF_RATIO_THRESHOLD = 0.1;
-
-/** Category alias buckets; aliases are matched as case-insensitive substrings. */
-const CATEGORY_BUCKETS: Record<string, string[]> = {
-  mechanical: [
-    'mechanical',
-    'hvac',
-    'boiler',
-    'heating',
-    'dhw',
-    'hot water',
-    'domestic hot water',
-  ],
-  plumbing: ['plumbing', 'drain', 'pipe repair', 'piping repair', 'leak'],
-  electrical: ['electrical', 'lighting', 'generator', 'power'],
-  landscaping: ['landscaping', 'garden', 'mulch', 'soil', 'tree'],
-  waste: ['waste', 'garbage', 'recycling', 'disposal'],
-};
 
 function str(v: unknown): string {
   if (v == null) return '';
@@ -69,16 +54,6 @@ function pickNum(obj: Record<string, unknown>, keys: string[]): number | null {
   for (const key of keys) {
     const n = num(obj[key]);
     if (n != null) return n;
-  }
-  return null;
-}
-
-/** Resolve a category string to its alias bucket, or null when unrecognized. */
-function categoryBucket(value: string): string | null {
-  const t = value.toLowerCase();
-  if (!t) return null;
-  for (const [bucket, aliases] of Object.entries(CATEGORY_BUCKETS)) {
-    if (aliases.some((alias) => t.includes(alias))) return bucket;
   }
   return null;
 }
@@ -116,12 +91,10 @@ export function validateInterpretationConsistency({
   }
   const comparisonAmount = authAmount ?? ocrAmount;
 
-  // Category: comparison always prefers the job category.
+  // Category: comparison always prefers the job category. Compare coarse service
+  // buckets so related trades (mechanical / plumbing / DHW) are not flagged.
   if (jobCat && ocrCategory) {
-    const jobBucket = categoryBucket(jobCat);
-    const ocrBucket = categoryBucket(ocrCategory);
-    // Only warn when both resolve to a known but different bucket.
-    if (jobBucket && ocrBucket && jobBucket !== ocrBucket) {
+    if (normalizeServiceBucket(jobCat) !== normalizeServiceBucket(ocrCategory)) {
       warnings.push('category_mismatch');
     }
   }

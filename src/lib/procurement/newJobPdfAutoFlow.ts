@@ -10,6 +10,7 @@ import {
 } from './parseProcurementQuoteAttachment';
 import { callSearchQuotes, type SearchQuotesVendor } from './callSearchQuotes';
 import { buildSearchQuoteContext } from './buildQuoteContext';
+import { recoverGrandTotal } from './grandTotalRecovery';
 import { saveVendorSearchResults } from './saveVendorSearchResults';
 import {
   suggestAuthorizationType,
@@ -135,13 +136,23 @@ export function inferFallbackPricingBasis(text: string): string | null {
  * Prefers the rich invoice-ocr parse; falls back to the thin analyze-procurement-quote
  * result enriched with vendor / pricing-basis / scope / line-item hints. Never throws.
  */
+function parseAmountNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const n = parseFloat(value.replace(/[^\d.-]/g, ''));
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
 export function buildParsedQuoteJson(
   analysis: ProcurementQuoteAnalysis,
   parsedQuote: ParsedProcurementQuote | null | undefined,
   fallbackMeta?: ParsedQuoteFallbackMeta,
+  authorizedAmount?: number | null,
 ): Record<string, unknown> {
   if (parsedQuote) {
-    return {
+    const out: Record<string, unknown> = {
       analysis_source: 'invoice-ocr',
       ...parsedQuote,
       // Keep the thin analysis fields as supplementary context (category labelling, price hint).
@@ -149,6 +160,19 @@ export function buildParsedQuoteJson(
       analysis_description: analysis.description || '',
       currentPrice: analysis.currentPrice || '',
     };
+
+    // Grand Total Recovery: the thin analyzer's currentPrice (or an explicit
+    // authorized amount) is the reference for re-checking the OCR total.
+    const authRef = authorizedAmount ?? parseAmountNumber(analysis.currentPrice);
+    const recovery = recoverGrandTotal({ authorizedAmount: authRef, parsedQuoteJson: out });
+    out.grand_total_recovered = recovery.recoveredFrom === 'authorized_match';
+    out.grand_total_recovered_from =
+      recovery.recoveredFrom === 'none' ? null : recovery.recoveredFrom;
+    if (recovery.recoveredFrom === 'authorized_match' && recovery.recoveredAmount != null) {
+      out.total_amount = recovery.recoveredAmount;
+    }
+
+    return out;
   }
 
   // Thin path: rich OCR did not produce structured data — enrich from available text.
@@ -350,12 +374,17 @@ export async function createProcurementJobFromAnalysis(
       unit_number: params.unitNumber,
       task_id: params.linkedTaskId.trim() || null,
       authorization_type: authorizationType,
-      parsed_quote_json: buildParsedQuoteJson(params.analysis, params.parsedQuote, {
-        title: fields.title_en,
-        description: params.analysis.description,
-        fileName: params.attachmentName ?? null,
-        ocrErrorMessage: params.ocrErrorMessage ?? null,
-      }),
+      parsed_quote_json: buildParsedQuoteJson(
+        params.analysis,
+        params.parsedQuote,
+        {
+          title: fields.title_en,
+          description: params.analysis.description,
+          fileName: params.attachmentName ?? null,
+          ocrErrorMessage: params.ocrErrorMessage ?? null,
+        },
+        Number.isFinite(budgetNum) && budgetNum > 0 ? budgetNum : null,
+      ),
     })
     .select()
     .single();

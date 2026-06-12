@@ -1,4 +1,4 @@
-import { FileSearch, AlertTriangle, AlertCircle } from 'lucide-react';
+import { FileSearch, AlertTriangle, AlertCircle, Info } from 'lucide-react';
 import { buildSearchQuoteContext } from '../../lib/procurement/buildQuoteContext';
 import { validateInterpretationConsistency } from '../../lib/procurement/quoteInterpretationConsistency';
 
@@ -136,6 +136,7 @@ export function QuoteInterpretationPanel({
     jobCategory,
   });
   const warn = consistency.warnings;
+  const grandTotalRecovered = pq.grand_total_recovered === true;
 
   const vendor = pick(pq, ['vendor_name', 'vendorName', 'supplier_name', 'supplierName']);
   const category = pick(pq, ['category', 'service_category', 'serviceType']);
@@ -215,6 +216,17 @@ export function QuoteInterpretationPanel({
               </span>
             </div>
           )}
+        </div>
+      )}
+
+      {grandTotalRecovered && (
+        <div className="mb-3 flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 p-2.5 text-xs text-blue-700">
+          <Info size={14} className="mt-0.5 shrink-0" />
+          <span>
+            {l
+              ? 'The quoted amount has been corrected using the grand total section of the document.'
+              : '总金额已根据报价单总价栏位自动校正。'}
+          </span>
         </div>
       )}
 
