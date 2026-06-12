@@ -21,7 +21,7 @@ import {
   applyAnalysisToJobFields,
   buildParsedQuoteJson,
   createProcurementJobFromAnalysis,
-  interpretQuoteAttachment,
+  interpretQuotePackage,
   searchAndSaveVendorsForJob,
   waitForVendorSearchWithTimeout,
 } from '../../lib/procurement/newJobPdfAutoFlow';
@@ -227,12 +227,11 @@ export function NewJobModal({
   }, [currentPropertyId]);
 
   const handleQuoteAttachmentsChange = (items: AttachmentItem[]) => {
+    // Quote Package stage: only accumulate the pending attachments.
+    // OCR / job creation / search must NOT auto-trigger on upload — they run
+    // only when the user clicks "Start quote interpretation".
     setRequestPhotos(items.map((a) => a.url));
     setRequestAttachmentNames(items.map((a) => a.name));
-    const first = items[0];
-    if (first && newJob.job_type === 'procurement' && profile && currentPropertyId) {
-      void startPdfAutoFlow(first.url, first.name);
-    }
   };
 
   const finishPdfFlowAndOpenJob = (jobId: string) => {
@@ -240,16 +239,21 @@ export function NewJobModal({
     onCreated(jobId);
   };
 
-  const startPdfAutoFlow = async (attachmentUrl: string, attachmentName: string) => {
+  const startPdfAutoFlow = async (attachmentUrls: string[], attachmentNames: string[]) => {
     if (!profile || !currentPropertyId) return;
-    if (pipelineUrlRef.current === attachmentUrl) return;
-    pipelineUrlRef.current = attachmentUrl;
+    const primaryUrl = attachmentUrls[0];
+    if (!primaryUrl) return;
+    if (pipelineUrlRef.current === primaryUrl) return;
+    pipelineUrlRef.current = primaryUrl;
     setError('');
     setStep('analyzing');
     try {
-      const { analysis, parsedQuote, ocrErrorMessage } = await interpretQuoteAttachment(
-        attachmentUrl,
-        attachmentName,
+      const attachments = attachmentUrls.map((url, i) => ({
+        url,
+        name: attachmentNames[i] ?? 'quote.pdf',
+      }));
+      const { analysis, parsedQuote, ocrErrorMessage } = await interpretQuotePackage(
+        attachments,
         l,
       );
       setPdfAnalysis(analysis);
@@ -260,10 +264,11 @@ export function NewJobModal({
       const { jobId } = await createProcurementJobFromAnalysis({
         propertyId: currentPropertyId,
         profileId: profile.id,
-        attachmentUrl,
+        attachmentUrl: primaryUrl,
+        attachmentUrls,
         analysis,
         parsedQuote,
-        attachmentName,
+        attachmentName: attachmentNames[0] ?? null,
         ocrErrorMessage,
         linkedTaskId,
         priority: newJob.priority,
@@ -278,7 +283,7 @@ export function NewJobModal({
         propertyId: currentPropertyId,
         jobId,
         analysis,
-        attachmentUrl,
+        attachmentUrl: primaryUrl,
         parsedQuote,
       });
       const { completed, vendors, searchCount } = await waitForVendorSearchWithTimeout(searchPromise);
@@ -340,7 +345,8 @@ export function NewJobModal({
         finishPdfFlowAndOpenJob(createdJobId);
         return;
       }
-      await startPdfAutoFlow(requestPhotos[0], requestAttachmentNames[0] ?? 'quote.pdf');
+      // Interpret the FULL quote package (one job, all attachments) on click.
+      await startPdfAutoFlow(requestPhotos, requestAttachmentNames);
       return;
     }
 
@@ -826,7 +832,7 @@ export function NewJobModal({
             <div className="flex items-center gap-2 mb-3">
               <FileText className="text-gray-600" size={20} />
               <h3 className="text-sm font-semibold text-gray-900">
-                {l ? 'Upload quote / authorization materials (optional)' : '上传报价/授权资料（可选）'}
+                {l ? 'Quote package (one supplier, all pages)' : '报价包（同一供应商的完整报价，可多页/多附件）'}
               </h3>
             </div>
             <PhotoUpload
@@ -836,6 +842,27 @@ export function NewJobModal({
               onQuoteAttachmentsChange={handleQuoteAttachmentsChange}
               maxPhotos={MAX_QUOTE_ATTACHMENTS}
             />
+
+            {requestPhotos.length > 0 && (
+              <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <p className="text-xs font-semibold text-gray-700 mb-2">
+                  {l ? `Quote files (${requestPhotos.length})` : `报价文件（${requestPhotos.length}）`}
+                </p>
+                <ul className="space-y-1">
+                  {requestAttachmentNames.map((name, idx) => (
+                    <li key={`${name}-${idx}`} className="flex items-center gap-2 text-xs text-gray-700">
+                      <CheckCircle size={13} className="text-clearstrata-ui-primary shrink-0" />
+                      <span className="truncate">{name || `attachment-${idx + 1}`}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-[11px] text-gray-500 mt-2">
+                  {l
+                    ? 'Add every page first. Interpretation and vendor search run only when you click below.'
+                    : '请先把同一供应商的所有页/附件添加齐全。点击下方按钮后才会进行解读与供应商搜索。'}
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
@@ -858,7 +885,9 @@ export function NewJobModal({
             <button onClick={createJobAndSearch}
               className="flex-1 flex items-center justify-center gap-2 bg-clearstrata-ui-primary text-white py-2.5 rounded-lg hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive transition-colors font-medium">
               <Search size={16} />
-              {l ? 'Submit & Search Vendors' : '提交并搜索供应商'}
+              {newJob.job_type === 'procurement' && requestPhotos.length > 0
+                ? l ? 'Start quote interpretation' : '开始解读报价'
+                : l ? 'Submit & Search Vendors' : '提交并搜索供应商'}
             </button>
             <button onClick={onClose}
               className="flex-1 bg-gray-200 text-gray-700 py-2.5 rounded-lg hover:bg-gray-300 transition-colors font-medium">

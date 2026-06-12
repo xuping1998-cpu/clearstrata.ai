@@ -282,10 +282,97 @@ export async function analyzeQuoteAttachment(
   return analyzeProcurementQuoteFromFile(file);
 }
 
+export type QuotePackageAttachment = { url: string; name: string };
+
+/** First non-empty string across parsed parts, for a given selector. */
+function firstNonEmptyStr(
+  parts: ParsedProcurementQuote[],
+  sel: (p: ParsedProcurementQuote) => string | null | undefined,
+): string | null {
+  for (const p of parts) {
+    const v = (sel(p) ?? '').toString().trim();
+    if (v) return v;
+  }
+  return null;
+}
+
 /**
- * Fetch the attachment once, then run BOTH the thin analyze-procurement-quote
- * (required, drives job fields) and the rich invoice-ocr parse (best-effort,
- * drives parsed_quote_json / quote_context).
+ * Merge per-page invoice-ocr parses into one quote understanding for the package.
+ * - amounts come from the page with the largest total (typically the grand-total page)
+ * - raw_text is concatenated so Grand Total Recovery can see every page
+ * - line_items are concatenated; vendor / doc fields take the first non-empty
+ */
+function mergeParsedQuotes(parts: ParsedProcurementQuote[]): ParsedProcurementQuote {
+  if (parts.length === 1) return parts[0]!;
+
+  const authoritative = [...parts].sort(
+    (a, b) => (b.total_amount ?? 0) - (a.total_amount ?? 0),
+  )[0]!;
+
+  return {
+    vendor_name: firstNonEmptyStr(parts, (p) => p.vendor_name),
+    document_number: firstNonEmptyStr(parts, (p) => p.document_number),
+    document_date: firstNonEmptyStr(parts, (p) => p.document_date),
+    subtotal: authoritative.subtotal,
+    tax_amount: authoritative.tax_amount,
+    total_amount: authoritative.total_amount,
+    currency: firstNonEmptyStr(parts, (p) => p.currency) || 'CAD',
+    service_scope: firstNonEmptyStr(parts, (p) => p.service_scope) || '',
+    line_items: parts.flatMap((p) => p.line_items).filter((it) => it && it.description),
+    raw_text: parts.map((p) => p.raw_text).filter((t) => t && t.trim()).join('\n\n'),
+    confidence: authoritative.confidence,
+    source_file_name: parts[0]!.source_file_name,
+    source_mime_type: parts[0]!.source_mime_type,
+    parsed_at: new Date().toISOString(),
+    ocr_source: 'invoice-ocr',
+  };
+}
+
+/**
+ * Interpret a full quote package (one supplier, possibly multiple attachments).
+ *
+ * Runs the thin analyze-procurement-quote on the primary attachment (drives job
+ * fields), and the rich invoice-ocr parse on EVERY attachment, then merges them
+ * so multi-page packages (e.g. grand total on the last page) are understood.
+ * OCR failure on any/all pages never blocks job creation.
+ */
+export async function interpretQuotePackage(
+  attachments: QuotePackageAttachment[],
+  langEn: boolean,
+): Promise<ProcurementQuoteInterpretation> {
+  const list = attachments.filter((a) => a?.url);
+  if (list.length === 0) {
+    throw new Error('No quote attachments to interpret');
+  }
+
+  const primary = list[0]!;
+  const primaryFile = await fetchUrlAsInvoiceFile(primary.url, primary.name || 'quote.pdf');
+  const analysis = await analyzeProcurementQuoteFromFile(primaryFile);
+
+  const parsedParts: ParsedProcurementQuote[] = [];
+  let ocrErrorMessage: string | undefined;
+  for (const att of list) {
+    try {
+      const file =
+        att.url === primary.url
+          ? primaryFile
+          : await fetchUrlAsInvoiceFile(att.url, att.name || 'quote.pdf');
+      parsedParts.push(await parseProcurementQuoteAttachment(file, langEn));
+    } catch (err) {
+      if (!ocrErrorMessage) ocrErrorMessage = sanitizeOcrError(err);
+      console.warn('PROCUREMENT_QUOTE_OCR_PARSE_FAILED', {
+        attachmentUrl: att.url,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  const parsedQuote = parsedParts.length > 0 ? mergeParsedQuotes(parsedParts) : null;
+  return { analysis, parsedQuote, ocrErrorMessage };
+}
+
+/**
+ * Single-attachment convenience wrapper around interpretQuotePackage.
  *
  * If the rich OCR fails, `parsedQuote` is null and the flow continues on the
  * thin analysis — OCR failure must never block job creation.
@@ -295,23 +382,7 @@ export async function interpretQuoteAttachment(
   attachmentName: string,
   langEn: boolean,
 ): Promise<ProcurementQuoteInterpretation> {
-  const file = await fetchUrlAsInvoiceFile(attachmentUrl, attachmentName || 'quote.pdf');
-  const analysis = await analyzeProcurementQuoteFromFile(file);
-
-  let parsedQuote: ParsedProcurementQuote | null = null;
-  let ocrErrorMessage: string | undefined;
-  try {
-    parsedQuote = await parseProcurementQuoteAttachment(file, langEn);
-  } catch (err) {
-    ocrErrorMessage = sanitizeOcrError(err);
-    console.warn('PROCUREMENT_QUOTE_OCR_PARSE_FAILED', {
-      attachmentUrl,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    parsedQuote = null;
-  }
-
-  return { analysis, parsedQuote, ocrErrorMessage };
+  return interpretQuotePackage([{ url: attachmentUrl, name: attachmentName }], langEn);
 }
 
 /** Short, DB-safe OCR failure reason: name + message, tokens redacted, no stack trace. */
@@ -329,7 +400,10 @@ function sanitizeOcrError(err: unknown): string {
 export type CreateProcurementJobParams = {
   propertyId: string;
   profileId: string;
+  /** Primary attachment (first page); used for fallback vendor extraction. */
   attachmentUrl: string;
+  /** Full quote package — all attachment URLs are saved to procurement_photos. */
+  attachmentUrls?: string[];
   analysis: ProcurementQuoteAnalysis;
   /** Rich invoice-ocr parse; when present it is stored in parsed_quote_json. */
   parsedQuote?: ParsedProcurementQuote | null;
@@ -397,13 +471,23 @@ export async function createProcurementJobFromAnalysis(
     data: { user },
   } = await supabase.auth.getUser();
   if (user) {
-    await supabase.from('procurement_photos').insert({
-      property_id: params.propertyId,
-      job_id: data.id,
-      photo_url: params.attachmentUrl,
-      photo_type: 'request',
-      uploaded_by: user.id,
-    });
+    // Save the WHOLE quote package (one job, many attachments), de-duplicated.
+    const urls = (params.attachmentUrls && params.attachmentUrls.length > 0
+      ? params.attachmentUrls
+      : [params.attachmentUrl]
+    ).filter((u): u is string => Boolean(u && u.trim()));
+    const uniqueUrls = Array.from(new Set(urls));
+    if (uniqueUrls.length > 0) {
+      await supabase.from('procurement_photos').insert(
+        uniqueUrls.map((photo_url) => ({
+          property_id: params.propertyId,
+          job_id: data.id,
+          photo_url,
+          photo_type: 'request',
+          uploaded_by: user.id,
+        })),
+      );
+    }
   }
 
   return { jobId: data.id };
