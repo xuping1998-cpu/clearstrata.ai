@@ -271,13 +271,15 @@ export function PhotoUpload({
               data: { user },
             } = await supabase.auth.getUser();
             if (user) {
-              await supabase.from('procurement_photos').insert({
-                property_id: currentPropertyId,
+              const { error: photoInsertError } = await supabase.from('procurement_photos').insert({
                 job_id: jobId,
                 photo_url: publicUrl,
                 photo_type: photoType,
                 uploaded_by: user.id,
               });
+              if (photoInsertError) {
+                console.warn('PROCUREMENT_PHOTOS_INSERT_FAILED', photoInsertError);
+              }
             }
           }
         }
