@@ -3,6 +3,7 @@ import { Globe, Phone, ExternalLink, Search, RefreshCw, Loader2, MapPin, Calenda
 import { supabase } from '../../lib/supabase';
 import { useProperty } from '../../contexts/PropertyContext';
 import { callSearchQuotes } from '../../lib/procurement/callSearchQuotes';
+import { buildSearchQuoteContext } from '../../lib/procurement/buildQuoteContext';
 import {
   formatVendorPriceExclGst,
   formatVendorPriceInclGst,
@@ -40,6 +41,31 @@ interface VendorSearchPanelProps {
   category?: string;
   language: string;
   autoSearchOnEmpty?: boolean;
+}
+
+/**
+ * Map raw Edge/Anthropic errors to a friendly, user-facing message.
+ * Rate-limit / token-overflow errors must never surface the raw API text.
+ * The original error is still logged to the console for debugging.
+ */
+function toFriendlySearchError(rawError: string | undefined, langEn: boolean): string {
+  const raw = (rawError ?? '').toLowerCase();
+  const isBusy =
+    raw.includes('rate limit') ||
+    raw.includes('rate_limit') ||
+    raw.includes('input tokens') ||
+    raw.includes('tokens per minute') ||
+    raw.includes('429') ||
+    raw.includes('overloaded');
+
+  if (isBusy) {
+    if (rawError) console.warn('SEARCH_QUOTES_RATE_LIMIT', rawError);
+    return langEn
+      ? 'AI search is temporarily busy. Please try again later. The quote interpretation has been saved and your procurement record is not affected.'
+      : 'AI 搜索暂时繁忙，请稍后重试。报价解读已保存，不影响采购资料归档。';
+  }
+
+  return rawError || (langEn ? 'Search failed' : '搜索失败');
 }
 
 function hasPublicPriceEvidence(v: {
@@ -169,12 +195,28 @@ export function VendorSearchPanel({
         .map((p) => p.photo_url)
         .filter((u): u is string => Boolean(u));
 
+      // Prefer the compressed, structured quote context over the heavy PDF attachment.
+      // Sending the full PDF multimodally is what overflows Claude's input token budget.
+      const { data: jobRow } = await supabase
+        .from('procurement_jobs')
+        .select('parsed_quote_json')
+        .eq('id', jobId)
+        .maybeSingle();
+
+      const parsedQuoteJson = (jobRow?.parsed_quote_json ?? null) as
+        | Record<string, unknown>
+        | null;
+      const quoteContext = parsedQuoteJson ? buildSearchQuoteContext(parsedQuoteJson) : '';
+
       const json = await callSearchQuotes({
         property_id: scopedPropertyId,
         job_id: jobId,
         title: jobTitle,
         description: jobDescription,
-        attachment_urls: attachmentUrls.length > 0 ? attachmentUrls : undefined,
+        // When we have a structured quote_context, skip the raw PDF to avoid token overflow.
+        attachment_urls:
+          quoteContext || attachmentUrls.length === 0 ? undefined : attachmentUrls,
+        quote_context: quoteContext || undefined,
       });
       const found = Array.isArray(json?.vendors) ? json.vendors : [];
 
@@ -182,7 +224,7 @@ export function VendorSearchPanel({
       console.log('SEARCH_QUOTES_VENDOR_COUNT', found.length);
 
       if (!json?.success) {
-        setError(json?.error || (l ? 'Search failed' : '搜索失败'));
+        setError(toFriendlySearchError(json?.error, l));
         return;
       }
 

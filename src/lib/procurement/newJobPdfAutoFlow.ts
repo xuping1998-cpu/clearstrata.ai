@@ -9,6 +9,7 @@ import {
   type ParsedProcurementQuote,
 } from './parseProcurementQuoteAttachment';
 import { callSearchQuotes, type SearchQuotesVendor } from './callSearchQuotes';
+import { buildSearchQuoteContext } from './buildQuoteContext';
 import { saveVendorSearchResults } from './saveVendorSearchResults';
 import {
   suggestAuthorizationType,
@@ -231,6 +232,8 @@ export type SearchAndSaveVendorsParams = {
   jobId: string;
   analysis: ProcurementQuoteAnalysis;
   attachmentUrl: string;
+  /** Rich OCR parse, if available. Used to build a compressed search context. */
+  parsedQuote?: ParsedProcurementQuote | null;
 };
 
 export async function searchAndSaveVendorsForJob(
@@ -250,12 +253,19 @@ async function searchAndSaveVendorsForJobInner(
   const fields = applyAnalysisToJobFields(params.analysis);
   const searchDescription = buildSearchDescription(params.analysis);
 
+  // Prefer compressed structured context; only fall back to the raw PDF attachment
+  // when there is no parsed quote. Sending both would risk Claude token overflow.
+  const quoteContext = params.parsedQuote
+    ? buildSearchQuoteContext(buildParsedQuoteJson(params.analysis, params.parsedQuote))
+    : '';
+
   const result = await callSearchQuotes({
     property_id: params.propertyId,
     job_id: params.jobId,
     title: fields.title_zh || fields.title_en,
     description: searchDescription,
-    attachment_urls: [params.attachmentUrl],
+    attachment_urls: quoteContext ? undefined : [params.attachmentUrl],
+    quote_context: quoteContext || undefined,
   });
 
   if (!result.success) {

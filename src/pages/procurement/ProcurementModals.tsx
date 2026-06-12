@@ -275,6 +275,7 @@ export function NewJobModal({
         jobId,
         analysis,
         attachmentUrl,
+        parsedQuote,
       });
       const { completed, vendors, searchCount } = await waitForVendorSearchWithTimeout(searchPromise);
       setSearchedVendors(vendors);

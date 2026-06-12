@@ -50,7 +50,14 @@ interface SearchRequest {
   current_price?: string;
   currentPrice?: string;
   attachment_urls?: string[];
+  quote_context?: string;
 }
+
+// Input caps to protect Claude's input token budget. Any overflow is truncated, never errored.
+const QUOTE_CONTEXT_MAX = 1500;
+const DESCRIPTION_MAX = 1200;
+const TITLE_CATEGORY_MAX = 300;
+const CURRENT_PRICE_MAX = 120;
 
 interface VendorResult {
   company_name: string;
@@ -80,6 +87,11 @@ type FetchedAttachment = {
 function strField(v: unknown): string {
   if (v == null) return "";
   return String(v).trim();
+}
+
+function clipField(v: unknown, max: number): string {
+  const s = strField(v);
+  return s.length > max ? s.slice(0, max) : s;
 }
 
 function numOrNull(v: unknown): number | null {
@@ -193,12 +205,16 @@ function buildAnthropicUserText(params: {
   category: string;
   description: string;
   currentPrice: string;
+  quoteContext?: string;
 }): string {
-  const { category, description, currentPrice } = params;
+  const { category, description, currentPrice, quoteContext } = params;
+  const quoteBlock = quoteContext
+    ? `\n报价解读（结构化摘要）：\n${quoteContext}`
+    : "";
   return `请搜索温哥华本地提供以下服务的真实供应商，找出至少3家：
 服务类别：${category}
 服务描述：${description}
-参考现有报价：${currentPrice}
+参考现有报价：${currentPrice}${quoteBlock}
 搜索关键词建议：${category} service company Vancouver BC strata`;
 }
 
@@ -206,6 +222,7 @@ function buildAnthropicUserContent(params: {
   category: string;
   description: string;
   currentPrice: string;
+  quoteContext?: string;
   attachments: FetchedAttachment[];
 }): string | Array<Record<string, unknown>> {
   const userText = buildAnthropicUserText(params);
@@ -446,12 +463,14 @@ async function callAnthropicMessages(params: {
   category: string;
   description: string;
   currentPrice: string;
+  quoteContext?: string;
   attachments: FetchedAttachment[];
 }): Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; status: number; detail: string }> {
   const userContent = buildAnthropicUserContent({
     category: params.category,
     description: params.description,
     currentPrice: params.currentPrice,
+    quoteContext: params.quoteContext,
     attachments: params.attachments,
   });
 
@@ -514,15 +533,16 @@ Deno.serve(async (req: Request) => {
     }
 
     const body = await req.json() as SearchRequest;
-    const title = strField(body.title);
-    const description = strField(body.description);
+    const title = clipField(body.title, TITLE_CATEGORY_MAX);
+    const description = clipField(body.description, DESCRIPTION_MAX);
     const property_id = strField(body.property_id);
     const job_id = strField(body.job_id);
-    const category = strField(body.category) || title;
-    const currentPrice = resolveCurrentPrice(
-      description,
-      body.current_price ?? body.currentPrice,
+    const category = clipField(body.category, TITLE_CATEGORY_MAX) || title;
+    const currentPrice = clipField(
+      resolveCurrentPrice(description, body.current_price ?? body.currentPrice),
+      CURRENT_PRICE_MAX,
     );
+    const quoteContext = clipField(body.quote_context, QUOTE_CONTEXT_MAX);
 
     const attachmentUrls = Array.isArray(body.attachment_urls)
       ? body.attachment_urls.filter((u): u is string => typeof u === "string" && u.trim().length > 0)
@@ -553,6 +573,7 @@ Deno.serve(async (req: Request) => {
       currentPrice,
       attachmentCount: attachments.length,
       attachmentUrls: attachmentUrls.length,
+      quoteContextLen: quoteContext.length,
       model: ANTHROPIC_MODEL,
       multimodal: attachments.length > 0,
     });
@@ -562,6 +583,7 @@ Deno.serve(async (req: Request) => {
       category,
       description,
       currentPrice,
+      quoteContext: quoteContext || undefined,
       attachments,
     });
 
