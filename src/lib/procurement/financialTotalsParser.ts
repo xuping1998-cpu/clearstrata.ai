@@ -88,6 +88,71 @@ function extractLineAmount(line: string): { amount: number; text: string } | nul
   return null;
 }
 
+/** First (leftmost) qualifying money amount in a text segment, with its text. */
+function extractFirstAmount(segment: string): { amount: number; text: string } | null {
+  const re = new RegExp(MONEY_TOKEN_RE.source, 'gi');
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(segment)) !== null) {
+    if (m[0].length === 0) {
+      re.lastIndex += 1;
+      continue;
+    }
+    const amount = parseAmountToken(m[0]);
+    if (amount != null) return { amount, text: m[0].trim() };
+  }
+  return null;
+}
+
+/**
+ * Inline totals-block label definitions, longest / most specific first so that
+ * "Total" never steals "Balance Due" / "Total Due" / "Invoice Total" / "Subtotal".
+ */
+const INLINE_LABEL_DEFS: Array<{ field: FieldKey; re: RegExp }> = [
+  { field: 'payments_credits', re: /payments\s*\/\s*credits|less\s+payment|payment\s+received|payments|credits/gi },
+  { field: 'balance_due', re: /balance\s+due/gi },
+  { field: 'amount_due', re: /amount\s+due|amt\.?\s+due/gi },
+  { field: 'total_due', re: /total\s+due/gi },
+  { field: 'invoice_total', re: /invoice\s+total/gi },
+  { field: 'sales_tax', re: /sales\s+tax|gst\s*\/\s*hst|gst(?:\s+\d+(?:\.\d+)?\s*%)?|hst|pst/gi },
+  { field: 'subtotal', re: /sub[\s-]?total/gi },
+  { field: 'total', re: /total/gi },
+];
+
+interface InlineLabelHit {
+  field: FieldKey;
+  start: number;
+  end: number;
+  text: string;
+}
+
+/**
+ * Find totals labels in a string, claiming non-overlapping ranges in priority
+ * order, then returning them sorted by position. Used to slice an inline
+ * "Label Amount Label Amount ..." block at label boundaries.
+ */
+function findInlineLabels(text: string): InlineLabelHit[] {
+  const claimed: Array<[number, number]> = [];
+  const overlaps = (s: number, e: number) => claimed.some(([cs, ce]) => s < ce && e > cs);
+  const hits: InlineLabelHit[] = [];
+  for (const def of INLINE_LABEL_DEFS) {
+    const re = new RegExp(def.re.source, def.re.flags.includes('g') ? def.re.flags : `${def.re.flags}g`);
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      if (m[0].length === 0) {
+        re.lastIndex += 1;
+        continue;
+      }
+      const start = m.index;
+      const end = m.index + m[0].length;
+      if (overlaps(start, end)) continue;
+      claimed.push([start, end]);
+      hits.push({ field: def.field, start, end, text: m[0].trim() });
+    }
+  }
+  hits.sort((a, b) => a.start - b.start);
+  return hits;
+}
+
 /** Detect which totals label (if any) a line begins with. Returns null for non-total lines. */
 function detectLabel(line: string): FieldKey | null {
   const s = line.trim();
@@ -145,13 +210,18 @@ export function parseFinancialTotalsFromRawText(
     isFullAmount: boolean;
     consumed: boolean;
   };
-  const items: Classified[] = lines.map((raw) => ({
-    raw,
-    label: detectLabel(raw),
-    amount: extractLineAmount(raw),
-    isFullAmount: FULL_LINE_AMOUNT_RE.test(raw),
-    consumed: false,
-  }));
+  const items: Classified[] = lines.map((raw) => {
+    // A line holding two+ totals labels is an inline block: leave it for Pass 3
+    // so the line-level reader never assigns the wrong (rightmost) amount.
+    const isInlineBlock = findInlineLabels(raw.replace(/\s+/g, ' ')).length >= 2;
+    return {
+      raw,
+      label: isInlineBlock ? null : detectLabel(raw),
+      amount: extractLineAmount(raw),
+      isFullAmount: FULL_LINE_AMOUNT_RE.test(raw),
+      consumed: false,
+    };
+  });
 
   const fields: Partial<Record<FieldKey, { amount: number; text: string }>> = {};
   const assign = (key: FieldKey, amount: number, text: string): void => {
@@ -210,6 +280,19 @@ export function parseFinancialTotalsFromRawText(
       }
     }
     i += 1;
+  }
+
+  // Pass 3 — inline totals block: "Label Amount Label Amount ..." (possibly all on
+  // one line). Operates on whitespace-normalized text and fills only fields not yet
+  // set by the line-level passes (first-wins).
+  const normalized = rawText.replace(/\s+/g, ' ').trim();
+  const inlineHits = findInlineLabels(normalized);
+  for (let h = 0; h < inlineHits.length; h += 1) {
+    const hit = inlineHits[h]!;
+    if (fields[hit.field] != null) continue;
+    const segEnd = h + 1 < inlineHits.length ? inlineHits[h + 1]!.start : normalized.length;
+    const money = extractFirstAmount(normalized.slice(hit.end, segEnd));
+    if (money) assign(hit.field, money.amount, `${hit.text} ${money.text}`.trim());
   }
 
   const val = (key: FieldKey): number | null => (fields[key] ? fields[key]!.amount : null);
