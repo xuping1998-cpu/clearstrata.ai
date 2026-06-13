@@ -339,28 +339,43 @@ function firstNonEmptyStr(
  * Detect a package made of multiple independent invoices / payment pages, where
  * the real total is the SUM of pages (not one page or the largest page).
  *
- * Requires every part to carry a positive total_amount, plus a signal that the
- * pages are distinct documents: different document numbers, or invoice/payment
- * wording in the text.
+ * Phase 2D.1 — multi-file uploads are treated as an invoice package by default.
+ * We no longer require EVERY part to carry a total or distinct document numbers;
+ * a single OCR page missing a doc number / keyword must not collapse the whole
+ * package back to grand_total mode.
+ *
+ * Returns true when:
+ *   1. more than one part, AND
+ *   2. at least two parts have a positive total_amount, AND
+ *   3. any one of:
+ *      - at least two distinct document numbers
+ *      - at least two parts whose text contains invoice / balance due /
+ *        amount due / total due wording
+ *      - the parts came from more than one source file
  */
 function isMultipleInvoicePackage(parts: ParsedProcurementQuote[]): boolean {
   if (parts.length <= 1) return false;
 
-  const allHaveTotal = parts.every(
+  const partsWithTotal = parts.filter(
     (p) => typeof p.total_amount === 'number' && Number.isFinite(p.total_amount) && p.total_amount > 0,
-  );
-  if (!allHaveTotal) return false;
+  ).length;
+  if (partsWithTotal < 2) return false;
 
-  const docNumbers = new Set(
+  const distinctDocNumbers = new Set(
     parts.map((p) => (p.document_number ?? '').trim().toLowerCase()).filter(Boolean),
-  );
-  const multipleDistinctDocs = docNumbers.size > 1;
+  ).size;
 
-  const invoiceWording = parts.some((p) =>
-    /\b(invoice|balance due|payments?|amount due)\b/i.test(p.raw_text ?? ''),
-  );
+  const invoiceWordingCount = parts.filter((p) =>
+    /\b(invoice|balance\s+due|amount\s+due|total\s+due|payments?)\b/i.test(
+      `${p.raw_text_original ?? ''}\n${p.raw_text ?? ''}`,
+    ),
+  ).length;
 
-  return multipleDistinctDocs || invoiceWording;
+  const distinctSourceFiles = new Set(
+    parts.map((p) => (p.source_file_name ?? '').trim().toLowerCase()).filter(Boolean),
+  ).size;
+
+  return distinctDocNumbers >= 2 || invoiceWordingCount >= 2 || distinctSourceFiles >= 2;
 }
 
 /**
