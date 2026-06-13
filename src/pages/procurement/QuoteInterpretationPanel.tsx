@@ -56,6 +56,24 @@ function formatAmount2(amount: number, currency: string): string {
   })}`;
 }
 
+const TOTAL_SOURCE_LABELS: Record<string, { en: string; zh: string }> = {
+  balance_due: { en: 'Balance Due', zh: 'Balance Due（应付余额）' },
+  amount_due: { en: 'Amount Due', zh: 'Amount Due（应付金额）' },
+  total_due: { en: 'Total Due', zh: 'Total Due（应付总额）' },
+  grand_total: { en: 'Grand Total', zh: 'Grand Total（总计）' },
+  invoice_total: { en: 'Invoice Total', zh: 'Invoice Total（发票总额）' },
+  total: { en: 'Total', zh: 'Total（合计）' },
+  subtotal_plus_tax: { en: 'Subtotal + tax', zh: '小计 + 税额' },
+  line_items_sum: { en: 'Sum of line items', zh: '明细金额合计' },
+};
+
+/** Friendly label for a single total_source value (e.g. balance_due → "Balance Due"). */
+function sourceLabel(source: string, en: boolean): string {
+  const hit = TOTAL_SOURCE_LABELS[source];
+  if (!hit) return source;
+  return en ? hit.en : hit.zh;
+}
+
 /** Human label for which figure the page/package total was resolved from (Phase 2A.10). */
 function resolveTotalSourceLabel(pq: Record<string, unknown>, en: boolean): string {
   if (str(pq.total_mode) === 'sum_invoices') {
@@ -65,19 +83,37 @@ function resolveTotalSourceLabel(pq: Record<string, unknown>, en: boolean): stri
       : `${count ?? ''} 张发票合计（按 Balance Due）`.trim();
   }
   const source = str(pq.total_source);
-  const labels: Record<string, { en: string; zh: string }> = {
-    balance_due: { en: 'Balance Due', zh: 'Balance Due（应付余额）' },
-    amount_due: { en: 'Amount Due', zh: 'Amount Due（应付金额）' },
-    total_due: { en: 'Total Due', zh: 'Total Due（应付总额）' },
-    grand_total: { en: 'Grand Total', zh: 'Grand Total（总计）' },
-    invoice_total: { en: 'Invoice Total', zh: 'Invoice Total（发票总额）' },
-    total: { en: 'Total', zh: 'Total（合计）' },
-    subtotal_plus_tax: { en: 'Subtotal + tax', zh: '小计 + 税额' },
-    line_items_sum: { en: 'Sum of line items', zh: '明细金额合计' },
-  };
-  const hit = labels[source];
-  if (!hit) return '';
-  return en ? hit.en : hit.zh;
+  if (!TOTAL_SOURCE_LABELS[source]) return '';
+  return sourceLabel(source, en);
+}
+
+interface InvoiceAuditPart {
+  source_file_name: string;
+  document_number: string | null;
+  subtotal: number | null;
+  tax_amount: number | null;
+  total_amount: number | null;
+  total_source: string;
+}
+
+/** Read the per-invoice audit trail for a summed multi-invoice package (Phase 2B). */
+function readInvoiceParts(pq: Record<string, unknown>): InvoiceAuditPart[] {
+  const raw = Array.isArray(pq.invoice_parts) ? pq.invoice_parts : null;
+  if (!raw) return [];
+  const out: InvoiceAuditPart[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const row = item as Record<string, unknown>;
+    out.push({
+      source_file_name: str(row.source_file_name),
+      document_number: str(row.document_number) || null,
+      subtotal: num(row.subtotal),
+      tax_amount: num(row.tax_amount),
+      total_amount: num(row.total_amount),
+      total_source: str(row.total_source) || 'balance_due',
+    });
+  }
+  return out;
 }
 
 function clip(value: string, max: number): string {
@@ -209,6 +245,11 @@ export function QuoteInterpretationPanel({
   const scopeRaw = pick(pq, ['service_scope', 'scope', 'analysis_description', 'description']);
   const scope = scopeRaw ? clip(scopeRaw, SCOPE_MAX) : '';
   const lineItems = readLineItems(pq);
+  // Phase 2B: for a summed multi-invoice package, AI line items are not reliable
+  // payment figures — show the per-invoice audit trail instead and hide them.
+  const invoiceParts = readInvoiceParts(pq);
+  const showInvoiceAudit = str(pq.total_mode) === 'sum_invoices' && invoiceParts.length > 0;
+  const packageTotal = num(pq.total_amount ?? pq.totalAmount ?? pq.amount);
   const summary = comparisonSummary(pq);
 
   const vendorLabel = vendor || (l ? 'Not identified' : '未识别');
@@ -412,7 +453,64 @@ export function QuoteInterpretationPanel({
         ))}
       </dl>
 
-      {lineItems.length > 0 && (
+      {showInvoiceAudit && (
+        <div className="mt-3 rounded-lg border border-slate-200 bg-white/70 p-3">
+          <p className="text-xs font-semibold text-slate-700 mb-2">
+            {l ? 'Invoice audit trail' : '发票明细'}
+          </p>
+          <div className="space-y-2.5">
+            {invoiceParts.map((part, idx) => (
+              <div
+                key={idx}
+                className="rounded-md border border-slate-100 bg-slate-50/70 p-2.5 text-xs text-slate-700"
+              >
+                <p className="font-medium text-slate-800">
+                  {l ? 'Invoice #' : '发票号'}: {part.document_number || (l ? '—' : '—')}
+                </p>
+                <div className="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5">
+                  <p className="flex justify-between gap-3">
+                    <span className="text-slate-500">{l ? 'Subtotal' : '小计'}</span>
+                    <span className="whitespace-nowrap">
+                      {part.subtotal != null ? formatAmount2(part.subtotal, currency) : '—'}
+                    </span>
+                  </p>
+                  <p className="flex justify-between gap-3">
+                    <span className="text-slate-500">{l ? 'Sales Tax' : '税'}</span>
+                    <span className="whitespace-nowrap">
+                      {part.tax_amount != null ? formatAmount2(part.tax_amount, currency) : '—'}
+                    </span>
+                  </p>
+                  <p className="flex justify-between gap-3 font-medium text-slate-800">
+                    <span>{l ? 'Balance Due' : '应付金额'}</span>
+                    <span className="whitespace-nowrap">
+                      {part.total_amount != null ? formatAmount2(part.total_amount, currency) : '—'}
+                    </span>
+                  </p>
+                  <p className="flex justify-between gap-3">
+                    <span className="text-slate-500">{l ? 'Total source' : '总额来源'}</span>
+                    <span className="whitespace-nowrap">{sourceLabel(part.total_source, l)}</span>
+                  </p>
+                </div>
+                {part.source_file_name && (
+                  <p className="mt-1 text-[11px] text-slate-400 break-all">
+                    {l ? 'Source file' : '文件名'}: {part.source_file_name}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+          {packageTotal != null && (
+            <p className="mt-2.5 border-t border-slate-200 pt-2 text-sm font-semibold text-slate-800 flex justify-between gap-3">
+              <span>
+                {l ? 'Invoice package total (by Balance Due)' : '发票合计（按 Balance Due）'}
+              </span>
+              <span className="whitespace-nowrap">{formatAmount2(packageTotal, currency)}</span>
+            </p>
+          )}
+        </div>
+      )}
+
+      {!showInvoiceAudit && lineItems.length > 0 && (
         <div className="mt-3">
           <p className="text-xs font-medium text-slate-500 mb-1">
             {l ? 'Key line items' : '关键项目'}
