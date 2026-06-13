@@ -3,6 +3,10 @@ import {
   type InvoiceOcrExtractedForDb,
   type InvoiceOcrInvokeResult,
 } from '../invoiceOcrClient';
+import {
+  resolveInvoiceTotalByPriority,
+  type InvoiceTotalSource,
+} from './invoiceTotalPriority';
 
 export interface ParsedProcurementQuote {
   vendor_name: string | null;
@@ -27,6 +31,10 @@ export interface ParsedProcurementQuote {
   total_mode?: 'sum_invoices' | 'grand_total' | 'single_page';
   /** Number of OCR'd attachments that contributed to this merged quote. */
   package_parts_count?: number;
+  /** Which figure `total_amount` was resolved from for this page (Phase 2A.10). */
+  total_source?: InvoiceTotalSource;
+  /** Ranked candidate totals considered while resolving `total_amount`. */
+  total_candidates?: Array<{ amount: number; source: string }>;
 }
 
 export const PROCUREMENT_AUTO_DESCRIPTION_EN =
@@ -66,25 +74,41 @@ function mapOcrToParsedQuote(
     raw.slice(0, 500) ||
     '';
 
+  const subtotal = numOrNull(ocr.subtotal);
+  const tax_amount = numOrNull(ocr.tax_amount);
+  const line_items = (ocr.line_items ?? []).map((it) => ({
+    description: String(it.description ?? '').trim(),
+    amount: lineItemAmount(it.amount),
+  }));
+
+  // Phase 2A.10: prefer the invoice's payable figure (Balance Due) over a
+  // line-item / subtotal that invoice-ocr may have returned as total_amount.
+  const resolved = resolveInvoiceTotalByPriority({
+    rawText: raw,
+    ocrTotalAmount: numOrNull(ocr.total_amount),
+    subtotal,
+    taxAmount: tax_amount,
+    lineItems: line_items,
+  });
+
   return {
     vendor_name: ocr.vendor_name?.trim() || null,
     document_number: ocr.invoice_number?.trim() || null,
     document_date: ocr.invoice_date?.trim() || null,
-    subtotal: numOrNull(ocr.subtotal),
-    tax_amount: numOrNull(ocr.tax_amount),
-    total_amount: numOrNull(ocr.total_amount),
+    subtotal,
+    tax_amount,
+    total_amount: resolved.totalAmount ?? numOrNull(ocr.total_amount),
     currency: ocr.currency?.trim() || 'CAD',
     service_scope,
-    line_items: (ocr.line_items ?? []).map((it) => ({
-      description: String(it.description ?? '').trim(),
-      amount: lineItemAmount(it.amount),
-    })),
+    line_items,
     raw_text: raw,
     confidence,
     source_file_name: file.name,
     source_mime_type: file.type || 'application/octet-stream',
     parsed_at: new Date().toISOString(),
     ocr_source: 'invoice-ocr',
+    total_source: resolved.totalSource,
+    total_candidates: resolved.candidates,
   };
 }
 

@@ -56,6 +56,30 @@ function formatAmount2(amount: number, currency: string): string {
   })}`;
 }
 
+/** Human label for which figure the page/package total was resolved from (Phase 2A.10). */
+function resolveTotalSourceLabel(pq: Record<string, unknown>, en: boolean): string {
+  if (str(pq.total_mode) === 'sum_invoices') {
+    const count = num(pq.package_parts_count);
+    return en
+      ? `Sum of ${count ?? ''} invoices (Balance Due)`.replace('  ', ' ')
+      : `${count ?? ''} 张发票合计（按 Balance Due）`.trim();
+  }
+  const source = str(pq.total_source);
+  const labels: Record<string, { en: string; zh: string }> = {
+    balance_due: { en: 'Balance Due', zh: 'Balance Due（应付余额）' },
+    amount_due: { en: 'Amount Due', zh: 'Amount Due（应付金额）' },
+    total_due: { en: 'Total Due', zh: 'Total Due（应付总额）' },
+    grand_total: { en: 'Grand Total', zh: 'Grand Total（总计）' },
+    invoice_total: { en: 'Invoice Total', zh: 'Invoice Total（发票总额）' },
+    total: { en: 'Total', zh: 'Total（合计）' },
+    subtotal_plus_tax: { en: 'Subtotal + tax', zh: '小计 + 税额' },
+    line_items_sum: { en: 'Sum of line items', zh: '明细金额合计' },
+  };
+  const hit = labels[source];
+  if (!hit) return '';
+  return en ? hit.en : hit.zh;
+}
+
 function clip(value: string, max: number): string {
   const v = value.trim();
   return v.length > max ? `${v.slice(0, max)}…` : v;
@@ -216,6 +240,10 @@ export function QuoteInterpretationPanel({
   ];
   if (category) rows.push({ label: l ? 'Service category' : '服务类别', value: category });
   rows.push({ label: l ? 'Quoted amount' : '报价金额', value: amountDisplay });
+  const totalSourceLabel = resolveTotalSourceLabel(pq, l);
+  if (totalSourceLabel) {
+    rows.push({ label: l ? 'Total source' : '总额来源', value: totalSourceLabel });
+  }
   if (pricingBasis && pricingBasis !== '—') {
     rows.push({ label: l ? 'Pricing basis' : '计费方式', value: pricingBasis });
   }
