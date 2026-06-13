@@ -1,6 +1,10 @@
-import { FileSearch, AlertTriangle, AlertCircle, Info } from 'lucide-react';
+import { FileSearch, AlertTriangle, AlertCircle, Info, CheckCircle2 } from 'lucide-react';
 import { buildSearchQuoteContext } from '../../lib/procurement/buildQuoteContext';
 import { validateInterpretationConsistency } from '../../lib/procurement/quoteInterpretationConsistency';
+import {
+  reconcileTaxBasis,
+  resolveInvoicePackageTotal,
+} from '../../lib/procurement/taxBasisReconciliation';
 
 interface QuoteInterpretationPanelProps {
   parsedQuoteJson: Record<string, unknown> | null | undefined;
@@ -41,6 +45,15 @@ function num(v: unknown): number | null {
 function formatAmount(amount: number, currency: string): string {
   const cur = currency || 'CAD';
   return `${cur} $${amount.toLocaleString()}`;
+}
+
+/** Cents-precise amount for tax reconciliation (e.g. CAD $93,187.50). */
+function formatAmount2(amount: number, currency: string): string {
+  const cur = currency || 'CAD';
+  return `${cur} $${amount.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 function clip(value: string, max: number): string {
@@ -155,6 +168,15 @@ export function QuoteInterpretationPanel({
   const grandTotalRecovered = pq.grand_total_recovered === true;
   const grandTotalRecoveredFrom = str(pq.grand_total_recovered_from);
 
+  // Tax Basis Reconciliation (Phase 2A.8): authorization is pre-tax, the OCR
+  // package total is after-tax. A GST-only gap is reconciled, not flagged.
+  const reconciliation = reconcileTaxBasis({
+    authorizationAmount: authorizedAmount ?? null,
+    invoicePackageTotal: resolveInvoicePackageTotal(pq),
+  });
+  // Suppress the yellow amount warning once the two tax bases agree.
+  const showAmountMismatch = warn.includes('amount_mismatch') && !reconciliation.reconciled;
+
   const vendor = pick(pq, ['vendor_name', 'vendorName', 'supplier_name', 'supplierName']);
   const category = pick(pq, ['category', 'service_category', 'serviceType']);
   const currency = str(pq.currency) || 'CAD';
@@ -257,9 +279,52 @@ export function QuoteInterpretationPanel({
         </div>
       )}
 
-      {(warn.includes('amount_mismatch') || warn.includes('category_mismatch')) && (
+      {reconciliation.reconciled && reconciliation.invoicePackageTotal != null && (
+        <div className="mb-3 flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2.5 text-xs text-emerald-800">
+          <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
+          <div>
+            <p className="font-medium">
+              {reconciliation.basis === 'gst_adjusted'
+                ? l
+                  ? 'Amount reconciled (GST adjusted)'
+                  : '金额已对账（GST 调整）'
+                : l
+                  ? 'Amount reconciled'
+                  : '金额已对账'}
+            </p>
+            {reconciliation.basis === 'gst_adjusted' && (
+              <div className="mt-1 space-y-0.5">
+                {reconciliation.authorizationAmount != null && (
+                  <p>
+                    {l ? 'Authorized amount (pre-tax): ' : '授权金额（税前）：'}
+                    <span className="font-medium">
+                      {formatAmount2(reconciliation.authorizationAmount, currency)}
+                    </span>
+                  </p>
+                )}
+                {reconciliation.gstAdjustedAmount != null && (
+                  <p>
+                    {l ? 'GST-adjusted amount: ' : 'GST 调整金额：'}
+                    <span className="font-medium">
+                      {formatAmount2(reconciliation.gstAdjustedAmount, currency)}
+                    </span>
+                  </p>
+                )}
+                <p>
+                  {l ? 'Invoice total: ' : '发票总额：'}
+                  <span className="font-medium">
+                    {formatAmount2(reconciliation.invoicePackageTotal, currency)}
+                  </span>
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {(showAmountMismatch || warn.includes('category_mismatch')) && (
         <div className="mb-3 space-y-2">
-          {warn.includes('amount_mismatch') && (
+          {showAmountMismatch && (
             <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
               <AlertTriangle size={14} className="mt-0.5 shrink-0" />
               <div>
