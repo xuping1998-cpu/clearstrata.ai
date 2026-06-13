@@ -20,7 +20,12 @@ type AiInvoiceJson = {
   invoice_date?: string;
   due_date?: string;
   subtotal?: string | number;
+  sales_tax?: string | number;
   tax_amount?: string | number;
+  payments_credits?: string | number;
+  invoice_total?: string | number;
+  balance_due?: string | number;
+  amount_due?: string | number;
   total_amount?: string | number;
   currency?: string;
   description?: string;
@@ -45,6 +50,11 @@ type FrontendExtracted = {
   raw_text: string;
   due_date: string;
   subtotal: string;
+  sales_tax: string;
+  payments_credits: string;
+  invoice_total: string;
+  balance_due: string;
+  amount_due: string;
   description: string;
   category: string;
   confidence: number | string;
@@ -53,6 +63,21 @@ type FrontendExtracted = {
 const JSON_SHAPE_PROMPT = `You are an invoice OCR assistant for Canadian strata property management.
 Respond with ONLY one JSON object. No markdown, no prose, no code fences.
 
+TRANSCRIPTION RULES:
+- "raw_text" MUST be a verbatim, line-by-line transcription of ALL visible text on
+  the document. Do NOT summarize, paraphrase, or reorder.
+- The totals block MUST be transcribed exactly as printed, including every label
+  and its amount: Subtotal, Sales Tax / GST / HST / PST, Payments/Credits,
+  Invoice Total, Total Due, Amount Due, Balance Due.
+
+AMOUNT RULES:
+- Read the bottom-right payment block. The payable figure is "Balance Due"
+  (or "Amount Due" / "Total Due" if Balance Due is absent).
+- "total_amount" MUST equal that payable figure — NEVER a subtotal, a single line
+  item, or an intermediate total.
+- Fill "balance_due", "amount_due", "subtotal", "sales_tax", "payments_credits",
+  and "invoice_total" with the exact printed figures when present.
+
 Required keys (use empty string "" where unknown; use empty array [] for items; confidence 0-1 number):
 {
   "vendor_name": "",
@@ -60,13 +85,18 @@ Required keys (use empty string "" where unknown; use empty array [] for items; 
   "invoice_date": "",
   "due_date": "",
   "subtotal": "",
+  "sales_tax": "",
   "tax_amount": "",
+  "payments_credits": "",
+  "invoice_total": "",
+  "amount_due": "",
+  "balance_due": "",
   "total_amount": "",
   "currency": "CAD",
   "description": "",
   "category": "general",
   "confidence": 0,
-  "raw_text_summary": "",
+  "raw_text": "",
   "items": [ { "description": "", "amount": "" } ]
 }
 
@@ -118,21 +148,35 @@ function buildExtractedAndStructured(
 
   const vendor = strField(parsed.vendor_name ?? parsed.vendor);
   const summary = strField(parsed.description ?? parsed.summary);
-  const rawText = strField(parsed.raw_text_summary ?? parsed.raw_text) ||
-    rawFallback.slice(0, 8000);
+  // Prefer the verbatim transcription; only fall back to a summary or the raw
+  // model response when the model failed to transcribe.
+  const rawText = strField(parsed.raw_text) ||
+    strField(parsed.raw_text_summary) ||
+    rawFallback.slice(0, 12000);
+
+  const balanceDue = strField(parsed.balance_due);
+  const amountDue = strField(parsed.amount_due);
+  const invoiceTotal = strField(parsed.invoice_total);
+  // Payable figure priority: Balance Due > Amount Due > model total_amount > Invoice Total.
+  const payable = balanceDue || amountDue || strField(parsed.total_amount) || invoiceTotal;
 
   const extracted: FrontendExtracted = {
     vendor,
     invoice_number: strField(parsed.invoice_number),
     invoice_date: strField(parsed.invoice_date),
-    total_amount: strField(parsed.total_amount),
-    tax_amount: strField(parsed.tax_amount),
+    total_amount: payable,
+    tax_amount: strField(parsed.tax_amount) || strField(parsed.sales_tax),
     currency: strField(parsed.currency) || "CAD",
     items,
     summary,
     raw_text: rawText,
     due_date: strField(parsed.due_date),
     subtotal: strField(parsed.subtotal),
+    sales_tax: strField(parsed.sales_tax),
+    payments_credits: strField(parsed.payments_credits),
+    invoice_total: invoiceTotal,
+    balance_due: balanceDue,
+    amount_due: amountDue,
     description: strField(parsed.description ?? parsed.summary),
     category: strField(parsed.category) || "general",
     confidence: normalizeConfidence(parsed.confidence),

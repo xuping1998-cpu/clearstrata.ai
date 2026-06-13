@@ -8,6 +8,12 @@ export type InvoiceOcrExtractedForDb = {
   subtotal: number;
   tax_amount: number;
   total_amount: number;
+  /** Explicit payment-block figures from invoice-ocr (Phase 2A.11). */
+  balance_due: number | null;
+  amount_due: number | null;
+  sales_tax: number | null;
+  payments_credits: number | null;
+  invoice_total: number | null;
   hst_number: string | null;
   currency: string;
   category: string;
@@ -16,6 +22,8 @@ export type InvoiceOcrExtractedForDb = {
   has_anomalies: boolean;
   anomaly_notes: string;
   raw_text: string;
+  /** Verbatim OCR transcription of the document (Phase 2A.11). */
+  raw_text_original: string;
 };
 
 export type InvoiceOcrInvokeResult = {
@@ -123,6 +131,12 @@ export async function invokeInvoiceOcrFromFile(file: File, langEn: boolean): Pro
     invoice_date?: string;
     total_amount?: string;
     tax_amount?: string;
+    subtotal?: string;
+    sales_tax?: string;
+    payments_credits?: string;
+    invoice_total?: string;
+    balance_due?: string;
+    amount_due?: string;
     currency?: string;
     summary?: string;
     description?: string;
@@ -133,9 +147,19 @@ export async function invokeInvoiceOcrFromFile(file: File, langEn: boolean): Pro
 
   const structured = data.structured as InvoiceOcrInvokeResult['structured'] | undefined;
 
-  const total = parseAmount(ex.total_amount);
-  const tax = parseAmount(ex.tax_amount);
-  const subtotal = Math.max(0, total - tax);
+  const positive = (n: number): number | null => (Number.isFinite(n) && n > 0 ? n : null);
+  const balanceDue = positive(parseAmount(ex.balance_due));
+  const amountDue = positive(parseAmount(ex.amount_due));
+  const invoiceTotal = positive(parseAmount(ex.invoice_total));
+  const paymentsCredits = positive(parseAmount(ex.payments_credits));
+  const salesTax = positive(parseAmount(ex.sales_tax));
+
+  // Payable total priority: Balance Due > Amount Due > model total > Invoice Total.
+  const total =
+    balanceDue ?? amountDue ?? positive(parseAmount(ex.total_amount)) ?? invoiceTotal ?? 0;
+  const tax = positive(parseAmount(ex.tax_amount)) ?? salesTax ?? 0;
+  const explicitSubtotal = positive(parseAmount(ex.subtotal));
+  const subtotal = explicitSubtotal ?? Math.max(0, total - tax);
 
   const line_items: InvoiceOcrLineItem[] = Array.isArray(ex.items)
     ? ex.items.map((it) => ({
@@ -143,6 +167,8 @@ export async function invokeInvoiceOcrFromFile(file: File, langEn: boolean): Pro
         amount: parseAmount(it?.amount),
       }))
     : [];
+
+  const rawText = ex.raw_text || '';
 
   const extracted: InvoiceOcrExtractedForDb = {
     vendor_name: ex.vendor || (langEn ? 'Unknown vendor' : '未知供应商'),
@@ -152,6 +178,11 @@ export async function invokeInvoiceOcrFromFile(file: File, langEn: boolean): Pro
     subtotal,
     tax_amount: tax,
     total_amount: total,
+    balance_due: balanceDue,
+    amount_due: amountDue,
+    sales_tax: salesTax,
+    payments_credits: paymentsCredits,
+    invoice_total: invoiceTotal,
     hst_number: null,
     currency: ex.currency || 'CAD',
     category: 'general',
@@ -159,7 +190,8 @@ export async function invokeInvoiceOcrFromFile(file: File, langEn: boolean): Pro
     line_items,
     has_anomalies: false,
     anomaly_notes: '',
-    raw_text: ex.raw_text || '',
+    raw_text: rawText,
+    raw_text_original: rawText,
   };
 
   const invDateStr = extracted.invoice_date || new Date().toISOString().split('T')[0];

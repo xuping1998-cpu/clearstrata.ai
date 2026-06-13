@@ -22,6 +22,8 @@ export interface ParsedProcurementQuote {
     amount: number | null;
   }>;
   raw_text: string;
+  /** Verbatim OCR transcription of the source document (Phase 2A.11). */
+  raw_text_original?: string;
   confidence: number | null;
   source_file_name: string;
   source_mime_type: string;
@@ -35,6 +37,20 @@ export interface ParsedProcurementQuote {
   total_source?: InvoiceTotalSource;
   /** Ranked candidate totals considered while resolving `total_amount`. */
   total_candidates?: Array<{ amount: number; source: string }>;
+  /** Per-invoice audit for a summed multi-invoice package (Phase 2A.11). */
+  invoice_parts?: InvoicePartAudit[];
+}
+
+export interface InvoicePartAudit {
+  source_file_name: string;
+  document_number: string | null;
+  subtotal: number | null;
+  tax_amount: number | null;
+  total_amount: number | null;
+  total_source?: InvoiceTotalSource;
+  total_candidates?: Array<{ amount: number; source: string }>;
+  raw_text: string;
+  raw_text_original?: string | null;
 }
 
 export const PROCUREMENT_AUTO_DESCRIPTION_EN =
@@ -69,6 +85,9 @@ function mapOcrToParsedQuote(
 ): ParsedProcurementQuote {
   const summary = (ocr.description ?? '').trim();
   const raw = (ocr.raw_text ?? '').trim();
+  // Verbatim OCR transcription is the source of truth for total resolution; the
+  // model summary is only a fallback for display.
+  const rawOriginal = (ocr.raw_text_original ?? '').trim() || raw;
   const service_scope =
     summary ||
     raw.slice(0, 500) ||
@@ -81,10 +100,11 @@ function mapOcrToParsedQuote(
     amount: lineItemAmount(it.amount),
   }));
 
-  // Phase 2A.10: prefer the invoice's payable figure (Balance Due) over a
+  // Phase 2A.10/2A.11: prefer the invoice's payable figure (Balance Due) over a
   // line-item / subtotal that invoice-ocr may have returned as total_amount.
+  // Read the verbatim transcription first so keyword matching is reliable.
   const resolved = resolveInvoiceTotalByPriority({
-    rawText: raw,
+    rawText: rawOriginal || raw,
     ocrTotalAmount: numOrNull(ocr.total_amount),
     subtotal,
     taxAmount: tax_amount,
@@ -102,6 +122,7 @@ function mapOcrToParsedQuote(
     service_scope,
     line_items,
     raw_text: raw,
+    raw_text_original: rawOriginal,
     confidence,
     source_file_name: file.name,
     source_mime_type: file.type || 'application/octet-stream',

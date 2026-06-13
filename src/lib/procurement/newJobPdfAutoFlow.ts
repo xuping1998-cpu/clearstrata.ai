@@ -383,6 +383,10 @@ function mergeParsedQuotes(parts: ParsedProcurementQuote[]): ParsedProcurementQu
     service_scope: firstNonEmptyStr(parts, (p) => p.service_scope) || '',
     line_items: parts.flatMap((p) => p.line_items).filter((it) => it && it.description),
     raw_text: parts.map((p) => p.raw_text).filter((t) => t && t.trim()).join('\n\n'),
+    raw_text_original: parts
+      .map((p) => p.raw_text_original)
+      .filter((t): t is string => Boolean(t && t.trim()))
+      .join('\n\n'),
     source_file_name: parts[0]!.source_file_name,
     source_mime_type: parts[0]!.source_mime_type,
     parsed_at: new Date().toISOString(),
@@ -396,6 +400,19 @@ function mergeParsedQuotes(parts: ParsedProcurementQuote[]): ParsedProcurementQu
     const subtotalSum = sumOf((p) => p.subtotal);
     const taxSum = sumOf((p) => p.tax_amount);
 
+    // Per-invoice audit so reviewers can trace how the package total was summed.
+    const invoice_parts = parts.map((p) => ({
+      source_file_name: p.source_file_name,
+      document_number: p.document_number,
+      subtotal: p.subtotal,
+      tax_amount: p.tax_amount,
+      total_amount: p.total_amount,
+      total_source: p.total_source,
+      total_candidates: p.total_candidates,
+      raw_text: p.raw_text,
+      raw_text_original: p.raw_text_original ?? null,
+    }));
+
     return {
       ...common,
       subtotal: subtotalSum > 0 ? subtotalSum : null,
@@ -403,6 +420,7 @@ function mergeParsedQuotes(parts: ParsedProcurementQuote[]): ParsedProcurementQu
       total_amount: sumOf((p) => p.total_amount),
       confidence: parts[0]!.confidence,
       total_mode: 'sum_invoices',
+      invoice_parts,
     };
   }
 
