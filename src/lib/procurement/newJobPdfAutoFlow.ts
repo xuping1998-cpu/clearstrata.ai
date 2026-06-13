@@ -161,6 +161,19 @@ export function buildParsedQuoteJson(
       currentPrice: analysis.currentPrice || '',
     };
 
+    // Record how the package total was derived (Phase 2A.9).
+    out.total_mode = parsedQuote.total_mode ?? 'single_page';
+    out.package_parts_count = parsedQuote.package_parts_count ?? 1;
+
+    // For a summed multi-invoice package the total is authoritative — do not let
+    // Grand Total Recovery re-pick a single page's figure from raw_text.
+    if (parsedQuote.total_mode === 'sum_invoices') {
+      out.grand_total_recovered = false;
+      out.grand_total_recovered_from = null;
+      out.grand_total_candidates = [];
+      return out;
+    }
+
     // Grand Total Recovery v2: the thin analyzer's currentPrice (or an explicit
     // authorized amount) is the REFERENCE for re-checking the OCR total. The
     // authorized amount is never written back — only real document figures.
@@ -241,7 +254,18 @@ export function isVendorSearchInflight(jobId: string): boolean {
   }
 }
 
-export function applyAnalysisToJobFields(analysis: ProcurementQuoteAnalysis) {
+/**
+ * Build job form fields from the thin analysis.
+ *
+ * When the package OCR produced an authoritative total (`packageTotal`), it is
+ * preferred over the primary page's `currentPrice` for both the title price
+ * suffix and the estimated budget — so a multi-invoice package shows its summed
+ * total instead of just the first invoice (Phase 2A.9).
+ */
+export function applyAnalysisToJobFields(
+  analysis: ProcurementQuoteAnalysis,
+  packageTotal?: { amount: number; currency?: string | null } | null,
+) {
   const categoryLabel = analysis.category || 'procurement';
   const descEn = [
     analysis.description,
@@ -249,15 +273,23 @@ export function applyAnalysisToJobFields(analysis: ProcurementQuoteAnalysis) {
   ]
     .filter(Boolean)
     .join(' ');
+
+  const usePackageTotal =
+    !!packageTotal && Number.isFinite(packageTotal.amount) && packageTotal.amount > 0;
   const budgetMatch = analysis.currentPrice?.match(/[\d,]+(?:\.\d+)?/);
 
   const descriptionTrimmed = (analysis.description ?? '').trim();
-  const priceTrimmed = (analysis.currentPrice ?? '').trim();
+  const priceLabel = usePackageTotal
+    ? `${packageTotal!.currency || 'CAD'} $${packageTotal!.amount.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`
+    : (analysis.currentPrice ?? '').trim();
   const truncatedDescription =
     descriptionTrimmed.length > 40
       ? `${descriptionTrimmed.slice(0, 40)}…`
       : descriptionTrimmed;
-  const priceSuffix = priceTrimmed ? ` - ${priceTrimmed}` : '';
+  const priceSuffix = priceLabel ? ` - ${priceLabel}` : '';
 
   const title_en = truncatedDescription
     ? `${truncatedDescription}${priceSuffix}`
@@ -272,7 +304,11 @@ export function applyAnalysisToJobFields(analysis: ProcurementQuoteAnalysis) {
     title_zh,
     description_en: descEn,
     description_zh: analysis.description,
-    estimated_budget: budgetMatch ? budgetMatch[0].replace(/,/g, '') : '',
+    estimated_budget: usePackageTotal
+      ? String(packageTotal!.amount)
+      : budgetMatch
+        ? budgetMatch[0].replace(/,/g, '')
+        : '',
   };
 }
 
@@ -299,34 +335,88 @@ function firstNonEmptyStr(
 }
 
 /**
+ * Detect a package made of multiple independent invoices / payment pages, where
+ * the real total is the SUM of pages (not one page or the largest page).
+ *
+ * Requires every part to carry a positive total_amount, plus a signal that the
+ * pages are distinct documents: different document numbers, or invoice/payment
+ * wording in the text.
+ */
+function isMultipleInvoicePackage(parts: ParsedProcurementQuote[]): boolean {
+  if (parts.length <= 1) return false;
+
+  const allHaveTotal = parts.every(
+    (p) => typeof p.total_amount === 'number' && Number.isFinite(p.total_amount) && p.total_amount > 0,
+  );
+  if (!allHaveTotal) return false;
+
+  const docNumbers = new Set(
+    parts.map((p) => (p.document_number ?? '').trim().toLowerCase()).filter(Boolean),
+  );
+  const multipleDistinctDocs = docNumbers.size > 1;
+
+  const invoiceWording = parts.some((p) =>
+    /\b(invoice|balance due|payments?|amount due)\b/i.test(p.raw_text ?? ''),
+  );
+
+  return multipleDistinctDocs || invoiceWording;
+}
+
+/**
  * Merge per-page invoice-ocr parses into one quote understanding for the package.
- * - amounts come from the page with the largest total (typically the grand-total page)
- * - raw_text is concatenated so Grand Total Recovery can see every page
- * - line_items are concatenated; vendor / doc fields take the first non-empty
+ *
+ * - Multiple independent invoices (Phase 2A.9): total = SUM of all pages.
+ * - Otherwise (single multi-page quote): keep the largest page total; raw_text is
+ *   concatenated so Grand Total Recovery can still find a labelled grand total.
+ * - line_items / raw_text are always concatenated across pages.
  */
 function mergeParsedQuotes(parts: ParsedProcurementQuote[]): ParsedProcurementQuote {
-  if (parts.length === 1) return parts[0]!;
+  if (parts.length === 1) {
+    return { ...parts[0]!, total_mode: 'single_page', package_parts_count: 1 };
+  }
 
-  const authoritative = [...parts].sort(
-    (a, b) => (b.total_amount ?? 0) - (a.total_amount ?? 0),
-  )[0]!;
-
-  return {
+  const common = {
     vendor_name: firstNonEmptyStr(parts, (p) => p.vendor_name),
     document_number: firstNonEmptyStr(parts, (p) => p.document_number),
     document_date: firstNonEmptyStr(parts, (p) => p.document_date),
-    subtotal: authoritative.subtotal,
-    tax_amount: authoritative.tax_amount,
-    total_amount: authoritative.total_amount,
     currency: firstNonEmptyStr(parts, (p) => p.currency) || 'CAD',
     service_scope: firstNonEmptyStr(parts, (p) => p.service_scope) || '',
     line_items: parts.flatMap((p) => p.line_items).filter((it) => it && it.description),
     raw_text: parts.map((p) => p.raw_text).filter((t) => t && t.trim()).join('\n\n'),
-    confidence: authoritative.confidence,
     source_file_name: parts[0]!.source_file_name,
     source_mime_type: parts[0]!.source_mime_type,
     parsed_at: new Date().toISOString(),
-    ocr_source: 'invoice-ocr',
+    ocr_source: 'invoice-ocr' as const,
+    package_parts_count: parts.length,
+  };
+
+  if (isMultipleInvoicePackage(parts)) {
+    const sumOf = (sel: (p: ParsedProcurementQuote) => number | null): number =>
+      parts.reduce((acc, p) => acc + (sel(p) ?? 0), 0);
+    const subtotalSum = sumOf((p) => p.subtotal);
+    const taxSum = sumOf((p) => p.tax_amount);
+
+    return {
+      ...common,
+      subtotal: subtotalSum > 0 ? subtotalSum : null,
+      tax_amount: taxSum > 0 ? taxSum : null,
+      total_amount: sumOf((p) => p.total_amount),
+      confidence: parts[0]!.confidence,
+      total_mode: 'sum_invoices',
+    };
+  }
+
+  // Single multi-page quote: the grand total lives on one page (largest total).
+  const authoritative = [...parts].sort(
+    (a, b) => (b.total_amount ?? 0) - (a.total_amount ?? 0),
+  )[0]!;
+  return {
+    ...common,
+    subtotal: authoritative.subtotal,
+    tax_amount: authoritative.tax_amount,
+    total_amount: authoritative.total_amount,
+    confidence: authoritative.confidence,
+    total_mode: 'grand_total',
   };
 }
 
@@ -423,7 +513,14 @@ export type CreateProcurementJobParams = {
 export async function createProcurementJobFromAnalysis(
   params: CreateProcurementJobParams,
 ): Promise<{ jobId: string }> {
-  const fields = applyAnalysisToJobFields(params.analysis);
+  // When package OCR succeeded, prefer its (possibly summed) total over the
+  // primary page's currentPrice for title / estimated_budget (Phase 2A.9).
+  const packageTotalNum = parseAmountNumber(params.parsedQuote?.total_amount);
+  const packageTotal =
+    packageTotalNum != null && packageTotalNum > 0
+      ? { amount: packageTotalNum, currency: params.parsedQuote?.currency ?? null }
+      : null;
+  const fields = applyAnalysisToJobFields(params.analysis, packageTotal);
   const budgetNum = fields.estimated_budget ? parseFloat(fields.estimated_budget) : 0;
   const authorizationType =
     params.authorizationType ??

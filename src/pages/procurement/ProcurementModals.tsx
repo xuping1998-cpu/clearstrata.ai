@@ -265,7 +265,11 @@ export function NewJobModal({
       setPdfAnalysis(analysis);
       setPdfParsedQuote(parsedQuote);
       setPdfOcrError(ocrErrorMessage ?? null);
-      setNewJob((prev) => ({ ...prev, ...applyAnalysisToJobFields(analysis) }));
+      const pkgTotal =
+        parsedQuote?.total_amount != null && parsedQuote.total_amount > 0
+          ? { amount: parsedQuote.total_amount, currency: parsedQuote.currency }
+          : null;
+      setNewJob((prev) => ({ ...prev, ...applyAnalysisToJobFields(analysis, pkgTotal) }));
 
       const { jobId } = await createProcurementJobFromAnalysis({
         propertyId: currentPropertyId,

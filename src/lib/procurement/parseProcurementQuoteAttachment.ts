@@ -23,6 +23,10 @@ export interface ParsedProcurementQuote {
   source_mime_type: string;
   parsed_at: string;
   ocr_source: 'invoice-ocr';
+  /** How a multi-attachment package total was derived (Phase 2A.9). */
+  total_mode?: 'sum_invoices' | 'grand_total' | 'single_page';
+  /** Number of OCR'd attachments that contributed to this merged quote. */
+  package_parts_count?: number;
 }
 
 export const PROCUREMENT_AUTO_DESCRIPTION_EN =
