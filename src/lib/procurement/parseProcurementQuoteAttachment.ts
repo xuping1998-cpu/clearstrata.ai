@@ -7,6 +7,7 @@ import {
   resolveInvoiceTotalByPriority,
   type InvoiceTotalSource,
 } from './invoiceTotalPriority';
+import type { InvoiceConsistencyAuditResult } from './invoiceConsistencyAudit';
 
 export interface ParsedProcurementQuote {
   vendor_name: string | null;
@@ -15,6 +16,11 @@ export interface ParsedProcurementQuote {
   subtotal: number | null;
   tax_amount: number | null;
   total_amount: number | null;
+  /** Explicit payment-block figures from invoice-ocr (Phase 2C audit). */
+  invoice_total?: number | null;
+  amount_due?: number | null;
+  balance_due?: number | null;
+  payments_credits?: number | null;
   currency: string;
   service_scope: string;
   line_items: Array<{
@@ -47,8 +53,14 @@ export interface InvoicePartAudit {
   subtotal: number | null;
   tax_amount: number | null;
   total_amount: number | null;
+  invoice_total?: number | null;
+  amount_due?: number | null;
+  balance_due?: number | null;
+  payments_credits?: number | null;
   total_source?: InvoiceTotalSource;
   total_candidates?: Array<{ amount: number; source: string }>;
+  /** Internal-contradiction audit for this invoice (Phase 2C). */
+  consistency_audit?: InvoiceConsistencyAuditResult;
   raw_text: string;
   raw_text_original?: string | null;
 }
@@ -118,6 +130,10 @@ function mapOcrToParsedQuote(
     subtotal,
     tax_amount,
     total_amount: resolved.totalAmount ?? numOrNull(ocr.total_amount),
+    invoice_total: numOrNull(ocr.invoice_total),
+    amount_due: numOrNull(ocr.amount_due),
+    balance_due: numOrNull(ocr.balance_due),
+    payments_credits: numOrNull(ocr.payments_credits),
     currency: ocr.currency?.trim() || 'CAD',
     service_scope,
     line_items,

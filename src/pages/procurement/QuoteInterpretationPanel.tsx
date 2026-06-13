@@ -87,16 +87,39 @@ function resolveTotalSourceLabel(pq: Record<string, unknown>, en: boolean): stri
   return sourceLabel(source, en);
 }
 
+interface InvoiceAuditConsistency {
+  hasWarning: boolean;
+  warnings: string[];
+  expectedInvoiceTotal: number | null;
+  dueAmount: number | null;
+  diff: number | null;
+}
+
 interface InvoiceAuditPart {
   source_file_name: string;
   document_number: string | null;
   subtotal: number | null;
   tax_amount: number | null;
   total_amount: number | null;
+  invoice_total: number | null;
   total_source: string;
+  consistency: InvoiceAuditConsistency | null;
 }
 
-/** Read the per-invoice audit trail for a summed multi-invoice package (Phase 2B). */
+function readConsistency(row: Record<string, unknown>): InvoiceAuditConsistency | null {
+  const audit = row.consistency_audit;
+  if (!audit || typeof audit !== 'object') return null;
+  const a = audit as Record<string, unknown>;
+  return {
+    hasWarning: a.hasWarning === true,
+    warnings: Array.isArray(a.warnings) ? a.warnings.map((w) => String(w)) : [],
+    expectedInvoiceTotal: num(a.expectedInvoiceTotal),
+    dueAmount: num(a.dueAmount),
+    diff: num(a.diff),
+  };
+}
+
+/** Read the per-invoice audit trail for a summed multi-invoice package (Phase 2B/2C). */
 function readInvoiceParts(pq: Record<string, unknown>): InvoiceAuditPart[] {
   const raw = Array.isArray(pq.invoice_parts) ? pq.invoice_parts : null;
   if (!raw) return [];
@@ -110,7 +133,9 @@ function readInvoiceParts(pq: Record<string, unknown>): InvoiceAuditPart[] {
       subtotal: num(row.subtotal),
       tax_amount: num(row.tax_amount),
       total_amount: num(row.total_amount),
+      invoice_total: num(row.invoice_total),
       total_source: str(row.total_source) || 'balance_due',
+      consistency: readConsistency(row),
     });
   }
   return out;
@@ -495,6 +520,50 @@ export function QuoteInterpretationPanel({
                   <p className="mt-1 text-[11px] text-slate-400 break-all">
                     {l ? 'Source file' : '文件名'}: {part.source_file_name}
                   </p>
+                )}
+                {part.consistency?.hasWarning && (
+                  <div className="mt-2 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-800">
+                    <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                    <div className="space-y-0.5">
+                      <p>
+                        {l
+                          ? 'OCR detected inconsistent subtotal, tax or total values. Please verify the original invoice.'
+                          : 'OCR 识别的小计、税额或总额存在不一致，请核对原始发票。'}
+                      </p>
+                      {part.consistency.expectedInvoiceTotal != null && (
+                        <p className="flex justify-between gap-3">
+                          <span>{l ? 'Subtotal + Tax' : '小计 + 税额'}</span>
+                          <span className="whitespace-nowrap font-medium">
+                            {formatAmount2(part.consistency.expectedInvoiceTotal, currency)}
+                          </span>
+                        </p>
+                      )}
+                      {part.invoice_total != null && (
+                        <p className="flex justify-between gap-3">
+                          <span>{l ? 'Invoice Total' : '发票总额'}</span>
+                          <span className="whitespace-nowrap font-medium">
+                            {formatAmount2(part.invoice_total, currency)}
+                          </span>
+                        </p>
+                      )}
+                      {part.consistency.dueAmount != null && (
+                        <p className="flex justify-between gap-3">
+                          <span>{l ? 'Balance Due' : '应付金额'}</span>
+                          <span className="whitespace-nowrap font-medium">
+                            {formatAmount2(part.consistency.dueAmount, currency)}
+                          </span>
+                        </p>
+                      )}
+                      {part.consistency.diff != null && (
+                        <p className="flex justify-between gap-3">
+                          <span>{l ? 'Difference' : '差额'}</span>
+                          <span className="whitespace-nowrap font-medium">
+                            {formatAmount2(Math.abs(part.consistency.diff), currency)}
+                          </span>
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
             ))}

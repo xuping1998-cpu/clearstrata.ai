@@ -11,6 +11,7 @@ import {
 import { callSearchQuotes, type SearchQuotesVendor } from './callSearchQuotes';
 import { buildSearchQuoteContext } from './buildQuoteContext';
 import { recoverGrandTotal } from './grandTotalRecovery';
+import { auditInvoicePartConsistency } from './invoiceConsistencyAudit';
 import { saveVendorSearchResults } from './saveVendorSearchResults';
 import {
   suggestAuthorizationType,
@@ -400,15 +401,31 @@ function mergeParsedQuotes(parts: ParsedProcurementQuote[]): ParsedProcurementQu
     const subtotalSum = sumOf((p) => p.subtotal);
     const taxSum = sumOf((p) => p.tax_amount);
 
-    // Per-invoice audit so reviewers can trace how the package total was summed.
+    // Per-invoice audit so reviewers can trace how the package total was summed,
+    // plus a consistency check (Phase 2C) that flags OCR contradictions without
+    // changing the authoritative payable total.
     const invoice_parts = parts.map((p) => ({
       source_file_name: p.source_file_name,
       document_number: p.document_number,
       subtotal: p.subtotal,
       tax_amount: p.tax_amount,
       total_amount: p.total_amount,
+      invoice_total: p.invoice_total ?? null,
+      amount_due: p.amount_due ?? null,
+      balance_due: p.balance_due ?? null,
+      payments_credits: p.payments_credits ?? null,
       total_source: p.total_source,
       total_candidates: p.total_candidates,
+      consistency_audit: auditInvoicePartConsistency({
+        subtotal: p.subtotal,
+        tax_amount: p.tax_amount,
+        invoice_total: p.invoice_total,
+        total_amount: p.total_amount,
+        amount_due: p.amount_due,
+        balance_due: p.balance_due,
+        payments_credits: p.payments_credits,
+        total_source: p.total_source,
+      }),
       raw_text: p.raw_text,
       raw_text_original: p.raw_text_original ?? null,
     }));
