@@ -32,6 +32,8 @@ export interface ParsedProcurementQuote {
   raw_text: string;
   /** Verbatim OCR transcription of the source document (Phase 2A.11). */
   raw_text_original?: string;
+  /** Verbatim transcription of just the totals block (Phase 3). */
+  totals_block_text?: string;
   confidence: number | null;
   source_file_name: string;
   source_mime_type: string;
@@ -69,6 +71,8 @@ export interface InvoicePartAudit {
   consistency_audit?: InvoiceConsistencyAuditResult;
   raw_text: string;
   raw_text_original?: string | null;
+  /** Verbatim totals-block transcription for this part (Phase 3). */
+  totals_block_text?: string | null;
 }
 
 export const PROCUREMENT_AUTO_DESCRIPTION_EN =
@@ -100,6 +104,8 @@ function mapOcrToParsedQuote(
   const raw = (ocr.raw_text ?? '').trim();
   // Phase 2D: the verbatim OCR transcription is the ONLY source of truth.
   const rawText = (ocr.raw_text_original ?? '').trim() || raw;
+  // Phase 3: the model also transcribes the totals block on its own; prefer it.
+  const totalsBlockText = (ocr.totals_block_text ?? '').trim();
   const service_scope =
     summary ||
     rawText.slice(0, 500) ||
@@ -111,8 +117,9 @@ function mapOcrToParsedQuote(
     amount: lineItemAmount(it.amount),
   }));
 
-  // All monetary figures are parsed in code from the transcription — never the LLM.
-  const totals = parseFinancialTotalsFromRawText(rawText);
+  // All monetary figures are parsed in code — never the LLM. Prefer the dedicated
+  // totals-block transcription, fall back to the full verbatim transcription.
+  const totals = parseFinancialTotalsFromRawText(totalsBlockText || rawText);
 
   return {
     vendor_name: ocr.vendor_name?.trim() || null,
@@ -131,6 +138,7 @@ function mapOcrToParsedQuote(
     line_items,
     raw_text: rawText,
     raw_text_original: rawText,
+    totals_block_text: totalsBlockText || undefined,
     confidence,
     source_file_name: file.name,
     source_mime_type: file.type || 'application/octet-stream',

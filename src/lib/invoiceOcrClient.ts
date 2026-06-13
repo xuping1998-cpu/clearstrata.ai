@@ -26,6 +26,8 @@ export type InvoiceOcrExtractedForDb = {
   raw_text: string;
   /** Verbatim OCR transcription of the document (Phase 2A.11). */
   raw_text_original: string;
+  /** Verbatim transcription of just the totals block, one "Label Amount" per line (Phase 3). */
+  totals_block_text: string;
 };
 
 export type InvoiceOcrInvokeResult = {
@@ -139,6 +141,7 @@ export async function invokeInvoiceOcrFromFile(file: File, langEn: boolean): Pro
     description?: string;
     raw_text?: string;
     raw_text_original?: string;
+    totals_block_text?: string;
     confidence?: number | string;
     line_items?: Array<{ description?: string; amount?: string | number | null }>;
     items?: Array<{ description?: string; amount?: string | number | null }>;
@@ -146,10 +149,12 @@ export async function invokeInvoiceOcrFromFile(file: File, langEn: boolean): Pro
 
   const structured = data.structured as InvoiceOcrInvokeResult['structured'] | undefined;
 
-  // Phase 2D: the LLM no longer returns financial figures. Every monetary total
-  // is parsed in code from the verbatim transcription.
+  // Phase 2D/3: the LLM no longer returns financial figures. Every monetary total
+  // is parsed in code, preferring the dedicated totals-block transcription and
+  // falling back to the full verbatim transcription.
   const rawText = (ex.raw_text_original || ex.raw_text || '').toString();
-  const totals = parseFinancialTotalsFromRawText(rawText);
+  const totalsBlockText = (ex.totals_block_text || '').toString();
+  const totals = parseFinancialTotalsFromRawText(totalsBlockText.trim() || rawText);
 
   const rawItems = Array.isArray(ex.line_items)
     ? ex.line_items
@@ -183,6 +188,7 @@ export async function invokeInvoiceOcrFromFile(file: File, langEn: boolean): Pro
     anomaly_notes: '',
     raw_text: rawText,
     raw_text_original: rawText,
+    totals_block_text: totalsBlockText,
   };
 
   const invDateStr = extracted.invoice_date || new Date().toISOString().split('T')[0];

@@ -26,6 +26,7 @@ type AiInvoiceJson = {
   category?: string;
   currency?: string;
   confidence?: number | string;
+  totals_block_text?: string;
   raw_text_original?: string;
   raw_text_summary?: string;
   raw_text?: string;
@@ -52,6 +53,7 @@ type FrontendExtracted = {
   summary: string;
   raw_text: string;
   raw_text_original: string;
+  totals_block_text: string;
   due_date: string;
   description: string;
   category: string;
@@ -70,9 +72,30 @@ Do not replace printed values with mathematically consistent values.
 
 Return the original invoice text line by line, preserving the totals block exactly as printed.
 
-For financial totals such as Subtotal, Sales Tax, GST, HST, PST, Payments/Credits, Total, Invoice Total, Amount Due, Balance Due:
-only include them inside raw_text_original exactly as seen.
-Do not extract them as numeric JSON fields.
+TOTALS BLOCK — READ THIS FIRST:
+1. Locate the totals block first (usually bottom-right of the invoice).
+2. Transcribe the totals block line by line EXACTLY as printed.
+3. Do not infer missing rows.
+4. Do not calculate GST.
+5. Do not replace printed numbers with mathematically consistent numbers.
+6. Preserve these labels and their numbers exactly: Subtotal, Sales Tax, GST, HST, PST, Payments/Credits, Total, Invoice Total, Amount Due, Balance Due.
+7. If labels are on the right and amounts are aligned in a column, preserve their order.
+8. If labels and amounts are separated by layout, still output ONE line per label, e.g.:
+   Subtotal $44,375.00
+   Sales Tax $2,218.75
+   Payments/Credits $0.00
+   Balance Due $46,593.75
+9. Never create a Total line if it is not printed.
+10. Never create a Payments/Credits line if it is not printed.
+11. If uncertain, include the exact visible characters and lower the confidence; do not guess.
+
+Put the verbatim totals block in "totals_block_text" (one "Label Amount" per line),
+AND also keep it inside "raw_text_original" as part of the full transcription.
+"totals_block_text" is still OCR transcription — NOT computed numeric fields.
+
+For financial totals (Subtotal, Sales Tax, GST, HST, PST, Payments/Credits, Total,
+Invoice Total, Amount Due, Balance Due): only include them as printed text inside
+"totals_block_text" / "raw_text_original". Do not extract them as numeric JSON fields.
 
 If a number is unclear, preserve the visible text and do not guess.
 
@@ -85,6 +108,7 @@ Expected JSON shape:
   "document_date": "" or null,
   "service_scope": "" or null,
   "line_items": [ { "description": "", "amount": null } ],
+  "totals_block_text": "",
   "raw_text_original": "",
   "raw_text": "",
   "confidence": 0
@@ -164,6 +188,7 @@ function buildExtractedAndStructured(
     summary: serviceScope,
     raw_text: rawText,
     raw_text_original: rawText,
+    totals_block_text: strField(parsed.totals_block_text),
     due_date: "",
     description: serviceScope,
     category: strField(parsed.category) || "general",

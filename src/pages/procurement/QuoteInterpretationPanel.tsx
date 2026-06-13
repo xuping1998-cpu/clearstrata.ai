@@ -109,6 +109,8 @@ interface InvoiceAuditPart {
   total_source: string;
   field_sources: Record<string, string>;
   consistency: InvoiceAuditConsistency | null;
+  /** True when the model returned a dedicated totals-block transcription (Phase 3). */
+  hasTotalsBlock: boolean;
 }
 
 function readFieldSources(row: Record<string, unknown>): Record<string, string> {
@@ -157,6 +159,7 @@ function readInvoiceParts(pq: Record<string, unknown>): InvoiceAuditPart[] {
       total_source: str(row.total_source) || 'balance_due',
       field_sources: readFieldSources(row),
       consistency: readConsistency(row),
+      hasTotalsBlock: Boolean(str(row.totals_block_text)),
     });
   }
   return out;
@@ -564,6 +567,14 @@ export function QuoteInterpretationPanel({
                     <span className="text-slate-500">{l ? 'Total source' : '总额来源'}</span>
                     <span className="whitespace-nowrap">{sourceLabel(part.total_source, l)}</span>
                   </p>
+                  {part.hasTotalsBlock && (
+                    <p className="flex justify-between gap-3">
+                      <span className="text-slate-500">{l ? 'OCR source' : 'OCR 来源'}</span>
+                      <span className="whitespace-nowrap text-slate-500">
+                        {l ? 'Totals block OCR' : 'Totals block OCR（合计区原文）'}
+                      </span>
+                    </p>
+                  )}
                 </div>
                 {part.source_file_name && (
                   <p className="mt-1 text-[11px] text-slate-400 break-all">

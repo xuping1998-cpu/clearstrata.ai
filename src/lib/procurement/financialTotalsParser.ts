@@ -282,6 +282,26 @@ export function parseFinancialTotalsFromRawText(
     i += 1;
   }
 
+  // Pass 2b — a label line immediately followed by an amount line (Phase 3 layout D).
+  // Robust to unequal label/amount runs that Pass 2's positional pairing skips.
+  for (let j = 0; j < items.length - 1; j += 1) {
+    const cur = items[j]!;
+    const nxt = items[j + 1]!;
+    if (
+      !cur.consumed &&
+      cur.label != null &&
+      cur.amount == null &&
+      !nxt.consumed &&
+      nxt.label == null &&
+      nxt.isFullAmount &&
+      nxt.amount != null
+    ) {
+      assign(cur.label, nxt.amount.amount, `${cur.raw} ${nxt.amount.text}`);
+      cur.consumed = true;
+      nxt.consumed = true;
+    }
+  }
+
   // Pass 3 — inline totals block: "Label Amount Label Amount ..." (possibly all on
   // one line). Operates on whitespace-normalized text and fills only fields not yet
   // set by the line-level passes (first-wins).

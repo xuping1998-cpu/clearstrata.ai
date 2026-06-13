@@ -446,6 +446,7 @@ function mergeParsedQuotes(parts: ParsedProcurementQuote[]): ParsedProcurementQu
       }),
       raw_text: p.raw_text,
       raw_text_original: p.raw_text_original ?? null,
+      totals_block_text: p.totals_block_text ?? null,
     }));
 
     return {
