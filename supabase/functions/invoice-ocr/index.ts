@@ -16,91 +16,82 @@ type ProviderError = {
 type AiInvoiceJson = {
   vendor_name?: string;
   vendor?: string;
+  document_number?: string;
   invoice_number?: string;
+  document_date?: string;
   invoice_date?: string;
-  due_date?: string;
-  subtotal?: string | number;
-  sales_tax?: string | number;
-  tax_amount?: string | number;
-  payments_credits?: string | number;
-  invoice_total?: string | number;
-  balance_due?: string | number;
-  amount_due?: string | number;
-  total_amount?: string | number;
-  currency?: string;
+  service_scope?: string;
   description?: string;
   summary?: string;
   category?: string;
+  currency?: string;
   confidence?: number | string;
+  raw_text_original?: string;
   raw_text_summary?: string;
   raw_text?: string;
-  items?: Array<{ description?: string; amount?: string }>;
+  line_items?: Array<{ description?: string; amount?: string | number | null }>;
+  items?: Array<{ description?: string; amount?: string | number | null }>;
 };
 
-/** Frontend-compatible extracted row + structured summary */
+/**
+ * Frontend-compatible extracted row + structured summary.
+ *
+ * Phase 2D: this function NO LONGER returns financial totals. All monetary
+ * figures (subtotal, tax, totals, balance due, ...) are parsed in TypeScript on
+ * the client from `raw_text_original`. The LLM only transcribes.
+ */
 type FrontendExtracted = {
   vendor: string;
   invoice_number: string;
+  document_number: string;
   invoice_date: string;
-  total_amount: string;
-  tax_amount: string;
+  document_date: string;
+  service_scope: string;
   currency: string;
   items: Array<{ description: string; amount: string }>;
   summary: string;
   raw_text: string;
+  raw_text_original: string;
   due_date: string;
-  subtotal: string;
-  sales_tax: string;
-  payments_credits: string;
-  invoice_total: string;
-  balance_due: string;
-  amount_due: string;
   description: string;
   category: string;
   confidence: number | string;
 };
 
-const JSON_SHAPE_PROMPT = `You are an invoice OCR assistant for Canadian strata property management.
+const JSON_SHAPE_PROMPT = `STRICT FINANCIAL OCR MODE
+
+You are doing transcription, not accounting.
+
+Do not calculate.
+Do not infer.
+Do not correct.
+Do not normalize financial totals.
+Do not replace printed values with mathematically consistent values.
+
+Return the original invoice text line by line, preserving the totals block exactly as printed.
+
+For financial totals such as Subtotal, Sales Tax, GST, HST, PST, Payments/Credits, Total, Invoice Total, Amount Due, Balance Due:
+only include them inside raw_text_original exactly as seen.
+Do not extract them as numeric JSON fields.
+
+If a number is unclear, preserve the visible text and do not guess.
+
 Respond with ONLY one JSON object. No markdown, no prose, no code fences.
 
-TRANSCRIPTION RULES:
-- "raw_text" MUST be a verbatim, line-by-line transcription of ALL visible text on
-  the document. Do NOT summarize, paraphrase, or reorder.
-- The totals block MUST be transcribed exactly as printed, including every label
-  and its amount: Subtotal, Sales Tax / GST / HST / PST, Payments/Credits,
-  Invoice Total, Total Due, Amount Due, Balance Due.
-
-AMOUNT RULES:
-- Read the bottom-right payment block. The payable figure is "Balance Due"
-  (or "Amount Due" / "Total Due" if Balance Due is absent).
-- "total_amount" MUST equal that payable figure — NEVER a subtotal, a single line
-  item, or an intermediate total.
-- Fill "balance_due", "amount_due", "subtotal", "sales_tax", "payments_credits",
-  and "invoice_total" with the exact printed figures when present.
-
-Required keys (use empty string "" where unknown; use empty array [] for items; confidence 0-1 number):
+Expected JSON shape:
 {
-  "vendor_name": "",
-  "invoice_number": "",
-  "invoice_date": "",
-  "due_date": "",
-  "subtotal": "",
-  "sales_tax": "",
-  "tax_amount": "",
-  "payments_credits": "",
-  "invoice_total": "",
-  "amount_due": "",
-  "balance_due": "",
-  "total_amount": "",
-  "currency": "CAD",
-  "description": "",
-  "category": "general",
-  "confidence": 0,
+  "vendor_name": "" or null,
+  "document_number": "" or null,
+  "document_date": "" or null,
+  "service_scope": "" or null,
+  "line_items": [ { "description": "", "amount": null } ],
+  "raw_text_original": "",
   "raw_text": "",
-  "items": [ { "description": "", "amount": "" } ]
+  "confidence": 0
 }
 
-Dates YYYY-MM-DD when possible. Amounts as numeric strings without extra text. Currency default CAD.`;
+"raw_text" MUST equal "raw_text_original". document_date as YYYY-MM-DD when possible.
+line_items.amount may be null; line-item amounts are descriptive only and MUST NOT be treated as invoice totals.`;
 
 function parseJsonFromAssistant(text: string): AiInvoiceJson | null {
   const trimmed = text.trim();
@@ -139,52 +130,48 @@ function buildExtractedAndStructured(
   parsed: AiInvoiceJson,
   rawFallback: string,
 ): { extracted: FrontendExtracted; structured: Record<string, unknown> } {
-  const items = Array.isArray(parsed.items)
-    ? parsed.items.map((it) => ({
-        description: strField(it?.description),
-        amount: strField(it?.amount),
-      }))
-    : [];
+  const rawItems = Array.isArray(parsed.line_items)
+    ? parsed.line_items
+    : Array.isArray(parsed.items)
+      ? parsed.items
+      : [];
+  const items = rawItems.map((it) => ({
+    description: strField(it?.description),
+    amount: strField(it?.amount),
+  }));
 
   const vendor = strField(parsed.vendor_name ?? parsed.vendor);
-  const summary = strField(parsed.description ?? parsed.summary);
-  // Prefer the verbatim transcription; only fall back to a summary or the raw
-  // model response when the model failed to transcribe.
-  const rawText = strField(parsed.raw_text) ||
-    strField(parsed.raw_text_summary) ||
-    rawFallback.slice(0, 12000);
+  const docNumber = strField(parsed.document_number ?? parsed.invoice_number);
+  const docDate = strField(parsed.document_date ?? parsed.invoice_date);
+  const serviceScope = strField(parsed.service_scope ?? parsed.description ?? parsed.summary);
 
-  const balanceDue = strField(parsed.balance_due);
-  const amountDue = strField(parsed.amount_due);
-  const invoiceTotal = strField(parsed.invoice_total);
-  // Payable figure priority: Balance Due > Amount Due > model total_amount > Invoice Total.
-  const payable = balanceDue || amountDue || strField(parsed.total_amount) || invoiceTotal;
+  // Verbatim transcription is the ONLY source of truth. Never a summary; only a
+  // last-resort fallback to the raw model response when transcription is missing.
+  const rawText = strField(parsed.raw_text_original) ||
+    strField(parsed.raw_text) ||
+    strField(parsed.raw_text_summary) ||
+    rawFallback.slice(0, 16000);
 
   const extracted: FrontendExtracted = {
     vendor,
-    invoice_number: strField(parsed.invoice_number),
-    invoice_date: strField(parsed.invoice_date),
-    total_amount: payable,
-    tax_amount: strField(parsed.tax_amount) || strField(parsed.sales_tax),
+    invoice_number: docNumber,
+    document_number: docNumber,
+    invoice_date: docDate,
+    document_date: docDate,
+    service_scope: serviceScope,
     currency: strField(parsed.currency) || "CAD",
     items,
-    summary,
+    summary: serviceScope,
     raw_text: rawText,
-    due_date: strField(parsed.due_date),
-    subtotal: strField(parsed.subtotal),
-    sales_tax: strField(parsed.sales_tax),
-    payments_credits: strField(parsed.payments_credits),
-    invoice_total: invoiceTotal,
-    balance_due: balanceDue,
-    amount_due: amountDue,
-    description: strField(parsed.description ?? parsed.summary),
+    raw_text_original: rawText,
+    due_date: "",
+    description: serviceScope,
     category: strField(parsed.category) || "general",
     confidence: normalizeConfidence(parsed.confidence),
   };
 
   const structured = {
     vendor: extracted.vendor,
-    amount: extracted.total_amount,
     date: extracted.invoice_date,
     items: items.map((i) => ({
       description: i.description,

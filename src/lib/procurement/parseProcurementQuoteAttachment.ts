@@ -4,9 +4,10 @@ import {
   type InvoiceOcrInvokeResult,
 } from '../invoiceOcrClient';
 import {
-  resolveInvoiceTotalByPriority,
-  type InvoiceTotalSource,
-} from './invoiceTotalPriority';
+  parseFinancialTotalsFromRawText,
+  type FinancialTotalSource,
+  type FinancialTotalsParseResult,
+} from './financialTotalsParser';
 import type { InvoiceConsistencyAuditResult } from './invoiceConsistencyAudit';
 
 export interface ParsedProcurementQuote {
@@ -16,10 +17,11 @@ export interface ParsedProcurementQuote {
   subtotal: number | null;
   tax_amount: number | null;
   total_amount: number | null;
-  /** Explicit payment-block figures from invoice-ocr (Phase 2C audit). */
+  /** Payment-block figures parsed in code from raw_text (Phase 2C/2D audit). */
   invoice_total?: number | null;
   amount_due?: number | null;
   balance_due?: number | null;
+  total_due?: number | null;
   payments_credits?: number | null;
   currency: string;
   service_scope: string;
@@ -39,10 +41,12 @@ export interface ParsedProcurementQuote {
   total_mode?: 'sum_invoices' | 'grand_total' | 'single_page';
   /** Number of OCR'd attachments that contributed to this merged quote. */
   package_parts_count?: number;
-  /** Which figure `total_amount` was resolved from for this page (Phase 2A.10). */
-  total_source?: InvoiceTotalSource;
+  /** Which figure `total_amount` was resolved from for this page (Phase 2A.10/2D). */
+  total_source?: FinancialTotalSource;
   /** Ranked candidate totals considered while resolving `total_amount`. */
-  total_candidates?: Array<{ amount: number; source: string }>;
+  total_candidates?: FinancialTotalsParseResult['total_candidates'];
+  /** Raw source text for each financial field, parsed in code (Phase 2D). */
+  financial_field_sources?: FinancialTotalsParseResult['field_sources'];
   /** Per-invoice audit for a summed multi-invoice package (Phase 2A.11). */
   invoice_parts?: InvoicePartAudit[];
 }
@@ -56,9 +60,11 @@ export interface InvoicePartAudit {
   invoice_total?: number | null;
   amount_due?: number | null;
   balance_due?: number | null;
+  total_due?: number | null;
   payments_credits?: number | null;
-  total_source?: InvoiceTotalSource;
-  total_candidates?: Array<{ amount: number; source: string }>;
+  total_source?: FinancialTotalSource;
+  total_candidates?: FinancialTotalsParseResult['total_candidates'];
+  financial_field_sources?: FinancialTotalsParseResult['field_sources'];
   /** Internal-contradiction audit for this invoice (Phase 2C). */
   consistency_audit?: InvoiceConsistencyAuditResult;
   raw_text: string;
@@ -70,11 +76,6 @@ export const PROCUREMENT_AUTO_DESCRIPTION_EN =
 
 export const PROCUREMENT_AUTO_DESCRIPTION_ZH =
   '已上传供应商报价附件，请查看 PDF / 图片报价资料，并搜索匹配的本地供应商。';
-
-function numOrNull(n: number | undefined | null): number | null {
-  if (n == null || !Number.isFinite(n)) return null;
-  return n;
-}
 
 function lineItemAmount(amount: number): number | null {
   if (!Number.isFinite(amount) || amount === 0) return null;
@@ -97,55 +98,47 @@ function mapOcrToParsedQuote(
 ): ParsedProcurementQuote {
   const summary = (ocr.description ?? '').trim();
   const raw = (ocr.raw_text ?? '').trim();
-  // Verbatim OCR transcription is the source of truth for total resolution; the
-  // model summary is only a fallback for display.
-  const rawOriginal = (ocr.raw_text_original ?? '').trim() || raw;
+  // Phase 2D: the verbatim OCR transcription is the ONLY source of truth.
+  const rawText = (ocr.raw_text_original ?? '').trim() || raw;
   const service_scope =
     summary ||
-    raw.slice(0, 500) ||
+    rawText.slice(0, 500) ||
     '';
 
-  const subtotal = numOrNull(ocr.subtotal);
-  const tax_amount = numOrNull(ocr.tax_amount);
+  // Line items are descriptive only; their amounts are NOT used for totals.
   const line_items = (ocr.line_items ?? []).map((it) => ({
     description: String(it.description ?? '').trim(),
     amount: lineItemAmount(it.amount),
   }));
 
-  // Phase 2A.10/2A.11: prefer the invoice's payable figure (Balance Due) over a
-  // line-item / subtotal that invoice-ocr may have returned as total_amount.
-  // Read the verbatim transcription first so keyword matching is reliable.
-  const resolved = resolveInvoiceTotalByPriority({
-    rawText: rawOriginal || raw,
-    ocrTotalAmount: numOrNull(ocr.total_amount),
-    subtotal,
-    taxAmount: tax_amount,
-    lineItems: line_items,
-  });
+  // All monetary figures are parsed in code from the transcription — never the LLM.
+  const totals = parseFinancialTotalsFromRawText(rawText);
 
   return {
     vendor_name: ocr.vendor_name?.trim() || null,
     document_number: ocr.invoice_number?.trim() || null,
     document_date: ocr.invoice_date?.trim() || null,
-    subtotal,
-    tax_amount,
-    total_amount: resolved.totalAmount ?? numOrNull(ocr.total_amount),
-    invoice_total: numOrNull(ocr.invoice_total),
-    amount_due: numOrNull(ocr.amount_due),
-    balance_due: numOrNull(ocr.balance_due),
-    payments_credits: numOrNull(ocr.payments_credits),
+    subtotal: totals.subtotal,
+    tax_amount: totals.sales_tax ?? totals.tax_amount,
+    total_amount: totals.total_amount,
+    invoice_total: totals.invoice_total,
+    amount_due: totals.amount_due,
+    balance_due: totals.balance_due,
+    total_due: totals.total_due,
+    payments_credits: totals.payments_credits,
     currency: ocr.currency?.trim() || 'CAD',
     service_scope,
     line_items,
-    raw_text: raw,
-    raw_text_original: rawOriginal,
+    raw_text: rawText,
+    raw_text_original: rawText,
     confidence,
     source_file_name: file.name,
     source_mime_type: file.type || 'application/octet-stream',
     parsed_at: new Date().toISOString(),
     ocr_source: 'invoice-ocr',
-    total_source: resolved.totalSource,
-    total_candidates: resolved.candidates,
+    total_source: totals.total_source,
+    total_candidates: totals.total_candidates,
+    financial_field_sources: totals.field_sources,
   };
 }
 

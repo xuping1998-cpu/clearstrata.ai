@@ -23,6 +23,7 @@ export interface InvoiceConsistencyAuditPart {
   total_amount?: number | null;
   amount_due?: number | null;
   balance_due?: number | null;
+  total_due?: number | null;
   payments_credits?: number | null;
   total_source?: string | null;
 }
@@ -52,7 +53,11 @@ export function auditInvoicePartConsistency(
   const payments = num(part.payments_credits);
 
   // The payable figure that drives the package total.
-  const dueAmount = num(part.balance_due) ?? num(part.amount_due) ?? num(part.total_amount);
+  const dueAmount =
+    num(part.balance_due) ??
+    num(part.amount_due) ??
+    num(part.total_due) ??
+    num(part.total_amount);
 
   const expectedInvoiceTotal =
     subtotal != null && tax != null ? round2(subtotal + tax) : null;

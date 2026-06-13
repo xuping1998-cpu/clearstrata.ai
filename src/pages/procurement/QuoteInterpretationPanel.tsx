@@ -102,8 +102,24 @@ interface InvoiceAuditPart {
   tax_amount: number | null;
   total_amount: number | null;
   invoice_total: number | null;
+  payments_credits: number | null;
+  balance_due: number | null;
+  amount_due: number | null;
+  total_due: number | null;
   total_source: string;
+  field_sources: Record<string, string>;
   consistency: InvoiceAuditConsistency | null;
+}
+
+function readFieldSources(row: Record<string, unknown>): Record<string, string> {
+  const fs = row.financial_field_sources;
+  if (!fs || typeof fs !== 'object') return {};
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(fs as Record<string, unknown>)) {
+    const s = str(v);
+    if (s) out[k] = s;
+  }
+  return out;
 }
 
 function readConsistency(row: Record<string, unknown>): InvoiceAuditConsistency | null {
@@ -134,7 +150,12 @@ function readInvoiceParts(pq: Record<string, unknown>): InvoiceAuditPart[] {
       tax_amount: num(row.tax_amount),
       total_amount: num(row.total_amount),
       invoice_total: num(row.invoice_total),
+      payments_credits: num(row.payments_credits),
+      balance_due: num(row.balance_due),
+      amount_due: num(row.amount_due),
+      total_due: num(row.total_due),
       total_source: str(row.total_source) || 'balance_due',
+      field_sources: readFieldSources(row),
       consistency: readConsistency(row),
     });
   }
@@ -490,28 +511,56 @@ export function QuoteInterpretationPanel({
                 className="rounded-md border border-slate-100 bg-slate-50/70 p-2.5 text-xs text-slate-700"
               >
                 <p className="font-medium text-slate-800">
-                  {l ? 'Invoice #' : '发票号'}: {part.document_number || (l ? '—' : '—')}
+                  {l ? 'Invoice #' : '发票号'}: {part.document_number || '—'}
                 </p>
-                <div className="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5">
-                  <p className="flex justify-between gap-3">
-                    <span className="text-slate-500">{l ? 'Subtotal' : '小计'}</span>
-                    <span className="whitespace-nowrap">
-                      {part.subtotal != null ? formatAmount2(part.subtotal, currency) : '—'}
-                    </span>
-                  </p>
-                  <p className="flex justify-between gap-3">
-                    <span className="text-slate-500">{l ? 'Sales Tax' : '税'}</span>
-                    <span className="whitespace-nowrap">
-                      {part.tax_amount != null ? formatAmount2(part.tax_amount, currency) : '—'}
-                    </span>
-                  </p>
-                  <p className="flex justify-between gap-3 font-medium text-slate-800">
-                    <span>{l ? 'Balance Due' : '应付金额'}</span>
-                    <span className="whitespace-nowrap">
-                      {part.total_amount != null ? formatAmount2(part.total_amount, currency) : '—'}
-                    </span>
-                  </p>
-                  <p className="flex justify-between gap-3">
+                <div className="mt-1 space-y-1">
+                  {[
+                    { label: l ? 'Subtotal' : '小计', amount: part.subtotal, src: part.field_sources.subtotal },
+                    { label: l ? 'Sales Tax' : '税', amount: part.tax_amount, src: part.field_sources.sales_tax },
+                    {
+                      label: l ? 'Payments/Credits' : '已付/抵扣',
+                      amount: part.payments_credits,
+                      src: part.field_sources.payments_credits,
+                      optional: true,
+                    },
+                    {
+                      label: l ? 'Invoice Total' : '发票总额',
+                      amount: part.invoice_total ?? part.total_due,
+                      src: part.field_sources.invoice_total ?? part.field_sources.total_due ?? part.field_sources.total,
+                      optional: true,
+                    },
+                    {
+                      label: l ? 'Balance Due' : '应付金额',
+                      amount: part.balance_due ?? part.amount_due ?? part.total_amount,
+                      src:
+                        part.field_sources.balance_due ??
+                        part.field_sources.amount_due ??
+                        part.field_sources.total_due,
+                      strong: true,
+                    },
+                  ]
+                    .filter((row) => !row.optional || row.amount != null)
+                    .map((row) => (
+                      <div key={row.label}>
+                        <p
+                          className={`flex justify-between gap-3 ${
+                            row.strong ? 'font-medium text-slate-800' : ''
+                          }`}
+                        >
+                          <span className={row.strong ? '' : 'text-slate-500'}>{row.label}</span>
+                          <span className="whitespace-nowrap">
+                            {row.amount != null ? formatAmount2(row.amount, currency) : '—'}
+                          </span>
+                        </p>
+                        {row.src && (
+                          <p className="text-[10px] text-slate-400 break-all">
+                            {l ? 'Source: ' : '来源：'}
+                            {row.src}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  <p className="flex justify-between gap-3 pt-0.5">
                     <span className="text-slate-500">{l ? 'Total source' : '总额来源'}</span>
                     <span className="whitespace-nowrap">{sourceLabel(part.total_source, l)}</span>
                   </p>
@@ -527,8 +576,8 @@ export function QuoteInterpretationPanel({
                     <div className="space-y-0.5">
                       <p>
                         {l
-                          ? 'OCR detected inconsistent subtotal, tax or total values. Please verify the original invoice.'
-                          : 'OCR 识别的小计、税额或总额存在不一致，请核对原始发票。'}
+                          ? 'OCR detected inconsistent subtotal, tax or total values. Please verify the original invoice. Do not change the package total unless Balance Due is affected.'
+                          : 'OCR 数字存在内部不一致，请核对原始发票。除非 Balance Due 受影响，否则不要更改包总额。'}
                       </p>
                       {part.consistency.expectedInvoiceTotal != null && (
                         <p className="flex justify-between gap-3">

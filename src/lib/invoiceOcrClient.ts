@@ -1,3 +1,5 @@
+import { parseFinancialTotalsFromRawText } from './procurement/financialTotalsParser';
+
 export type InvoiceOcrLineItem = { description: string; amount: number };
 
 export type InvoiceOcrExtractedForDb = {
@@ -127,66 +129,55 @@ export async function invokeInvoiceOcrFromFile(file: File, langEn: boolean): Pro
 
   const ex = data.extracted as {
     vendor?: string;
+    document_number?: string;
     invoice_number?: string;
+    document_date?: string;
     invoice_date?: string;
-    total_amount?: string;
-    tax_amount?: string;
-    subtotal?: string;
-    sales_tax?: string;
-    payments_credits?: string;
-    invoice_total?: string;
-    balance_due?: string;
-    amount_due?: string;
+    service_scope?: string;
     currency?: string;
     summary?: string;
     description?: string;
     raw_text?: string;
+    raw_text_original?: string;
     confidence?: number | string;
-    items?: Array<{ description?: string; amount?: string }>;
+    line_items?: Array<{ description?: string; amount?: string | number | null }>;
+    items?: Array<{ description?: string; amount?: string | number | null }>;
   };
 
   const structured = data.structured as InvoiceOcrInvokeResult['structured'] | undefined;
 
-  const positive = (n: number): number | null => (Number.isFinite(n) && n > 0 ? n : null);
-  const balanceDue = positive(parseAmount(ex.balance_due));
-  const amountDue = positive(parseAmount(ex.amount_due));
-  const invoiceTotal = positive(parseAmount(ex.invoice_total));
-  const paymentsCredits = positive(parseAmount(ex.payments_credits));
-  const salesTax = positive(parseAmount(ex.sales_tax));
+  // Phase 2D: the LLM no longer returns financial figures. Every monetary total
+  // is parsed in code from the verbatim transcription.
+  const rawText = (ex.raw_text_original || ex.raw_text || '').toString();
+  const totals = parseFinancialTotalsFromRawText(rawText);
 
-  // Payable total priority: Balance Due > Amount Due > model total > Invoice Total.
-  const total =
-    balanceDue ?? amountDue ?? positive(parseAmount(ex.total_amount)) ?? invoiceTotal ?? 0;
-  const tax = positive(parseAmount(ex.tax_amount)) ?? salesTax ?? 0;
-  const explicitSubtotal = positive(parseAmount(ex.subtotal));
-  const subtotal = explicitSubtotal ?? Math.max(0, total - tax);
-
-  const line_items: InvoiceOcrLineItem[] = Array.isArray(ex.items)
-    ? ex.items.map((it) => ({
-        description: String(it?.description ?? ''),
-        amount: parseAmount(it?.amount),
-      }))
-    : [];
-
-  const rawText = ex.raw_text || '';
+  const rawItems = Array.isArray(ex.line_items)
+    ? ex.line_items
+    : Array.isArray(ex.items)
+      ? ex.items
+      : [];
+  const line_items: InvoiceOcrLineItem[] = rawItems.map((it) => ({
+    description: String(it?.description ?? ''),
+    amount: parseAmount(it?.amount),
+  }));
 
   const extracted: InvoiceOcrExtractedForDb = {
     vendor_name: ex.vendor || (langEn ? 'Unknown vendor' : '未知供应商'),
-    invoice_number: ex.invoice_number || null,
-    invoice_date: ex.invoice_date || new Date().toISOString().split('T')[0],
+    invoice_number: (ex.document_number ?? ex.invoice_number) || null,
+    invoice_date: (ex.document_date ?? ex.invoice_date) || new Date().toISOString().split('T')[0],
     due_date: null,
-    subtotal,
-    tax_amount: tax,
-    total_amount: total,
-    balance_due: balanceDue,
-    amount_due: amountDue,
-    sales_tax: salesTax,
-    payments_credits: paymentsCredits,
-    invoice_total: invoiceTotal,
+    subtotal: totals.subtotal ?? 0,
+    tax_amount: totals.tax_amount ?? 0,
+    total_amount: totals.total_amount ?? 0,
+    balance_due: totals.balance_due,
+    amount_due: totals.amount_due,
+    sales_tax: totals.sales_tax,
+    payments_credits: totals.payments_credits,
+    invoice_total: totals.invoice_total,
     hst_number: null,
     currency: ex.currency || 'CAD',
     category: 'general',
-    description: (ex.description ?? ex.summary) || null,
+    description: (ex.service_scope ?? ex.description ?? ex.summary) || null,
     line_items,
     has_anomalies: false,
     anomaly_notes: '',
