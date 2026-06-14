@@ -13,6 +13,7 @@ import {
   type FinancialTotalsParseSource,
 } from './dualFinancialTotalsVerification';
 import type { InvoiceConsistencyAuditResult } from './invoiceConsistencyAudit';
+import type { PdfBoundarySnapshot } from './pdfInvoiceBoundary';
 
 export interface ParsedProcurementQuote {
   vendor_name: string | null;
@@ -63,6 +64,8 @@ export interface ParsedProcurementQuote {
   financial_totals_verification?: DualFinancialTotalsVerification;
   /** Which transcription the selected financial totals came from (Phase 3A). */
   selected_financial_text_source?: FinancialTotalsParseSource | 'none';
+  /** Invoice boundary detection for this attachment's PDF (Phase 4B.1, instrumentation only). */
+  pdf_boundary_snapshot?: PdfBoundarySnapshot | null;
   /** Per-invoice audit for a summed multi-invoice package (Phase 2A.11). */
   invoice_parts?: InvoicePartAudit[];
 }
@@ -95,6 +98,8 @@ export interface InvoicePartAudit {
   independent_totals_block_text?: string | null;
   /** Which totals-block transcription fed dual verification (Phase 3B). */
   totals_block_input_source?: 'independent_totals_block_text' | 'totals_block_text' | 'none';
+  /** Invoice boundary detection for this part's source PDF (Phase 4B.1, instrumentation only). */
+  pdf_boundary_snapshot?: PdfBoundarySnapshot | null;
 }
 
 export const PROCUREMENT_AUTO_DESCRIPTION_EN =

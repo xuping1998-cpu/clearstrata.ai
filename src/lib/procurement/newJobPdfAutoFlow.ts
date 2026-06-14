@@ -17,6 +17,7 @@ import {
   suggestAuthorizationType,
   type ProcurementAuthorizationType,
 } from './authorizationType';
+import { detectPdfInvoiceBoundaries } from './pdfInvoiceBoundary';
 
 export type { ProcurementQuoteAnalysis };
 export type { ParsedProcurementQuote };
@@ -451,6 +452,7 @@ function mergeParsedQuotes(parts: ParsedProcurementQuote[]): ParsedProcurementQu
       totals_block_text: p.totals_block_text ?? null,
       independent_totals_block_text: p.independent_totals_block_text ?? null,
       totals_block_input_source: p.totals_block_input_source,
+      pdf_boundary_snapshot: p.pdf_boundary_snapshot ?? null,
     }));
 
     return {
@@ -507,7 +509,19 @@ export async function interpretQuotePackage(
         att.url === primary.url
           ? primaryFile
           : await fetchUrlAsInvoiceFile(att.url, att.name || 'quote.pdf');
-      parsedParts.push(await parseProcurementQuoteAttachment(file, langEn));
+      const parsed = await parseProcurementQuoteAttachment(file, langEn);
+      // Phase 4B.1 — record an invoice-boundary snapshot per attachment.
+      // Instrumentation only: never throws, never alters totals or part count.
+      try {
+        const snapshot = await detectPdfInvoiceBoundaries(file);
+        if (snapshot) parsed.pdf_boundary_snapshot = snapshot;
+      } catch (boundaryErr) {
+        console.warn('PROCUREMENT_PDF_BOUNDARY_DETECT_FAILED', {
+          attachmentUrl: att.url,
+          error: boundaryErr instanceof Error ? boundaryErr.message : String(boundaryErr),
+        });
+      }
+      parsedParts.push(parsed);
     } catch (err) {
       if (!ocrErrorMessage) ocrErrorMessage = sanitizeOcrError(err);
       console.warn('PROCUREMENT_QUOTE_OCR_PARSE_FAILED', {

@@ -1,4 +1,4 @@
-import { FileSearch, AlertTriangle, AlertCircle, Info, CheckCircle2 } from 'lucide-react';
+import { FileSearch, AlertTriangle, AlertCircle, Info, CheckCircle2, Layers } from 'lucide-react';
 import { buildSearchQuoteContext } from '../../lib/procurement/buildQuoteContext';
 import { validateInterpretationConsistency } from '../../lib/procurement/quoteInterpretationConsistency';
 import {
@@ -119,6 +119,8 @@ interface InvoiceAuditPart {
   conflictFields: string[];
   /** Which totals-block transcription fed dual verification (Phase 3B). */
   totalsBlockInputSource: string;
+  /** Invoice boundary detection for this part's PDF (Phase 4B.1). */
+  boundary: BoundarySnapshotView | null;
 }
 
 function readFieldSources(row: Record<string, unknown>): Record<string, string> {
@@ -219,6 +221,140 @@ function readConsistency(row: Record<string, unknown>): InvoiceAuditConsistency 
   };
 }
 
+type BoundaryGroupView = {
+  invoice_number: string | null;
+  pages: number[];
+};
+
+type BoundarySnapshotView = {
+  page_count: number;
+  status: 'single_invoice' | 'multi_invoice_grouped' | 'ambiguous' | 'failed' | '';
+  hasMultipleGroups: boolean;
+  hasMultiPageInvoice: boolean;
+  multipleTotalsDetected: boolean;
+  groups: BoundaryGroupView[];
+};
+
+/** Read the Phase 4B.1 invoice-boundary snapshot off a parsed-quote / invoice-part row. */
+function readBoundarySnapshot(row: Record<string, unknown>): BoundarySnapshotView | null {
+  const snap = row.pdf_boundary_snapshot;
+  if (!snap || typeof snap !== 'object') return null;
+  const s = snap as Record<string, unknown>;
+  const statusRaw = str(s.boundary_status);
+  const status =
+    statusRaw === 'single_invoice' ||
+    statusRaw === 'multi_invoice_grouped' ||
+    statusRaw === 'ambiguous' ||
+    statusRaw === 'failed'
+      ? statusRaw
+      : '';
+  const groups: BoundaryGroupView[] = Array.isArray(s.groups)
+    ? s.groups
+        .filter((g): g is Record<string, unknown> => Boolean(g) && typeof g === 'object')
+        .map((g) => ({
+          invoice_number: str(g.invoice_number) || null,
+          pages: Array.isArray(g.pages)
+            ? g.pages.map((p) => Number(p)).filter((p) => Number.isFinite(p))
+            : [],
+        }))
+    : [];
+  return {
+    page_count: num(s.page_count) ?? 0,
+    status,
+    hasMultipleGroups: s.has_multiple_invoice_groups === true,
+    hasMultiPageInvoice: s.has_multi_page_invoice === true,
+    multipleTotalsDetected: s.multiple_totals_detected === true,
+    groups,
+  };
+}
+
+/** "1–2" / "3" / "1, 3–4" page-range string from 1-based page numbers. */
+function formatPageRange(pages: number[]): string {
+  const sorted = [...new Set(pages)].sort((a, b) => a - b);
+  if (sorted.length === 0) return '';
+  const parts: string[] = [];
+  let start = sorted[0]!;
+  let prev = sorted[0]!;
+  for (let i = 1; i <= sorted.length; i += 1) {
+    const cur = sorted[i];
+    if (cur === prev + 1) {
+      prev = cur;
+      continue;
+    }
+    parts.push(start === prev ? `${start}` : `${start}\u2013${prev}`);
+    if (cur != null) {
+      start = cur;
+      prev = cur;
+    }
+  }
+  return parts.join(', ');
+}
+
+function BoundaryAudit({ snap, en }: { snap: BoundarySnapshotView; en: boolean }) {
+  if (!snap.status || snap.status === 'failed') return null;
+
+  if (snap.status === 'single_invoice') {
+    if (!snap.hasMultiPageInvoice && !snap.multipleTotalsDetected) return null;
+    const g = snap.groups[0];
+    const inv = g?.invoice_number ? `Invoice #${g.invoice_number}` : en ? 'this invoice' : '该发票';
+    const range = g ? formatPageRange(g.pages) : '';
+    return (
+      <div className="mt-2 flex items-start gap-2 rounded-md border border-sky-200 bg-sky-50 p-2 text-[11px] text-sky-800">
+        <Layers size={13} className="mt-0.5 shrink-0" />
+        <div className="space-y-0.5">
+          {snap.hasMultiPageInvoice && (
+            <p>
+              {en
+                ? `Detected a single invoice spanning ${snap.page_count} pages: ${inv}, Pages ${range}.`
+                : `检测到单张发票跨 ${snap.page_count} 页：${inv}，Pages ${range}。`}
+            </p>
+          )}
+          {snap.multipleTotalsDetected && (
+            <p>
+              {en
+                ? 'Multiple totals blocks were detected on these pages. Please verify the package total covers the whole invoice.'
+                : '这些页面中检测到多个合计区，请确认包总额已覆盖整张发票。'}
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (snap.status === 'multi_invoice_grouped') {
+    return (
+      <div className="mt-2 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-800">
+        <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+        <div className="space-y-0.5">
+          <p>
+            {en
+              ? 'This PDF appears to contain multiple invoices, but the current version parsed it as a single invoice entry. The package total may be incomplete.'
+              : '检测到此 PDF 可能包含多张发票，但当前版本仅解析为 1 个发票条目，包总额可能不完整。'}
+          </p>
+          {snap.groups.map((g, i) => (
+            <p key={i} className="font-medium">
+              {g.invoice_number ? `Invoice #${g.invoice_number}` : en ? 'Unlabeled' : '未标注'} ·{' '}
+              {en ? 'pages' : '页'} {formatPageRange(g.pages) || '—'}
+            </p>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ambiguous
+  return (
+    <div className="mt-2 flex items-start gap-2 rounded-md border border-slate-200 bg-slate-50 p-2 text-[11px] text-slate-600">
+      <Info size={13} className="mt-0.5 shrink-0" />
+      <p>
+        {en
+          ? 'Could not reliably determine invoice boundaries within this PDF.'
+          : '无法可靠判断 PDF 内发票边界。'}
+      </p>
+    </div>
+  );
+}
+
 /** Read the per-invoice audit trail for a summed multi-invoice package (Phase 2B/2C). */
 function readInvoiceParts(pq: Record<string, unknown>): InvoiceAuditPart[] {
   const raw = Array.isArray(pq.invoice_parts) ? pq.invoice_parts : null;
@@ -251,6 +387,7 @@ function readInvoiceParts(pq: Record<string, unknown>): InvoiceAuditPart[] {
           totalsBlockInputSource: str(row.totals_block_input_source),
         };
       })(),
+      boundary: readBoundarySnapshot(row),
     });
   }
   return out;
@@ -389,6 +526,7 @@ export function QuoteInterpretationPanel({
   // payment figures — show the per-invoice audit trail instead and hide them.
   const invoiceParts = readInvoiceParts(pq);
   const showInvoiceAudit = str(pq.total_mode) === 'sum_invoices' && invoiceParts.length > 0;
+  const topBoundary = readBoundarySnapshot(pq);
   const packageTotal = num(pq.total_amount ?? pq.totalAmount ?? pq.amount);
   const summary = comparisonSummary(pq);
 
@@ -639,6 +777,8 @@ export function QuoteInterpretationPanel({
         ))}
       </dl>
 
+      {!showInvoiceAudit && topBoundary && <BoundaryAudit snap={topBoundary} en={l} />}
+
       {showInvoiceAudit && (
         <div className="mt-3 rounded-lg border border-slate-200 bg-white/70 p-3">
           <p className="text-xs font-semibold text-slate-700 mb-2">
@@ -718,6 +858,7 @@ export function QuoteInterpretationPanel({
                     {l ? 'Source file' : '文件名'}: {part.source_file_name}
                   </p>
                 )}
+                {part.boundary && <BoundaryAudit snap={part.boundary} en={l} />}
                 {part.ocrConflict && (
                   <div className="mt-2 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-800">
                     <AlertTriangle size={13} className="mt-0.5 shrink-0" />
