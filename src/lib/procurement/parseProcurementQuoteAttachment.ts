@@ -4,10 +4,14 @@ import {
   type InvoiceOcrInvokeResult,
 } from '../invoiceOcrClient';
 import {
-  parseFinancialTotalsFromRawText,
   type FinancialTotalSource,
   type FinancialTotalsParseResult,
 } from './financialTotalsParser';
+import {
+  verifyDualFinancialTotals,
+  type DualFinancialTotalsVerification,
+  type FinancialTotalsParseSource,
+} from './dualFinancialTotalsVerification';
 import type { InvoiceConsistencyAuditResult } from './invoiceConsistencyAudit';
 
 export interface ParsedProcurementQuote {
@@ -49,6 +53,10 @@ export interface ParsedProcurementQuote {
   total_candidates?: FinancialTotalsParseResult['total_candidates'];
   /** Raw source text for each financial field, parsed in code (Phase 2D). */
   financial_field_sources?: FinancialTotalsParseResult['field_sources'];
+  /** Dual-OCR cross-check of totals_block_text vs raw_text_original (Phase 3A). */
+  financial_totals_verification?: DualFinancialTotalsVerification;
+  /** Which transcription the selected financial totals came from (Phase 3A). */
+  selected_financial_text_source?: FinancialTotalsParseSource | 'none';
   /** Per-invoice audit for a summed multi-invoice package (Phase 2A.11). */
   invoice_parts?: InvoicePartAudit[];
 }
@@ -67,6 +75,10 @@ export interface InvoicePartAudit {
   total_source?: FinancialTotalSource;
   total_candidates?: FinancialTotalsParseResult['total_candidates'];
   financial_field_sources?: FinancialTotalsParseResult['field_sources'];
+  /** Dual-OCR cross-check of totals_block_text vs raw_text_original (Phase 3A). */
+  financial_totals_verification?: DualFinancialTotalsVerification;
+  /** Which transcription the selected financial totals came from (Phase 3A). */
+  selected_financial_text_source?: FinancialTotalsParseSource | 'none';
   /** Internal-contradiction audit for this invoice (Phase 2C). */
   consistency_audit?: InvoiceConsistencyAuditResult;
   raw_text: string;
@@ -117,9 +129,14 @@ function mapOcrToParsedQuote(
     amount: lineItemAmount(it.amount),
   }));
 
-  // All monetary figures are parsed in code — never the LLM. Prefer the dedicated
-  // totals-block transcription, fall back to the full verbatim transcription.
-  const totals = parseFinancialTotalsFromRawText(totalsBlockText || rawText);
+  // Phase 3A: dual-OCR verification. Parse BOTH the dedicated totals-block
+  // transcription and the full verbatim transcription, then pick the more
+  // internally consistent / complete set. No amount is computed or corrected.
+  const verification = verifyDualFinancialTotals({
+    totalsBlockText,
+    rawTextOriginal: rawText,
+  });
+  const totals = verification.selected;
 
   return {
     vendor_name: ocr.vendor_name?.trim() || null,
@@ -147,6 +164,8 @@ function mapOcrToParsedQuote(
     total_source: totals.total_source,
     total_candidates: totals.total_candidates,
     financial_field_sources: totals.field_sources,
+    financial_totals_verification: verification,
+    selected_financial_text_source: verification.selected_source,
   };
 }
 

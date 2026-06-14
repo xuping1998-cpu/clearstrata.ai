@@ -111,6 +111,12 @@ interface InvoiceAuditPart {
   consistency: InvoiceAuditConsistency | null;
   /** True when the model returned a dedicated totals-block transcription (Phase 3). */
   hasTotalsBlock: boolean;
+  /** Which transcription the selected totals came from (Phase 3A). */
+  selectedFinancialTextSource: 'totals_block_text' | 'raw_text_original' | 'none' | '';
+  /** Dual-OCR cross-check disagreed between the two transcriptions (Phase 3A). */
+  ocrConflict: boolean;
+  /** Field keys that disagreed across transcriptions (Phase 3A). */
+  conflictFields: string[];
 }
 
 function readFieldSources(row: Record<string, unknown>): Record<string, string> {
@@ -122,6 +128,67 @@ function readFieldSources(row: Record<string, unknown>): Record<string, string> 
     if (s) out[k] = s;
   }
   return out;
+}
+
+function ocrSourceLabel(
+  part: { selectedFinancialTextSource: string; ocrConflict: boolean; hasTotalsBlock: boolean },
+  en: boolean,
+): string {
+  if (part.selectedFinancialTextSource === 'raw_text_original') {
+    return en ? 'Full raw text OCR' : '全文 OCR';
+  }
+  if (part.selectedFinancialTextSource === 'totals_block_text') {
+    if (!part.ocrConflict) return en ? 'Dual verified' : '双路验证一致';
+    return en ? 'Totals block OCR' : 'Totals block OCR（合计区原文）';
+  }
+  if (part.hasTotalsBlock) return en ? 'Totals block OCR' : 'Totals block OCR（合计区原文）';
+  return en ? 'Full raw text OCR' : '全文 OCR';
+}
+
+const CONFLICT_FIELD_LABELS: Record<string, { en: string; zh: string }> = {
+  subtotal: { en: 'Subtotal', zh: '小计' },
+  sales_tax: { en: 'Sales Tax', zh: '税额' },
+  payments_credits: { en: 'Payments/Credits', zh: '已付/抵扣' },
+  invoice_total: { en: 'Invoice Total', zh: '发票总额' },
+  total_due: { en: 'Total Due', zh: '应付总额' },
+  amount_due: { en: 'Amount Due', zh: '应付金额' },
+  balance_due: { en: 'Balance Due', zh: '应付余额' },
+  total_amount: { en: 'Total', zh: '总额' },
+};
+
+function conflictFieldLabel(field: string, en: boolean): string {
+  const m = CONFLICT_FIELD_LABELS[field];
+  if (!m) return field;
+  return en ? m.en : m.zh;
+}
+
+function readVerification(row: Record<string, unknown>): {
+  source: 'totals_block_text' | 'raw_text_original' | 'none' | '';
+  conflict: boolean;
+  conflictFields: string[];
+} {
+  const v = row.financial_totals_verification;
+  const selected = str(row.selected_financial_text_source);
+  const source =
+    selected === 'totals_block_text' || selected === 'raw_text_original' || selected === 'none'
+      ? selected
+      : '';
+  if (!v || typeof v !== 'object') {
+    return { source, conflict: false, conflictFields: [] };
+  }
+  const obj = v as Record<string, unknown>;
+  const vSource = str(obj.selected_source);
+  return {
+    source:
+      source ||
+      (vSource === 'totals_block_text' || vSource === 'raw_text_original' || vSource === 'none'
+        ? (vSource as 'totals_block_text' | 'raw_text_original' | 'none')
+        : ''),
+    conflict: obj.conflict === true,
+    conflictFields: Array.isArray(obj.conflict_fields)
+      ? obj.conflict_fields.map((f) => String(f))
+      : [],
+  };
 }
 
 function readConsistency(row: Record<string, unknown>): InvoiceAuditConsistency | null {
@@ -160,6 +227,14 @@ function readInvoiceParts(pq: Record<string, unknown>): InvoiceAuditPart[] {
       field_sources: readFieldSources(row),
       consistency: readConsistency(row),
       hasTotalsBlock: Boolean(str(row.totals_block_text)),
+      ...(() => {
+        const ver = readVerification(row);
+        return {
+          selectedFinancialTextSource: ver.source,
+          ocrConflict: ver.conflict,
+          conflictFields: ver.conflictFields,
+        };
+      })(),
     });
   }
   return out;
@@ -334,6 +409,20 @@ export function QuoteInterpretationPanel({
   if (totalSourceLabel) {
     rows.push({ label: l ? 'Total source' : '总额来源', value: totalSourceLabel });
   }
+  const topVerification = readVerification(pq);
+  if (topVerification.source) {
+    rows.push({
+      label: l ? 'OCR source' : 'OCR 来源',
+      value: ocrSourceLabel(
+        {
+          selectedFinancialTextSource: topVerification.source,
+          ocrConflict: topVerification.conflict,
+          hasTotalsBlock: Boolean(str(pq.totals_block_text)),
+        },
+        l,
+      ),
+    });
+  }
   if (pricingBasis && pricingBasis !== '—') {
     rows.push({ label: l ? 'Pricing basis' : '计费方式', value: pricingBasis });
   }
@@ -373,6 +462,36 @@ export function QuoteInterpretationPanel({
               </span>
             </div>
           )}
+        </div>
+      )}
+
+      {topVerification.conflict && (
+        <div className="mb-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+          <div className="space-y-0.5">
+            <p>
+              {l
+                ? 'Totals block OCR and full-text OCR disagree. The system selected the more internally consistent set. Please verify the original invoice.'
+                : '检测到 totals block OCR 与全文 OCR 的金额不一致，系统已选择更自洽的一组。请核对原始发票。'}
+            </p>
+            {topVerification.conflictFields.length > 0 && (
+              <p>
+                {l ? 'Conflicting fields: ' : '冲突字段：'}
+                {topVerification.conflictFields.map((f) => conflictFieldLabel(f, l)).join(', ')}
+              </p>
+            )}
+            <p>
+              {l ? 'Selected: ' : '已采用：'}
+              {ocrSourceLabel(
+                {
+                  selectedFinancialTextSource: topVerification.source,
+                  ocrConflict: topVerification.conflict,
+                  hasTotalsBlock: Boolean(str(pq.totals_block_text)),
+                },
+                l,
+              )}
+            </p>
+          </div>
         </div>
       )}
 
@@ -567,11 +686,11 @@ export function QuoteInterpretationPanel({
                     <span className="text-slate-500">{l ? 'Total source' : '总额来源'}</span>
                     <span className="whitespace-nowrap">{sourceLabel(part.total_source, l)}</span>
                   </p>
-                  {part.hasTotalsBlock && (
+                  {(part.selectedFinancialTextSource || part.hasTotalsBlock) && (
                     <p className="flex justify-between gap-3">
                       <span className="text-slate-500">{l ? 'OCR source' : 'OCR 来源'}</span>
                       <span className="whitespace-nowrap text-slate-500">
-                        {l ? 'Totals block OCR' : 'Totals block OCR（合计区原文）'}
+                        {ocrSourceLabel(part, l)}
                       </span>
                     </p>
                   )}
@@ -580,6 +699,28 @@ export function QuoteInterpretationPanel({
                   <p className="mt-1 text-[11px] text-slate-400 break-all">
                     {l ? 'Source file' : '文件名'}: {part.source_file_name}
                   </p>
+                )}
+                {part.ocrConflict && (
+                  <div className="mt-2 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-800">
+                    <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                    <div className="space-y-0.5">
+                      <p>
+                        {l
+                          ? 'Totals block OCR and full-text OCR disagree. The system selected the more internally consistent set. Please verify the original invoice.'
+                          : '检测到 totals block OCR 与全文 OCR 的金额不一致，系统已选择更自洽的一组。请核对原始发票。'}
+                      </p>
+                      {part.conflictFields.length > 0 && (
+                        <p>
+                          {l ? 'Conflicting fields: ' : '冲突字段：'}
+                          {part.conflictFields.map((f) => conflictFieldLabel(f, l)).join(', ')}
+                        </p>
+                      )}
+                      <p>
+                        {l ? 'Selected: ' : '已采用：'}
+                        {ocrSourceLabel(part, l)}
+                      </p>
+                    </div>
+                  </div>
                 )}
                 {part.consistency?.hasWarning && (
                   <div className="mt-2 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-800">

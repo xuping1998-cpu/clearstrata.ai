@@ -433,6 +433,8 @@ function mergeParsedQuotes(parts: ParsedProcurementQuote[]): ParsedProcurementQu
       total_source: p.total_source,
       total_candidates: p.total_candidates,
       financial_field_sources: p.financial_field_sources,
+      financial_totals_verification: p.financial_totals_verification,
+      selected_financial_text_source: p.selected_financial_text_source,
       consistency_audit: auditInvoicePartConsistency({
         subtotal: p.subtotal,
         tax_amount: p.tax_amount,

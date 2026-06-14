@@ -12,6 +12,10 @@ import {
   parseFinancialTotalsFromRawText,
   type FinancialTotalsParseResult,
 } from '../financialTotalsParser';
+import {
+  verifyDualFinancialTotals,
+  type FinancialTotalsParseSource,
+} from '../dualFinancialTotalsVerification';
 
 export interface WernerGoldenCase {
   id: string;
@@ -119,6 +123,78 @@ export const LAYOUT_VARIANTS_79985_1: Record<string, string> = {
   ].join('\n'),
 };
 
+/**
+ * Phase 3A — Dual OCR verification cases. The totals_block_text is mis-transcribed
+ * but the full raw_text_original is correct; dual verification must pick raw text.
+ */
+export interface DualGoldenCase {
+  id: string;
+  totalsBlockText: string;
+  rawTextOriginal: string;
+  expected: {
+    selected_source: FinancialTotalsParseSource | 'none';
+    subtotal: number;
+    tax_amount: number;
+    balance_due: number;
+    conflict: boolean;
+    conflict_fields_include: string[];
+  };
+}
+
+export const WERNER_DUAL_GOLDEN: DualGoldenCase[] = [
+  {
+    id: '79985-2 conflict',
+    // Mis-OCR'd totals block: subtotal/tax wrong, but Total Due correct.
+    totalsBlockText: ['Subtotal $22,296.88', 'GST $1,114.84', 'Total Due $23,296.88'].join('\n'),
+    // Correct full transcription.
+    rawTextOriginal: [
+      'Subtotal $22,187.50',
+      'Sales Tax $1,109.38',
+      'Payments/Credits $0.00',
+      'Balance Due $23,296.88',
+    ].join('\n'),
+    expected: {
+      selected_source: 'raw_text_original',
+      subtotal: 22187.5,
+      tax_amount: 1109.38,
+      balance_due: 23296.88,
+      conflict: true,
+      conflict_fields_include: ['subtotal', 'sales_tax'],
+    },
+  },
+  {
+    id: '79985-3 conflict',
+    // Mis-OCR'd totals block: GST mis-mapped to the subtotal figure.
+    totalsBlockText: [
+      'Subtotal $22,187.50',
+      'GST $22,187.50',
+      'Payments/Credits $0.00',
+      'Balance Due $23,296.88',
+    ].join('\n'),
+    // Correct full transcription (columnar values-then-labels).
+    rawTextOriginal: [
+      '22,187.50',
+      '1,109.38',
+      '23,296.88',
+      '0.00',
+      '23,296.88',
+      'Subtotal',
+      'GST',
+      'Total',
+      'Payments/Credits',
+      'Balance Due',
+    ].join('\n'),
+    expected: {
+      selected_source: 'raw_text_original',
+      subtotal: 22187.5,
+      tax_amount: 1109.38,
+      balance_due: 23296.88,
+      conflict: true,
+      conflict_fields_include: ['sales_tax'],
+    },
+  },
+];
+
 function approxEq(a: number | null, b: number, eps = 0.005): boolean {
   return a != null && Math.abs(a - b) <= eps;
 }
@@ -161,6 +237,29 @@ export function runWernerGoldenTest(): GoldenCheck[] {
       label: `layout ${name}`,
       pass,
       details: `subtotal=${r.subtotal} tax=${r.tax_amount} payments=${r.payments_credits} balance_due=${r.balance_due} total=${r.total_amount} source=${r.total_source}`,
+    });
+  }
+
+  for (const c of WERNER_DUAL_GOLDEN) {
+    const v = verifyDualFinancialTotals({
+      totalsBlockText: c.totalsBlockText,
+      rawTextOriginal: c.rawTextOriginal,
+    });
+    const r = v.selected;
+    const fieldsOk = c.expected.conflict_fields_include.every((f) =>
+      v.conflict_fields.includes(f as never),
+    );
+    const pass =
+      v.selected_source === c.expected.selected_source &&
+      approxEq(r.subtotal, c.expected.subtotal) &&
+      approxEq(r.tax_amount, c.expected.tax_amount) &&
+      approxEq(r.balance_due, c.expected.balance_due) &&
+      v.conflict === c.expected.conflict &&
+      fieldsOk;
+    checks.push({
+      label: `dual ${c.id}`,
+      pass,
+      details: `selected=${v.selected_source} subtotal=${r.subtotal} tax=${r.tax_amount} balance_due=${r.balance_due} conflict=${v.conflict} fields=[${v.conflict_fields.join(',')}] reason=${v.reason}`,
     });
   }
 
