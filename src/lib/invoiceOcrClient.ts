@@ -28,6 +28,10 @@ export type InvoiceOcrExtractedForDb = {
   raw_text_original: string;
   /** Verbatim transcription of just the totals block, one "Label Amount" per line (Phase 3). */
   totals_block_text: string;
+  /** Independent second-pass totals OCR (Phase 3B), uncorrelated with raw_text_original. */
+  independent_totals_block_text: string | null;
+  /** How the independent totals were produced, e.g. "second_model_call" (Phase 3B). */
+  independent_totals_ocr_source: string | null;
 };
 
 export type InvoiceOcrInvokeResult = {
@@ -142,6 +146,8 @@ export async function invokeInvoiceOcrFromFile(file: File, langEn: boolean): Pro
     raw_text?: string;
     raw_text_original?: string;
     totals_block_text?: string;
+    independent_totals_block_text?: string;
+    independent_totals_ocr_source?: string;
     confidence?: number | string;
     line_items?: Array<{ description?: string; amount?: string | number | null }>;
     items?: Array<{ description?: string; amount?: string | number | null }>;
@@ -149,12 +155,15 @@ export async function invokeInvoiceOcrFromFile(file: File, langEn: boolean): Pro
 
   const structured = data.structured as InvoiceOcrInvokeResult['structured'] | undefined;
 
-  // Phase 2D/3: the LLM no longer returns financial figures. Every monetary total
-  // is parsed in code, preferring the dedicated totals-block transcription and
-  // falling back to the full verbatim transcription.
+  // Phase 2D/3/3B: the LLM no longer returns financial figures. Every monetary
+  // total is parsed in code, preferring the INDEPENDENT second-pass totals OCR,
+  // then the Call-A totals block, then the full verbatim transcription.
   const rawText = (ex.raw_text_original || ex.raw_text || '').toString();
+  const independentTotalsBlockText = (ex.independent_totals_block_text || '').toString();
   const totalsBlockText = (ex.totals_block_text || '').toString();
-  const totals = parseFinancialTotalsFromRawText(totalsBlockText.trim() || rawText);
+  const totals = parseFinancialTotalsFromRawText(
+    independentTotalsBlockText.trim() || totalsBlockText.trim() || rawText,
+  );
 
   const rawItems = Array.isArray(ex.line_items)
     ? ex.line_items
@@ -189,6 +198,8 @@ export async function invokeInvoiceOcrFromFile(file: File, langEn: boolean): Pro
     raw_text: rawText,
     raw_text_original: rawText,
     totals_block_text: totalsBlockText,
+    independent_totals_block_text: independentTotalsBlockText || null,
+    independent_totals_ocr_source: (ex.independent_totals_ocr_source || '').toString() || null,
   };
 
   const invDateStr = extracted.invoice_date || new Date().toISOString().split('T')[0];

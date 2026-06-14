@@ -36,8 +36,14 @@ export interface ParsedProcurementQuote {
   raw_text: string;
   /** Verbatim OCR transcription of the source document (Phase 2A.11). */
   raw_text_original?: string;
-  /** Verbatim transcription of just the totals block (Phase 3). */
+  /** Verbatim transcription of just the totals block, from Call A (Phase 3). */
   totals_block_text?: string;
+  /** Independent second-pass totals OCR, uncorrelated with raw_text (Phase 3B). */
+  independent_totals_block_text?: string;
+  /** How the independent totals were produced, e.g. "second_model_call" (Phase 3B). */
+  independent_totals_ocr_source?: string;
+  /** Which totals-block transcription fed dual verification (Phase 3B). */
+  totals_block_input_source?: 'independent_totals_block_text' | 'totals_block_text' | 'none';
   confidence: number | null;
   source_file_name: string;
   source_mime_type: string;
@@ -85,6 +91,10 @@ export interface InvoicePartAudit {
   raw_text_original?: string | null;
   /** Verbatim totals-block transcription for this part (Phase 3). */
   totals_block_text?: string | null;
+  /** Independent second-pass totals OCR for this part (Phase 3B). */
+  independent_totals_block_text?: string | null;
+  /** Which totals-block transcription fed dual verification (Phase 3B). */
+  totals_block_input_source?: 'independent_totals_block_text' | 'totals_block_text' | 'none';
 }
 
 export const PROCUREMENT_AUTO_DESCRIPTION_EN =
@@ -116,8 +126,17 @@ function mapOcrToParsedQuote(
   const raw = (ocr.raw_text ?? '').trim();
   // Phase 2D: the verbatim OCR transcription is the ONLY source of truth.
   const rawText = (ocr.raw_text_original ?? '').trim() || raw;
-  // Phase 3: the model also transcribes the totals block on its own; prefer it.
-  const totalsBlockText = (ocr.totals_block_text ?? '').trim();
+  // Phase 3B: prefer the INDEPENDENT second-pass totals OCR (uncorrelated with the
+  // full-document read); fall back to the Call-A totals block transcription.
+  const independentTotalsBlockText = (ocr.independent_totals_block_text ?? '').trim();
+  const callATotalsBlockText = (ocr.totals_block_text ?? '').trim();
+  const totalsBlockText = independentTotalsBlockText || callATotalsBlockText;
+  const totalsBlockInputSource: 'independent_totals_block_text' | 'totals_block_text' | 'none' =
+    independentTotalsBlockText
+      ? 'independent_totals_block_text'
+      : callATotalsBlockText
+        ? 'totals_block_text'
+        : 'none';
   const service_scope =
     summary ||
     rawText.slice(0, 500) ||
@@ -155,7 +174,10 @@ function mapOcrToParsedQuote(
     line_items,
     raw_text: rawText,
     raw_text_original: rawText,
-    totals_block_text: totalsBlockText || undefined,
+    totals_block_text: callATotalsBlockText || undefined,
+    independent_totals_block_text: independentTotalsBlockText || undefined,
+    independent_totals_ocr_source: ocr.independent_totals_ocr_source?.trim() || undefined,
+    totals_block_input_source: totalsBlockInputSource,
     confidence,
     source_file_name: file.name,
     source_mime_type: file.type || 'application/octet-stream',

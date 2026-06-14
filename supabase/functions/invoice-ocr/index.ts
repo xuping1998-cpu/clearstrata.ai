@@ -54,6 +54,8 @@ type FrontendExtracted = {
   raw_text: string;
   raw_text_original: string;
   totals_block_text: string;
+  independent_totals_block_text: string;
+  independent_totals_ocr_source: string;
   due_date: string;
   description: string;
   category: string;
@@ -116,6 +118,68 @@ Expected JSON shape:
 
 "raw_text" MUST equal "raw_text_original". document_date as YYYY-MM-DD when possible.
 line_items.amount may be null; line-item amounts are descriptive only and MUST NOT be treated as invoice totals.`;
+
+// Phase 3B — Call B: a fully INDEPENDENT second OCR pass over the same file that
+// reads ONLY the totals block. It never receives Call A's transcription, so its
+// errors are uncorrelated with the full-document pass and dual verification can
+// actually cross-check two independent reads.
+const INDEPENDENT_TOTALS_PROMPT = `You are performing an independent OCR pass for the invoice totals block only.
+
+Do not use any prior extraction.
+Do not calculate.
+Do not infer.
+Do not correct.
+Do not make numbers mathematically consistent.
+Transcribe only what is visibly printed.
+
+Locate the totals / amount due block, usually containing labels such as:
+Subtotal
+Sales Tax
+GST
+HST
+PST
+Payments/Credits
+Total
+Invoice Total
+Total Due
+Amount Due
+Balance Due
+
+Return only the totals block as plain text, one line per visible label/value pair.
+
+If the invoice shows:
+Subtotal $22,187.50
+Sales Tax $1,109.38
+Payments/Credits $0.00
+Balance Due $23,296.88
+
+Return exactly:
+Subtotal $22,187.50
+Sales Tax $1,109.38
+Payments/Credits $0.00
+Balance Due $23,296.88
+
+If a number is unclear: copy the visible characters as best as possible. Do not replace it with a calculated number.
+
+Do not invent Total if it is not printed.
+Do not invent Payments/Credits if it is not printed.
+Do not output JSON financial numbers.
+
+Respond with ONLY one JSON object, no markdown, no code fences:
+{
+  "independent_totals_block_text": "..."
+}`;
+
+function parseIndependentTotals(text: string): string {
+  const parsed = parseJsonFromAssistant(text) as
+    | (AiInvoiceJson & { independent_totals_block_text?: string })
+    | null;
+  if (parsed && typeof parsed === "object") {
+    const v = strField(parsed.independent_totals_block_text);
+    if (v) return v;
+  }
+  return "";
+}
 
 function parseJsonFromAssistant(text: string): AiInvoiceJson | null {
   const trimmed = text.trim();
@@ -189,6 +253,8 @@ function buildExtractedAndStructured(
     raw_text: rawText,
     raw_text_original: rawText,
     totals_block_text: strField(parsed.totals_block_text),
+    independent_totals_block_text: "",
+    independent_totals_ocr_source: "",
     due_date: "",
     description: serviceScope,
     category: strField(parsed.category) || "general",
@@ -211,6 +277,9 @@ async function runOpenAiVision(opts: {
   apiKey: string;
   mimeType: string;
   fileBase64: string;
+  systemPrompt?: string;
+  userPrompt?: string;
+  temperature?: number;
 }): Promise<{ text: string } | { error: ProviderError }> {
   const model =
     Deno.env.get("OPENAI_INVOICE_OCR_MODEL") ?? "gpt-4o";
@@ -246,7 +315,7 @@ async function runOpenAiVision(opts: {
 
   userContent.push({
     type: "text",
-    text: `${JSON_SHAPE_PROMPT}\nReturn only the JSON object.`,
+    text: opts.userPrompt ?? `${JSON_SHAPE_PROMPT}\nReturn only the JSON object.`,
   });
 
   let res: Response;
@@ -259,12 +328,13 @@ async function runOpenAiVision(opts: {
       },
       body: JSON.stringify({
         model,
-        temperature: 0.2,
+        temperature: opts.temperature ?? 0.2,
         response_format: { type: "json_object" },
         messages: [
           {
             role: "system",
             content:
+              opts.systemPrompt ??
               "You extract invoices. Output is strict JSON matching the user's schema.",
           },
           { role: "user", content: userContent },
@@ -329,6 +399,9 @@ async function runAnthropicOcr(opts: {
   apiKey: string;
   mimeType: string;
   fileBase64: string;
+  systemPrompt?: string;
+  userPrompt?: string;
+  temperature?: number;
 }): Promise<{ text: string } | { error: ProviderError }> {
   const { apiKey, mimeType, fileBase64 } = opts;
   const isImage = mimeType.startsWith("image/");
@@ -351,6 +424,7 @@ async function runAnthropicOcr(opts: {
   userContent.push({
     type: "text",
     text:
+      opts.userPrompt ??
       "Extract invoice fields from the attached file and return ONLY the JSON object described in the system message.",
   });
 
@@ -366,9 +440,9 @@ async function runAnthropicOcr(opts: {
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
         max_tokens: 4096,
-        system: `${JSON_SHAPE_PROMPT}\nReturn only JSON, never markdown.`,
+        system: opts.systemPrompt ?? `${JSON_SHAPE_PROMPT}\nReturn only JSON, never markdown.`,
         messages: [{ role: "user", content: userContent }],
-        temperature: 0.2,
+        temperature: opts.temperature ?? 0.2,
       }),
     });
   } catch (e) {
@@ -476,10 +550,55 @@ Deno.serve(async (req: Request) => {
       provider: "openai-first",
     });
 
-    const tryFinalize = (
+    // Phase 3B — Call B: a second, independent totals-only OCR over the same file.
+    // Failure-safe: never throws; returns empty string when both providers fail so
+    // the front-end falls back to the Call-A totals_block_text / raw_text_original.
+    const runIndependentTotals = async (): Promise<string> => {
+      try {
+        if (openaiApiKey) {
+          const r = await runOpenAiVision({
+            apiKey: openaiApiKey,
+            mimeType,
+            fileBase64,
+            systemPrompt:
+              "You transcribe an invoice totals block. Output is strict JSON matching the user's schema.",
+            userPrompt: INDEPENDENT_TOTALS_PROMPT,
+            temperature: 0,
+          });
+          if (!("error" in r)) {
+            const t = parseIndependentTotals(r.text);
+            if (t) return t;
+          } else {
+            console.error("[invoice-ocr] independent totals (openai) failed", r.error);
+          }
+        }
+        if (anthropicApiKey) {
+          const r = await runAnthropicOcr({
+            apiKey: anthropicApiKey,
+            mimeType,
+            fileBase64,
+            systemPrompt: `${INDEPENDENT_TOTALS_PROMPT}\nReturn only JSON, never markdown.`,
+            userPrompt:
+              "Perform the independent totals-block OCR described in the system message. Return ONLY the JSON object.",
+            temperature: 0,
+          });
+          if (!("error" in r)) {
+            const t = parseIndependentTotals(r.text);
+            if (t) return t;
+          } else {
+            console.error("[invoice-ocr] independent totals (anthropic) failed", r.error);
+          }
+        }
+      } catch (e) {
+        console.error("[invoice-ocr] independent totals threw", e);
+      }
+      return "";
+    };
+
+    const tryFinalize = async (
       rawText: string,
       winningProvider: "openai" | "anthropic",
-    ): Response | null => {
+    ): Promise<Response | null> => {
       const parsed = parseJsonFromAssistant(rawText);
       if (!parsed) {
         return null;
@@ -488,7 +607,15 @@ Deno.serve(async (req: Request) => {
         parsed,
         rawText,
       );
-      console.log("[invoice-ocr] success", { provider: winningProvider });
+      const independentTotals = await runIndependentTotals();
+      if (independentTotals) {
+        extracted.independent_totals_block_text = independentTotals;
+        extracted.independent_totals_ocr_source = "second_model_call";
+      }
+      console.log("[invoice-ocr] success", {
+        provider: winningProvider,
+        independent_totals: independentTotals ? "yes" : "no",
+      });
       return new Response(
         JSON.stringify({
           success: true,
@@ -510,7 +637,7 @@ Deno.serve(async (req: Request) => {
         console.error("[invoice-ocr] OpenAI failed", oa.error);
         providerErrors.push(oa.error);
       } else {
-        const finalized = tryFinalize(oa.text, "openai");
+        const finalized = await tryFinalize(oa.text, "openai");
         if (finalized) return finalized;
         providerErrors.push({
           provider: "openai",
@@ -530,7 +657,7 @@ Deno.serve(async (req: Request) => {
       if ("error" in cl) {
         providerErrors.push(cl.error);
       } else {
-        const finalized = tryFinalize(cl.text, "anthropic");
+        const finalized = await tryFinalize(cl.text, "anthropic");
         if (finalized) return finalized;
         providerErrors.push({
           provider: "anthropic",

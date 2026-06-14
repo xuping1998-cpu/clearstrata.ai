@@ -117,6 +117,8 @@ interface InvoiceAuditPart {
   ocrConflict: boolean;
   /** Field keys that disagreed across transcriptions (Phase 3A). */
   conflictFields: string[];
+  /** Which totals-block transcription fed dual verification (Phase 3B). */
+  totalsBlockInputSource: string;
 }
 
 function readFieldSources(row: Record<string, unknown>): Record<string, string> {
@@ -131,17 +133,30 @@ function readFieldSources(row: Record<string, unknown>): Record<string, string> 
 }
 
 function ocrSourceLabel(
-  part: { selectedFinancialTextSource: string; ocrConflict: boolean; hasTotalsBlock: boolean },
+  part: {
+    selectedFinancialTextSource: string;
+    ocrConflict: boolean;
+    hasTotalsBlock: boolean;
+    totalsBlockInputSource?: string;
+  },
   en: boolean,
 ): string {
+  const independent = part.totalsBlockInputSource === 'independent_totals_block_text';
+  const totalsBlockLabel = independent
+    ? en
+      ? 'Independent totals OCR'
+      : '独立合计区 OCR'
+    : en
+      ? 'Totals block OCR'
+      : 'Totals block OCR（合计区原文）';
   if (part.selectedFinancialTextSource === 'raw_text_original') {
     return en ? 'Full raw text OCR' : '全文 OCR';
   }
   if (part.selectedFinancialTextSource === 'totals_block_text') {
-    if (!part.ocrConflict) return en ? 'Dual verified' : '双路验证一致';
-    return en ? 'Totals block OCR' : 'Totals block OCR（合计区原文）';
+    if (!part.ocrConflict && independent) return en ? 'Dual verified' : '双路验证一致';
+    return totalsBlockLabel;
   }
-  if (part.hasTotalsBlock) return en ? 'Totals block OCR' : 'Totals block OCR（合计区原文）';
+  if (part.hasTotalsBlock) return totalsBlockLabel;
   return en ? 'Full raw text OCR' : '全文 OCR';
 }
 
@@ -233,6 +248,7 @@ function readInvoiceParts(pq: Record<string, unknown>): InvoiceAuditPart[] {
           selectedFinancialTextSource: ver.source,
           ocrConflict: ver.conflict,
           conflictFields: ver.conflictFields,
+          totalsBlockInputSource: str(row.totals_block_input_source),
         };
       })(),
     });
@@ -418,6 +434,7 @@ export function QuoteInterpretationPanel({
           selectedFinancialTextSource: topVerification.source,
           ocrConflict: topVerification.conflict,
           hasTotalsBlock: Boolean(str(pq.totals_block_text)),
+          totalsBlockInputSource: str(pq.totals_block_input_source),
         },
         l,
       ),
@@ -487,6 +504,7 @@ export function QuoteInterpretationPanel({
                   selectedFinancialTextSource: topVerification.source,
                   ocrConflict: topVerification.conflict,
                   hasTotalsBlock: Boolean(str(pq.totals_block_text)),
+                  totalsBlockInputSource: str(pq.totals_block_input_source),
                 },
                 l,
               )}
