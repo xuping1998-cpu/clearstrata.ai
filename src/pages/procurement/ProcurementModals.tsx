@@ -25,6 +25,7 @@ import {
   searchAndSaveVendorsForJob,
   waitForVendorSearchWithTimeout,
 } from '../../lib/procurement/newJobPdfAutoFlow';
+import type { PackageCoverageSnapshot } from '../../lib/procurement/packageCoverage';
 import { saveVendorSearchResults } from '../../lib/procurement/saveVendorSearchResults';
 import { computeMarketBenchmark, fetchVendorSearchResults } from '../../lib/procurement/vendorMarketBenchmark';
 import { getTrafficLight, TrafficLightBadge } from './AiPricingPanel';
@@ -157,6 +158,7 @@ export function NewJobModal({
   const [pdfAnalysis, setPdfAnalysis] = useState<ProcurementQuoteAnalysis | null>(null);
   const [pdfParsedQuote, setPdfParsedQuote] = useState<ParsedProcurementQuote | null>(null);
   const [pdfOcrError, setPdfOcrError] = useState<string | null>(null);
+  const [pdfCoverage, setPdfCoverage] = useState<PackageCoverageSnapshot | null>(null);
   const pipelineUrlRef = useRef<string | null>(null);
   /** Set true only by the explicit「开始解读报价」button — blocks any stray auto-start. */
   const interpretationRequestedRef = useRef(false);
@@ -258,13 +260,14 @@ export function NewJobModal({
         url,
         name: attachmentNames[i] ?? 'quote.pdf',
       }));
-      const { analysis, parsedQuote, ocrErrorMessage } = await interpretQuotePackage(
+      const { analysis, parsedQuote, ocrErrorMessage, coverage } = await interpretQuotePackage(
         attachments,
         l,
       );
       setPdfAnalysis(analysis);
       setPdfParsedQuote(parsedQuote);
       setPdfOcrError(ocrErrorMessage ?? null);
+      setPdfCoverage(coverage ?? null);
       const pkgTotal =
         parsedQuote?.total_amount != null && parsedQuote.total_amount > 0
           ? { amount: parsedQuote.total_amount, currency: parsedQuote.currency }
@@ -280,6 +283,7 @@ export function NewJobModal({
         parsedQuote,
         attachmentName: attachmentNames[0] ?? null,
         ocrErrorMessage,
+        coverage,
         linkedTaskId,
         priority: newJob.priority,
         unitNumber: newJob.unit_number,
@@ -411,6 +415,7 @@ export function NewJobModal({
                 ocrErrorMessage: pdfOcrError,
               },
               newJob.estimated_budget ? parseFloat(newJob.estimated_budget) : null,
+              pdfCoverage,
             )
           : undefined,
       }).select().single();

@@ -18,6 +18,11 @@ import {
   type ProcurementAuthorizationType,
 } from './authorizationType';
 import { detectPdfInvoiceBoundaries } from './pdfInvoiceBoundary';
+import {
+  buildPackageCoverageSnapshot,
+  type FailedAttachment,
+  type PackageCoverageSnapshot,
+} from './packageCoverage';
 
 export type { ProcurementQuoteAnalysis };
 export type { ParsedProcurementQuote };
@@ -32,6 +37,8 @@ export type ProcurementQuoteInterpretation = {
   parsedQuote: ParsedProcurementQuote | null;
   /** Short, sanitized reason the rich invoice-ocr parse failed (no stack / tokens). */
   ocrErrorMessage?: string;
+  /** Per-package coverage: inputs vs parsed, and which attachments failed OCR (Phase 4A.3). */
+  coverage?: PackageCoverageSnapshot;
 };
 
 /** Extra context used to enrich parsed_quote_json when rich OCR is unavailable. */
@@ -147,11 +154,44 @@ function parseAmountNumber(value: unknown): number | null {
   return null;
 }
 
+/**
+ * Merge a package coverage snapshot (Phase 4A.3) into parsed_quote_json as top-level
+ * fields, and ensure a failed/partial package always carries an ocr_error_message so
+ * the gap is visible. Never changes total_amount. Mutates and returns `out`.
+ */
+function applyCoverageToParsedQuoteJson(
+  out: Record<string, unknown>,
+  coverage: PackageCoverageSnapshot | null | undefined,
+  ocrErrorMessage?: string | null,
+): Record<string, unknown> {
+  const err = (ocrErrorMessage ?? '').trim();
+  if (coverage) {
+    out.package_input_count = coverage.package_input_count;
+    out.package_parsed_count = coverage.package_parsed_count;
+    out.package_unique_count = coverage.package_unique_count;
+    out.package_failed_count = coverage.package_failed_count;
+    out.package_duplicate_count = coverage.package_duplicate_count;
+    out.coverage_status = coverage.coverage_status;
+    out.failed_attachments = coverage.failed_attachments;
+    out.duplicate_attachments = coverage.duplicate_attachments;
+  }
+  const coverageGap =
+    !!coverage &&
+    (coverage.coverage_status === 'partial' || coverage.coverage_status === 'failed');
+  if (err) {
+    out.ocr_error_message = err;
+  } else if (coverageGap) {
+    out.ocr_error_message = 'Some attachments failed OCR';
+  }
+  return out;
+}
+
 export function buildParsedQuoteJson(
   analysis: ProcurementQuoteAnalysis,
   parsedQuote: ParsedProcurementQuote | null | undefined,
   fallbackMeta?: ParsedQuoteFallbackMeta,
   authorizedAmount?: number | null,
+  coverage?: PackageCoverageSnapshot | null,
 ): Record<string, unknown> {
   if (parsedQuote) {
     const out: Record<string, unknown> = {
@@ -166,6 +206,10 @@ export function buildParsedQuoteJson(
     // Record how the package total was derived (Phase 2A.9).
     out.total_mode = parsedQuote.total_mode ?? 'single_page';
     out.package_parts_count = parsedQuote.package_parts_count ?? 1;
+
+    // Phase 4A.3 — coverage + failed attachments must survive even the early
+    // sum_invoices return below, so apply them before any branch returns.
+    applyCoverageToParsedQuoteJson(out, coverage, fallbackMeta?.ocrErrorMessage);
 
     // For a summed multi-invoice package the total is authoritative — do not let
     // Grand Total Recovery re-pick a single page's figure from raw_text.
@@ -199,8 +243,8 @@ export function buildParsedQuoteJson(
     ...analysis,
   };
 
-  const ocrErrorMessage = fallbackMeta?.ocrErrorMessage?.trim();
-  if (ocrErrorMessage) out.ocr_error_message = ocrErrorMessage;
+  // Phase 4A.3 — record coverage + a non-empty ocr_error_message for the failed package.
+  applyCoverageToParsedQuoteJson(out, coverage, fallbackMeta?.ocrErrorMessage);
 
   const vendor = extractVendorFromFallbackSources({
     title: fallbackMeta?.title,
@@ -501,7 +545,9 @@ export async function interpretQuotePackage(
   const primaryFile = await fetchUrlAsInvoiceFile(primary.url, primary.name || 'quote.pdf');
   const analysis = await analyzeProcurementQuoteFromFile(primaryFile);
 
+  const packageInputCount = list.length;
   const parsedParts: ParsedProcurementQuote[] = [];
+  const failedAttachments: FailedAttachment[] = [];
   let ocrErrorMessage: string | undefined;
   for (const att of list) {
     try {
@@ -523,7 +569,11 @@ export async function interpretQuotePackage(
       }
       parsedParts.push(parsed);
     } catch (err) {
-      if (!ocrErrorMessage) ocrErrorMessage = sanitizeOcrError(err);
+      // Phase 4A.3 — a silently-failed attachment must remain visible: record it so
+      // the package coverage snapshot can warn that the total covers only part of the upload.
+      const msg = sanitizeOcrError(err);
+      if (!ocrErrorMessage) ocrErrorMessage = msg;
+      failedAttachments.push({ url: att.url, name: att.name ?? null, error: msg });
       console.warn('PROCUREMENT_QUOTE_OCR_PARSE_FAILED', {
         attachmentUrl: att.url,
         error: err instanceof Error ? err.message : String(err),
@@ -532,7 +582,12 @@ export async function interpretQuotePackage(
   }
 
   const parsedQuote = parsedParts.length > 0 ? mergeParsedQuotes(parsedParts) : null;
-  return { analysis, parsedQuote, ocrErrorMessage };
+  const coverage = buildPackageCoverageSnapshot({
+    inputCount: packageInputCount,
+    parsedCount: parsedParts.length,
+    failedAttachments,
+  });
+  return { analysis, parsedQuote, ocrErrorMessage, coverage };
 }
 
 /**
@@ -575,6 +630,8 @@ export type CreateProcurementJobParams = {
   attachmentName?: string | null;
   /** Sanitized OCR failure reason from interpretQuoteAttachment. */
   ocrErrorMessage?: string | null;
+  /** Package coverage snapshot (Phase 4A.3) — inputs vs parsed + failed attachments. */
+  coverage?: PackageCoverageSnapshot | null;
   linkedTaskId: string;
   priority: string;
   unitNumber: string;
@@ -629,6 +686,7 @@ export async function createProcurementJobFromAnalysis(
           ocrErrorMessage: params.ocrErrorMessage ?? null,
         },
         Number.isFinite(budgetNum) && budgetNum > 0 ? budgetNum : null,
+        params.coverage ?? null,
       ),
     })
     .select()

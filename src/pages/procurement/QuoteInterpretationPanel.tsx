@@ -230,6 +230,66 @@ function readConsistency(row: Record<string, unknown>): InvoiceAuditConsistency 
   };
 }
 
+type CoverageStatus = 'complete' | 'partial' | 'duplicate_detected' | 'failed' | 'unknown' | '';
+
+type FailedAttachmentView = {
+  url: string;
+  name: string | null;
+  error: string | null;
+};
+
+type CoverageView = {
+  status: CoverageStatus;
+  inputCount: number | null;
+  parsedCount: number | null;
+  failedCount: number | null;
+  duplicateCount: number | null;
+  failed: FailedAttachmentView[];
+};
+
+/** Read the Phase 4A.3 package-coverage fields. Returns null for old jobs with no info. */
+function readCoverage(pq: Record<string, unknown>): CoverageView | null {
+  const rawStatus = str(pq.coverage_status);
+  const hasAny =
+    rawStatus !== '' ||
+    pq.package_input_count != null ||
+    Array.isArray(pq.failed_attachments);
+  if (!hasAny) return null;
+  const status: CoverageStatus =
+    rawStatus === 'complete' ||
+    rawStatus === 'partial' ||
+    rawStatus === 'duplicate_detected' ||
+    rawStatus === 'failed' ||
+    rawStatus === 'unknown'
+      ? rawStatus
+      : '';
+  const failed: FailedAttachmentView[] = Array.isArray(pq.failed_attachments)
+    ? pq.failed_attachments
+        .filter((f): f is Record<string, unknown> => Boolean(f) && typeof f === 'object')
+        .map((f) => ({
+          url: str(f.url),
+          name: str(f.name) || null,
+          error: str(f.error) || null,
+        }))
+    : [];
+  return {
+    status,
+    inputCount: num(pq.package_input_count),
+    parsedCount: num(pq.package_parsed_count),
+    failedCount: num(pq.package_failed_count),
+    duplicateCount: num(pq.package_duplicate_count),
+    failed,
+  };
+}
+
+/** Short, readable attachment label: prefer name, else the file part of the URL. */
+function attachmentLabel(att: FailedAttachmentView): string {
+  if (att.name) return att.name;
+  const url = att.url || '';
+  const tail = url.split('/').pop() || url;
+  return tail || '(unknown file)';
+}
+
 type BoundaryGroupView = {
   invoice_number: string | null;
   pages: number[];
@@ -360,6 +420,96 @@ function BoundaryAudit({ snap, en }: { snap: BoundarySnapshotView; en: boolean }
           ? 'Could not reliably determine invoice boundaries within this PDF.'
           : '无法可靠判断 PDF 内发票边界。'}
       </p>
+    </div>
+  );
+}
+
+function CoverageAudit({ cov, en }: { cov: CoverageView; en: boolean }) {
+  const input = cov.inputCount ?? 0;
+  const parsed = cov.parsedCount ?? 0;
+  const failed = cov.failedCount ?? cov.failed.length;
+
+  if (cov.status === 'complete') {
+    return (
+      <div className="mt-3 flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2.5 text-xs text-emerald-800">
+        <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
+        <div className="space-y-0.5">
+          <p className="font-medium">
+            {en ? 'All uploaded files parsed' : '已解析全部上传文件'}
+          </p>
+          <p>
+            {en ? `Uploaded: ${input} · Parsed: ${parsed}` : `已上传：${input} · 成功解析：${parsed}`}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (cov.status === 'failed') {
+    return (
+      <div className="mt-3 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700">
+        <AlertCircle size={14} className="mt-0.5 shrink-0" />
+        <div className="space-y-0.5">
+          <p className="font-medium">
+            {en
+              ? 'None of the uploaded files could be parsed; the package total cannot be computed.'
+              : '所有上传文件均未成功解析，无法计算包总额。'}
+          </p>
+          <p>{en ? `Uploaded: ${input}` : `已上传：${input}`}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (cov.status === 'duplicate_detected') {
+    if ((cov.duplicateCount ?? 0) <= 0) return null;
+    return (
+      <div className="mt-3 flex items-start gap-2 rounded-lg border border-orange-200 bg-orange-50 p-2.5 text-xs text-orange-800">
+        <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+        <p>
+          {en
+            ? 'Possible duplicate files detected in this package.'
+            : '检测到此报价包中可能存在重复文件。'}
+        </p>
+      </div>
+    );
+  }
+
+  if (cov.status === 'partial') {
+    return (
+      <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
+        <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+        <div className="space-y-1">
+          <p className="font-medium">
+            {en
+              ? 'Incomplete file coverage — the current total only reflects the files that were parsed successfully.'
+              : '文件覆盖不完整，当前金额仅基于已成功解析的文件。'}
+          </p>
+          <p>
+            {en
+              ? `Uploaded: ${input} · Parsed: ${parsed} · Failed: ${failed}`
+              : `已上传：${input} · 成功解析：${parsed} · 失败：${failed}`}
+          </p>
+          {cov.failed.length > 0 && (
+            <ul className="mt-1 space-y-0.5">
+              {cov.failed.map((att, i) => (
+                <li key={i} className="break-all">
+                  <span className="font-medium">{attachmentLabel(att)}</span>
+                  {att.error && <span className="text-amber-700"> — {clip(att.error, 120)}</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // unknown / '' — old job without coverage info: a light, non-alarming note.
+  return (
+    <div className="mt-3 flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-[11px] text-slate-500">
+      <Info size={13} className="mt-0.5 shrink-0" />
+      <p>{en ? 'No coverage audit for this (older) job.' : '旧工单无覆盖审计信息。'}</p>
     </div>
   );
 }
@@ -537,6 +687,10 @@ export function QuoteInterpretationPanel({
   const invoiceParts = readInvoiceParts(pq);
   const showInvoiceAudit = str(pq.total_mode) === 'sum_invoices' && invoiceParts.length > 0;
   const topBoundary = readBoundarySnapshot(pq);
+  const coverage = readCoverage(pq);
+  // Phase 4A.3 — a partial/failed package must not display a full green "reconciled".
+  const coverageIncomplete =
+    coverage != null && (coverage.status === 'partial' || coverage.status === 'failed');
   const packageTotal = num(pq.total_amount ?? pq.totalAmount ?? pq.amount);
   const summary = comparisonSummary(pq);
 
@@ -684,7 +838,18 @@ export function QuoteInterpretationPanel({
         </div>
       )}
 
-      {reconciliation.reconciled && reconciliation.invoicePackageTotal != null && (
+      {reconciliation.reconciled && reconciliation.invoicePackageTotal != null && coverageIncomplete && (
+        <div className="mb-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+          <p>
+            {l
+              ? 'File coverage is incomplete — this amount is for reference only; some files are not included in the total.'
+              : '文件覆盖不完整，当前金额仅供参考；部分文件未进入合计，请核对上传包。'}
+          </p>
+        </div>
+      )}
+
+      {reconciliation.reconciled && reconciliation.invoicePackageTotal != null && !coverageIncomplete && (
         <div className="mb-3 flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2.5 text-xs text-emerald-800">
           <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
           <div>
@@ -788,6 +953,8 @@ export function QuoteInterpretationPanel({
           </div>
         ))}
       </dl>
+
+      {coverage && <CoverageAudit cov={coverage} en={l} />}
 
       {!showInvoiceAudit && topBoundary && <BoundaryAudit snap={topBoundary} en={l} />}
 
