@@ -33,7 +33,14 @@ export type DualVerificationReason =
   | 'selected_raw_text_consistent'
   | 'selected_more_complete'
   | 'selected_balance_due'
+  // Phase 4A.2 — explicit Due-label protection.
+  | 'selected_explicit_due'
+  | 'selected_matching_explicit_due'
+  | 'selected_raw_due_conflict'
+  | 'selected_totals_due_conflict'
   | 'no_financial_totals';
+
+export type ExplicitDueField = 'balance_due' | 'amount_due' | 'total_due';
 
 export type DualFinancialTotalsVerification = {
   selected: FinancialTotalsParseResult;
@@ -74,6 +81,42 @@ function hasUsefulTotal(r: FinancialTotalsParseResult): boolean {
 
 function dueAmount(r: FinancialTotalsParseResult): number | null {
   return r.balance_due ?? r.amount_due ?? r.total_due ?? r.total_amount ?? null;
+}
+
+function isPositive(v: number | null | undefined): v is number {
+  return typeof v === 'number' && Number.isFinite(v) && v > 0;
+}
+
+/**
+ * Phase 4A.2 — the strongest payment candidate is an EXPLICIT, positive Due label.
+ * Priority: Balance Due > Amount Due > Total Due. A 0/negative due is not explicit.
+ */
+export function getExplicitDue(r: FinancialTotalsParseResult): {
+  value: number | null;
+  field: ExplicitDueField | null;
+  sourceText?: string | null;
+} {
+  if (isPositive(r.balance_due)) {
+    return { value: r.balance_due, field: 'balance_due', sourceText: r.field_sources?.balance_due ?? null };
+  }
+  if (isPositive(r.amount_due)) {
+    return { value: r.amount_due, field: 'amount_due', sourceText: r.field_sources?.amount_due ?? null };
+  }
+  if (isPositive(r.total_due)) {
+    return { value: r.total_due, field: 'total_due', sourceText: r.field_sources?.total_due ?? null };
+  }
+  return { value: null, field: null, sourceText: null };
+}
+
+export function hasExplicitPositiveDue(r: FinancialTotalsParseResult): boolean {
+  return getExplicitDue(r).value != null;
+}
+
+/** True when `r.total_amount` is missing/zero or disagrees with `dueVal` beyond tolerance. */
+function totalDiffersFromDue(r: FinancialTotalsParseResult, dueVal: number): boolean {
+  const t = r.total_amount;
+  if (t == null) return true;
+  return Math.abs(t - dueVal) > TOLERANCE;
 }
 
 function completenessScore(r: FinancialTotalsParseResult): number {
@@ -174,6 +217,98 @@ export function verifyDualFinancialTotals(input: {
   const rt = rawTextResult!;
   const conflictFields = computeConflictFields(tb, rt);
   const hasConflict = conflictFields.length > 0;
+
+  // C.0 — Due safety override (Phase 4A.2). An explicit, positive Due label is the
+  // payment authority and must NEVER be overwritten by a 0, a non-due total,
+  // subtotal/tax/payments, or a line-item amount. This runs BEFORE both_match /
+  // completeness so a missing/zero/non-due figure can never win over a real Due.
+  const tbDue = getExplicitDue(tb);
+  const rawDue = getExplicitDue(rt);
+
+  const withDueFields = (base: DualConflictField[]): DualConflictField[] => {
+    const out = base.slice();
+    for (const f of ['total_amount', tbDue.field, rawDue.field] as (DualConflictField | null)[]) {
+      if (f && !out.includes(f)) out.push(f);
+    }
+    return out;
+  };
+
+  // C.0 Case 1 — only the totals block carries an explicit Due, and the raw side's
+  // total is missing/zero or disagrees. Protect the totals-block Due.
+  if (tbDue.value != null && rawDue.value == null && totalDiffersFromDue(rt, tbDue.value)) {
+    return {
+      selected: tb,
+      selected_source: 'totals_block_text',
+      totals_block_result: tb,
+      raw_text_result: rt,
+      conflict: true,
+      conflict_fields: withDueFields(conflictFields),
+      reason: 'selected_explicit_due',
+    };
+  }
+
+  // C.0 Case 2 — only the raw text carries an explicit Due, and the totals-block side's
+  // total is missing/zero or disagrees. Protect the raw-text Due (e.g. invoice 83127).
+  if (rawDue.value != null && tbDue.value == null && totalDiffersFromDue(tb, rawDue.value)) {
+    return {
+      selected: rt,
+      selected_source: 'raw_text_original',
+      totals_block_result: tb,
+      raw_text_result: rt,
+      conflict: true,
+      conflict_fields: withDueFields(conflictFields),
+      reason: 'selected_explicit_due',
+    };
+  }
+
+  // C.0 Case 3 & 4 — both sides carry an explicit positive Due.
+  if (tbDue.value != null && rawDue.value != null) {
+    const dueMatches = Math.abs(tbDue.value - rawDue.value) <= TOLERANCE;
+    const tbOk = internalConsistency(tb);
+    const rtOk = internalConsistency(rt);
+
+    if (dueMatches) {
+      // Case 3 — agreed payable. Keep the Due; choose the more trustworthy side for
+      // context (subtotal/tax). total_amount equals the Due on either side, so the
+      // payable is never changed; only subtotal/tax may be flagged as conflicting.
+      const pickRaw =
+        (rtOk === true && tbOk !== true) ||
+        (rtOk === tbOk && completenessScore(rt) > completenessScore(tb));
+      return {
+        selected: pickRaw ? rt : tb,
+        selected_source: pickRaw ? 'raw_text_original' : 'totals_block_text',
+        totals_block_result: tb,
+        raw_text_result: rt,
+        conflict: hasConflict,
+        conflict_fields: conflictFields,
+        reason: 'selected_matching_explicit_due',
+      };
+    }
+
+    // Case 4 — the two Due labels disagree: a hard conflict on the payable itself.
+    // Pick the internally consistent side; if neither is consistent prefer raw_text
+    // (fuller context). Either way total_amount = that side's explicit Due.
+    if (tbOk === true && rtOk !== true) {
+      return {
+        selected: tb,
+        selected_source: 'totals_block_text',
+        totals_block_result: tb,
+        raw_text_result: rt,
+        conflict: true,
+        conflict_fields: withDueFields(conflictFields),
+        reason: 'selected_totals_due_conflict',
+      };
+    }
+    return {
+      selected: rt,
+      selected_source: 'raw_text_original',
+      totals_block_result: tb,
+      raw_text_result: rt,
+      conflict: true,
+      conflict_fields: withDueFields(conflictFields),
+      reason: 'selected_raw_due_conflict',
+    };
+  }
 
   // C.1 — all commonly present fields agree → trust totals block.
   if (!hasConflict) {

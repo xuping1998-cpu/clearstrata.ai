@@ -119,6 +119,8 @@ interface InvoiceAuditPart {
   conflictFields: string[];
   /** Which totals-block transcription fed dual verification (Phase 3B). */
   totalsBlockInputSource: string;
+  /** Dual-verification reason code (Phase 4A.2 explicit-due protection). */
+  verificationReason: string;
   /** Invoice boundary detection for this part's PDF (Phase 4B.1). */
   boundary: BoundarySnapshotView | null;
 }
@@ -140,9 +142,14 @@ function ocrSourceLabel(
     ocrConflict: boolean;
     hasTotalsBlock: boolean;
     totalsBlockInputSource?: string;
+    verificationReason?: string;
   },
   en: boolean,
 ): string {
+  // Phase 4A.2 — an explicit Due-label win takes precedence in the label.
+  if (part.verificationReason && part.verificationReason.includes('explicit_due')) {
+    return en ? 'Selected explicit due amount' : '已采用明确应付金额';
+  }
   const independent = part.totalsBlockInputSource === 'independent_totals_block_text';
   const totalsBlockLabel = independent
     ? en
@@ -183,6 +190,7 @@ function readVerification(row: Record<string, unknown>): {
   source: 'totals_block_text' | 'raw_text_original' | 'none' | '';
   conflict: boolean;
   conflictFields: string[];
+  reason: string;
 } {
   const v = row.financial_totals_verification;
   const selected = str(row.selected_financial_text_source);
@@ -191,7 +199,7 @@ function readVerification(row: Record<string, unknown>): {
       ? selected
       : '';
   if (!v || typeof v !== 'object') {
-    return { source, conflict: false, conflictFields: [] };
+    return { source, conflict: false, conflictFields: [], reason: '' };
   }
   const obj = v as Record<string, unknown>;
   const vSource = str(obj.selected_source);
@@ -205,6 +213,7 @@ function readVerification(row: Record<string, unknown>): {
     conflictFields: Array.isArray(obj.conflict_fields)
       ? obj.conflict_fields.map((f) => String(f))
       : [],
+    reason: str(obj.reason),
   };
 }
 
@@ -385,6 +394,7 @@ function readInvoiceParts(pq: Record<string, unknown>): InvoiceAuditPart[] {
           ocrConflict: ver.conflict,
           conflictFields: ver.conflictFields,
           totalsBlockInputSource: str(row.totals_block_input_source),
+          verificationReason: ver.reason,
         };
       })(),
       boundary: readBoundarySnapshot(row),
@@ -573,6 +583,7 @@ export function QuoteInterpretationPanel({
           ocrConflict: topVerification.conflict,
           hasTotalsBlock: Boolean(str(pq.totals_block_text)),
           totalsBlockInputSource: str(pq.totals_block_input_source),
+          verificationReason: topVerification.reason,
         },
         l,
       ),
@@ -643,6 +654,7 @@ export function QuoteInterpretationPanel({
                   ocrConflict: topVerification.conflict,
                   hasTotalsBlock: Boolean(str(pq.totals_block_text)),
                   totalsBlockInputSource: str(pq.totals_block_input_source),
+                  verificationReason: topVerification.reason,
                 },
                 l,
               )}

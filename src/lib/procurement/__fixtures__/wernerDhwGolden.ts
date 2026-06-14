@@ -195,6 +195,70 @@ export const WERNER_DUAL_GOLDEN: DualGoldenCase[] = [
   },
 ];
 
+/**
+ * Phase 4A.2 — Due Amount Conflict Safety. When the two OCR paths disagree, an
+ * explicit positive Due label must win over a 0 / non-due total / mis-read figure.
+ * These pin the real failures seen on Water Feature job 5184c2fb…
+ */
+export interface DueConflictGoldenCase {
+  id: string;
+  totalsBlockText: string;
+  rawTextOriginal: string;
+  expected: {
+    selected_source: FinancialTotalsParseSource | 'none';
+    total_amount: number;
+    total_source: FinancialTotalsParseResult['total_source'];
+    conflict: boolean;
+    /** Substring the verification reason must contain. */
+    reason_includes: string;
+    conflict_fields_include?: string[];
+  };
+}
+
+export const DUE_CONFLICT_GOLDEN: DueConflictGoldenCase[] = [
+  {
+    // Invoice 83127 — independent totals block read everything as 0; raw text is correct.
+    id: '83127 zero-due vs explicit-due',
+    totalsBlockText: ['Subtotal $0.00', 'GST $0.00', 'Balance Due $0.00'].join('\n'),
+    rawTextOriginal: ['Subtotal $888.99', 'GST $0.00', 'Balance Due $888.99'].join('\n'),
+    expected: {
+      selected_source: 'raw_text_original',
+      total_amount: 888.99,
+      total_source: 'balance_due',
+      conflict: true,
+      reason_includes: 'explicit_due',
+    },
+  },
+  {
+    // Invoice 81472 — both sides have a Balance Due but they disagree; raw is correct.
+    id: '81472 conflicting dues',
+    totalsBlockText: ['Subtotal $2,000.00', 'GST $100.00', 'Balance Due $2,300.00'].join('\n'),
+    rawTextOriginal: ['Subtotal $2,000.00', 'GST $100.00', 'Balance Due $2,003.40'].join('\n'),
+    expected: {
+      selected_source: 'raw_text_original',
+      total_amount: 2003.4,
+      total_source: 'balance_due',
+      conflict: true,
+      reason_includes: 'due_conflict',
+      conflict_fields_include: ['balance_due', 'total_amount'],
+    },
+  },
+  {
+    // Matching dues, mismatched subtotal/tax — payable must stay at the agreed Due.
+    id: 'matching dues, mismatched subtotal/tax',
+    totalsBlockText: ['Subtotal $22,296.88', 'GST $1,114.84', 'Total Due $23,296.88'].join('\n'),
+    rawTextOriginal: ['Subtotal $22,187.50', 'GST $1,109.38', 'Total Due $23,296.88'].join('\n'),
+    expected: {
+      selected_source: 'raw_text_original',
+      total_amount: 23296.88,
+      total_source: 'total_due',
+      conflict: true,
+      reason_includes: 'matching_explicit_due',
+      conflict_fields_include: ['subtotal', 'sales_tax'],
+    },
+  },
+];
+
 function approxEq(a: number | null, b: number, eps = 0.005): boolean {
   return a != null && Math.abs(a - b) <= eps;
 }
@@ -260,6 +324,29 @@ export function runWernerGoldenTest(): GoldenCheck[] {
       label: `dual ${c.id}`,
       pass,
       details: `selected=${v.selected_source} subtotal=${r.subtotal} tax=${r.tax_amount} balance_due=${r.balance_due} conflict=${v.conflict} fields=[${v.conflict_fields.join(',')}] reason=${v.reason}`,
+    });
+  }
+
+  for (const c of DUE_CONFLICT_GOLDEN) {
+    const v = verifyDualFinancialTotals({
+      totalsBlockText: c.totalsBlockText,
+      rawTextOriginal: c.rawTextOriginal,
+    });
+    const r = v.selected;
+    const fieldsOk = (c.expected.conflict_fields_include ?? []).every((f) =>
+      v.conflict_fields.includes(f as never),
+    );
+    const pass =
+      v.selected_source === c.expected.selected_source &&
+      approxEq(r.total_amount, c.expected.total_amount) &&
+      r.total_source === c.expected.total_source &&
+      v.conflict === c.expected.conflict &&
+      v.reason.includes(c.expected.reason_includes) &&
+      fieldsOk;
+    checks.push({
+      label: `due-conflict ${c.id}`,
+      pass,
+      details: `selected=${v.selected_source} total=${r.total_amount} source=${r.total_source} conflict=${v.conflict} reason=${v.reason} fields=[${v.conflict_fields.join(',')}]`,
     });
   }
 
