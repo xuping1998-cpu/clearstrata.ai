@@ -288,10 +288,23 @@ const FORBIDDEN_COMPARABLE_PATTERNS: RegExp[] = [
   /pricing\s+aligned/i,
   /price[s]?\s+align/i,
   /market\s+reference/i,
+  // Phase 5C.3 — "directly matches / matching billing method" style equivalence claims.
+  /directly\s+match(?:es|ed|ing)?/i,
+  /matching\s+billing/i,
+  /same\s+billing(\s+method|\s+model)?/i,
+  /equivalent\s+billing/i,
+  /matching\s+pricing\s+structure/i,
+  /match(?:es|ed|ing)?\b[^.]*\bbilling\s+method\b/i,
+  /match(?:es|ed|ing)?\b[^.]*\bpricing\s+structure\b/i,
   /可比/,
   /价格.{0,4}一致/,
   /相同.{0,4}计费/,
   /同等.{0,4}报价/,
+  /直接匹配/,
+  /直接相符/,
+  /计费方式.{0,4}一致/,
+  /价格结构.{0,4}一致/,
+  /收费模式.{0,4}一致/,
 ];
 
 /** True when text contains a phrase that wrongly implies pricing equivalence. */
