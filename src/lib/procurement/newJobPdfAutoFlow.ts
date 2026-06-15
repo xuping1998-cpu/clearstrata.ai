@@ -24,6 +24,7 @@ import {
   type FailedAttachment,
   type PackageCoverageSnapshot,
 } from './packageCoverage';
+import { inferQuotePricingContext } from './pricingBasis';
 
 export type { ProcurementQuoteAnalysis };
 export type { ParsedProcurementQuote };
@@ -187,6 +188,32 @@ function applyCoverageToParsedQuoteJson(
   return out;
 }
 
+/**
+ * Phase 5B — infer and attach the uploaded quote's pricing basis / unit count so
+ * the market benchmark can gate comparability (a one-time project must never be
+ * compared with annual / per-device-per-year prices). Mutates and returns `out`.
+ */
+function applyQuotePricingContextToParsedQuoteJson(
+  out: Record<string, unknown>,
+  analysis: ProcurementQuoteAnalysis,
+  parsedQuote: ParsedProcurementQuote | null | undefined,
+  fallbackMeta?: ParsedQuoteFallbackMeta,
+): Record<string, unknown> {
+  const ctx = inferQuotePricingContext({
+    title: fallbackMeta?.title ?? null,
+    description: analysis.description ?? fallbackMeta?.description ?? null,
+    service_scope: parsedQuote?.service_scope ?? null,
+    raw_text_original: parsedQuote?.raw_text_original ?? parsedQuote?.raw_text ?? null,
+    line_items: parsedQuote?.line_items ?? null,
+    total_amount: parsedQuote?.total_amount ?? null,
+  });
+  out.quote_pricing_context = ctx;
+  out.pricing_basis = ctx.pricing_basis;
+  if (ctx.unit_count != null) out.unit_count = ctx.unit_count;
+  if (ctx.unit_label) out.unit_label = ctx.unit_label;
+  return out;
+}
+
 export function buildParsedQuoteJson(
   analysis: ProcurementQuoteAnalysis,
   parsedQuote: ParsedProcurementQuote | null | undefined,
@@ -211,6 +238,9 @@ export function buildParsedQuoteJson(
     // Phase 4A.3 — coverage + failed attachments must survive even the early
     // sum_invoices return below, so apply them before any branch returns.
     applyCoverageToParsedQuoteJson(out, coverage, fallbackMeta?.ocrErrorMessage);
+
+    // Phase 5B — pricing basis must also survive the early sum_invoices return.
+    applyQuotePricingContextToParsedQuoteJson(out, analysis, parsedQuote, fallbackMeta);
 
     // For a summed multi-invoice package the total is authoritative — do not let
     // Grand Total Recovery re-pick a single page's figure from raw_text.
@@ -270,6 +300,10 @@ export function buildParsedQuoteJson(
       out.line_items = [{ description: serviceScope, amount: null }];
     }
   }
+
+  // Phase 5B — normalized pricing basis (overrides the coarse fallback basis above
+  // with the richer PricingBasis vocabulary used by the benchmark comparability gate).
+  applyQuotePricingContextToParsedQuoteJson(out, analysis, parsedQuote, fallbackMeta);
 
   return out;
 }

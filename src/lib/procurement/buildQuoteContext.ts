@@ -103,7 +103,10 @@ export function buildSearchQuoteContext(
   const scope = s(parsedQuote.service_scope) || s(parsedQuote.analysis_description);
   if (scope) lines.push(`service_scope: ${clip(scope, SEARCH_SCOPE_MAX)}`);
 
-  add('pricing_basis', parsedQuote.billing_period ?? parsedQuote.pricing_basis);
+  add('pricing_basis', parsedQuote.pricing_basis ?? parsedQuote.billing_period);
+  // Phase 5B — unit count / label help the vendor search avoid cross-basis comparison.
+  add('unit_count', parsedQuote.unit_count);
+  add('unit_label', parsedQuote.unit_label);
   add('location', parsedQuote.location ?? parsedQuote.city);
 
   const lineItems = parsedQuote.line_items;

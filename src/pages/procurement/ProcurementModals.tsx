@@ -28,6 +28,7 @@ import {
 import type { PackageCoverageSnapshot } from '../../lib/procurement/packageCoverage';
 import { saveVendorSearchResults } from '../../lib/procurement/saveVendorSearchResults';
 import { computeMarketBenchmark, fetchVendorSearchResults } from '../../lib/procurement/vendorMarketBenchmark';
+import { readQuotePricingContext } from '../../lib/procurement/pricingBasis';
 import { getTrafficLight, TrafficLightBadge } from './AiPricingPanel';
 import { SERVICE_CATEGORIES } from './VendorRegistry';
 import {
@@ -63,6 +64,7 @@ interface ProcurementJob {
   ai_estimate_reasoning?: string;
   quotes?: ProcurementQuote[];
   completionPhotos?: { id: string; photo_url: string }[];
+  parsed_quote_json?: Record<string, unknown> | null;
 }
 
 interface ProcurementQuote {
@@ -1101,7 +1103,11 @@ export function ApproveQuoteModal({
     void (async () => {
       const rows = await fetchVendorSearchResults(selectedJob.id);
       if (cancelled) return;
-      const b = computeMarketBenchmark(rows);
+      // Phase 5B — gate the traffic-light benchmark by pricing-basis comparability.
+      const quoteCtx = readQuotePricingContext(
+        (selectedJob.parsed_quote_json ?? null) as Record<string, unknown> | null,
+      );
+      const b = computeMarketBenchmark(rows, quoteCtx);
       if (b.case === 'priced') {
         setMarketLow(b.marketLow);
         setMarketHigh(b.marketHigh);

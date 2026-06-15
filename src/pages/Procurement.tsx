@@ -13,6 +13,7 @@ import { AiPricingPanel, getTrafficLight, TrafficLightBadge } from './procuremen
 import { QuoteInterpretationPanel } from './procurement/QuoteInterpretationPanel';
 import { validateInterpretationConsistency } from '../lib/procurement/quoteInterpretationConsistency';
 import { computeMarketBenchmark, fetchVendorSearchResults } from '../lib/procurement/vendorMarketBenchmark';
+import { readQuotePricingContext } from '../lib/procurement/pricingBasis';
 import { VendorSearchPanel } from './procurement/VendorSearchPanel';
 import { getCategoryLabel } from './procurement/VendorRegistry';
 import { fetchPropertyManagersForProperty } from '../lib/fetchPropertyManagersForProperty';
@@ -471,7 +472,11 @@ function JobCard({
     void (async () => {
       const rows = await fetchVendorSearchResults(job.id);
       if (cancelled) return;
-      const b = computeMarketBenchmark(rows);
+      // Phase 5B — gate the traffic-light benchmark by pricing-basis comparability.
+      const quoteCtx = readQuotePricingContext(
+        (job.parsed_quote_json ?? null) as Record<string, unknown> | null,
+      );
+      const b = computeMarketBenchmark(rows, quoteCtx);
       if (b.case === 'priced') {
         setMarketLow(b.marketLow);
         setMarketHigh(b.marketHigh);

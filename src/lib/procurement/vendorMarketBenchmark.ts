@@ -1,4 +1,10 @@
 import { supabase } from '../supabase';
+import {
+  inferVendorPricingBasis,
+  isPricingBasisComparable,
+  type PricingBasis,
+  type QuotePricingContext,
+} from './pricingBasis';
 
 export type VendorEvidenceRow = {
   id?: string;
@@ -8,7 +14,11 @@ export type VendorEvidenceRow = {
   price_currency?: string | null;
   price_source_url?: string | null;
   price_unit?: string | null;
+  price_reference?: string | null;
   price_evidence_note?: string | null;
+  description_en?: string | null;
+  /** Optional explicit basis from search-quotes (Phase 5B); falls back to inference. */
+  pricing_basis?: string | null;
 };
 
 export function hasValidPriceEvidence(v: VendorEvidenceRow): boolean {
@@ -31,13 +41,47 @@ export type MarketBenchmark =
       pricedVendors: VendorEvidenceRow[];
     }
   | {
+      // Phase 5B — priced vendors exist but none share the quote's pricing basis.
+      case: 'not_comparable';
+      quotePricingBasis: PricingBasis;
+      quoteUnitCount: number | null;
+      vendorBasisCounts: Partial<Record<PricingBasis, number>>;
+      excludedVendorCount: number;
+      vendors: VendorEvidenceRow[];
+      pricedVendors: VendorEvidenceRow[];
+    }
+  | {
       case: 'priced';
       marketLow: number;
       marketHigh: number;
       priceUnit: string | null;
       pricedVendors: VendorEvidenceRow[];
       vendors: VendorEvidenceRow[];
+      /** Phase 5B — true when the quote's basis was unknown so no gating was applied. */
+      quoteBasisUnknown?: boolean;
+      /** Phase 5B — the quote pricing basis used for comparability gating. */
+      quotePricingBasis?: PricingBasis;
     };
+
+/** Phase 5B — resolve a vendor row's pricing basis (explicit field or inference). */
+export function vendorPricingBasis(v: VendorEvidenceRow): PricingBasis {
+  return inferVendorPricingBasis({
+    price_unit: v.price_unit,
+    price_reference: v.price_reference,
+    price_evidence_note: v.price_evidence_note,
+    description: v.description_en,
+    explicit_basis: v.pricing_basis,
+  });
+}
+
+function tallyVendorBases(vendors: VendorEvidenceRow[]): Partial<Record<PricingBasis, number>> {
+  const counts: Partial<Record<PricingBasis, number>> = {};
+  for (const v of vendors) {
+    const b = vendorPricingBasis(v);
+    counts[b] = (counts[b] ?? 0) + 1;
+  }
+  return counts;
+}
 
 /** Minimum comparable priced quotes required to form a reliable benchmark. */
 const MIN_COMPARABLE_PRICED = 3;
@@ -64,14 +108,41 @@ function dominantSameUnitGroup(priced: VendorEvidenceRow[]): VendorEvidenceRow[]
   return best;
 }
 
-export function computeMarketBenchmark(vendors: VendorEvidenceRow[]): MarketBenchmark {
+export function computeMarketBenchmark(
+  vendors: VendorEvidenceRow[],
+  quoteContext?: QuotePricingContext | null,
+): MarketBenchmark {
   if (vendors.length === 0) return { case: 'none' };
 
   const pricedVendors = vendors.filter(hasValidPriceEvidence);
   if (pricedVendors.length === 0) return { case: 'no_prices', vendors };
 
+  // Phase 5B — pricing-basis comparability gate. A benchmark is only valid when
+  // vendor prices share the uploaded quote's billing model (e.g. a one-time
+  // project total must never be compared with annual / per-device-per-year prices).
+  const quoteBasis = quoteContext?.pricing_basis ?? 'unknown';
+  const quoteBasisUnknown = quoteBasis === 'unknown';
+
+  let basisComparable = pricedVendors;
+  if (!quoteBasisUnknown) {
+    basisComparable = pricedVendors.filter(
+      (v) => isPricingBasisComparable(quoteBasis, vendorPricingBasis(v)).comparable,
+    );
+    if (basisComparable.length === 0) {
+      return {
+        case: 'not_comparable',
+        quotePricingBasis: quoteBasis,
+        quoteUnitCount: quoteContext?.unit_count ?? null,
+        vendorBasisCounts: tallyVendorBases(pricedVendors),
+        excludedVendorCount: pricedVendors.length,
+        vendors,
+        pricedVendors,
+      };
+    }
+  }
+
   // Only compare quotes that share the same price_unit / pricing basis.
-  const comparable = dominantSameUnitGroup(pricedVendors);
+  const comparable = dominantSameUnitGroup(basisComparable);
 
   // Not enough comparable priced quotes → keep the list, but no reliable range.
   if (comparable.length < MIN_COMPARABLE_PRICED) {
@@ -94,6 +165,8 @@ export function computeMarketBenchmark(vendors: VendorEvidenceRow[]): MarketBenc
     priceUnit: unit || null,
     pricedVendors: comparable,
     vendors,
+    quoteBasisUnknown,
+    quotePricingBasis: quoteBasis,
   };
 }
 
@@ -101,7 +174,7 @@ export async function fetchVendorSearchResults(jobId: string): Promise<VendorEvi
   const { data, error } = await supabase
     .from('vendor_search_results')
     .select(
-      'id, company_name, price_low, price_high, price_currency, price_source_url, price_unit, price_evidence_note',
+      'id, company_name, price_low, price_high, price_currency, price_source_url, price_unit, price_reference, price_evidence_note, description_en',
     )
     .eq('job_id', jobId)
     .order('created_at', { ascending: true });

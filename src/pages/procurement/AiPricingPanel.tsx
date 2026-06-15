@@ -1,11 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
-import { TrendingUp, Loader2, RefreshCw } from 'lucide-react';
+import { TrendingUp, Loader2, RefreshCw, AlertTriangle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import {
   computeMarketBenchmark,
   fetchVendorSearchResults,
   type VendorEvidenceRow,
 } from '../../lib/procurement/vendorMarketBenchmark';
+import {
+  readQuotePricingContext,
+  pricingBasisLabel,
+  type QuotePricingContext,
+} from '../../lib/procurement/pricingBasis';
 
 /** When all priced vendors share one non-empty price_unit, return it; else omit unit. */
 function unifiedMarketPriceUnit(vendors: VendorEvidenceRow[]): string | null {
@@ -83,11 +88,23 @@ export function AiPricingPanel({ jobId, language }: AiPricingPanelProps) {
   const l = language === 'en';
   const [loading, setLoading] = useState(true);
   const [benchmark, setBenchmark] = useState<ReturnType<typeof computeMarketBenchmark>>({ case: 'none' });
+  const [quoteCtx, setQuoteCtx] = useState<QuotePricingContext | null>(null);
 
   const loadEvidence = useCallback(async () => {
     setLoading(true);
+    // Phase 5B — read the uploaded quote's pricing basis so the benchmark can gate
+    // comparability (e.g. never compare a one-time project total with annual prices).
+    const { data: jobRow } = await supabase
+      .from('procurement_jobs')
+      .select('parsed_quote_json')
+      .eq('id', jobId)
+      .maybeSingle();
+    const ctx = readQuotePricingContext(
+      (jobRow?.parsed_quote_json ?? null) as Record<string, unknown> | null,
+    );
+    setQuoteCtx(ctx);
     const rows = await fetchVendorSearchResults(jobId);
-    setBenchmark(computeMarketBenchmark(rows));
+    setBenchmark(computeMarketBenchmark(rows, ctx));
     setLoading(false);
   }, [jobId]);
 
@@ -192,6 +209,61 @@ export function AiPricingPanel({ jobId, language }: AiPricingPanelProps) {
     );
   }
 
+  if (benchmark.case === 'not_comparable') {
+    const quoteBasisText = pricingBasisLabel(benchmark.quotePricingBasis, l);
+    const unitText =
+      benchmark.quoteUnitCount != null
+        ? l
+          ? ` (${benchmark.quoteUnitCount} ${quoteCtx?.unit_label ?? 'units'})`
+          : `（${benchmark.quoteUnitCount} 个${quoteCtx?.unit_label ?? '单位'}）`
+        : '';
+    const vendorBasisList = Object.entries(benchmark.vendorBasisCounts)
+      .filter(([, n]) => (n ?? 0) > 0)
+      .map(([b]) => pricingBasisLabel(b as QuotePricingContext['pricing_basis'], l))
+      .join(l ? ', ' : '、');
+    return (
+      <div className="bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-200 rounded-lg p-4 mb-4">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="text-amber-600" size={18} />
+            <span className="text-sm font-semibold text-amber-900">
+              {l ? 'Public Market Pricing Benchmark' : '市场公开报价参考'}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => void loadEvidence()}
+            className="text-xs text-amber-700 hover:text-amber-800 flex items-center gap-1"
+          >
+            <RefreshCw size={12} />
+            {l ? 'Refresh' : '刷新'}
+          </button>
+        </div>
+        <p className="text-sm font-medium text-amber-800">
+          {l
+            ? 'Market pricing units do not match. A reliable benchmark cannot be calculated.'
+            : '市场报价单位不一致，无法形成可靠比较。'}
+        </p>
+        <div className="text-xs text-amber-800/80 mt-2 space-y-0.5">
+          <p>
+            {l ? 'Uploaded quote: ' : '上传报价：'}
+            {quoteBasisText}
+            {unitText}
+          </p>
+          <p>
+            {l ? 'Market quotes found: ' : '市场报价：'}
+            {vendorBasisList || (l ? 'annual / per-device pricing' : '年度/按设备报价')}
+          </p>
+          <p className="text-amber-700/70">
+            {l
+              ? 'Please review supplier quotes manually; an annual unit price should not be compared with this project total.'
+              : '请人工核对供应商报价，不应直接用年度单价比较本次项目总额。'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (benchmark.case === 'unreliable') {
     const msg =
       benchmark.reason === 'quotes_too_wide'
@@ -260,6 +332,14 @@ export function AiPricingPanel({ jobId, language }: AiPricingPanelProps) {
           ? `Based on ${pricedCount} supplier market reference quote(s).`
           : `基于 ${pricedCount} 家供应商的市场参考报价`}
       </p>
+
+      {benchmark.quoteBasisUnknown && (
+        <p className="text-[11px] text-amber-700 mt-1">
+          {l
+            ? "Uploaded quote's pricing unit could not be determined; treat this benchmark as reference only."
+            : '无法判断上传报价的计费单位，市场报价仅供参考。'}
+        </p>
+      )}
     </div>
   );
 }

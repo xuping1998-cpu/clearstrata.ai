@@ -50,6 +50,21 @@ Prefer specific queries, e.g.:
 - multi-family building DHW piping installation contractor BC
 - boiler / DHW installation strata building Vancouver
 
+PRICING BASIS NORMALIZATION (Phase 5B) — classify each vendor price precisely:
+- "$80/year" per backflow device annual certification => pricingBasis="per_device_per_year", unitLabel="device"
+- "annual backflow testing program" (whole building, yearly) => pricingBasis="annual_contract"
+- "fixed project quote" / one-time lump sum => pricingBasis="one_time_project"
+- a single service call / dispatch => pricingBasis="per_visit"
+- hourly labour => pricingBasis="per_hour"
+- per device, not yearly => pricingBasis="per_device"
+- monthly maintenance => pricingBasis="monthly_contract"
+- if unsure => pricingBasis="unknown"
+Never present an annual or per-device-per-year price as directly comparable to a
+one-time project quote. If the uploaded quote is a one-time project and you can
+only find annual/per-device prices, still return the vendor but set
+samePricingBasis=false and label its pricingBasis accurately (do NOT fabricate a
+one-time price). Honor the "Uploaded quote pricing_basis" stated in the user message.
+
 Return STRICT JSON only (no other text):
 {
   "vendors": [
@@ -61,6 +76,9 @@ Return STRICT JSON only (no other text):
       "priceRange": "e.g. CAD $80,000–$95,000 one-time (use '' when no source)",
       "priceUnit": "one-time | month | year | visit | cubic yard | hour | unit | ''",
       "priceBasis": "one-time | monthly | annual | per_visit | per_cubic_yard | hourly | ''",
+      "pricingBasis": "one_time_project | per_visit | per_device | per_device_per_year | annual_contract | monthly_contract | per_hour | unknown",
+      "unitCountBasis": "number of units the price covers, or null",
+      "unitLabel": "device | hour | visit | project | unit | ''",
       "comparableScope": true,
       "samePricingBasis": true,
       "matchReason": "why this vendor is comparable to the quoted scope and pricing basis",
@@ -250,10 +268,22 @@ function buildAnthropicUserText(params: {
   const primary = quoteContext
     ? `报价解读 / quote_context（主依据，请据此匹配同类服务与同计费方式）：\n${quoteContext}`
     : `（无结构化 quote_context，请基于以下类别/描述谨慎匹配同类服务）`;
+
+  // Phase 5B — surface the uploaded quote's pricing basis / unit count so the
+  // model does not return annual / per-device-per-year prices as directly comparable.
+  const basisMatch = quoteContext?.match(/pricing_basis:\s*([a-z_]+)/i);
+  const unitMatch = quoteContext?.match(/unit_count:\s*(\d+)/i);
+  const basisLine =
+    basisMatch || unitMatch
+      ? `\n上传报价计费方式 / Uploaded quote pricing_basis = ${basisMatch?.[1] ?? 'unknown'}${
+          unitMatch ? `, unit_count = ${unitMatch[1]}` : ''
+        }。请勿把年度 / 按设备每年 (annual / per_device_per_year) 报价当作可直接与一次性项目 (one_time_project) 比较。每个供应商必须返回 pricingBasis。`
+      : '';
+
   return `请基于以下报价解读，搜索温哥华本地「同类服务、同计费方式」的可比供应商。
 宁可返回 1–2 家真正可比供应商，也不要为凑满 3 家返回不相关供应商。
 
-${primary}
+${primary}${basisLine}
 
 服务类别（辅助）：${category}
 服务描述（辅助）：${description}
