@@ -10,6 +10,13 @@ import {
 } from '../../lib/procurement/formatVendorPriceDisplay';
 import { saveVendorSearchResults } from '../../lib/procurement/saveVendorSearchResults';
 import { isVendorSearchInflight } from '../../lib/procurement/newJobPdfAutoFlow';
+import { vendorPricingBasis } from '../../lib/procurement/vendorMarketBenchmark';
+import {
+  readQuotePricingContext,
+  resolveVendorReasonScope,
+  sanitizeVendorReason,
+  type QuotePricingContext,
+} from '../../lib/procurement/pricingBasis';
 
 interface SearchedVendor {
   company_name: string;
@@ -113,7 +120,28 @@ export function VendorSearchPanel({
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState('');
   const [showConfirm, setShowConfirm] = useState(false);
+  const [quoteCtx, setQuoteCtx] = useState<QuotePricingContext | null>(null);
   const autoSearchAttemptedRef = useRef(false);
+
+  // Phase 5C — load the uploaded quote's pricing basis so vendor explanations can be
+  // scoped (related_only vs comparable_pricing) and sanitized before render.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase
+        .from('procurement_jobs')
+        .select('parsed_quote_json')
+        .eq('id', jobId)
+        .maybeSingle();
+      if (cancelled) return;
+      setQuoteCtx(
+        readQuotePricingContext((data?.parsed_quote_json ?? null) as Record<string, unknown> | null),
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [jobId]);
 
   const hasSavedResults = vendors.length > 0;
   const searchedAt = hasSavedResults ? vendors[0].searched_at : null;
@@ -496,18 +524,31 @@ export function VendorSearchPanel({
                 </p>
 
                 {(() => {
-                  const whyComparable =
+                  const rawReason =
                     v.price_evidence_note?.trim() ||
                     (l ? v.description_en : v.description_zh || v.description_en)?.trim() ||
                     '';
-                  if (!whyComparable) return null;
+                  // Phase 5C — scope the explanation by pricing-basis comparability and
+                  // strip any wording that wrongly implies pricing equivalence.
+                  const quoteBasis = quoteCtx?.pricing_basis ?? 'unknown';
+                  const vendorBasis = vendorPricingBasis(v);
+                  const scope = resolveVendorReasonScope(quoteBasis, vendorBasis);
+                  const { text: whyText } = sanitizeVendorReason({ text: rawReason, scope, en: l });
+                  if (!whyText) return null;
+                  const comparable = scope === 'comparable_pricing';
                   return (
                     <div className="mt-1.5 rounded-md border border-sky-100 bg-sky-50/60 px-2 py-1.5">
                       <p className="text-[11px] font-medium text-sky-700 mb-0.5">
-                        {l ? 'Why comparable' : '可比原因'}
+                        {comparable
+                          ? l
+                            ? 'Why comparable'
+                            : '可比原因'
+                          : l
+                            ? 'Why relevant'
+                            : '相关原因'}
                       </p>
                       <p className="text-[11px] text-slate-600 leading-relaxed break-words">
-                        {whyComparable}
+                        {whyText}
                       </p>
                     </div>
                   );

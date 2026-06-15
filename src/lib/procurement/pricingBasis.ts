@@ -252,6 +252,90 @@ export function isPricingBasisComparable(
   }
 }
 
+/**
+ * Phase 5C — scope of a vendor's "why" explanation.
+ * - comparable_pricing: pricing basis matches the quote → may be a market benchmark.
+ * - related_only: relevant alternative supplier, but pricing is NOT directly comparable.
+ */
+export type VendorReasonScope = 'related_only' | 'comparable_pricing';
+
+/** Decide a vendor's reason scope from the quote vs vendor pricing basis. */
+export function resolveVendorReasonScope(
+  quoteBasis: PricingBasis,
+  vendorBasis: PricingBasis,
+): VendorReasonScope {
+  return isPricingBasisComparable(quoteBasis, vendorBasis).comparable
+    ? 'comparable_pricing'
+    : 'related_only';
+}
+
+/**
+ * Phrases that wrongly imply pricing equivalence. Must never appear in a
+ * related_only vendor explanation. Case-insensitive.
+ */
+const FORBIDDEN_COMPARABLE_PATTERNS: RegExp[] = [
+  /directly\s+comparable/i,
+  /financially\s+comparable/i,
+  /cost\s+comparable/i,
+  /\bcomparable\s+(pricing|price|quote|cost|rate|service\s+pricing)\b/i,
+  /\bcomparable\b/i,
+  /same\s+pricing(\s+basis|\s+model|\s+structure)?/i,
+  /similar\s+pricing/i,
+  /matching\s+pricing(\s+model)?/i,
+  /matching\s+annual/i,
+  /same\s+annual/i,
+  /equivalent\s+pricing/i,
+  /pricing\s+aligned/i,
+  /price[s]?\s+align/i,
+  /market\s+reference/i,
+  /可比/,
+  /价格.{0,4}一致/,
+  /相同.{0,4}计费/,
+  /同等.{0,4}报价/,
+];
+
+/** True when text contains a phrase that wrongly implies pricing equivalence. */
+export function containsComparablePricingClaim(text: string): boolean {
+  const t = text || '';
+  return FORBIDDEN_COMPARABLE_PATTERNS.some((re) => re.test(t));
+}
+
+/**
+ * Phase 5C — front-end guard: ensure a related_only vendor explanation never
+ * implies pricing comparability. Returns the safe text and whether it was rewritten.
+ *
+ * comparable_pricing scope is returned unchanged.
+ */
+export function sanitizeVendorReason(opts: {
+  text: string | null | undefined;
+  scope: VendorReasonScope;
+  en: boolean;
+}): { text: string; guarded: boolean } {
+  const original = (opts.text ?? '').trim();
+  if (opts.scope === 'comparable_pricing') {
+    return { text: original, guarded: false };
+  }
+
+  const recommend = opts.en
+    ? 'A formal quotation should be requested because the public pricing model differs from this procurement.'
+    : '由于公开价格模式与本次采购不同，建议联系供应商获取正式报价。';
+
+  // related_only: a comparability claim must be removed entirely.
+  if (!original || containsComparablePricingClaim(original)) {
+    const safe = opts.en
+      ? 'Related service provider that offers relevant services for this scope.'
+      : '相关服务供应商，提供与本次范围相关的服务。';
+    return { text: `${safe} ${recommend}`, guarded: true };
+  }
+
+  // No forbidden claim, but still append the formal-quotation recommendation.
+  const needsRecommend = !/formal\s+quotation|正式报价/i.test(original);
+  return {
+    text: needsRecommend ? `${original} ${recommend}` : original,
+    guarded: false,
+  };
+}
+
 /** Friendly label for a pricing basis. */
 export function pricingBasisLabel(basis: PricingBasis, en: boolean): string {
   const map: Record<PricingBasis, { en: string; zh: string }> = {

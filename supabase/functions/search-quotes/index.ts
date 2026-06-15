@@ -65,6 +65,21 @@ only find annual/per-device prices, still return the vendor but set
 samePricingBasis=false and label its pricingBasis accurately (do NOT fabricate a
 one-time price). Honor the "Uploaded quote pricing_basis" stated in the user message.
 
+EXPLANATION SCOPE (Phase 5C) — control the wording of matchReason:
+- If the vendor pricing basis is NOT comparable to the uploaded quote pricing basis
+  (e.g. annual_contract / per_device_per_year vs a one_time_project quote):
+    set explanationScope="related_only".
+    DO NOT describe the vendor as "comparable", "directly comparable",
+    "same pricing", "similar pricing", "matching annual requirements",
+    "market reference", or imply pricing equivalence in matchReason.
+    Instead explain only why the vendor may be relevant as an alternative
+    supplier (provides similar services, serves strata properties, has
+    experience with similar equipment, can provide a formal quotation) and
+    recommend obtaining a formal quotation because the public pricing model differs.
+- Only vendors whose pricing basis IS comparable to the quote may be described as
+  market benchmarks; for those set explanationScope="comparable_pricing" and you may
+  use "comparable" / "similar pricing structure" / "market reference".
+
 Return STRICT JSON only (no other text):
 {
   "vendors": [
@@ -81,7 +96,8 @@ Return STRICT JSON only (no other text):
       "unitLabel": "device | hour | visit | project | unit | ''",
       "comparableScope": true,
       "samePricingBasis": true,
-      "matchReason": "why this vendor is comparable to the quoted scope and pricing basis",
+      "explanationScope": "related_only | comparable_pricing",
+      "matchReason": "if comparable_pricing: why comparable to the quoted scope and pricing basis; if related_only: why relevant as an alternative supplier, with a recommendation to request a formal quotation (NO comparability wording)",
       "evidenceQuality": "high | medium | low",
       "priceSourceUrl": "url backing the price, or ''"
     }

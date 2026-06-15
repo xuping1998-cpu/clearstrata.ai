@@ -27,8 +27,13 @@ import {
 } from '../../lib/procurement/newJobPdfAutoFlow';
 import type { PackageCoverageSnapshot } from '../../lib/procurement/packageCoverage';
 import { saveVendorSearchResults } from '../../lib/procurement/saveVendorSearchResults';
-import { computeMarketBenchmark, fetchVendorSearchResults } from '../../lib/procurement/vendorMarketBenchmark';
-import { readQuotePricingContext } from '../../lib/procurement/pricingBasis';
+import { computeMarketBenchmark, fetchVendorSearchResults, vendorPricingBasis } from '../../lib/procurement/vendorMarketBenchmark';
+import {
+  readQuotePricingContext,
+  resolveVendorReasonScope,
+  sanitizeVendorReason,
+  type PricingBasis,
+} from '../../lib/procurement/pricingBasis';
 import { getTrafficLight, TrafficLightBadge } from './AiPricingPanel';
 import { SERVICE_CATEGORIES } from './VendorRegistry';
 import {
@@ -633,6 +638,11 @@ export function NewJobModal({
                       selected={selectedVendorIdxs.has(idx)}
                       onToggle={() => toggleVendor(idx)}
                       language={language}
+                      quoteBasis={
+                        readQuotePricingContext(
+                          pdfParsedQuote as unknown as Record<string, unknown> | null,
+                        )?.pricing_basis ?? 'unknown'
+                      }
                     />
                   ))}
                 </div>
@@ -933,18 +943,27 @@ function VendorSearchCard({
   selected,
   onToggle,
   language,
+  quoteBasis = 'unknown',
 }: {
   vendor: SearchedVendor;
   selected: boolean;
   onToggle: () => void;
   language: string;
+  quoteBasis?: PricingBasis;
 }) {
   const l = language === 'en';
   const hasPrice =
     vendor.price_low != null && vendor.price_high != null && Boolean(vendor.price_source_url?.trim());
   const priceExcl = hasPrice ? formatVendorPriceExclGst(vendor) : null;
   const priceIncl = hasPrice ? formatVendorPriceInclGst(vendor) : null;
-  const matchNote = vendor.price_evidence_note || vendor.description_en;
+  // Phase 5C — scope + sanitize the AI match note so it never implies pricing equivalence
+  // when the vendor pricing basis is not comparable to the uploaded quote.
+  const reasonScope = resolveVendorReasonScope(quoteBasis, vendorPricingBasis(vendor));
+  const matchNote = sanitizeVendorReason({
+    text: vendor.price_evidence_note || vendor.description_en,
+    scope: reasonScope,
+    en: l,
+  }).text;
 
   return (
     <label
