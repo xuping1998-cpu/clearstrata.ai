@@ -964,6 +964,11 @@ function VendorSearchCard({
     scope: reasonScope,
     en: l,
   }).text;
+  // Phase 5C.5 — also sanitize the main description channel so related_only cards can
+  // never leak "directly matches / comparable" wording from description_en/zh.
+  const rawDescription = (l ? vendor.description_en : vendor.description_zh || vendor.description_en)?.trim() || '';
+  const safeDescription = sanitizeVendorReason({ text: rawDescription, scope: reasonScope, en: l }).text;
+  const showDescription = Boolean(safeDescription) && safeDescription !== matchNote;
 
   return (
     <label
@@ -1023,9 +1028,11 @@ function VendorSearchCard({
               {priceIncl}
             </p>
           )}
-          <p className="text-xs text-gray-600 leading-relaxed">
-            {l ? vendor.description_en : vendor.description_zh || vendor.description_en}
-          </p>
+          {showDescription && (
+            <p className="text-xs text-gray-600 leading-relaxed">
+              {safeDescription}
+            </p>
+          )}
         </div>
       </div>
     </label>

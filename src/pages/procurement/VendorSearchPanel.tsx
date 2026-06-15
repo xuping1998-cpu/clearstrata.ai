@@ -519,38 +519,54 @@ export function VendorSearchPanel({
                   </p>
                 )}
 
-                <p className="text-xs text-gray-600 leading-relaxed">
-                  {l ? v.description_en : (v.description_zh || v.description_en)}
-                </p>
-
                 {(() => {
-                  const rawReason =
-                    v.price_evidence_note?.trim() ||
-                    (l ? v.description_en : v.description_zh || v.description_en)?.trim() ||
-                    '';
-                  // Phase 5C — scope the explanation by pricing-basis comparability and
-                  // strip any wording that wrongly implies pricing equivalence.
+                  // Phase 5C/5C.5 — compute the scope once, then sanitize BOTH the main
+                  // description and the "why" reason so neither channel can leak wording
+                  // that wrongly implies pricing equivalence in related_only cases.
                   const quoteBasis = quoteCtx?.pricing_basis ?? 'unknown';
                   const vendorBasis = vendorPricingBasis(v);
                   const scope = resolveVendorReasonScope(quoteBasis, vendorBasis);
-                  const { text: whyText } = sanitizeVendorReason({ text: rawReason, scope, en: l });
-                  if (!whyText) return null;
                   const comparable = scope === 'comparable_pricing';
+
+                  const rawDescription =
+                    (l ? v.description_en : v.description_zh || v.description_en)?.trim() || '';
+                  const sanitizedDescription = sanitizeVendorReason({
+                    text: rawDescription,
+                    scope,
+                    en: l,
+                  }).text;
+
+                  const rawReason =
+                    v.price_evidence_note?.trim() || rawDescription;
+                  const { text: whyText } = sanitizeVendorReason({ text: rawReason, scope, en: l });
+
+                  // Avoid showing the same SAFE_TEMPLATE twice on one card.
+                  const showWhy = Boolean(whyText) && whyText !== sanitizedDescription;
+
                   return (
-                    <div className="mt-1.5 rounded-md border border-sky-100 bg-sky-50/60 px-2 py-1.5">
-                      <p className="text-[11px] font-medium text-sky-700 mb-0.5">
-                        {comparable
-                          ? l
-                            ? 'Why comparable'
-                            : '可比原因'
-                          : l
-                            ? 'Why relevant'
-                            : '相关原因'}
-                      </p>
-                      <p className="text-[11px] text-slate-600 leading-relaxed break-words">
-                        {whyText}
-                      </p>
-                    </div>
+                    <>
+                      {sanitizedDescription && (
+                        <p className="text-xs text-gray-600 leading-relaxed">
+                          {sanitizedDescription}
+                        </p>
+                      )}
+                      {showWhy && (
+                        <div className="mt-1.5 rounded-md border border-sky-100 bg-sky-50/60 px-2 py-1.5">
+                          <p className="text-[11px] font-medium text-sky-700 mb-0.5">
+                            {comparable
+                              ? l
+                                ? 'Why comparable'
+                                : '可比原因'
+                              : l
+                                ? 'Why relevant'
+                                : '相关原因'}
+                          </p>
+                          <p className="text-[11px] text-slate-600 leading-relaxed break-words">
+                            {whyText}
+                          </p>
+                        </div>
+                      )}
+                    </>
                   );
                 })()}
               </div>
