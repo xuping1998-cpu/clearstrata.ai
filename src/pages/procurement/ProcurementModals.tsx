@@ -593,8 +593,8 @@ export function NewJobModal({
           </div>
           <p className="text-sm text-gray-500 mb-4">
             {l
-              ? `Found ${searchCount} vendor(s) via AI market search. Select vendors to record as authorization support.`
-              : `通过 AI 市场参考找到 ${searchCount} 家供应商。请选择要纳入授权依据的供应商。`}
+              ? `Found ${searchCount} related vendor(s) via AI market search. Select vendors to record as authorization support.`
+              : `通过 AI 市场参考找到 ${searchCount} 家相关供应商。请选择要纳入授权依据的供应商。`}
           </p>
 
           {searchedVendors.length === 0 ? (

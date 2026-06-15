@@ -246,7 +246,7 @@ export function VendorSearchPanel({
       }
 
       if (found.length === 0) {
-        setError(l ? 'No comparable suppliers with public pricing found' : '未找到符合条件的公开报价供应商');
+        setError(l ? 'No related vendors found' : '未找到相关供应商');
         return;
       }
 
@@ -390,7 +390,7 @@ export function VendorSearchPanel({
             {l ? 'AI Vendor Search Results' : 'AI供应商搜索结果'}
           </span>
           <span className="text-xs text-sky-600/70">
-            ({l ? `${vendors.length} found` : `找到${vendors.length}家`})
+            ({l ? `${vendors.length} related vendors found` : `找到 ${vendors.length} 家相关供应商`})
           </span>
           {searchedAt && (
             <span className="inline-flex items-center gap-1 text-[11px] text-sky-600/60 bg-sky-100/60 px-2 py-0.5 rounded-full">

@@ -193,17 +193,14 @@ export function AiPricingPanel({ jobId, language }: AiPricingPanelProps) {
           </button>
         </div>
         <p className="text-sm font-medium text-blue-900">
-          {l ? 'Comparable suppliers found' : '已找到可比供应商'}
-        </p>
-        <p className="text-xs text-blue-800/70 mt-1">
           {l
-            ? 'Public pricing unavailable. Formal RFQ required.'
-            : '公开价格不可获得，请发送正式询价'}
+            ? 'Related vendors were found, but there is not enough comparable public pricing to calculate a reliable benchmark.'
+            : '已找到相关供应商，但当前可比公开报价不足，暂无法形成可靠市场参考。'}
         </p>
         <p className="text-[11px] text-blue-700/60 mt-1">
           {l
-            ? `Based on ${benchmark.vendors.length} comparable supplier(s) on file.`
-            : `已记录 ${benchmark.vendors.length} 家可比供应商，暂无公开价格证据。`}
+            ? `${benchmark.vendors.length} related vendor(s) found. Request formal quotes.`
+            : `已找到 ${benchmark.vendors.length} 家相关供应商，可联系获取正式报价。`}
         </p>
       </div>
     );
@@ -256,8 +253,13 @@ export function AiPricingPanel({ jobId, language }: AiPricingPanelProps) {
           </p>
           <p className="text-amber-700/70">
             {l
-              ? 'Please review supplier quotes manually; an annual unit price should not be compared with this project total.'
-              : '请人工核对供应商报价，不应直接用年度单价比较本次项目总额。'}
+              ? 'Please request formal quotes instead of comparing annual unit prices with this project total.'
+              : '请人工核对供应商正式报价，不应直接用年度单价比较本次项目总额。'}
+          </p>
+          <p className="text-amber-800/80 pt-0.5">
+            {l
+              ? `${benchmark.vendors.length} related vendor(s) were found and may be contacted for formal quotes.`
+              : `已找到 ${benchmark.vendors.length} 家相关供应商，可用于联系获取正式报价。`}
           </p>
         </div>
       </div>
@@ -294,8 +296,8 @@ export function AiPricingPanel({ jobId, language }: AiPricingPanelProps) {
         <p className="text-sm font-medium text-amber-700">{msg}</p>
         <p className="text-[11px] text-blue-700/60 mt-1">
           {l
-            ? `${benchmark.vendors.length} comparable supplier(s) on file.`
-            : `已记录 ${benchmark.vendors.length} 家可比供应商。`}
+            ? `${benchmark.vendors.length} related vendor(s) found.`
+            : `已找到 ${benchmark.vendors.length} 家相关供应商。`}
         </p>
       </div>
     );
