@@ -9,11 +9,20 @@ import {
 } from './financialTotalsParser';
 import {
   verifyDualFinancialTotals,
+  hasExplicitPositiveDue,
   type DualFinancialTotalsVerification,
   type FinancialTotalsParseSource,
 } from './dualFinancialTotalsVerification';
 import type { InvoiceConsistencyAuditResult } from './invoiceConsistencyAudit';
 import type { PdfBoundarySnapshot } from './pdfInvoiceBoundary';
+import { splitPdfIntoSinglePageFiles, mergePdfPageFiles } from './pdfPageSplit';
+
+/** How a multi-invoice scanned PDF's invoice group total was produced (Phase 4B.2). */
+export type InvoiceGroupStrategy =
+  | 'single_page'
+  | 'merged_pages'
+  | 'fallback_original_pdf'
+  | 'last_page_due_fallback';
 
 export interface ParsedProcurementQuote {
   vendor_name: string | null;
@@ -66,6 +75,20 @@ export interface ParsedProcurementQuote {
   selected_financial_text_source?: FinancialTotalsParseSource | 'none';
   /** Invoice boundary detection for this attachment's PDF (Phase 4B.1, instrumentation only). */
   pdf_boundary_snapshot?: PdfBoundarySnapshot | null;
+  /** Original PDF this invoice group was split from (Phase 4B.2). */
+  invoice_group_source_file?: string | null;
+  /** 1-based page numbers of the original PDF that make up this invoice (Phase 4B.2). */
+  invoice_group_pages?: number[];
+  /** Number of pages in this invoice group (Phase 4B.2). */
+  invoice_group_page_count?: number;
+  /** Stable id for this group within its source PDF, e.g. "ig1" (Phase 4B.2). */
+  invoice_group_id?: string;
+  /** How this group's total was produced (Phase 4B.2). */
+  invoice_group_strategy?: InvoiceGroupStrategy;
+  /** True when group pages could not be merged and a last-page due was used (Phase 4B.2). */
+  invoice_group_partial_merge?: boolean;
+  /** Short human warning when the group total is from a degraded path (Phase 4B.2). */
+  invoice_group_warning?: string | null;
   /** Per-invoice audit for a summed multi-invoice package (Phase 2A.11). */
   invoice_parts?: InvoicePartAudit[];
 }
@@ -100,6 +123,20 @@ export interface InvoicePartAudit {
   totals_block_input_source?: 'independent_totals_block_text' | 'totals_block_text' | 'none';
   /** Invoice boundary detection for this part's source PDF (Phase 4B.1, instrumentation only). */
   pdf_boundary_snapshot?: PdfBoundarySnapshot | null;
+  /** Original PDF this invoice group was split from (Phase 4B.2). */
+  invoice_group_source_file?: string | null;
+  /** 1-based page numbers of the original PDF that make up this invoice (Phase 4B.2). */
+  invoice_group_pages?: number[];
+  /** Number of pages in this invoice group (Phase 4B.2). */
+  invoice_group_page_count?: number;
+  /** Stable id for this group within its source PDF (Phase 4B.2). */
+  invoice_group_id?: string;
+  /** How this group's total was produced (Phase 4B.2). */
+  invoice_group_strategy?: InvoiceGroupStrategy;
+  /** True when group pages could not be merged and a last-page due was used (Phase 4B.2). */
+  invoice_group_partial_merge?: boolean;
+  /** Short human warning when the group total is from a degraded path (Phase 4B.2). */
+  invoice_group_warning?: string | null;
 }
 
 export const PROCUREMENT_AUTO_DESCRIPTION_EN =
@@ -203,6 +240,251 @@ export async function parseProcurementQuoteAttachment(
 ): Promise<ParsedProcurementQuote> {
   const result: InvoiceOcrInvokeResult = await invokeInvoiceOcrFromFile(file, langEn);
   return mapOcrToParsedQuote(result.extracted, file, result.confidence ?? null);
+}
+
+function isPdfAttachment(file: File): boolean {
+  const type = (file.type || '').toLowerCase();
+  if (type.includes('pdf')) return true;
+  return /\.pdf$/i.test(file.name || '');
+}
+
+/** Normalize an invoice/document number for grouping (case- and punctuation-insensitive). */
+function normalizeDocNo(v: string | null | undefined): string {
+  return (v ?? '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+type PagePart = { pageNumber: number; part: ParsedProcurementQuote; file: File };
+
+/**
+ * Phase 4B.2 — group CONSECUTIVE pages by document number. A page with no
+ * document number continues the current group (invoice spanning pages); a new,
+ * different document number starts a new group. A leading null-doc group adopts
+ * the first real number it sees. Exported for fixture tests.
+ */
+export function groupPagePartsByDocumentNumber(pageParts: PagePart[]): PagePart[][] {
+  const groups: PagePart[][] = [];
+  let current: PagePart[] | null = null;
+  let currentDoc: string | null = null;
+
+  for (const pp of pageParts) {
+    const doc = normalizeDocNo(pp.part.document_number) || null;
+    if (!current) {
+      current = [pp];
+      currentDoc = doc;
+      continue;
+    }
+    if (doc == null) {
+      // Unlabeled page → continuation of the current invoice.
+      current.push(pp);
+      continue;
+    }
+    if (currentDoc == null) {
+      // Current group was unlabeled; adopt this number for it.
+      currentDoc = doc;
+      current.push(pp);
+      continue;
+    }
+    if (doc === currentDoc) {
+      current.push(pp);
+      continue;
+    }
+    // Different invoice number → close current, open a new group.
+    groups.push(current);
+    current = [pp];
+    currentDoc = doc;
+  }
+  if (current) groups.push(current);
+  return groups;
+}
+
+type GroupInfo = {
+  source: string;
+  pages: number[];
+  id: string;
+  strategy: InvoiceGroupStrategy;
+};
+
+function annotateInvoiceGroup(part: ParsedProcurementQuote, info: GroupInfo): void {
+  part.invoice_group_source_file = info.source;
+  part.invoice_group_pages = info.pages;
+  part.invoice_group_page_count = info.pages.length;
+  part.invoice_group_id = info.id;
+  part.invoice_group_strategy = info.strategy;
+  const first = info.pages[0];
+  const last = info.pages[info.pages.length - 1];
+  part.source_file_name =
+    info.pages.length > 1 ? `${info.source}#pages=${first}-${last}` : `${info.source}#page=${first}`;
+}
+
+/**
+ * Last-page-due fallback (used only when a multi-page group's PDF cannot be
+ * re-merged). The amount comes from the LAST page that carries an explicit
+ * positive Due (totals usually print on the final page); raw_text / line_items
+ * are concatenated across the group so context is preserved.
+ */
+function buildLastPageDueFallback(group: PagePart[]): ParsedProcurementQuote {
+  let amountSource: ParsedProcurementQuote | null = null;
+  for (let i = group.length - 1; i >= 0; i -= 1) {
+    const p = group[i]!.part;
+    const sel = p.financial_totals_verification?.selected;
+    if (sel && hasExplicitPositiveDue(sel)) {
+      amountSource = p;
+      break;
+    }
+  }
+  if (!amountSource) {
+    for (let i = group.length - 1; i >= 0; i -= 1) {
+      const p = group[i]!.part;
+      if (typeof p.total_amount === 'number' && p.total_amount > 0) {
+        amountSource = p;
+        break;
+      }
+    }
+  }
+  const base = amountSource ?? group[group.length - 1]!.part;
+  return {
+    ...base,
+    raw_text: group
+      .map((g) => g.part.raw_text)
+      .filter((t) => t && t.trim())
+      .join('\n\n'),
+    raw_text_original:
+      group
+        .map((g) => g.part.raw_text_original)
+        .filter((t): t is string => Boolean(t && t.trim()))
+        .join('\n\n') || base.raw_text_original,
+    line_items: group.flatMap((g) => g.part.line_items).filter((it) => it && it.description),
+  };
+}
+
+export type AttachmentPartsOptions = {
+  /** Called when a single page's OCR fails (so callers can surface a coverage gap). */
+  onPageError?: (pageNumber: number, error: unknown) => void;
+};
+
+/**
+ * Phase 4B.2 — read a (possibly multi-invoice, scanned) PDF into one or more
+ * invoice parts. A non-PDF, single-page, or unsplittable file yields exactly one
+ * part (identical to `parseProcurementQuoteAttachment`). A multi-page PDF is
+ * split, each page is OCR'd, consecutive pages with the same invoice number are
+ * grouped, and each group becomes one part — so a cross-page invoice is NOT
+ * double-counted, and a 3-invoice PDF yields 3 parts.
+ *
+ * Risk control: if all pages fail, or no page yields a document number, or only
+ * one unique number is found, it falls back to a single whole-PDF OCR.
+ */
+export async function parseProcurementQuoteAttachmentToParts(
+  file: File,
+  langEn: boolean,
+  options: AttachmentPartsOptions = {},
+): Promise<ParsedProcurementQuote[]> {
+  if (!isPdfAttachment(file)) {
+    return [await parseProcurementQuoteAttachment(file, langEn)];
+  }
+
+  let pageFiles: Awaited<ReturnType<typeof splitPdfIntoSinglePageFiles>> = [];
+  try {
+    pageFiles = await splitPdfIntoSinglePageFiles(file);
+  } catch {
+    pageFiles = [];
+  }
+
+  // Single page or split unavailable → original whole-PDF OCR (unchanged behaviour).
+  if (pageFiles.length <= 1) {
+    return [await parseProcurementQuoteAttachment(file, langEn)];
+  }
+
+  // OCR each page independently.
+  const pageParts: PagePart[] = [];
+  for (const pf of pageFiles) {
+    try {
+      const part = await parseProcurementQuoteAttachment(pf.file, langEn);
+      pageParts.push({ pageNumber: pf.page_number, part, file: pf.file });
+    } catch (err) {
+      options.onPageError?.(pf.page_number, err);
+      console.warn('PROCUREMENT_PDF_PAGE_OCR_FAILED', {
+        sourceFile: file.name,
+        page: pf.page_number,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  // All pages failed → fall back to a single whole-PDF OCR.
+  if (pageParts.length === 0) {
+    const whole = await parseProcurementQuoteAttachment(file, langEn);
+    whole.invoice_group_source_file = file.name;
+    whole.invoice_group_strategy = 'fallback_original_pdf';
+    whole.invoice_group_warning = 'All page OCR attempts failed; used single whole-PDF OCR';
+    return [whole];
+  }
+
+  // No page produced a document number → cannot reliably split → whole-PDF OCR.
+  const anyDoc = pageParts.some((p) => normalizeDocNo(p.part.document_number));
+  if (!anyDoc) {
+    const whole = await parseProcurementQuoteAttachment(file, langEn);
+    whole.invoice_group_source_file = file.name;
+    whole.invoice_group_strategy = 'fallback_original_pdf';
+    whole.invoice_group_warning =
+      'Multi-page PDF but no invoice numbers detected; used single whole-PDF OCR';
+    return [whole];
+  }
+
+  const groups = groupPagePartsByDocumentNumber(pageParts);
+  const out: ParsedProcurementQuote[] = [];
+
+  for (let gi = 0; gi < groups.length; gi += 1) {
+    const group = groups[gi]!;
+    const groupId = `ig${gi + 1}`;
+    const pages = group.map((g) => g.pageNumber);
+
+    if (group.length === 1) {
+      const part = group[0]!.part;
+      annotateInvoiceGroup(part, { source: file.name, pages, id: groupId, strategy: 'single_page' });
+      out.push(part);
+      continue;
+    }
+
+    // Multi-page invoice → prefer re-OCR of the merged group PDF (totals usually
+    // live on the last page, so per-page reads may miss them).
+    const mergedFile = await mergePdfPageFiles(
+      group.map((g) => g.file),
+      `${normalizeDocNo(group[0]!.part.document_number) || `group${gi + 1}`}.pdf`,
+    );
+    if (mergedFile) {
+      try {
+        const mergedPart = await parseProcurementQuoteAttachment(mergedFile, langEn);
+        annotateInvoiceGroup(mergedPart, {
+          source: file.name,
+          pages,
+          id: groupId,
+          strategy: 'merged_pages',
+        });
+        out.push(mergedPart);
+        continue;
+      } catch (err) {
+        console.warn('PROCUREMENT_PDF_GROUP_MERGE_OCR_FAILED', {
+          sourceFile: file.name,
+          pages,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    // Fallback: last page with an explicit Due drives the amount.
+    const fallbackPart = buildLastPageDueFallback(group);
+    annotateInvoiceGroup(fallbackPart, {
+      source: file.name,
+      pages,
+      id: groupId,
+      strategy: 'last_page_due_fallback',
+    });
+    fallbackPart.invoice_group_partial_merge = true;
+    fallbackPart.invoice_group_warning = 'Group PDF merge unavailable; using last page due amount';
+    out.push(fallbackPart);
+  }
+
+  return out;
 }
 
 function formatMoney(amount: number | null, currency: string): string {

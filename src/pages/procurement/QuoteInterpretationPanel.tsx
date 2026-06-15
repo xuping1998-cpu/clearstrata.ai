@@ -123,6 +123,14 @@ interface InvoiceAuditPart {
   verificationReason: string;
   /** Invoice boundary detection for this part's PDF (Phase 4B.1). */
   boundary: BoundarySnapshotView | null;
+  /** Original PDF this invoice group was split from (Phase 4B.2). */
+  groupSourceFile: string | null;
+  /** 1-based pages of the source PDF that make up this invoice (Phase 4B.2). */
+  groupPages: number[];
+  /** How this group's total was produced (Phase 4B.2). */
+  groupStrategy: string;
+  /** Short warning when the group total came from a degraded path (Phase 4B.2). */
+  groupWarning: string | null;
 }
 
 function readFieldSources(row: Record<string, unknown>): Record<string, string> {
@@ -337,6 +345,22 @@ function readBoundarySnapshot(row: Record<string, unknown>): BoundarySnapshotVie
   };
 }
 
+/** Human label for how a multi-invoice PDF group's total was produced (Phase 4B.2). */
+function groupStrategyLabel(strategy: string, en: boolean): string {
+  switch (strategy) {
+    case 'single_page':
+      return en ? 'Single-page OCR' : '单页 OCR';
+    case 'merged_pages':
+      return en ? 'Merged-page OCR' : '合并页 OCR';
+    case 'last_page_due_fallback':
+      return en ? 'Last-page due (fallback)' : '末页应付（降级）';
+    case 'fallback_original_pdf':
+      return en ? 'Whole-PDF OCR (fallback)' : '整份 PDF OCR（降级）';
+    default:
+      return '';
+  }
+}
+
 /** "1–2" / "3" / "1, 3–4" page-range string from 1-based page numbers. */
 function formatPageRange(pages: number[]): string {
   const sorted = [...new Set(pages)].sort((a, b) => a - b);
@@ -548,6 +572,12 @@ function readInvoiceParts(pq: Record<string, unknown>): InvoiceAuditPart[] {
         };
       })(),
       boundary: readBoundarySnapshot(row),
+      groupSourceFile: str(row.invoice_group_source_file) || null,
+      groupPages: Array.isArray(row.invoice_group_pages)
+        ? row.invoice_group_pages.map((p) => Number(p)).filter((p) => Number.isFinite(p))
+        : [],
+      groupStrategy: str(row.invoice_group_strategy),
+      groupWarning: str(row.invoice_group_warning) || null,
     });
   }
   return out;
@@ -686,6 +716,14 @@ export function QuoteInterpretationPanel({
   // payment figures — show the per-invoice audit trail instead and hide them.
   const invoiceParts = readInvoiceParts(pq);
   const showInvoiceAudit = str(pq.total_mode) === 'sum_invoices' && invoiceParts.length > 0;
+  // Phase 4B.2 — source PDFs that were split into more than one invoice part.
+  const splitPdfCounts = new Map<string, number>();
+  for (const part of invoiceParts) {
+    if (part.groupSourceFile) {
+      splitPdfCounts.set(part.groupSourceFile, (splitPdfCounts.get(part.groupSourceFile) ?? 0) + 1);
+    }
+  }
+  const splitPdfs = [...splitPdfCounts.entries()].filter(([, n]) => n > 1);
   const topBoundary = readBoundarySnapshot(pq);
   const coverage = readCoverage(pq);
   // Phase 4A.3 — a partial/failed package must not display a full green "reconciled".
@@ -963,6 +1001,20 @@ export function QuoteInterpretationPanel({
           <p className="text-xs font-semibold text-slate-700 mb-2">
             {l ? 'Invoice audit trail' : '发票明细'}
           </p>
+          {splitPdfs.length > 0 && (
+            <div className="mb-2 flex items-start gap-2 rounded-md border border-sky-200 bg-sky-50 p-2 text-[11px] text-sky-800">
+              <Layers size={13} className="mt-0.5 shrink-0" />
+              <div className="space-y-0.5">
+                {splitPdfs.map(([name, n]) => (
+                  <p key={name} className="break-all">
+                    {l
+                      ? `This PDF was split into ${n} invoices: ${name}`
+                      : `此 PDF 已拆分为 ${n} 张发票：${name}`}
+                  </p>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="space-y-2.5">
             {invoiceParts.map((part, idx) => (
               <div
@@ -1036,6 +1088,27 @@ export function QuoteInterpretationPanel({
                   <p className="mt-1 text-[11px] text-slate-400 break-all">
                     {l ? 'Source file' : '文件名'}: {part.source_file_name}
                   </p>
+                )}
+                {part.groupSourceFile && (
+                  <div className="mt-1 text-[11px] text-slate-500 space-y-0.5">
+                    <p className="break-all">
+                      {l ? 'Source PDF' : '来源 PDF'}: {part.groupSourceFile}
+                    </p>
+                    {part.groupPages.length > 0 && (
+                      <p>
+                        {l ? 'Pages' : '页码'}: {formatPageRange(part.groupPages)}
+                        {part.groupStrategy && (
+                          <span className="text-slate-400">
+                            {' '}
+                            · {groupStrategyLabel(part.groupStrategy, l)}
+                          </span>
+                        )}
+                      </p>
+                    )}
+                    {part.groupWarning && (
+                      <p className="text-amber-700">{part.groupWarning}</p>
+                    )}
+                  </div>
                 )}
                 {part.boundary && <BoundaryAudit snap={part.boundary} en={l} />}
                 {part.ocrConflict && (

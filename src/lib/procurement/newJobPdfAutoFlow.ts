@@ -6,6 +6,7 @@ import {
 } from './analyzeProcurementQuotePdf';
 import {
   parseProcurementQuoteAttachment,
+  parseProcurementQuoteAttachmentToParts,
   type ParsedProcurementQuote,
 } from './parseProcurementQuoteAttachment';
 import { callSearchQuotes, type SearchQuotesVendor } from './callSearchQuotes';
@@ -497,6 +498,13 @@ function mergeParsedQuotes(parts: ParsedProcurementQuote[]): ParsedProcurementQu
       independent_totals_block_text: p.independent_totals_block_text ?? null,
       totals_block_input_source: p.totals_block_input_source,
       pdf_boundary_snapshot: p.pdf_boundary_snapshot ?? null,
+      invoice_group_source_file: p.invoice_group_source_file ?? null,
+      invoice_group_pages: p.invoice_group_pages,
+      invoice_group_page_count: p.invoice_group_page_count,
+      invoice_group_id: p.invoice_group_id,
+      invoice_group_strategy: p.invoice_group_strategy,
+      invoice_group_partial_merge: p.invoice_group_partial_merge,
+      invoice_group_warning: p.invoice_group_warning ?? null,
     }));
 
     return {
@@ -548,6 +556,9 @@ export async function interpretQuotePackage(
   const packageInputCount = list.length;
   const parsedParts: ParsedProcurementQuote[] = [];
   const failedAttachments: FailedAttachment[] = [];
+  // Attachment-level success count drives coverage; one PDF may yield several
+  // invoice parts (Phase 4B.2) yet still counts as ONE successful attachment.
+  let succeededAttachmentCount = 0;
   let ocrErrorMessage: string | undefined;
   for (const att of list) {
     try {
@@ -555,19 +566,39 @@ export async function interpretQuotePackage(
         att.url === primary.url
           ? primaryFile
           : await fetchUrlAsInvoiceFile(att.url, att.name || 'quote.pdf');
-      const parsed = await parseProcurementQuoteAttachment(file, langEn);
-      // Phase 4B.1 — record an invoice-boundary snapshot per attachment.
-      // Instrumentation only: never throws, never alters totals or part count.
+
+      // Phase 4B.2 — a single scanned PDF may contain multiple invoices. Split,
+      // OCR per page, and group consecutive pages by invoice number → 1..N parts.
+      const parts = await parseProcurementQuoteAttachmentToParts(file, langEn, {
+        onPageError: (pageNumber, pageErr) => {
+          const msg = sanitizeOcrError(pageErr);
+          if (!ocrErrorMessage) ocrErrorMessage = msg;
+          failedAttachments.push({
+            url: att.url,
+            name: `${att.name ?? 'attachment'}#page=${pageNumber}`,
+            error: msg,
+          });
+        },
+      });
+
+      // Phase 4B.1 — record an invoice-boundary snapshot for the source PDF and
+      // attach it to every part produced from this attachment. Instrumentation only.
       try {
         const snapshot = await detectPdfInvoiceBoundaries(file);
-        if (snapshot) parsed.pdf_boundary_snapshot = snapshot;
+        if (snapshot) {
+          for (const p of parts) p.pdf_boundary_snapshot = snapshot;
+        }
       } catch (boundaryErr) {
         console.warn('PROCUREMENT_PDF_BOUNDARY_DETECT_FAILED', {
           attachmentUrl: att.url,
           error: boundaryErr instanceof Error ? boundaryErr.message : String(boundaryErr),
         });
       }
-      parsedParts.push(parsed);
+
+      if (parts.length > 0) {
+        parsedParts.push(...parts);
+        succeededAttachmentCount += 1;
+      }
     } catch (err) {
       // Phase 4A.3 — a silently-failed attachment must remain visible: record it so
       // the package coverage snapshot can warn that the total covers only part of the upload.
@@ -584,7 +615,7 @@ export async function interpretQuotePackage(
   const parsedQuote = parsedParts.length > 0 ? mergeParsedQuotes(parsedParts) : null;
   const coverage = buildPackageCoverageSnapshot({
     inputCount: packageInputCount,
-    parsedCount: parsedParts.length,
+    parsedCount: succeededAttachmentCount,
     failedAttachments,
   });
   return { analysis, parsedQuote, ocrErrorMessage, coverage };
