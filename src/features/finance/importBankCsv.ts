@@ -31,6 +31,8 @@ export async function importBankCsvRows(opts: {
       total_rows: total,
       imported_rows: 0,
       failed_rows: parseErrorCount,
+      file_type: 'csv',
+      status: 'imported',
     })
     .select('id')
     .single();
