@@ -50,19 +50,36 @@ export function FormsTab() {
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file || !profile || !currentPropertyId) return;
+    if (!file) return;
+
+    if (!profile) {
+      alert('请先登录后再上传文档。/ Please sign in before uploading documents.');
+      event.target.value = '';
+      return;
+    }
+    if (!currentPropertyId) {
+      alert('请先选择物业后再上传文档。/ Please select a property before uploading documents.');
+      event.target.value = '';
+      return;
+    }
 
     setUploading(true);
+    let filePath: string | null = null;
     try {
       const fileExt = file.name.split('.').pop();
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-      const filePath = `owner-forms/${fileName}`;
+      filePath = `owner-forms/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from('documents')
         .upload(filePath, file);
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        alert(
+          `${language === 'en' ? 'Document upload to storage failed: ' : '文档上传到存储失败：'}${uploadError.message}`,
+        );
+        return;
+      }
 
       const { error: dbError } = await supabase
         .from('owner_documents')
@@ -75,12 +92,15 @@ export function FormsTab() {
           uploaded_by: profile.id,
         });
 
-      if (dbError) throw dbError;
+      if (dbError) {
+        await supabase.storage.from('documents').remove([filePath]);
+        alert(
+          `${language === 'en' ? 'Failed to save document record; upload rolled back: ' : '文档记录保存失败，已回滚上传文件：'}${dbError.message}`,
+        );
+        return;
+      }
 
       await loadDocuments();
-    } catch (error: any) {
-      const errorMsg = error?.message || 'Unknown error';
-      alert(`${language === 'en' ? 'Failed to upload document: ' : '上传文档失败：'}${errorMsg}`);
     } finally {
       setUploading(false);
       event.target.value = '';
