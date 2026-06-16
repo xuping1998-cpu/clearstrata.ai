@@ -58,7 +58,7 @@ const translations: Record<string, Record<Language, string>> = {
   nav_procurement: { en: 'Procurement Authorization', zh: '采购授权' },
   nav_voting: { en: 'Meetings & Voting', zh: '会议投票' },
   nav_maintenance: { en: 'Maintenance', zh: '维修申请' },
-  nav_finance: { en: 'Invoice Review', zh: '发票审核' },
+  nav_finance: { en: 'Income & Expenses', zh: '收支明细' },
   nav_owner_info: { en: 'Owner Information', zh: '业主信息' },
   nav_review_applications: { en: 'Join requests', zh: '加入申请审核' },
   nav_communication: { en: 'Dispute Resolution', zh: '纠纷调解' },
