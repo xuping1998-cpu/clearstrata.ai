@@ -632,7 +632,7 @@ export function BankTransactionsTab({
                       <td className="px-6 py-4 align-top">
                         <BankExplanationCell
                           en={l}
-                          amount={amt}
+                          amount={Number(t.amount)}
                           matchStatus={t.match_status}
                           explanation={explanationsByTxId[t.id]}
                           canRequest={canManageMatch}

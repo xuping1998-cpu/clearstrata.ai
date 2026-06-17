@@ -5,15 +5,18 @@ export type BankAmountColumns = {
   expense: number | null;
 };
 
-export function splitBankTransactionAmount(amount: number): BankAmountColumns {
-  const amt = Number(amount);
-  if (!Number.isFinite(amt) || amt === 0) {
+export function splitBankTransactionAmount(amount: number | string | null | undefined): BankAmountColumns {
+  const numericAmount =
+    typeof amount === 'number' ? amount : Number(amount ?? 0);
+
+  if (!Number.isFinite(numericAmount) || numericAmount === 0) {
     return { income: null, expense: null };
   }
-  if (amt > 0) {
-    return { income: amt, expense: null };
-  }
-  return { income: null, expense: Math.abs(amt) };
+
+  return {
+    income: numericAmount > 0 ? numericAmount : null,
+    expense: numericAmount < 0 ? Math.abs(numericAmount) : null,
+  };
 }
 
 export function formatBankAmountCell(value: number | null): string {
