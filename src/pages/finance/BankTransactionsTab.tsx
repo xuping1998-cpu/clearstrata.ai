@@ -22,6 +22,10 @@ import {
 } from '../../features/finance/bankInvoiceMatch';
 import { BankTransactionMatchCell } from '../../features/finance/bankInvoiceMatchUi';
 import {
+  formatBankAmountCell,
+  splitBankTransactionAmount,
+} from '../../features/finance/bankTransactionDisplay';
+import {
   closeExplanation,
   computePaymentSummaries,
   createExplanationRequest,
@@ -450,7 +454,7 @@ export function BankTransactionsTab({
         />
         {listFilter === 'explanations' && (
           <div className="border-b border-gray-200 bg-sky-50 px-4 py-2 text-xs text-sky-900">
-            {l ? 'Showing payments with open explanation requests.' : '正在显示待解释/已回复的监督记录。'}
+            {l ? 'Showing expense rows with open explanation requests.' : '正在显示待解释/已回复的支出监督记录。'}
             <button
               type="button"
               onClick={() => setListFilter(null)}
@@ -540,7 +544,7 @@ export function BankTransactionsTab({
           )}
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="hidden overflow-x-auto md:block">
           <table className="w-full">
             <thead className="border-b border-gray-200 bg-gray-50">
               <tr>
@@ -551,10 +555,10 @@ export function BankTransactionsTab({
                   {l ? 'Description' : '描述'}
                 </th>
                 <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {l ? 'Charges' : '费用'}
+                  {l ? 'Income' : '收入'}
                 </th>
                 <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {l ? 'Payments' : '付款'}
+                  {l ? 'Expense' : '支出'}
                 </th>
                 <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
                   {l ? 'Balance After Transaction' : '交易后余额'}
@@ -594,9 +598,7 @@ export function BankTransactionsTab({
                 </tr>
               ) : (
                 sortedDisplayRows.map((t) => {
-                  const amt = Number(t.amount);
-                  const charge = amt < 0 ? Math.abs(amt) : 0;
-                  const payment = amt > 0 ? amt : 0;
+                  const { income, expense } = splitBankTransactionAmount(t.amount);
                   const bal = t.balance != null ? Number(t.balance) : null;
                   return (
                     <tr key={t.id} className="hover:bg-gray-50">
@@ -604,11 +606,11 @@ export function BankTransactionsTab({
                         {new Date(t.transaction_date + 'T12:00:00').toLocaleDateString(l ? 'en-CA' : 'zh-CN')}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-900">{t.description}</td>
-                      <td className="whitespace-nowrap px-6 py-4 text-right text-sm text-gray-900 tabular-nums">
-                        {charge > 0 ? charge.toFixed(2) : ''}
+                      <td className="whitespace-nowrap px-6 py-4 text-right text-sm tabular-nums text-emerald-800">
+                        {formatBankAmountCell(income)}
                       </td>
-                      <td className="whitespace-nowrap px-6 py-4 text-right text-sm text-gray-900 tabular-nums">
-                        {payment > 0 ? payment.toFixed(2) : ''}
+                      <td className="whitespace-nowrap px-6 py-4 text-right text-sm tabular-nums text-red-800">
+                        {formatBankAmountCell(expense)}
                       </td>
                       <td
                         className={`whitespace-nowrap px-6 py-4 text-right text-sm font-medium tabular-nums ${
@@ -653,6 +655,71 @@ export function BankTransactionsTab({
               )}
             </tbody>
           </table>
+        </div>
+
+        <div className="space-y-3 p-4 md:hidden">
+          {loading ? (
+            <p className="py-8 text-center text-sm text-gray-500">{l ? 'Loading…' : '加载中…'}</p>
+          ) : sortedDisplayRows.length === 0 ? (
+            <p className="py-8 text-center text-sm text-gray-500">
+              {l ? 'No bank transactions found' : '暂无银行流水记录'}
+            </p>
+          ) : (
+            sortedDisplayRows.map((t) => {
+              const { income, expense } = splitBankTransactionAmount(t.amount);
+              const bal = t.balance != null ? Number(t.balance) : null;
+              return (
+                <div key={t.id} className="rounded-lg border border-gray-100 bg-gray-50/50 p-3">
+                  <div className="mb-1 text-xs text-gray-500">
+                    {new Date(t.transaction_date + 'T12:00:00').toLocaleDateString(l ? 'en-CA' : 'zh-CN')}
+                  </div>
+                  <div className="mb-2 text-sm font-medium text-gray-900">{t.description}</div>
+                  <dl className="mb-3 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                    <dt className="text-gray-500">{l ? 'Income' : '收入'}</dt>
+                    <dd className="text-right tabular-nums font-medium text-emerald-800">
+                      {formatBankAmountCell(income) || '—'}
+                    </dd>
+                    <dt className="text-gray-500">{l ? 'Expense' : '支出'}</dt>
+                    <dd className="text-right tabular-nums font-medium text-red-800">
+                      {formatBankAmountCell(expense) || '—'}
+                    </dd>
+                    <dt className="text-gray-500">{l ? 'Balance After Transaction' : '交易后余额'}</dt>
+                    <dd className="text-right tabular-nums font-medium text-gray-900">
+                      {bal != null ? bal.toFixed(2) : '—'}
+                    </dd>
+                  </dl>
+                  <div className="space-y-2 border-t border-gray-100 pt-2">
+                    <BankTransactionMatchCell
+                      row={t}
+                      en={l}
+                      canManage={canManageMatch}
+                      busyId={matchBusyId}
+                      onConfirm={handleConfirmMatch}
+                      onReject={handleRejectMatch}
+                    />
+                    <BankExplanationCell
+                      en={l}
+                      amount={Number(t.amount)}
+                      matchStatus={t.match_status}
+                      explanation={explanationsByTxId[t.id]}
+                      canRequest={canManageMatch}
+                      canRespond={canRespondExplanation}
+                      canClose={canManageMatch}
+                      onRequest={() => setRequestTx(t)}
+                      onRespond={() => {
+                        const ex = explanationsByTxId[t.id];
+                        if (ex) setRespondTarget({ explanation: ex, row: t });
+                      }}
+                      onView={() => {
+                        const ex = explanationsByTxId[t.id];
+                        if (ex) setViewTarget({ explanation: ex, row: t });
+                      }}
+                    />
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
 

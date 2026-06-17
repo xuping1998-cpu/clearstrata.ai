@@ -318,8 +318,8 @@ export function PaymentSummaryCards({
   const cards = [
     {
       key: 'confirmed' as const,
-      titleEn: 'Confirmed Payments',
-      titleZh: '已确认付款',
+      titleEn: 'Confirmed Expenses',
+      titleZh: '已确认支出',
       summary: summaries.confirmed,
       className: 'border-emerald-200 bg-emerald-50 hover:bg-emerald-100/80',
       titleClass: 'text-emerald-900',
@@ -327,8 +327,8 @@ export function PaymentSummaryCards({
     },
     {
       key: 'suggested' as const,
-      titleEn: 'Pending Review',
-      titleZh: '待确认付款',
+      titleEn: 'Pending Expense Review',
+      titleZh: '待确认支出',
       summary: summaries.suggested,
       className: 'border-amber-200 bg-amber-50 hover:bg-amber-100/80',
       titleClass: 'text-amber-900',
@@ -336,8 +336,8 @@ export function PaymentSummaryCards({
     },
     {
       key: 'unmatched' as const,
-      titleEn: 'Unexplained Payments',
-      titleZh: '未解释付款',
+      titleEn: 'Unexplained Expenses',
+      titleZh: '未解释支出',
       summary: summaries.unmatched,
       className: 'border-red-200 bg-red-50 hover:bg-red-100/80',
       titleClass: 'text-red-900',
