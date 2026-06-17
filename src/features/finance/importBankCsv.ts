@@ -1,5 +1,6 @@
 import { supabase } from '../../lib/supabase';
 import type { NormalizedBankRow } from './bankCsvParser';
+import { upsertBankTransactionRows } from './bankTransactionUpsert';
 
 export type BankCsvImportResult = {
   batchId: string;
@@ -55,7 +56,7 @@ export async function importBankCsvRows(opts: {
     };
   }
 
-  const payloads = rows.map((r) => ({
+  const payloads = rows.map((r, index) => ({
     property_id: propertyId,
     transaction_date: r.transaction_date,
     description: r.description,
@@ -66,49 +67,11 @@ export async function importBankCsvRows(opts: {
     source_bank: r.source_bank,
     import_batch_id: batchId,
     uploaded_by: uploadedBy,
+    statement_line_no: index + 1,
   }));
 
-  // Insert in chunks; duplicates hit unique index — count individually for accurate skip stats.
-  const CHUNK = 100;
-  let imported = 0;
-  let skipped = 0;
-  let failed = parseErrorCount;
-
-  for (let i = 0; i < payloads.length; i += CHUNK) {
-    const chunk = payloads.slice(i, i + CHUNK);
-    const { data, error } = await supabase
-      .from('bank_transactions')
-      .upsert(chunk, {
-        onConflict: 'property_id,transaction_date,amount,description',
-        ignoreDuplicates: true,
-      })
-      .select('id');
-
-    if (error) {
-      // Fallback: row-by-row for partial success
-      for (const row of chunk) {
-        const { data: one, error: oneErr } = await supabase
-          .from('bank_transactions')
-          .upsert(row, {
-            onConflict: 'property_id,transaction_date,amount,description',
-            ignoreDuplicates: true,
-          })
-          .select('id');
-        if (oneErr) {
-          if (oneErr.code === '23505') skipped++;
-          else failed++;
-        } else if (one && one.length > 0) {
-          imported++;
-        } else {
-          skipped++;
-        }
-      }
-    } else {
-      const n = data?.length ?? 0;
-      imported += n;
-      skipped += chunk.length - n;
-    }
-  }
+  const { imported, skipped, failed: upsertFailed } = await upsertBankTransactionRows(payloads);
+  const failed = parseErrorCount + upsertFailed;
 
   await supabase
     .from('bank_import_batches')

@@ -25,6 +25,7 @@ import {
   bankBalanceColumnLabel,
   bankBalanceSortHint,
   formatBankAmountCell,
+  sortBankTransactions,
   splitBankTransactionAmount,
   type BankTxSortOrder,
 } from '../../features/finance/bankTransactionDisplay';
@@ -45,18 +46,6 @@ import {
 } from '../../features/finance/bankTransactionExplanationsUi';
 
 export type BankListFilter = 'confirmed' | 'suggested' | 'unmatched' | 'explanations' | null;
-
-function sortBankTransactions(rows: BankTransactionRow[], order: BankTxSortOrder): BankTransactionRow[] {
-  if (order === 'newest') return rows;
-  return [...rows].sort((a, b) => {
-    const dateCmp = a.transaction_date.localeCompare(b.transaction_date);
-    if (dateCmp !== 0) return dateCmp;
-    const aCreated = a.created_at ?? '';
-    const bCreated = b.created_at ?? '';
-    if (aCreated !== bCreated) return aCreated.localeCompare(bCreated);
-    return a.id.localeCompare(b.id);
-  });
-}
 
 interface BankTransactionRow extends BankTransactionWithMatch {}
 

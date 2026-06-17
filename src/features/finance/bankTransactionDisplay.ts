@@ -42,3 +42,40 @@ export function bankBalanceSortHint(order: BankTxSortOrder, en: boolean): string
     ? 'Balance is the bank balance after that transaction. In newest-first order, balances will not read continuously down the page.'
     : '余额为该笔交易后的银行余额；当前为最新在前，余额不会按页面顺序连续。';
 }
+
+const NULL_LINE_ORDER = Number.MAX_SAFE_INTEGER;
+
+function compareCreatedAt(a?: string | null, b?: string | null): number {
+  const aCreated = a ?? '';
+  const bCreated = b ?? '';
+  return aCreated.localeCompare(bCreated);
+}
+
+export function sortBankTransactions<
+  T extends {
+    id: string;
+    transaction_date: string;
+    statement_line_no?: number | null;
+    created_at?: string | null;
+  },
+>(rows: T[], sortMode: BankTxSortOrder): T[] {
+  return [...rows].sort((a, b) => {
+    const dateCmp = a.transaction_date.localeCompare(b.transaction_date);
+    if (dateCmp !== 0) {
+      return sortMode === 'statement' ? dateCmp : -dateCmp;
+    }
+
+    const aLine = a.statement_line_no ?? NULL_LINE_ORDER;
+    const bLine = b.statement_line_no ?? NULL_LINE_ORDER;
+    if (aLine !== bLine) {
+      return sortMode === 'statement' ? aLine - bLine : bLine - aLine;
+    }
+
+    const createdCmp = compareCreatedAt(a.created_at, b.created_at);
+    if (createdCmp !== 0) {
+      return sortMode === 'statement' ? createdCmp : -createdCmp;
+    }
+
+    return sortMode === 'statement' ? a.id.localeCompare(b.id) : b.id.localeCompare(a.id);
+  });
+}

@@ -20,6 +20,7 @@ Rules (strict):
 - Preserve the bank's original description text for each transaction.
 - transaction_date and statement_date: YYYY-MM-DD when visible; otherwise null.
 - Include every transaction row visible on the statement.
+- List transactions[] in the same top-to-bottom order as they appear on the bank statement.
 
 Return strict JSON only, no markdown:
 {

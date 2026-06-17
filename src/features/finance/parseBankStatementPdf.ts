@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase';
+import { upsertBankTransactionRows } from './bankTransactionUpsert';
 
 export type ParsedBankStatementTransaction = {
   transaction_date: string | null;
@@ -123,72 +124,40 @@ export async function parseBankStatementPdfBatch(opts: {
   }
 
   const sourceBank = statement.source_bank?.trim() || 'PDF Statement';
-  const validRows = statement.transactions.filter(
-    (t) =>
-      isValidDateString(t.transaction_date) &&
-      t.description.trim().length > 0 &&
-      t.amount != null &&
-      Number.isFinite(t.amount),
-  );
+  const payloads: Parameters<typeof upsertBankTransactionRows>[0] = [];
 
-  if (validRows.length === 0) {
+  statement.transactions.forEach((t, index) => {
+    if (
+      !isValidDateString(t.transaction_date) ||
+      t.description.trim().length === 0 ||
+      t.amount == null ||
+      !Number.isFinite(t.amount)
+    ) {
+      return;
+    }
+
+    payloads.push({
+      property_id: propertyId,
+      transaction_date: t.transaction_date,
+      description: t.description.trim(),
+      amount: t.amount,
+      transaction_type: t.amount < 0 ? 'debit' : t.amount > 0 ? 'credit' : null,
+      reference_number: t.reference_number,
+      balance: t.balance,
+      source_bank: sourceBank,
+      import_batch_id: batchId,
+      uploaded_by: uploadedBy,
+      statement_line_no: index + 1,
+    });
+  });
+
+  if (payloads.length === 0) {
     const msg = en ? 'Bank statement parsing failed.' : '银行月结单解析失败。';
     await markBatchFailed(batchId, 'No valid transaction rows after validation');
     return { result: null, error: msg };
   }
 
-  const payloads = validRows.map((t) => ({
-    property_id: propertyId,
-    transaction_date: t.transaction_date!,
-    description: t.description.trim(),
-    amount: t.amount!,
-    transaction_type: t.amount! < 0 ? 'debit' : t.amount! > 0 ? 'credit' : null,
-    reference_number: t.reference_number,
-    balance: t.balance,
-    source_bank: sourceBank,
-    import_batch_id: batchId,
-    uploaded_by: uploadedBy,
-  }));
-
-  const CHUNK = 100;
-  let imported = 0;
-  let skipped = 0;
-  let failed = 0;
-
-  for (let i = 0; i < payloads.length; i += CHUNK) {
-    const chunk = payloads.slice(i, i + CHUNK);
-    const { data, error } = await supabase
-      .from('bank_transactions')
-      .upsert(chunk, {
-        onConflict: 'property_id,transaction_date,amount,description',
-        ignoreDuplicates: true,
-      })
-      .select('id');
-
-    if (error) {
-      for (const row of chunk) {
-        const { data: one, error: oneErr } = await supabase
-          .from('bank_transactions')
-          .upsert(row, {
-            onConflict: 'property_id,transaction_date,amount,description',
-            ignoreDuplicates: true,
-          })
-          .select('id');
-        if (oneErr) {
-          if (oneErr.code === '23505') skipped++;
-          else failed++;
-        } else if (one && one.length > 0) {
-          imported++;
-        } else {
-          skipped++;
-        }
-      }
-    } else {
-      const n = data?.length ?? 0;
-      imported += n;
-      skipped += chunk.length - n;
-    }
-  }
+  const { imported, skipped, failed } = await upsertBankTransactionRows(payloads);
 
   if (imported === 0 && failed > 0) {
     const msg = en ? 'Failed to save bank transactions.' : '银行流水保存失败。';
@@ -201,9 +170,9 @@ export async function parseBankStatementPdfBatch(opts: {
     .update({
       status: 'imported',
       source_bank: sourceBank,
-      total_rows: validRows.length,
+      total_rows: payloads.length,
       imported_rows: imported,
-      failed_rows: skipped + failed + (statement.transactions.length - validRows.length),
+      failed_rows: skipped + failed + (statement.transactions.length - payloads.length),
       notes: 'AI parsed successfully',
     })
     .eq('id', batchId);
@@ -218,7 +187,7 @@ export async function parseBankStatementPdfBatch(opts: {
     result: {
       imported,
       skipped,
-      total: validRows.length,
+      total: payloads.length,
     },
     error: null,
   };
