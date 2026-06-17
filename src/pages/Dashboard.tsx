@@ -7,6 +7,7 @@ import { DemoPropertyMockHomePanel } from '@/components/demoProperty/DemoPropert
 import { DemoCreatePropertyCtaCard } from '@/components/onboarding/DemoCreatePropertyCta';
 import { TrialUpgradeCard } from '@/components/billing/TrialUpgradeCard';
 import { ImportantUpdatesDashboardCard } from '@/components/dashboard/ImportantUpdatesDashboardCard';
+import { DashboardFinancialAlertsCard } from '@/components/DashboardFinancialAlertsCard';
 import { QuickAccessDashboardCard } from '@/components/dashboard/QuickAccessDashboardCard';
 import { HomeServicesDashboardCard } from '@/components/dashboard/HomeServicesDashboardCard';
 import { supabase } from '@/lib/supabase';
@@ -215,6 +216,7 @@ export function Dashboard() {
         </div>
       </div>
       <ImportantUpdatesDashboardCard langEn={en} bullets={importantUpdatesBullets} />
+      <DashboardFinancialAlertsCard />
       <QuickAccessDashboardCard langEn={en} meetingsHref={meetingsNavHref(roleInProperty)} />
       <HomeServicesDashboardCard langEn={en} />
       {(() => {

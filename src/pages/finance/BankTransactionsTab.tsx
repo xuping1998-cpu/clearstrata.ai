@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Upload } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -21,12 +21,31 @@ import {
   type BankTransactionWithMatch,
 } from '../../features/finance/bankInvoiceMatch';
 import { BankTransactionMatchCell } from '../../features/finance/bankInvoiceMatchUi';
+import {
+  closeExplanation,
+  computePaymentSummaries,
+  createExplanationRequest,
+  fetchExplanationsForProperty,
+  respondToExplanation,
+  type BankTransactionExplanation,
+} from '../../features/finance/bankTransactionExplanations';
+import {
+  BankExplanationCell,
+  PaymentSummaryCards,
+  RequestExplanationModal,
+  RespondExplanationModal,
+  ViewExplanationModal,
+} from '../../features/finance/bankTransactionExplanationsUi';
+
+export type BankListFilter = 'confirmed' | 'suggested' | 'unmatched' | 'explanations' | null;
 
 interface BankTransactionRow extends BankTransactionWithMatch {}
 
 type Props = {
   canImport: boolean;
   canManageMatch: boolean;
+  canRespondExplanation: boolean;
+  initialFilter?: string | null;
 };
 
 function isPdfBatch(b: BankImportBatchRow): boolean {
@@ -58,7 +77,12 @@ function statusBadgeClass(status: string | null | undefined): string {
   }
 }
 
-export function BankTransactionsTab({ canImport, canManageMatch }: Props) {
+export function BankTransactionsTab({
+  canImport,
+  canManageMatch,
+  canRespondExplanation,
+  initialFilter,
+}: Props) {
   const { language } = useLanguage();
   const { profile } = useAuth();
   const { currentPropertyId } = useProperty();
@@ -72,6 +96,28 @@ export function BankTransactionsTab({ canImport, canManageMatch }: Props) {
   const [parsingBatchId, setParsingBatchId] = useState<string | null>(null);
   const [matchBusyId, setMatchBusyId] = useState<string | null>(null);
   const [generatingSuggestions, setGeneratingSuggestions] = useState(false);
+  const [explanationsByTxId, setExplanationsByTxId] = useState<
+    Record<string, BankTransactionExplanation>
+  >({});
+  const [listFilter, setListFilter] = useState<BankListFilter>(() => {
+    if (initialFilter === 'confirmed' || initialFilter === 'suggested' || initialFilter === 'unmatched') {
+      return initialFilter;
+    }
+    if (initialFilter === 'explanations') return 'explanations';
+    return null;
+  });
+  const [requestTx, setRequestTx] = useState<BankTransactionRow | null>(null);
+  const [requestBusy, setRequestBusy] = useState(false);
+  const [respondTarget, setRespondTarget] = useState<{
+    explanation: BankTransactionExplanation;
+    row: BankTransactionRow;
+  } | null>(null);
+  const [respondBusy, setRespondBusy] = useState(false);
+  const [viewTarget, setViewTarget] = useState<{
+    explanation: BankTransactionExplanation;
+    row: BankTransactionRow;
+  } | null>(null);
+  const [closeBusy, setCloseBusy] = useState(false);
   const [dateRange, setDateRange] = useState({
     start: new Date(new Date().setFullYear(new Date().getFullYear() - 1)).toISOString().split('T')[0],
     end: new Date().toISOString().split('T')[0],
@@ -125,6 +171,15 @@ export function BankTransactionsTab({ canImport, canManageMatch }: Props) {
     setBatches(rows);
   }, [currentPropertyId]);
 
+  const loadExplanations = useCallback(async () => {
+    if (!currentPropertyId) {
+      setExplanationsByTxId({});
+      return;
+    }
+    const map = await fetchExplanationsForProperty(currentPropertyId);
+    setExplanationsByTxId(map);
+  }, [currentPropertyId]);
+
   const loadTransactions = useCallback(async () => {
     if (!currentPropertyId) {
       setRows([]);
@@ -142,8 +197,31 @@ export function BankTransactionsTab({ canImport, canManageMatch }: Props) {
   }, [currentPropertyId, dateRange.start, dateRange.end]);
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([loadTransactions(), loadBatches()]);
-  }, [loadTransactions, loadBatches]);
+    await Promise.all([loadTransactions(), loadBatches(), loadExplanations()]);
+  }, [loadTransactions, loadBatches, loadExplanations]);
+
+  useEffect(() => {
+    if (initialFilter === 'confirmed' || initialFilter === 'suggested' || initialFilter === 'unmatched') {
+      setListFilter(initialFilter);
+    } else if (initialFilter === 'explanations') {
+      setListFilter('explanations');
+    }
+  }, [initialFilter]);
+
+  const paymentSummaries = useMemo(() => computePaymentSummaries(rows), [rows]);
+
+  const displayRows = useMemo(() => {
+    if (!listFilter) return rows;
+    if (listFilter === 'explanations') {
+      return rows.filter((r) => {
+        const ex = explanationsByTxId[r.id];
+        return ex && (ex.status === 'pending' || ex.status === 'responded');
+      });
+    }
+    return rows.filter(
+      (r) => Number(r.amount) < 0 && (r.match_status ?? 'unmatched') === listFilter,
+    );
+  }, [rows, listFilter, explanationsByTxId]);
 
   useEffect(() => {
     void refreshAll();
@@ -245,6 +323,62 @@ export function BankTransactionsTab({ canImport, canManageMatch }: Props) {
     }
   };
 
+  const handleSendExplanationRequest = async () => {
+    if (!requestTx || !profile?.id || !currentPropertyId) return;
+    setRequestBusy(true);
+    try {
+      const { error } = await createExplanationRequest({
+        bankTransactionId: requestTx.id,
+        propertyId: currentPropertyId,
+        requestedBy: profile.id,
+      });
+      if (error) {
+        alert(error);
+        return;
+      }
+      setRequestTx(null);
+      await refreshAll();
+    } finally {
+      setRequestBusy(false);
+    }
+  };
+
+  const handleSaveExplanationResponse = async (text: string) => {
+    if (!respondTarget || !profile?.id) return;
+    setRespondBusy(true);
+    try {
+      const { error } = await respondToExplanation({
+        explanationId: respondTarget.explanation.id,
+        managerResponse: text,
+        respondedBy: profile.id,
+      });
+      if (error) {
+        alert(error);
+        return;
+      }
+      setRespondTarget(null);
+      await refreshAll();
+    } finally {
+      setRespondBusy(false);
+    }
+  };
+
+  const handleCloseExplanation = async () => {
+    if (!viewTarget) return;
+    setCloseBusy(true);
+    try {
+      const { error } = await closeExplanation(viewTarget.explanation.id);
+      if (error) {
+        alert(error);
+        return;
+      }
+      setViewTarget(null);
+      await refreshAll();
+    } finally {
+      setCloseBusy(false);
+    }
+  };
+
   const renderBatchActions = (b: BankImportBatchRow) => {
     const pdf = isPdfBatch(b);
     const csv = isCsvBatch(b);
@@ -288,6 +422,24 @@ export function BankTransactionsTab({ canImport, canManageMatch }: Props) {
   return (
     <div className="space-y-4">
       <div className="rounded-xl bg-white shadow-sm">
+        <PaymentSummaryCards
+          en={l}
+          summaries={paymentSummaries}
+          activeFilter={listFilter === 'explanations' ? null : listFilter}
+          onFilter={setListFilter}
+        />
+        {listFilter === 'explanations' && (
+          <div className="border-b border-gray-200 bg-sky-50 px-4 py-2 text-xs text-sky-900">
+            {l ? 'Showing payments with open explanation requests.' : '正在显示待解释/已回复的监督记录。'}
+            <button
+              type="button"
+              onClick={() => setListFilter(null)}
+              className="ml-2 font-medium underline"
+            >
+              {l ? 'Clear filter' : '清除筛选'}
+            </button>
+          </div>
+        )}
         <div className="flex flex-col gap-4 border-b border-gray-200 p-6 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-center gap-2">
             <label className="text-sm text-gray-600">{l ? 'Date range:' : '日期范围：'}</label>
@@ -357,19 +509,27 @@ export function BankTransactionsTab({ canImport, canManageMatch }: Props) {
                 <th className="min-w-[160px] px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                   {l ? 'Match Status' : '匹配状态'}
                 </th>
+                <th className="min-w-[120px] px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                  {l ? 'Oversight' : '监督'}
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 bg-white">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-sm text-gray-500">
+                  <td colSpan={7} className="px-6 py-8 text-center text-sm text-gray-500">
                     {l ? 'Loading…' : '加载中…'}
                   </td>
                 </tr>
-              ) : rows.length === 0 ? (
+              ) : displayRows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
                     {l ? 'No bank transactions found' : '暂无银行流水记录'}
+                    {listFilter && rows.length > 0 && (
+                      <span className="mt-1 block text-xs text-gray-400">
+                        {l ? 'Try clearing the active filter.' : '可尝试清除当前筛选条件。'}
+                      </span>
+                    )}
                     {showImportHistory && (
                       <span className="mt-1 block text-xs text-gray-400">
                         {l
@@ -380,7 +540,7 @@ export function BankTransactionsTab({ canImport, canManageMatch }: Props) {
                   </td>
                 </tr>
               ) : (
-                rows.map((t) => {
+                displayRows.map((t) => {
                   const amt = Number(t.amount);
                   const charge = amt < 0 ? Math.abs(amt) : 0;
                   const payment = amt > 0 ? amt : 0;
@@ -412,6 +572,26 @@ export function BankTransactionsTab({ canImport, canManageMatch }: Props) {
                           busyId={matchBusyId}
                           onConfirm={handleConfirmMatch}
                           onReject={handleRejectMatch}
+                        />
+                      </td>
+                      <td className="px-6 py-4 align-top">
+                        <BankExplanationCell
+                          en={l}
+                          amount={amt}
+                          matchStatus={t.match_status}
+                          explanation={explanationsByTxId[t.id]}
+                          canRequest={canManageMatch}
+                          canRespond={canRespondExplanation}
+                          canClose={canManageMatch}
+                          onRequest={() => setRequestTx(t)}
+                          onRespond={() => {
+                            const ex = explanationsByTxId[t.id];
+                            if (ex) setRespondTarget({ explanation: ex, row: t });
+                          }}
+                          onView={() => {
+                            const ex = explanationsByTxId[t.id];
+                            if (ex) setViewTarget({ explanation: ex, row: t });
+                          }}
                         />
                       </td>
                     </tr>
@@ -512,6 +692,39 @@ export function BankTransactionsTab({ canImport, canManageMatch }: Props) {
           onImported={() => void refreshAll()}
         />
       )}
+
+      <RequestExplanationModal
+        open={Boolean(requestTx)}
+        en={l}
+        description={requestTx?.description ?? ''}
+        amount={requestTx ? Number(requestTx.amount) : 0}
+        busy={requestBusy}
+        onClose={() => setRequestTx(null)}
+        onSubmit={() => void handleSendExplanationRequest()}
+      />
+
+      <RespondExplanationModal
+        key={respondTarget?.explanation.id ?? 'closed'}
+        open={Boolean(respondTarget)}
+        en={l}
+        description={respondTarget?.row.description ?? ''}
+        amount={respondTarget ? Number(respondTarget.row.amount) : 0}
+        busy={respondBusy}
+        onClose={() => setRespondTarget(null)}
+        onSubmit={(text) => void handleSaveExplanationResponse(text)}
+      />
+
+      <ViewExplanationModal
+        open={Boolean(viewTarget)}
+        en={l}
+        explanation={viewTarget?.explanation ?? null}
+        description={viewTarget?.row.description ?? ''}
+        amount={viewTarget ? Number(viewTarget.row.amount) : 0}
+        busy={closeBusy}
+        canClose={canManageMatch}
+        onClose={() => setViewTarget(null)}
+        onCloseRecord={() => void handleCloseExplanation()}
+      />
     </div>
   );
 }

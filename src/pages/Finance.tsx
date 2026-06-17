@@ -55,6 +55,8 @@ export function Finance() {
   const [searchParams] = useSearchParams();
   const canView = canViewInvoiceReview(currentRole);
   const canUploadPkg = canUploadInvoicePackage(currentRole);
+  const canManageMatch = canManageInvoiceReview(currentRole);
+  const canRespondExplanation = currentRole === 'manager';
 
   const visibleTabs = useMemo(() => (canView ? mainNavTabs : []), [canView]);
 
@@ -63,6 +65,7 @@ export function Finance() {
   const [invoiceToolbarUploading, setInvoiceToolbarUploading] = useState(false);
 
   const invoiceHighlightId = searchParams.get('invoice');
+  const bankFilter = searchParams.get('filter');
   const filterDanger = searchParams.get('filter') === 'danger';
   const filterAudit = searchParams.get('filter') === 'audit';
   const filterAbnormal = searchParams.get('filter') === 'abnormal';
@@ -201,7 +204,9 @@ export function Finance() {
       {canView && activeTab === 'bank' && (
         <BankTransactionsTab
           canImport={canUploadPkg}
-          canManageMatch={canManageInvoiceReview(currentRole)}
+          canManageMatch={canManageMatch}
+          canRespondExplanation={canRespondExplanation}
+          initialFilter={bankFilter}
         />
       )}
       {canView && activeTab === 'budget' && <FinanceBudgetTab />}
