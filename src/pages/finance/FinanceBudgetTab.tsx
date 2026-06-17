@@ -5,6 +5,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useProperty } from '../../contexts/PropertyContext';
 import { BudgetOverviewCard } from '../../components/dashboard/BudgetOverviewCard';
 import { AgmBudgetDocumentsPanel } from '../../components/finance/AgmBudgetDocumentsPanel';
+import { BudgetCategoryMappingsPanel } from '../../components/finance/BudgetCategoryMappingsPanel';
 import { fetchDashboardBudgetSummary } from '../../lib/budget/dashboardApi';
 import { supabase } from '../../lib/supabase';
 import { canManageInvoiceReview, canUploadInvoicePackage } from '../../lib/financePermissions';
@@ -181,6 +182,13 @@ export function FinanceBudgetTab() {
         canApprove={canSetGovernance}
         en={en}
         onApproved={() => void reloadSummary()}
+      />
+
+      <BudgetCategoryMappingsPanel
+        propertyId={currentPropertyId}
+        fiscalYear={fiscalYear}
+        canManage={canSetGovernance}
+        en={en}
       />
 
       <section className="rounded-2xl border border-violet-200 bg-violet-50/70 p-5 shadow-sm">
