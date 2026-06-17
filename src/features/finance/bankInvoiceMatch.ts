@@ -17,6 +17,7 @@ export type BankTransactionWithMatch = {
   amount: number;
   balance: number | null;
   source_bank: string | null;
+  created_at?: string | null;
   match_status: string | null;
   match_confidence: number | null;
   match_reason: string | null;
@@ -71,12 +72,13 @@ export async function fetchBankTransactionsWithMatches(
   const { data, error } = await supabase
     .from('bank_transactions')
     .select(
-      'id, transaction_date, description, amount, balance, source_bank, match_status, match_confidence, match_reason, matched_invoice_id',
+      'id, transaction_date, description, amount, balance, source_bank, created_at, match_status, match_confidence, match_reason, matched_invoice_id',
     )
     .eq('property_id', propertyId)
     .gte('transaction_date', dateStart)
     .lte('transaction_date', dateEnd)
-    .order('transaction_date', { ascending: false });
+    .order('transaction_date', { ascending: false })
+    .order('created_at', { ascending: false });
 
   if (error || !data?.length) return [];
 

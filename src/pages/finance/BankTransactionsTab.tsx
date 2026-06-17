@@ -39,6 +39,20 @@ import {
 
 export type BankListFilter = 'confirmed' | 'suggested' | 'unmatched' | 'explanations' | null;
 
+export type BankTxSortOrder = 'newest' | 'statement';
+
+function sortBankTransactions(rows: BankTransactionRow[], order: BankTxSortOrder): BankTransactionRow[] {
+  if (order === 'newest') return rows;
+  return [...rows].sort((a, b) => {
+    const dateCmp = a.transaction_date.localeCompare(b.transaction_date);
+    if (dateCmp !== 0) return dateCmp;
+    const aCreated = a.created_at ?? '';
+    const bCreated = b.created_at ?? '';
+    if (aCreated !== bCreated) return aCreated.localeCompare(bCreated);
+    return a.id.localeCompare(b.id);
+  });
+}
+
 interface BankTransactionRow extends BankTransactionWithMatch {}
 
 type Props = {
@@ -118,6 +132,7 @@ export function BankTransactionsTab({
     row: BankTransactionRow;
   } | null>(null);
   const [closeBusy, setCloseBusy] = useState(false);
+  const [txSortOrder, setTxSortOrder] = useState<BankTxSortOrder>('newest');
   const [dateRange, setDateRange] = useState({
     start: new Date(new Date().setFullYear(new Date().getFullYear() - 1)).toISOString().split('T')[0],
     end: new Date().toISOString().split('T')[0],
@@ -222,6 +237,11 @@ export function BankTransactionsTab({
       (r) => Number(r.amount) < 0 && (r.match_status ?? 'unmatched') === listFilter,
     );
   }, [rows, listFilter, explanationsByTxId]);
+
+  const sortedDisplayRows = useMemo(
+    () => sortBankTransactions(displayRows, txSortOrder),
+    [displayRows, txSortOrder],
+  );
 
   useEffect(() => {
     void refreshAll();
@@ -487,6 +507,39 @@ export function BankTransactionsTab({
           </div>
         </div>
 
+        <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 px-6 py-3">
+          <span className="text-sm text-gray-600">{l ? 'Sort:' : '排序：'}</span>
+          <button
+            type="button"
+            onClick={() => setTxSortOrder('newest')}
+            className={`rounded-lg px-3 py-1 text-sm font-medium ${
+              txSortOrder === 'newest'
+                ? 'bg-gray-900 text-white'
+                : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            {l ? 'Newest first' : '最新在前'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setTxSortOrder('statement')}
+            className={`rounded-lg px-3 py-1 text-sm font-medium ${
+              txSortOrder === 'statement'
+                ? 'bg-gray-900 text-white'
+                : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            {l ? 'Statement order' : '月结单顺序'}
+          </button>
+          {txSortOrder === 'statement' && (
+            <span className="text-xs text-gray-500">
+              {l
+                ? 'Balances read top-to-bottom as on the bank statement.'
+                : '余额按银行月结单自上而下阅读。'}
+            </span>
+          )}
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="border-b border-gray-200 bg-gray-50">
@@ -504,7 +557,7 @@ export function BankTransactionsTab({
                   {l ? 'Payments' : '付款'}
                 </th>
                 <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {l ? 'Balance' : '余额'}
+                  {l ? 'Balance After Transaction' : '交易后余额'}
                 </th>
                 <th className="min-w-[160px] px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                   {l ? 'Match Status' : '匹配状态'}
@@ -521,7 +574,7 @@ export function BankTransactionsTab({
                     {l ? 'Loading…' : '加载中…'}
                   </td>
                 </tr>
-              ) : displayRows.length === 0 ? (
+              ) : sortedDisplayRows.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
                     {l ? 'No bank transactions found' : '暂无银行流水记录'}
@@ -540,7 +593,7 @@ export function BankTransactionsTab({
                   </td>
                 </tr>
               ) : (
-                displayRows.map((t) => {
+                sortedDisplayRows.map((t) => {
                   const amt = Number(t.amount);
                   const charge = amt < 0 ? Math.abs(amt) : 0;
                   const payment = amt > 0 ? amt : 0;
