@@ -8,8 +8,10 @@ import { BankCsvImportDialog } from '../../components/finance/BankCsvImportDialo
 import {
   batchFileTypeLabel,
   batchStatusLabel,
+  openBankStatementPdf,
   type BankImportBatchRow,
 } from '../../features/finance/bankImportBatches';
+import { parseBankStatementPdfBatch } from '../../features/finance/parseBankStatementPdf';
 
 interface BankTransactionRow {
   id: string;
@@ -45,6 +47,8 @@ export function BankTransactionsTab({ canImport }: Props) {
   const [batches, setBatches] = useState<BankImportBatchRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [importOpen, setImportOpen] = useState(false);
+  const [openingPdfPath, setOpeningPdfPath] = useState<string | null>(null);
+  const [parsingBatchId, setParsingBatchId] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState({
     start: new Date(new Date().setFullYear(new Date().getFullYear() - 1)).toISOString().split('T')[0],
     end: new Date().toISOString().split('T')[0],
@@ -58,7 +62,7 @@ export function BankTransactionsTab({ canImport }: Props) {
     const { data } = await supabase
       .from('bank_import_batches')
       .select(
-        'id, file_name, file_type, status, source_bank, total_rows, imported_rows, failed_rows, created_at',
+        'id, file_name, file_type, file_path, status, source_bank, total_rows, imported_rows, failed_rows, created_at',
       )
       .eq('property_id', currentPropertyId)
       .order('created_at', { ascending: false })
@@ -93,6 +97,49 @@ export function BankTransactionsTab({ canImport }: Props) {
   }, [refreshAll]);
 
   const showImportHistory = batches.length > 0;
+
+  const handleViewPdf = async (filePath: string) => {
+    setOpeningPdfPath(filePath);
+    try {
+      const res = await openBankStatementPdf(filePath, l);
+      if (!res.ok) {
+        alert(res.message);
+      }
+    } finally {
+      setOpeningPdfPath(null);
+    }
+  };
+
+  const handleAiParse = async (batch: BankImportBatchRow) => {
+    if (!canImport || !profile?.id || !currentPropertyId || !batch.file_path?.trim()) return;
+    if (parsingBatchId) return;
+
+    setParsingBatchId(batch.id);
+    try {
+      const { result, error } = await parseBankStatementPdfBatch({
+        batchId: batch.id,
+        propertyId: currentPropertyId,
+        uploadedBy: profile.id,
+        filePath: batch.file_path,
+        fileName: batch.file_name,
+        languageEn: l,
+      });
+
+      if (error || !result) {
+        alert(error ?? (l ? 'Bank statement parsing failed.' : '银行月结单解析失败。'));
+        return;
+      }
+
+      await refreshAll();
+      alert(
+        l
+          ? `Parsed ${result.imported} transaction(s)${result.skipped > 0 ? ` (${result.skipped} duplicate(s) skipped)` : ''}.`
+          : `已解析 ${result.imported} 条流水${result.skipped > 0 ? `（跳过 ${result.skipped} 条重复）` : ''}。`,
+      );
+    } finally {
+      setParsingBatchId(null);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -214,10 +261,18 @@ export function BankTransactionsTab({ canImport }: Props) {
                   <th className="px-2 py-2 font-medium">{l ? 'Type' : '类型'}</th>
                   <th className="px-2 py-2 font-medium">{l ? 'Status' : '状态'}</th>
                   <th className="px-2 py-2 font-medium">{l ? 'Uploaded' : '上传时间'}</th>
+                  <th className="px-2 py-2 font-medium">{l ? 'Actions' : '操作'}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {batches.map((b) => (
+                {batches.map((b) => {
+                  const isPdf = b.file_type === 'pdf';
+                  const hasPdfPath = isPdf && Boolean(b.file_path?.trim());
+                  const showAiParse = isPdf && b.status === 'pending_parse' && canImport;
+                  const pdfBusy = hasPdfPath && openingPdfPath === b.file_path;
+                  const parseBusy = parsingBatchId === b.id;
+
+                  return (
                   <tr key={b.id}>
                     <td className="max-w-[200px] truncate px-2 py-2 text-gray-900" title={b.file_name}>
                       {b.file_name}
@@ -235,8 +290,36 @@ export function BankTransactionsTab({ canImport }: Props) {
                     <td className="whitespace-nowrap px-2 py-2 text-gray-500">
                       {new Date(b.created_at).toLocaleString(l ? 'en-CA' : 'zh-CN')}
                     </td>
+                    <td className="px-2 py-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {hasPdfPath && (
+                          <button
+                            type="button"
+                            disabled={pdfBusy}
+                            onClick={() => void handleViewPdf(b.file_path!)}
+                            className="rounded border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-800 hover:bg-sky-100 disabled:opacity-50"
+                          >
+                            {pdfBusy ? (l ? 'Opening…' : '打开中…') : l ? 'View PDF' : '查看文件'}
+                          </button>
+                        )}
+                        {showAiParse && (
+                          <button
+                            type="button"
+                            disabled={parseBusy || Boolean(parsingBatchId)}
+                            onClick={() => void handleAiParse(b)}
+                            className="rounded border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-800 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {parseBusy ? (l ? 'Parsing…' : '解析中…') : l ? 'AI Parse' : 'AI解析'}
+                          </button>
+                        )}
+                        {!hasPdfPath && !showAiParse && (
+                          <span className="text-gray-300">—</span>
+                        )}
+                      </div>
+                    </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
