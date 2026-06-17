@@ -9,6 +9,7 @@ import {
   batchFileTypeLabel,
   batchStatusLabel,
   openBankStatementPdf,
+  sanitizeBankStatementFileName,
   type BankImportBatchRow,
 } from '../../features/finance/bankImportBatches';
 import { parseBankStatementPdfBatch } from '../../features/finance/parseBankStatementPdf';
@@ -25,6 +26,24 @@ interface BankTransactionRow {
 type Props = {
   canImport: boolean;
 };
+
+function isPdfBatch(b: BankImportBatchRow): boolean {
+  const ft = (b.file_type ?? '').trim().toLowerCase();
+  if (ft === 'pdf') return true;
+  return (b.file_name ?? '').trim().toLowerCase().endsWith('.pdf');
+}
+
+function isCsvBatch(b: BankImportBatchRow): boolean {
+  const ft = (b.file_type ?? '').trim().toLowerCase();
+  if (ft === 'csv') return true;
+  return (b.file_name ?? '').trim().toLowerCase().endsWith('.csv');
+}
+
+function getBatchFilePath(b: BankImportBatchRow): string | null {
+  const raw = b.file_path?.trim();
+  if (!raw) return null;
+  return raw.replace(/^documents\//, '');
+}
 
 function statusBadgeClass(status: string | null | undefined): string {
   switch (status) {
@@ -67,7 +86,39 @@ export function BankTransactionsTab({ canImport }: Props) {
       .eq('property_id', currentPropertyId)
       .order('created_at', { ascending: false })
       .limit(10);
-    setBatches((data as BankImportBatchRow[]) ?? []);
+
+    let rows = (data as BankImportBatchRow[]) ?? [];
+
+    const missingPath = rows.filter((b) => isPdfBatch(b) && !getBatchFilePath(b));
+    if (missingPath.length > 0) {
+      const { data: files } = await supabase.storage
+        .from('documents')
+        .list(`bank-statements/${currentPropertyId}`, {
+          limit: 100,
+          sortBy: { column: 'created_at', order: 'desc' },
+        });
+
+      if (files?.length) {
+        rows = rows.map((b) => {
+          if (getBatchFilePath(b) || !isPdfBatch(b)) return b;
+          const safe = sanitizeBankStatementFileName(b.file_name);
+          const baseName = b.file_name.trim().toLowerCase();
+          const match = files.find(
+            (f) =>
+              f.name === safe ||
+              f.name.endsWith(`-${safe}`) ||
+              f.name.toLowerCase().includes(baseName.replace(/\.pdf$/i, '')),
+          );
+          if (!match) return b;
+          return {
+            ...b,
+            file_path: `bank-statements/${currentPropertyId}/${match.name}`,
+          };
+        });
+      }
+    }
+
+    setBatches(rows);
   }, [currentPropertyId]);
 
   const loadTransactions = useCallback(async () => {
@@ -111,7 +162,8 @@ export function BankTransactionsTab({ canImport }: Props) {
   };
 
   const handleAiParse = async (batch: BankImportBatchRow) => {
-    if (!canImport || !profile?.id || !currentPropertyId || !batch.file_path?.trim()) return;
+    const filePath = getBatchFilePath(batch);
+    if (!canImport || !profile?.id || !currentPropertyId || !filePath) return;
     if (parsingBatchId) return;
 
     setParsingBatchId(batch.id);
@@ -120,7 +172,7 @@ export function BankTransactionsTab({ canImport }: Props) {
         batchId: batch.id,
         propertyId: currentPropertyId,
         uploadedBy: profile.id,
-        filePath: batch.file_path,
+        filePath,
         fileName: batch.file_name,
         languageEn: l,
       });
@@ -139,6 +191,46 @@ export function BankTransactionsTab({ canImport }: Props) {
     } finally {
       setParsingBatchId(null);
     }
+  };
+
+  const renderBatchActions = (b: BankImportBatchRow) => {
+    const pdf = isPdfBatch(b);
+    const csv = isCsvBatch(b);
+    const filePath = getBatchFilePath(b);
+    const showViewPdf = pdf && Boolean(filePath);
+    const showAiParse = pdf && b.status === 'pending_parse' && canImport;
+    const pdfBusy = showViewPdf && openingPdfPath === filePath;
+    const parseBusy = parsingBatchId === b.id;
+
+    if (csv || (!pdf && !showViewPdf && !showAiParse)) {
+      return <span className="text-gray-300">—</span>;
+    }
+
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        {showViewPdf && filePath && (
+          <button
+            type="button"
+            disabled={pdfBusy}
+            onClick={() => void handleViewPdf(filePath)}
+            className="rounded border border-sky-200 bg-sky-50 px-2 py-1 text-[11px] font-medium text-sky-800 hover:bg-sky-100 disabled:opacity-50 sm:py-0.5"
+          >
+            {pdfBusy ? (l ? 'Opening…' : '打开中…') : l ? 'View PDF' : '查看文件'}
+          </button>
+        )}
+        {showAiParse && (
+          <button
+            type="button"
+            disabled={parseBusy}
+            onClick={() => void handleAiParse(b)}
+            className="rounded border border-violet-200 bg-violet-50 px-2 py-1 text-[11px] font-medium text-violet-800 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50 sm:py-0.5"
+          >
+            {parseBusy ? (l ? 'Parsing…' : '解析中…') : l ? 'AI Parse' : 'AI解析'}
+          </button>
+        )}
+        {pdf && !showViewPdf && !showAiParse && <span className="text-gray-300">—</span>}
+      </div>
+    );
   };
 
   return (
@@ -253,26 +345,52 @@ export function BankTransactionsTab({ canImport }: Props) {
           <h3 className="mb-3 text-sm font-semibold text-gray-900">
             {l ? 'Import history' : '导入记录'}
           </h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
+
+          {/* Mobile: card layout with actions always visible */}
+          <div className="space-y-3 md:hidden">
+            {batches.map((b) => (
+              <div key={b.id} className="rounded-lg border border-gray-100 bg-gray-50/50 p-3">
+                <div className="mb-2 truncate text-sm font-medium text-gray-900" title={b.file_name}>
+                  {b.file_name}
+                </div>
+                <dl className="mb-3 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-gray-600">
+                  <dt>{l ? 'Type' : '类型'}</dt>
+                  <dd>{batchFileTypeLabel(b.file_type, l)}</dd>
+                  <dt>{l ? 'Status' : '状态'}</dt>
+                  <dd>
+                    <span
+                      className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${statusBadgeClass(b.status)}`}
+                    >
+                      {batchStatusLabel(b.status, l)}
+                    </span>
+                  </dd>
+                  <dt>{l ? 'Uploaded' : '上传时间'}</dt>
+                  <dd className="text-gray-500">
+                    {new Date(b.created_at).toLocaleString(l ? 'en-CA' : 'zh-CN')}
+                  </dd>
+                  <dt>{l ? 'Actions' : '操作'}</dt>
+                  <dd>{renderBatchActions(b)}</dd>
+                </dl>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop: table with horizontal scroll + sticky actions column */}
+          <div className="hidden overflow-x-auto md:block">
+            <table className="w-full min-w-[640px] text-xs">
               <thead>
                 <tr className="border-b border-gray-100 text-left text-gray-500">
                   <th className="px-2 py-2 font-medium">{l ? 'File' : '文件名'}</th>
                   <th className="px-2 py-2 font-medium">{l ? 'Type' : '类型'}</th>
                   <th className="px-2 py-2 font-medium">{l ? 'Status' : '状态'}</th>
                   <th className="px-2 py-2 font-medium">{l ? 'Uploaded' : '上传时间'}</th>
-                  <th className="px-2 py-2 font-medium">{l ? 'Actions' : '操作'}</th>
+                  <th className="sticky right-0 min-w-[9rem] bg-white px-2 py-2 font-medium">
+                    {l ? 'Actions' : '操作'}
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {batches.map((b) => {
-                  const isPdf = b.file_type === 'pdf';
-                  const hasPdfPath = isPdf && Boolean(b.file_path?.trim());
-                  const showAiParse = isPdf && b.status === 'pending_parse' && canImport;
-                  const pdfBusy = hasPdfPath && openingPdfPath === b.file_path;
-                  const parseBusy = parsingBatchId === b.id;
-
-                  return (
+                {batches.map((b) => (
                   <tr key={b.id}>
                     <td className="max-w-[200px] truncate px-2 py-2 text-gray-900" title={b.file_name}>
                       {b.file_name}
@@ -290,36 +408,11 @@ export function BankTransactionsTab({ canImport }: Props) {
                     <td className="whitespace-nowrap px-2 py-2 text-gray-500">
                       {new Date(b.created_at).toLocaleString(l ? 'en-CA' : 'zh-CN')}
                     </td>
-                    <td className="px-2 py-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        {hasPdfPath && (
-                          <button
-                            type="button"
-                            disabled={pdfBusy}
-                            onClick={() => void handleViewPdf(b.file_path!)}
-                            className="rounded border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-800 hover:bg-sky-100 disabled:opacity-50"
-                          >
-                            {pdfBusy ? (l ? 'Opening…' : '打开中…') : l ? 'View PDF' : '查看文件'}
-                          </button>
-                        )}
-                        {showAiParse && (
-                          <button
-                            type="button"
-                            disabled={parseBusy || Boolean(parsingBatchId)}
-                            onClick={() => void handleAiParse(b)}
-                            className="rounded border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-800 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            {parseBusy ? (l ? 'Parsing…' : '解析中…') : l ? 'AI Parse' : 'AI解析'}
-                          </button>
-                        )}
-                        {!hasPdfPath && !showAiParse && (
-                          <span className="text-gray-300">—</span>
-                        )}
-                      </div>
+                    <td className="sticky right-0 min-w-[9rem] bg-white px-2 py-2">
+                      {renderBatchActions(b)}
                     </td>
                   </tr>
-                  );
-                })}
+                ))}
               </tbody>
             </table>
           </div>
