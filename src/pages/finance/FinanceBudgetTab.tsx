@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Loader2, PieChart } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useProperty } from '../../contexts/PropertyContext';
 import { BudgetOverviewCard } from '../../components/dashboard/BudgetOverviewCard';
+import { AgmBudgetDocumentsPanel } from '../../components/finance/AgmBudgetDocumentsPanel';
 import { fetchDashboardBudgetSummary } from '../../lib/budget/dashboardApi';
 import { supabase } from '../../lib/supabase';
-import { canManageInvoiceReview } from '../../lib/financePermissions';
+import { canManageInvoiceReview, canUploadInvoicePackage } from '../../lib/financePermissions';
 
 const YEARS_BACK = 3;
 const YEARS_FORWARD = 2;
@@ -22,6 +23,7 @@ export function FinanceBudgetTab() {
   const en = language === 'en';
   const { currentPropertyId, roleInProperty } = useProperty();
   const canSetGovernance = canManageInvoiceReview(roleInProperty);
+  const canUploadBudget = canUploadInvoicePackage(roleInProperty);
   const [searchParams] = useSearchParams();
   const anchorYear = new Date().getFullYear();
   const yearFromUrl = Number(searchParams.get('year'));
@@ -42,29 +44,26 @@ export function FinanceBudgetTab() {
 
   const years = useMemo(() => yearOptions(anchorYear), [anchorYear]);
 
+  const reloadSummary = useCallback(async () => {
+    if (!currentPropertyId) {
+      setSummary(null);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    const res = await fetchDashboardBudgetSummary(currentPropertyId, fiscalYear);
+    setSummary(res.data);
+    setLoading(false);
+  }, [currentPropertyId, fiscalYear]);
+
   useEffect(() => {
     const y = Number(searchParams.get('year'));
     if (Number.isFinite(y) && years.includes(y)) setFiscalYear(y);
   }, [searchParams, years]);
 
   useEffect(() => {
-    if (!currentPropertyId) {
-      setSummary(null);
-      setLoading(false);
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      setLoading(true);
-      const res = await fetchDashboardBudgetSummary(currentPropertyId, fiscalYear);
-      if (cancelled) return;
-      setSummary(res.data);
-      setLoading(false);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [currentPropertyId, fiscalYear]);
+    void reloadSummary();
+  }, [reloadSummary]);
 
   useEffect(() => {
     if (!currentPropertyId) {
@@ -174,6 +173,15 @@ export function FinanceBudgetTab() {
       ) : (
         <BudgetOverviewCard summary={summary} language={language} />
       )}
+
+      <AgmBudgetDocumentsPanel
+        propertyId={currentPropertyId}
+        fiscalYear={fiscalYear}
+        canUpload={canUploadBudget}
+        canApprove={canSetGovernance}
+        en={en}
+        onApproved={() => void reloadSummary()}
+      />
 
       <section className="rounded-2xl border border-violet-200 bg-violet-50/70 p-5 shadow-sm">
         <h3 className="text-base font-semibold text-gray-900">
