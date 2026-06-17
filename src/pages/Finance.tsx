@@ -11,7 +11,7 @@ import { FinanceBudgetTab } from './finance/FinanceBudgetTab';
 import { BankTransactionsTab } from './finance/BankTransactionsTab';
 import { DemoPropertyMockFinancePanel } from '@/components/demoProperty/DemoPropertyMockFinancePanel';
 import { DemoCreatePropertyCtaCard } from '@/components/onboarding/DemoCreatePropertyCta';
-import { canViewInvoiceReview, canUploadInvoicePackage } from '../lib/financePermissions';
+import { canViewInvoiceReview, canUploadInvoicePackage, canManageInvoiceReview } from '../lib/financePermissions';
 
 type FinanceTab = 'invoices' | 'bank' | 'budget' | 'interpreter' | 'revenue';
 
@@ -198,7 +198,12 @@ export function Finance() {
           rangeThisMonthOnly={rangeThisMonth}
         />
       )}
-      {canView && activeTab === 'bank' && <BankTransactionsTab canImport={canUploadPkg} />}
+      {canView && activeTab === 'bank' && (
+        <BankTransactionsTab
+          canImport={canUploadPkg}
+          canManageMatch={canManageInvoiceReview(currentRole)}
+        />
+      )}
       {canView && activeTab === 'budget' && <FinanceBudgetTab />}
       {canView && activeTab === 'interpreter' && <InvoiceInterpreter />}
       {canView && activeTab === 'revenue' && <RevenueDashboard />}

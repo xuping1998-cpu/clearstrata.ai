@@ -13,18 +13,20 @@ import {
   type BankImportBatchRow,
 } from '../../features/finance/bankImportBatches';
 import { parseBankStatementPdfBatch } from '../../features/finance/parseBankStatementPdf';
+import {
+  confirmBankInvoiceMatch,
+  fetchBankTransactionsWithMatches,
+  generateBankInvoiceSuggestions,
+  rejectBankInvoiceMatch,
+  type BankTransactionWithMatch,
+} from '../../features/finance/bankInvoiceMatch';
+import { BankTransactionMatchCell } from '../../features/finance/bankInvoiceMatchUi';
 
-interface BankTransactionRow {
-  id: string;
-  transaction_date: string;
-  description: string;
-  amount: number;
-  balance: number | null;
-  source_bank: string | null;
-}
+interface BankTransactionRow extends BankTransactionWithMatch {}
 
 type Props = {
   canImport: boolean;
+  canManageMatch: boolean;
 };
 
 function isPdfBatch(b: BankImportBatchRow): boolean {
@@ -56,7 +58,7 @@ function statusBadgeClass(status: string | null | undefined): string {
   }
 }
 
-export function BankTransactionsTab({ canImport }: Props) {
+export function BankTransactionsTab({ canImport, canManageMatch }: Props) {
   const { language } = useLanguage();
   const { profile } = useAuth();
   const { currentPropertyId } = useProperty();
@@ -68,6 +70,8 @@ export function BankTransactionsTab({ canImport }: Props) {
   const [importOpen, setImportOpen] = useState(false);
   const [openingPdfPath, setOpeningPdfPath] = useState<string | null>(null);
   const [parsingBatchId, setParsingBatchId] = useState<string | null>(null);
+  const [matchBusyId, setMatchBusyId] = useState<string | null>(null);
+  const [generatingSuggestions, setGeneratingSuggestions] = useState(false);
   const [dateRange, setDateRange] = useState({
     start: new Date(new Date().setFullYear(new Date().getFullYear() - 1)).toISOString().split('T')[0],
     end: new Date().toISOString().split('T')[0],
@@ -128,14 +132,12 @@ export function BankTransactionsTab({ canImport }: Props) {
       return;
     }
     setLoading(true);
-    const { data } = await supabase
-      .from('bank_transactions')
-      .select('id, transaction_date, description, amount, balance, source_bank')
-      .eq('property_id', currentPropertyId)
-      .gte('transaction_date', dateRange.start)
-      .lte('transaction_date', dateRange.end)
-      .order('transaction_date', { ascending: false });
-    setRows((data as BankTransactionRow[]) ?? []);
+    const data = await fetchBankTransactionsWithMatches(
+      currentPropertyId,
+      dateRange.start,
+      dateRange.end,
+    );
+    setRows(data);
     setLoading(false);
   }, [currentPropertyId, dateRange.start, dateRange.end]);
 
@@ -190,6 +192,56 @@ export function BankTransactionsTab({ canImport }: Props) {
       );
     } finally {
       setParsingBatchId(null);
+    }
+  };
+
+  const handleGenerateSuggestions = async () => {
+    if (!canManageMatch || !currentPropertyId || generatingSuggestions) return;
+    setGeneratingSuggestions(true);
+    try {
+      const { count, error } = await generateBankInvoiceSuggestions(currentPropertyId);
+      if (error) {
+        alert(error);
+        return;
+      }
+      await refreshAll();
+      alert(
+        l
+          ? `Generated ${count} suggested match${count === 1 ? '' : 'es'}.`
+          : `已生成 ${count} 条建议匹配。`,
+      );
+    } finally {
+      setGeneratingSuggestions(false);
+    }
+  };
+
+  const handleConfirmMatch = async (row: BankTransactionRow) => {
+    if (!canManageMatch || !row.matched_invoice_id || matchBusyId) return;
+    setMatchBusyId(row.id);
+    try {
+      const { error } = await confirmBankInvoiceMatch(row.id, row.matched_invoice_id);
+      if (error) {
+        alert(error);
+        return;
+      }
+      await refreshAll();
+    } finally {
+      setMatchBusyId(null);
+    }
+  };
+
+  const handleRejectMatch = async (row: BankTransactionRow) => {
+    if (!canManageMatch || matchBusyId) return;
+    setMatchBusyId(row.id);
+    try {
+      const { error } = await rejectBankInvoiceMatch(row.id);
+      if (error) {
+        alert(error);
+        return;
+      }
+      await refreshAll();
+    } finally {
+      setMatchBusyId(null);
     }
   };
 
@@ -253,16 +305,34 @@ export function BankTransactionsTab({ canImport }: Props) {
               className="rounded-lg border border-gray-300 px-3 py-1 text-sm"
             />
           </div>
-          {canImport && (
-            <button
-              type="button"
-              onClick={() => setImportOpen(true)}
-              className="inline-flex items-center gap-2 rounded-lg bg-[#1D9E75] px-4 py-2 text-sm font-medium text-white hover:bg-[#178a66]"
-            >
-              <Upload size={18} />
-              {l ? 'Import Bank Statement' : '导入银行流水'}
-            </button>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {canManageMatch && (
+              <button
+                type="button"
+                disabled={generatingSuggestions}
+                onClick={() => void handleGenerateSuggestions()}
+                className="inline-flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-medium text-violet-900 hover:bg-violet-100 disabled:opacity-50"
+              >
+                {generatingSuggestions
+                  ? l
+                    ? 'Generating…'
+                    : '生成中…'
+                  : l
+                    ? 'Generate Suggestions'
+                    : '生成建议匹配'}
+              </button>
+            )}
+            {canImport && (
+              <button
+                type="button"
+                onClick={() => setImportOpen(true)}
+                className="inline-flex items-center gap-2 rounded-lg bg-[#1D9E75] px-4 py-2 text-sm font-medium text-white hover:bg-[#178a66]"
+              >
+                <Upload size={18} />
+                {l ? 'Import Bank Statement' : '导入银行流水'}
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -284,18 +354,21 @@ export function BankTransactionsTab({ canImport }: Props) {
                 <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
                   {l ? 'Balance' : '余额'}
                 </th>
+                <th className="min-w-[160px] px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                  {l ? 'Match Status' : '匹配状态'}
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 bg-white">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-sm text-gray-500">
+                  <td colSpan={6} className="px-6 py-8 text-center text-sm text-gray-500">
                     {l ? 'Loading…' : '加载中…'}
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
                     {l ? 'No bank transactions found' : '暂无银行流水记录'}
                     {showImportHistory && (
                       <span className="mt-1 block text-xs text-gray-400">
@@ -330,6 +403,16 @@ export function BankTransactionsTab({ canImport }: Props) {
                         }`}
                       >
                         {bal != null ? bal.toFixed(2) : '—'}
+                      </td>
+                      <td className="px-6 py-4 align-top">
+                        <BankTransactionMatchCell
+                          row={t}
+                          en={l}
+                          canManage={canManageMatch}
+                          busyId={matchBusyId}
+                          onConfirm={handleConfirmMatch}
+                          onReject={handleRejectMatch}
+                        />
                       </td>
                     </tr>
                   );

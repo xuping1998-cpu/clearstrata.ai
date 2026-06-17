@@ -68,6 +68,8 @@ import {
   isHistoricalAuditCandidate,
   type HistoricalAuditPayload,
 } from '../../lib/audit/historicalAudit';
+import { fetchInvoiceBankPaymentLinks, type InvoiceBankPaymentLink } from '../../features/finance/bankInvoiceMatch';
+import { InvoicePaymentMatchCell } from '../../features/finance/bankInvoiceMatchUi';
 
 interface Invoice {
   id: string;
@@ -1751,6 +1753,9 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
     Record<string, { taskId: string; title: string }>
   >({});
   const [quoteVarianceByInvoiceId, setQuoteVarianceByInvoiceId] = useState<Record<string, QuoteVarianceResult>>({});
+  const [bankPaymentByInvoiceId, setBankPaymentByInvoiceId] = useState<
+    Record<string, InvoiceBankPaymentLink>
+  >({});
   /** 关联报价是否超预算承诺（pending 审批时可读，用于必填审批理由） */
   const [quoteOverBudgetByInvoiceId, setQuoteOverBudgetByInvoiceId] = useState<Record<string, boolean>>({});
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
@@ -1800,6 +1805,15 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
       .eq('property_id', currentPropertyId)
       .order('created_at', { ascending: false });
     if (data) setInvoices(data as Invoice[]);
+  }, [currentPropertyId]);
+
+  const loadBankPayments = useCallback(async () => {
+    if (!currentPropertyId) {
+      setBankPaymentByInvoiceId({});
+      return;
+    }
+    const map = await fetchInvoiceBankPaymentLinks(currentPropertyId);
+    setBankPaymentByInvoiceId(map);
   }, [currentPropertyId]);
 
   const openArchiveModal = useCallback((inv: Invoice) => {
@@ -1863,16 +1877,21 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
 
   useEffect(() => {
     void loadInvoices();
+    void loadBankPayments();
     const channel = supabase
       .channel('invoices-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'invoices' }, () => {
         void loadInvoicesQuiet();
+        void loadBankPayments();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bank_transactions' }, () => {
+        void loadBankPayments();
       })
       .subscribe();
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [loadInvoices, loadInvoicesQuiet]);
+  }, [loadInvoices, loadInvoicesQuiet, loadBankPayments]);
 
   useEffect(() => {
     if (!currentPropertyId || invoices.length === 0) {
@@ -3123,6 +3142,9 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
                   <col style={{ width: '7%' }} />
                   <col style={{ width: '88px' }} />
                   <col style={{ width: '88px' }} />
+                  <col style={{ width: '96px' }} />
+                  <col style={{ width: '88px' }} />
+                  <col style={{ width: '88px' }} />
                 </colgroup>
                 <thead className="border-b border-gray-200 bg-gray-50">
                   <tr>
@@ -3167,6 +3189,12 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
                       title={l ? 'Status' : '状态'}
                     >
                       {l ? 'Status' : '状态'}
+                    </th>
+                    <th
+                      className="min-w-0 max-w-[96px] truncate px-1 py-1.5 text-left text-[10px] font-medium uppercase tracking-wide text-gray-500 sm:px-1.5 sm:py-2"
+                      title={l ? 'Payment Status' : '付款状态'}
+                    >
+                      {l ? 'Payment' : '付款'}
                     </th>
                     <th className="w-[104px] min-w-[104px] max-w-[116px] whitespace-nowrap px-0.5 py-1.5 text-center text-[10px] font-medium uppercase tracking-wide text-gray-500 sm:py-2">
                       {l ? 'Actions' : '操作'}
@@ -3304,6 +3332,12 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
                             )}
                             <span className="truncate">{l ? st.labelEn : st.labelZh}</span>
                           </span>
+                        </td>
+                        <td
+                          className="min-w-0 max-w-[96px] overflow-hidden px-1 py-1.5 align-top sm:px-1.5 sm:py-2"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <InvoicePaymentMatchCell link={bankPaymentByInvoiceId[inv.id]} en={l} />
                         </td>
                         <td
                           className="w-[104px] min-w-[104px] max-w-[116px] overflow-visible px-0.5 py-1.5 text-center align-top sm:py-2"
@@ -3465,6 +3499,10 @@ export const InvoiceManagement = forwardRef<InvoiceManagementHandle, InvoiceMana
                           </span>
                         </div>
                       ) : null}
+                      <div className="pt-1" onClick={(e) => e.stopPropagation()}>
+                        <span className="text-gray-500">{l ? 'Payment: ' : '付款：'}</span>
+                        <InvoicePaymentMatchCell link={bankPaymentByInvoiceId[inv.id]} en={l} />
+                      </div>
                       {invoiceTaskSource[inv.id] ? (
                         <div className="pt-1" onClick={(e) => e.stopPropagation()}>
                           <span className="text-gray-500">{l ? 'Source: ' : '来源：'}</span>
