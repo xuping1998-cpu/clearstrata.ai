@@ -9,6 +9,11 @@ export type DashboardBudgetSummary = {
   active_package_id: string | null;
   /** property_year = totals from annual_budgets by property + year (no package row). */
   budget_scope?: 'property_year' | 'package';
+  /** AGM-1B: revenue/expense split from agm_budget_lines */
+  has_agm_breakdown?: boolean;
+  revenue_total?: number;
+  expense_total?: number;
+  net_budget?: number;
   total_budget: number;
   committed: number;
   actual: number;
@@ -77,6 +82,10 @@ function parseSummary(raw: unknown): DashboardBudgetSummary | null {
     property_id: String(o.property_id ?? ''),
     active_package_id: o.active_package_id == null ? null : String(o.active_package_id),
     budget_scope,
+    has_agm_breakdown: Boolean(o.has_agm_breakdown),
+    revenue_total: num(o.revenue_total),
+    expense_total: num(o.expense_total),
+    net_budget: num(o.net_budget),
     total_budget: num(o.total_budget),
     committed: num(o.committed),
     actual: num(o.actual),

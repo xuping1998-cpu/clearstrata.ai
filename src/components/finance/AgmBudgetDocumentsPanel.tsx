@@ -12,7 +12,13 @@ import {
   extractDraftLines,
   type AgmBudgetDocumentRow,
   type AgmBudgetDraftLine,
+  type AgmBudgetType,
 } from '../../features/finance/agmBudgetDocuments';
+import {
+  agmBudgetTypeLabel,
+  classifyAgmBudgetType,
+  sumAgmBudgetLines,
+} from '../../features/finance/agmBudgetType';
 import { parseAgmBudgetPdfDocument } from '../../features/finance/parseAgmBudgetPdf';
 import { uploadAgmBudgetPdf } from '../../features/finance/uploadAgmBudgetPdf';
 import { formatCurrency } from '../../lib/budget/dashboardApi';
@@ -154,11 +160,25 @@ export function AgmBudgetDocumentsPanel({
     });
   };
 
-  const updateDraftLine = (index: number, field: 'category' | 'amount', value: string) => {
+  const updateDraftLine = (
+    index: number,
+    field: 'category' | 'amount' | 'budget_type',
+    value: string,
+  ) => {
     setDraftLines((prev) =>
       prev.map((row, i) => {
         if (i !== index) return row;
-        if (field === 'category') return { ...row, category: value };
+        if (field === 'category') {
+          return {
+            ...row,
+            category: value,
+            budget_type: classifyAgmBudgetType(value),
+          };
+        }
+        if (field === 'budget_type') {
+          const budget_type: AgmBudgetType = value === 'revenue' ? 'revenue' : 'expense';
+          return { ...row, budget_type };
+        }
         const n = Number(value);
         return { ...row, amount: Number.isFinite(n) ? n : 0 };
       }),
@@ -175,7 +195,7 @@ export function AgmBudgetDocumentsPanel({
     setMessage({ ok: true, text: en ? 'Draft saved.' : '草稿已保存。' });
   };
 
-  const draftTotal = draftLines.reduce((s, l) => s + (Number.isFinite(l.amount) ? l.amount : 0), 0);
+  const { revenueTotal, expenseTotal, netBudget } = sumAgmBudgetLines(draftLines);
 
   return (
     <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
@@ -339,13 +359,42 @@ export function AgmBudgetDocumentsPanel({
               />
             </label>
           </div>
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+              <div className="text-xs font-medium text-emerald-800">
+                {en ? 'Revenue Total' : '收入合计'}
+              </div>
+              <div className="mt-0.5 text-base font-bold tabular-nums text-emerald-950">
+                {formatCurrency(revenueTotal, en ? 'en' : 'zh')}
+              </div>
+            </div>
+            <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2">
+              <div className="text-xs font-medium text-orange-800">
+                {en ? 'Expense Total' : '支出合计'}
+              </div>
+              <div className="mt-0.5 text-base font-bold tabular-nums text-orange-950">
+                {formatCurrency(expenseTotal, en ? 'en' : 'zh')}
+              </div>
+            </div>
+            <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2">
+              <div className="text-xs font-medium text-sky-800">
+                {en ? 'Net Budget' : '净预算'}
+              </div>
+              <div className="mt-0.5 text-base font-bold tabular-nums text-sky-950">
+                {formatCurrency(netBudget, en ? 'en' : 'zh')}
+              </div>
+            </div>
+          </div>
           <div className="mt-3 overflow-x-auto rounded-lg border border-gray-200 bg-white">
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50 text-xs text-gray-500">
                   <th className="px-3 py-2 text-left font-medium">{en ? 'Category' : '类别'}</th>
+                  <th className="px-3 py-2 text-left font-medium">
+                    {en ? 'Budget type' : '预算类型'}
+                  </th>
                   <th className="px-3 py-2 text-right font-medium">
-                    {en ? 'Budget amount' : '预算金额'}
+                    {en ? 'Amount' : '金额'}
                   </th>
                 </tr>
               </thead>
@@ -362,6 +411,20 @@ export function AgmBudgetDocumentsPanel({
                         />
                       ) : (
                         line.category
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      {canApprove ? (
+                        <select
+                          className="rounded border border-gray-200 bg-white px-2 py-1 text-sm"
+                          value={line.budget_type}
+                          onChange={(e) => updateDraftLine(index, 'budget_type', e.target.value)}
+                        >
+                          <option value="revenue">{agmBudgetTypeLabel('revenue', en)}</option>
+                          <option value="expense">{agmBudgetTypeLabel('expense', en)}</option>
+                        </select>
+                      ) : (
+                        agmBudgetTypeLabel(line.budget_type, en)
                       )}
                     </td>
                     <td className="px-3 py-2 text-right">
@@ -381,14 +444,6 @@ export function AgmBudgetDocumentsPanel({
                   </tr>
                 ))}
               </tbody>
-              <tfoot>
-                <tr className="bg-gray-50 font-semibold">
-                  <td className="px-3 py-2 text-right">{en ? 'Total' : '合计'}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    {formatCurrency(draftTotal, en ? 'en' : 'zh')}
-                  </td>
-                </tr>
-              </tfoot>
             </table>
           </div>
           {canApprove ? (

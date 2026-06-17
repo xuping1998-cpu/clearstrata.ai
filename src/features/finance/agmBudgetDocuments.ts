@@ -1,11 +1,16 @@
 /** AGM budget document helpers */
 
+import {
+  normalizeAgmBudgetLine,
+  type AgmBudgetLineWithType,
+  type AgmBudgetType,
+} from './agmBudgetType';
+
 export type AgmBudgetDocumentStatus = 'pending_parse' | 'parsed' | 'approved';
 
-export type AgmBudgetDraftLine = {
-  category: string;
-  amount: number;
-};
+export type AgmBudgetDraftLine = AgmBudgetLineWithType;
+
+export type { AgmBudgetType };
 
 export type AgmBudgetDocumentRow = {
   id: string;
@@ -47,9 +52,14 @@ export function extractDraftLines(
   draft: AgmBudgetDocumentRow['parsed_draft'],
 ): AgmBudgetDraftLine[] {
   if (!draft) return [];
-  if (Array.isArray(draft)) return draft;
-  if (typeof draft === 'object' && Array.isArray(draft.lines)) return draft.lines;
-  return [];
+  const raw = Array.isArray(draft)
+    ? draft
+    : typeof draft === 'object' && Array.isArray(draft.lines)
+      ? draft.lines
+      : [];
+  return raw.map((line) =>
+    normalizeAgmBudgetLine(line as Partial<AgmBudgetDraftLine>),
+  );
 }
 
 export function extractDraftFiscalYear(

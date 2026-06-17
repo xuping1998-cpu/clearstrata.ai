@@ -38,16 +38,57 @@ export function BudgetOverviewCard({ summary, language, embedded = false }: Budg
       {!embedded && <p className="mt-1 text-sm text-gray-500">{t('budget_home_subtitle')}</p>}
 
       <div className={`grid grid-cols-2 gap-2 ${embedded ? 'mt-2' : 'mt-4 gap-2.5'}`}>
-        <div
-          className={`flex flex-col justify-center rounded-xl border border-gray-100 bg-white px-3 py-1.5 ${embedded ? 'min-h-0' : 'min-h-[4rem] py-2.5'}`}
-        >
-          <div className="text-xs font-medium text-gray-500">{t('budget_home_total_budget')}</div>
+        {summary.has_agm_breakdown ? (
+          <>
+            <div
+              className={`flex flex-col justify-center rounded-xl border border-emerald-100 bg-emerald-50/50 px-3 py-1.5 ${embedded ? 'min-h-0' : 'min-h-[4rem] py-2.5'}`}
+            >
+              <div className="text-xs font-medium text-emerald-800">
+                {en ? 'Revenue Total' : '收入合计'}
+              </div>
+              <div
+                className={`mt-0.5 font-bold tabular-nums tracking-tight text-emerald-950 ${embedded ? 'text-base sm:text-lg' : 'text-lg sm:text-xl'}`}
+              >
+                {formatCurrency(summary.revenue_total ?? 0, language)}
+              </div>
+            </div>
+            <div
+              className={`flex flex-col justify-center rounded-xl border border-orange-100 bg-orange-50/50 px-3 py-1.5 ${embedded ? 'min-h-0' : 'min-h-[4rem] py-2.5'}`}
+            >
+              <div className="text-xs font-medium text-orange-800">
+                {en ? 'Expense Total' : '支出合计'}
+              </div>
+              <div
+                className={`mt-0.5 font-bold tabular-nums tracking-tight text-orange-950 ${embedded ? 'text-base sm:text-lg' : 'text-lg sm:text-xl'}`}
+              >
+                {formatCurrency(summary.expense_total ?? 0, language)}
+              </div>
+            </div>
+            <div
+              className={`col-span-2 flex flex-col justify-center rounded-xl border border-sky-100 bg-sky-50/50 px-3 py-1.5 ${embedded ? 'min-h-0' : 'min-h-[4rem] py-2.5'}`}
+            >
+              <div className="text-xs font-medium text-sky-800">
+                {en ? 'Net Budget' : '净预算'}
+              </div>
+              <div
+                className={`mt-0.5 font-bold tabular-nums tracking-tight text-sky-950 ${embedded ? 'text-base sm:text-lg' : 'text-lg sm:text-xl'}`}
+              >
+                {formatCurrency(summary.net_budget ?? 0, language)}
+              </div>
+            </div>
+          </>
+        ) : (
           <div
-            className={`mt-0.5 font-bold tabular-nums tracking-tight text-gray-900 ${embedded ? 'text-base sm:text-lg' : 'text-lg sm:text-xl'}`}
+            className={`flex flex-col justify-center rounded-xl border border-gray-100 bg-white px-3 py-1.5 ${embedded ? 'min-h-0' : 'min-h-[4rem] py-2.5'}`}
           >
-            {formatCurrency(summary.total_budget, language)}
+            <div className="text-xs font-medium text-gray-500">{t('budget_home_total_budget')}</div>
+            <div
+              className={`mt-0.5 font-bold tabular-nums tracking-tight text-gray-900 ${embedded ? 'text-base sm:text-lg' : 'text-lg sm:text-xl'}`}
+            >
+              {formatCurrency(summary.total_budget, language)}
+            </div>
           </div>
-        </div>
+        )}
         <div
           className={`flex flex-col justify-center rounded-xl border border-gray-100 bg-white px-3 ${embedded ? 'py-1.5 min-h-0' : 'min-h-[4rem] py-2.5'}`}
         >

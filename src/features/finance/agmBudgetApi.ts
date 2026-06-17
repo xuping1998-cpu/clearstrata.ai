@@ -41,7 +41,11 @@ export async function approveAgmBudgetDocument(
 ): Promise<{ linesWritten: number; error: string | null }> {
   const payload = lines
     .filter((l) => l.category.trim().length > 0 && Number.isFinite(l.amount) && l.amount >= 0)
-    .map((l) => ({ category: l.category.trim(), amount: l.amount }));
+    .map((l) => ({
+      category: l.category.trim(),
+      amount: l.amount,
+      budget_type: l.budget_type === 'revenue' ? 'revenue' : 'expense',
+    }));
 
   const { data, error } = await supabase.rpc('approve_agm_budget_document', {
     p_document_id: documentId,
@@ -64,10 +68,10 @@ export async function approveAgmBudgetDocument(
 export async function fetchAgmBudgetLines(
   propertyId: string,
   fiscalYear: number,
-): Promise<{ category: string; budget_amount: number }[]> {
+): Promise<{ category: string; budget_amount: number; budget_type: string }[]> {
   const { data, error } = await supabase
     .from('agm_budget_lines')
-    .select('category, budget_amount')
+    .select('category, budget_amount, budget_type')
     .eq('property_id', propertyId)
     .eq('fiscal_year', fiscalYear)
     .order('category', { ascending: true });
@@ -76,5 +80,6 @@ export async function fetchAgmBudgetLines(
   return data.map((r) => ({
     category: String(r.category),
     budget_amount: Number(r.budget_amount),
+    budget_type: String(r.budget_type ?? 'expense'),
   }));
 }

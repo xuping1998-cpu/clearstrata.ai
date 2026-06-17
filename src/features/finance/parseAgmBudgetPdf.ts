@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase';
+import { applyAgmBudgetTypes } from './agmBudgetType';
 import type { AgmBudgetDraftLine } from './agmBudgetDocuments';
 
 export type AgmBudgetParseResult = {
@@ -104,8 +105,10 @@ export async function parseAgmBudgetPdfDocument(opts: {
     return { result: null, error: aiError ?? msg };
   }
 
-  const validLines = result.lines.filter(
-    (l) => l.category.trim().length > 0 && Number.isFinite(l.amount) && l.amount >= 0,
+  const validLines = applyAgmBudgetTypes(
+    result.lines.filter(
+      (l) => l.category.trim().length > 0 && Number.isFinite(l.amount) && l.amount >= 0,
+    ),
   );
   if (validLines.length === 0) {
     const msg = en ? 'AGM budget parsing failed.' : 'AGM 预算解析失败。';
