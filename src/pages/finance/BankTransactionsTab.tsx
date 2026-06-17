@@ -22,8 +22,11 @@ import {
 } from '../../features/finance/bankInvoiceMatch';
 import { BankTransactionMatchCell } from '../../features/finance/bankInvoiceMatchUi';
 import {
+  bankBalanceColumnLabel,
+  bankBalanceSortHint,
   formatBankAmountCell,
   splitBankTransactionAmount,
+  type BankTxSortOrder,
 } from '../../features/finance/bankTransactionDisplay';
 import {
   closeExplanation,
@@ -42,8 +45,6 @@ import {
 } from '../../features/finance/bankTransactionExplanationsUi';
 
 export type BankListFilter = 'confirmed' | 'suggested' | 'unmatched' | 'explanations' | null;
-
-export type BankTxSortOrder = 'newest' | 'statement';
 
 function sortBankTransactions(rows: BankTransactionRow[], order: BankTxSortOrder): BankTransactionRow[] {
   if (order === 'newest') return rows;
@@ -246,6 +247,9 @@ export function BankTransactionsTab({
     () => sortBankTransactions(displayRows, txSortOrder),
     [displayRows, txSortOrder],
   );
+
+  const balanceColumnLabel = bankBalanceColumnLabel(txSortOrder, l);
+  const balanceSortHint = bankBalanceSortHint(txSortOrder, l);
 
   useEffect(() => {
     void refreshAll();
@@ -511,37 +515,33 @@ export function BankTransactionsTab({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 px-6 py-3">
-          <span className="text-sm text-gray-600">{l ? 'Sort:' : '排序：'}</span>
-          <button
-            type="button"
-            onClick={() => setTxSortOrder('newest')}
-            className={`rounded-lg px-3 py-1 text-sm font-medium ${
-              txSortOrder === 'newest'
-                ? 'bg-gray-900 text-white'
-                : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
-            }`}
-          >
-            {l ? 'Newest first' : '最新在前'}
-          </button>
-          <button
-            type="button"
-            onClick={() => setTxSortOrder('statement')}
-            className={`rounded-lg px-3 py-1 text-sm font-medium ${
-              txSortOrder === 'statement'
-                ? 'bg-gray-900 text-white'
-                : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
-            }`}
-          >
-            {l ? 'Statement order' : '月结单顺序'}
-          </button>
-          {txSortOrder === 'statement' && (
-            <span className="text-xs text-gray-500">
-              {l
-                ? 'Balances read top-to-bottom as on the bank statement.'
-                : '余额按银行月结单自上而下阅读。'}
-            </span>
-          )}
+        <div className="flex flex-col gap-2 border-b border-gray-100 px-6 py-3 sm:flex-row sm:flex-wrap sm:items-center">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-gray-600">{l ? 'Sort:' : '排序：'}</span>
+            <button
+              type="button"
+              onClick={() => setTxSortOrder('newest')}
+              className={`rounded-lg px-3 py-1 text-sm font-medium ${
+                txSortOrder === 'newest'
+                  ? 'bg-gray-900 text-white'
+                  : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              {l ? 'Newest first' : '最新在前'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setTxSortOrder('statement')}
+              className={`rounded-lg px-3 py-1 text-sm font-medium ${
+                txSortOrder === 'statement'
+                  ? 'bg-gray-900 text-white'
+                  : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              {l ? 'Statement order' : '月结单顺序'}
+            </button>
+          </div>
+          <p className="text-xs text-gray-500 sm:max-w-[70%]">{balanceSortHint}</p>
         </div>
 
         <div className="hidden overflow-x-auto md:block">
@@ -560,8 +560,11 @@ export function BankTransactionsTab({
                 <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
                   {l ? 'Expense' : '支出'}
                 </th>
-                <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {l ? 'Balance After Transaction' : '交易后余额'}
+                <th
+                  className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500"
+                  title={balanceSortHint}
+                >
+                  {balanceColumnLabel}
                 </th>
                 <th className="min-w-[160px] px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                   {l ? 'Match Status' : '匹配状态'}
@@ -683,7 +686,9 @@ export function BankTransactionsTab({
                     <dd className="text-right tabular-nums font-medium text-red-800">
                       {formatBankAmountCell(expense) || '—'}
                     </dd>
-                    <dt className="text-gray-500">{l ? 'Balance After Transaction' : '交易后余额'}</dt>
+                    <dt className="text-gray-500" title={balanceSortHint}>
+                      {balanceColumnLabel}
+                    </dt>
                     <dd className="text-right tabular-nums font-medium text-gray-900">
                       {bal != null ? bal.toFixed(2) : '—'}
                     </dd>
