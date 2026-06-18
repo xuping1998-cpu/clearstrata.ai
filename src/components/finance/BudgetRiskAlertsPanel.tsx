@@ -12,6 +12,11 @@ import {
   type BudgetRiskAlert,
   type BudgetRiskAlertSeverity,
 } from '../../features/finance/budgetRiskAlertsApi';
+import {
+  createCouncilActionFromAlert,
+  openActionKey,
+  listOpenActionKeys,
+} from '../../features/finance/councilActionsApi';
 import type { MappedExpenseInvoice } from '../../features/finance/budgetVarianceApi';
 import type { MappedRevenueTransaction } from '../../features/finance/revenueReconciliationApi';
 
@@ -19,6 +24,8 @@ type Props = {
   propertyId: string;
   fiscalYear: number;
   en: boolean;
+  canManage?: boolean;
+  onActionCreated?: () => void;
 };
 
 function severityEmoji(severity: BudgetRiskAlertSeverity): string {
@@ -61,6 +68,10 @@ function AlertDetailDrawer({
   transactions,
   loading,
   en,
+  canManage,
+  hasOpenAction,
+  creatingAction,
+  onCreateAction,
   onClose,
 }: {
   alert: BudgetRiskAlert;
@@ -68,6 +79,10 @@ function AlertDetailDrawer({
   transactions: MappedRevenueTransaction[];
   loading: boolean;
   en: boolean;
+  canManage: boolean;
+  hasOpenAction: boolean;
+  creatingAction: boolean;
+  onCreateAction: () => void;
   onClose: () => void;
 }) {
   const loc = en ? 'en' : 'zh';
@@ -176,6 +191,29 @@ function AlertDetailDrawer({
             </div>
           ) : null}
 
+          {canManage ? (
+            <div className="mt-4">
+              <button
+                type="button"
+                disabled={creatingAction || hasOpenAction}
+                onClick={onCreateAction}
+                className="w-full rounded-lg bg-violet-700 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {creatingAction
+                  ? en
+                    ? 'Creating…'
+                    : '创建中…'
+                  : hasOpenAction
+                    ? en
+                      ? 'Action already open'
+                      : '行动已存在'
+                    : en
+                      ? 'Create Action'
+                      : '创建行动'}
+              </button>
+            </div>
+          ) : null}
+
           {showInvoices ? (
             <>
               <h5 className="mt-4 text-sm font-semibold text-gray-800">
@@ -281,19 +319,32 @@ function AlertDetailDrawer({
   );
 }
 
-export function BudgetRiskAlertsPanel({ propertyId, fiscalYear, en }: Props) {
+export function BudgetRiskAlertsPanel({
+  propertyId,
+  fiscalYear,
+  en,
+  canManage = false,
+  onActionCreated,
+}: Props) {
   const loc = en ? 'en' : 'zh';
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<BudgetRiskAlert[]>([]);
+  const [openActionKeys, setOpenActionKeys] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<BudgetRiskAlert | null>(null);
   const [drawerInvoices, setDrawerInvoices] = useState<MappedExpenseInvoice[]>([]);
   const [drawerTxs, setDrawerTxs] = useState<MappedRevenueTransaction[]>([]);
   const [drawerLoading, setDrawerLoading] = useState(false);
+  const [creatingKey, setCreatingKey] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const alerts = await listBudgetRiskAlerts(propertyId, fiscalYear);
+    const [alerts, actionKeys] = await Promise.all([
+      listBudgetRiskAlerts(propertyId, fiscalYear),
+      listOpenActionKeys(propertyId),
+    ]);
     setRows(alerts);
+    setOpenActionKeys(actionKeys);
     setLoading(false);
   }, [propertyId, fiscalYear]);
 
@@ -315,6 +366,35 @@ export function BudgetRiskAlertsPanel({ propertyId, fiscalYear, en }: Props) {
     setDrawerInvoices(invoices);
     setDrawerTxs(transactions);
     setDrawerLoading(false);
+  };
+
+  const handleCreateAction = async (alert: BudgetRiskAlert) => {
+    const key = alertRowKey(alert);
+    setCreatingKey(key);
+    setActionMessage(null);
+    const { action, error, existing } = await createCouncilActionFromAlert(alert, en);
+    setCreatingKey(null);
+    if (error) {
+      setActionMessage(error);
+      return;
+    }
+    if (action) {
+      setOpenActionKeys((prev) => {
+        const next = new Set(prev);
+        next.add(openActionKey(alert.alert_type, alert.budget_category));
+        return next;
+      });
+      setActionMessage(
+        existing
+          ? en
+            ? 'An open action already exists for this alert.'
+            : '该预警已有进行中的行动。'
+          : en
+            ? 'Council action created.'
+            : '业委会行动已创建。',
+      );
+      onActionCreated?.();
+    }
   };
 
   if (loading) {
@@ -366,6 +446,10 @@ export function BudgetRiskAlertsPanel({ propertyId, fiscalYear, en }: Props) {
         </div>
       </div>
 
+      {actionMessage ? (
+        <p className="mt-3 text-sm text-violet-800">{actionMessage}</p>
+      ) : null}
+
       {rows.length === 0 ? (
         <p className="mt-4 text-sm text-gray-500">
           {en ? 'No budget risk alerts for this fiscal year.' : '本财年暂无预算风险预警。'}
@@ -382,39 +466,97 @@ export function BudgetRiskAlertsPanel({ propertyId, fiscalYear, en }: Props) {
                 <th className="px-2 py-2 text-right font-medium">{en ? 'Actual' : '实际'}</th>
                 <th className="px-2 py-2 text-right font-medium">{en ? '%' : '百分比'}</th>
                 <th className="px-2 py-2 font-medium">{en ? 'Message' : '说明'}</th>
+                {canManage ? (
+                  <th className="px-2 py-2 font-medium">{en ? 'Action' : '操作'}</th>
+                ) : null}
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
-                <tr
-                  key={alertRowKey(row)}
-                  className="cursor-pointer border-b border-gray-100 hover:bg-sky-50/50"
-                  onClick={() => void openDetail(row)}
-                >
-                  <td className="px-2 py-2.5">
+              {rows.map((row) => {
+                const rowKey = alertRowKey(row);
+                const hasOpen = openActionKeys.has(
+                  openActionKey(row.alert_type, row.budget_category),
+                );
+                return (
+                  <tr
+                    key={rowKey}
+                    className="border-b border-gray-100 hover:bg-sky-50/50"
+                  >
+                    <td
+                      className="cursor-pointer px-2 py-2.5"
+                      onClick={() => void openDetail(row)}
+                    >
                     <span
                       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${severityBadgeClass(row.severity)}`}
                     >
                       <span aria-hidden>{severityEmoji(row.severity)}</span>
                       {severityLabel(row.severity, en)}
                     </span>
-                  </td>
-                  <td className="px-2 py-2.5 text-gray-800">{alertTypeLabel(row.alert_type, en)}</td>
-                  <td className="px-2 py-2.5 font-medium text-gray-900">
-                    {row.budget_category ?? '—'}
-                  </td>
-                  <td className="px-2 py-2.5 text-right tabular-nums">
-                    {row.budget_amount > 0 ? formatCurrency(row.budget_amount, loc) : '—'}
-                  </td>
-                  <td className="px-2 py-2.5 text-right tabular-nums">
-                    {formatCurrency(row.actual_amount, loc)}
-                  </td>
-                  <td className="px-2 py-2.5 text-right tabular-nums text-gray-700">
-                    {row.percent_value == null ? '—' : `${row.percent_value.toFixed(1)}%`}
-                  </td>
-                  <td className="max-w-[12rem] px-2 py-2.5 text-gray-700">{row.message}</td>
-                </tr>
-              ))}
+                    </td>
+                    <td
+                      className="cursor-pointer px-2 py-2.5 text-gray-800"
+                      onClick={() => void openDetail(row)}
+                    >
+                      {alertTypeLabel(row.alert_type, en)}
+                    </td>
+                    <td
+                      className="cursor-pointer px-2 py-2.5 font-medium text-gray-900"
+                      onClick={() => void openDetail(row)}
+                    >
+                      {row.budget_category ?? '—'}
+                    </td>
+                    <td
+                      className="cursor-pointer px-2 py-2.5 text-right tabular-nums"
+                      onClick={() => void openDetail(row)}
+                    >
+                      {row.budget_amount > 0 ? formatCurrency(row.budget_amount, loc) : '—'}
+                    </td>
+                    <td
+                      className="cursor-pointer px-2 py-2.5 text-right tabular-nums"
+                      onClick={() => void openDetail(row)}
+                    >
+                      {formatCurrency(row.actual_amount, loc)}
+                    </td>
+                    <td
+                      className="cursor-pointer px-2 py-2.5 text-right tabular-nums text-gray-700"
+                      onClick={() => void openDetail(row)}
+                    >
+                      {row.percent_value == null ? '—' : `${row.percent_value.toFixed(1)}%`}
+                    </td>
+                    <td
+                      className="max-w-[12rem] cursor-pointer px-2 py-2.5 text-gray-700"
+                      onClick={() => void openDetail(row)}
+                    >
+                      {row.message}
+                    </td>
+                    {canManage ? (
+                      <td className="px-2 py-2.5">
+                        <button
+                          type="button"
+                          disabled={hasOpen || creatingKey === rowKey}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleCreateAction(row);
+                          }}
+                          className="whitespace-nowrap rounded-lg bg-violet-700 px-2.5 py-1 text-xs font-semibold text-white hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {creatingKey === rowKey
+                            ? en
+                              ? '…'
+                              : '…'
+                            : hasOpen
+                              ? en
+                                ? 'Open'
+                                : '进行中'
+                              : en
+                                ? 'Create Action'
+                                : '创建行动'}
+                        </button>
+                      </td>
+                    ) : null}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -427,6 +569,12 @@ export function BudgetRiskAlertsPanel({ propertyId, fiscalYear, en }: Props) {
           transactions={drawerTxs}
           loading={drawerLoading}
           en={en}
+          canManage={canManage}
+          hasOpenAction={openActionKeys.has(
+            openActionKey(selected.alert_type, selected.budget_category),
+          )}
+          creatingAction={creatingKey === alertRowKey(selected)}
+          onCreateAction={() => void handleCreateAction(selected)}
           onClose={() => setSelected(null)}
         />
       ) : null}

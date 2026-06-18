@@ -9,6 +9,7 @@ import { BudgetCategoryMappingsPanel } from '../../components/finance/BudgetCate
 import { BudgetExpenseVarianceDashboard } from '../../components/finance/BudgetExpenseVarianceDashboard';
 import { RevenueReconciliationDashboard } from '../../components/finance/RevenueReconciliationDashboard';
 import { BudgetRiskAlertsPanel } from '../../components/finance/BudgetRiskAlertsPanel';
+import { CouncilActionCenterPanel } from '../../components/finance/CouncilActionCenterPanel';
 import { fetchDashboardBudgetSummary } from '../../lib/budget/dashboardApi';
 import { supabase } from '../../lib/supabase';
 import { canManageInvoiceReview, canUploadInvoicePackage } from '../../lib/financePermissions';
@@ -45,6 +46,7 @@ export function FinanceBudgetTab() {
   const [govLoading, setGovLoading] = useState(false);
   const [govSaving, setGovSaving] = useState(false);
   const [govMessage, setGovMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [actionRefreshKey, setActionRefreshKey] = useState(0);
 
   const years = useMemo(() => yearOptions(anchorYear), [anchorYear]);
 
@@ -210,6 +212,15 @@ export function FinanceBudgetTab() {
         propertyId={currentPropertyId}
         fiscalYear={fiscalYear}
         en={en}
+        canManage={canSetGovernance}
+        onActionCreated={() => setActionRefreshKey((k) => k + 1)}
+      />
+
+      <CouncilActionCenterPanel
+        propertyId={currentPropertyId}
+        en={en}
+        canManage={canSetGovernance}
+        refreshKey={actionRefreshKey}
       />
 
       <section className="rounded-2xl border border-violet-200 bg-violet-50/70 p-5 shadow-sm">
