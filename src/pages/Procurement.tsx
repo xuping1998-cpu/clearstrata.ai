@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus, Clock, Eye, ArrowLeft, ShoppingCart, CheckCircle, AlertCircle, Wrench, Camera, FileText, Star, XCircle, Send, Loader2, Trash2, ScrollText } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -123,6 +123,7 @@ function StatusIcon({ status }: { status: string }) {
 
 export function Procurement() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { language } = useLanguage();
   const { profile } = useAuth();
   const { currentPropertyId, roleInProperty } = useProperty();
@@ -134,6 +135,7 @@ export function Procurement() {
   const [modal, setModal] = useState<string | null>(null);
   const [selectedJob, setSelectedJob] = useState<ProcurementJob | null>(null);
   const [focusJobId, setFocusJobId] = useState<string | null>(null);
+  const [newJobBudgetCategory, setNewJobBudgetCategory] = useState<string | null>(null);
   const jobCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const l = language === 'en';
@@ -301,6 +303,15 @@ export function Procurement() {
     return () => window.clearTimeout(t);
   }, [focusJobId, jobs]);
 
+  useEffect(() => {
+    const budgetCategory = searchParams.get('budget_category');
+    const wantsNew =
+      window.location.pathname.endsWith('/procurement/new') || searchParams.get('new') === '1';
+    if (!wantsNew || !profile || !currentPropertyId) return;
+    setNewJobBudgetCategory(budgetCategory);
+    setModal('newJob');
+  }, [searchParams, profile, currentPropertyId]);
+
   const openModal = (name: string, job?: ProcurementJob) => {
     if (job) setSelectedJob(job);
     setModal(name);
@@ -392,6 +403,7 @@ export function Procurement() {
         <NewJobModal
           language={language}
           profile={profile}
+          prefillBudgetCategory={newJobBudgetCategory}
           onClose={closeModal}
           onCreated={(jobId) => {
             closeModal();

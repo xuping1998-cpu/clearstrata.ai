@@ -32,9 +32,11 @@ export type CouncilAction = {
   assigned_to: string | null;
   assignee_name: string | null;
   due_date: string | null;
+  assigned_at: string | null;
   created_by: string | null;
   created_at: string;
   completed_at: string | null;
+  completed_by: string | null;
 };
 
 export type CouncilActionsSummary = {
@@ -42,6 +44,7 @@ export type CouncilActionsSummary = {
   inProgressCount: number;
   completedCount: number;
   overdueCount: number;
+  completionRate: number | null;
 };
 
 export type PropertyStaffOption = {
@@ -70,9 +73,11 @@ function mapActionRow(
     assigned_to: r.assigned_to != null ? String(r.assigned_to) : null,
     assignee_name: enName || zhName,
     due_date: r.due_date != null ? String(r.due_date).slice(0, 10) : null,
+    assigned_at: r.assigned_at != null ? String(r.assigned_at) : null,
     created_by: r.created_by != null ? String(r.created_by) : null,
     created_at: String(r.created_at),
     completed_at: r.completed_at != null ? String(r.completed_at) : null,
+    completed_by: r.completed_by != null ? String(r.completed_by) : null,
   };
 }
 
@@ -141,7 +146,7 @@ export async function listCouncilActions(propertyId: string): Promise<CouncilAct
   const { data, error } = await supabase
     .from('council_actions')
     .select(
-      'id, property_id, alert_type, alert_category, title, description, action_type, status, priority, assigned_to, due_date, created_by, created_at, completed_at',
+      'id, property_id, alert_type, alert_category, title, description, action_type, status, priority, assigned_to, due_date, assigned_at, created_by, created_at, completed_at, completed_by',
     )
     .eq('property_id', propertyId)
     .order('created_at', { ascending: false });
@@ -173,11 +178,13 @@ export async function listCouncilActions(propertyId: string): Promise<CouncilAct
 export function summarizeCouncilActions(rows: CouncilAction[]): CouncilActionsSummary {
   const today = new Date().toISOString().slice(0, 10);
   const active = rows.filter((r) => r.status === 'open' || r.status === 'in_progress');
+  const completedCount = rows.filter((r) => r.status === 'completed').length;
   return {
     openCount: rows.filter((r) => r.status === 'open').length,
     inProgressCount: rows.filter((r) => r.status === 'in_progress').length,
-    completedCount: rows.filter((r) => r.status === 'completed').length,
+    completedCount,
     overdueCount: active.filter((r) => r.due_date != null && r.due_date < today).length,
+    completionRate: rows.length === 0 ? null : (completedCount / rows.length) * 100,
   };
 }
 
@@ -208,7 +215,7 @@ export async function findOpenCouncilActionForAlert(
   const { data, error } = await supabase
     .from('council_actions')
     .select(
-      'id, property_id, alert_type, alert_category, title, description, action_type, status, priority, assigned_to, due_date, created_by, created_at, completed_at',
+      'id, property_id, alert_type, alert_category, title, description, action_type, status, priority, assigned_to, due_date, assigned_at, created_by, created_at, completed_at, completed_by',
     )
     .eq('property_id', propertyId)
     .eq('alert_type', alert.alert_type)
@@ -252,7 +259,7 @@ export async function createCouncilActionFromAlert(
       created_by: userId,
     })
     .select(
-      'id, property_id, alert_type, alert_category, title, description, action_type, status, priority, assigned_to, due_date, created_by, created_at, completed_at',
+      'id, property_id, alert_type, alert_category, title, description, action_type, status, priority, assigned_to, due_date, assigned_at, created_by, created_at, completed_at, completed_by',
     )
     .single();
 

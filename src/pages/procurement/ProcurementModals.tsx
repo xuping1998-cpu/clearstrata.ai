@@ -148,16 +148,19 @@ export interface SearchedVendor {
 export function NewJobModal({
   language,
   profile,
+  prefillBudgetCategory,
   onClose,
   onCreated,
 }: {
   language: string;
   profile: any;
+  prefillBudgetCategory?: string | null;
   onClose: () => void;
   onCreated: () => void;
 }) {
   const { currentPropertyId } = useProperty();
   const l = language === 'en';
+  const budgetNote = prefillBudgetCategory?.trim() ?? '';
   const [error, setError] = useState('');
   /** Quote package stage — accumulated attachments only; no OCR/search until button click. */
   const [pendingAttachments, setPendingAttachments] = useState<AttachmentItem[]>([]);
@@ -174,9 +177,12 @@ export function NewJobModal({
   const [createdJobId, setCreatedJobId] = useState<string | null>(null);
   const [searchCount, setSearchCount] = useState(0);
   const [newJob, setNewJob] = useState({
-    title_en: '', title_zh: '', description_en: '', description_zh: '',
+    title_en: budgetNote ? `Budget: ${budgetNote}` : '',
+    title_zh: budgetNote ? `预算：${budgetNote}` : '',
+    description_en: budgetNote ? `AGM budget category: ${budgetNote}` : '',
+    description_zh: budgetNote ? `AGM 预算科目：${budgetNote}` : '',
     estimated_budget: '', job_type: 'procurement' as 'maintenance' | 'procurement',
-    priority: 'medium', category: '', unit_number: '',
+    priority: 'medium', category: budgetNote, unit_number: '',
   });
   const [linkedTaskId, setLinkedTaskId] = useState('');
   const [managerTasks, setManagerTasks] = useState<{ id: string; title: string }[]>([]);

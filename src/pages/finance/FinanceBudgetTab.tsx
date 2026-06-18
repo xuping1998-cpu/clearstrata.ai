@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Loader2, PieChart } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { useProperty } from '../../contexts/PropertyContext';
 import { BudgetOverviewCard } from '../../components/dashboard/BudgetOverviewCard';
 import { AgmBudgetDocumentsPanel } from '../../components/finance/AgmBudgetDocumentsPanel';
@@ -26,6 +27,7 @@ function yearOptions(anchor: number): number[] {
 export function FinanceBudgetTab() {
   const { language } = useLanguage();
   const en = language === 'en';
+  const { profile } = useAuth();
   const { currentPropertyId, roleInProperty } = useProperty();
   const canSetGovernance = canManageInvoiceReview(roleInProperty);
   const canUploadBudget = canUploadInvoicePackage(roleInProperty);
@@ -47,6 +49,7 @@ export function FinanceBudgetTab() {
   const [govSaving, setGovSaving] = useState(false);
   const [govMessage, setGovMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [actionRefreshKey, setActionRefreshKey] = useState(0);
+  const [staffType, setStaffType] = useState<string | null>(null);
 
   const years = useMemo(() => yearOptions(anchorYear), [anchorYear]);
 
@@ -70,6 +73,29 @@ export function FinanceBudgetTab() {
   useEffect(() => {
     void reloadSummary();
   }, [reloadSummary]);
+
+  useEffect(() => {
+    if (!currentPropertyId || !profile?.id) {
+      setStaffType(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase
+        .from('property_members')
+        .select('staff_type')
+        .eq('property_id', currentPropertyId)
+        .eq('user_id', profile.id)
+        .eq('status', 'active')
+        .maybeSingle();
+      if (cancelled) return;
+      const st = (data as { staff_type?: string | null } | null)?.staff_type;
+      setStaffType(st != null ? String(st) : null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentPropertyId, profile?.id]);
 
   useEffect(() => {
     if (!currentPropertyId) {
@@ -218,8 +244,11 @@ export function FinanceBudgetTab() {
 
       <CouncilActionCenterPanel
         propertyId={currentPropertyId}
+        fiscalYear={fiscalYear}
         en={en}
         canManage={canSetGovernance}
+        roleInProperty={roleInProperty}
+        staffType={staffType}
         refreshKey={actionRefreshKey}
       />
 

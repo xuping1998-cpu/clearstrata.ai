@@ -367,6 +367,7 @@ function AuthenticatedRoutes() {
     <Routes>
       <Route path="/" element={<Dashboard />} />
       <Route path="/procurement" element={<Procurement />} />
+      <Route path="/procurement/new" element={<Procurement />} />
       <Route path="/voting" element={<Voting />} />
       <Route path="/voting/:id" element={<MeetingDetail />} />
       <Route path="/finance/invoices/:invoiceId" element={<FinanceInvoiceDeepLink />} />
