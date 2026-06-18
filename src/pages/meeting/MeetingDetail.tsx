@@ -1485,23 +1485,42 @@ export function MeetingDetail() {
     }
   }
 
-  async function handleSendInvites() {
+  async function handleSendInvites(mode: 'missing_only' | 'all_current_eligible' = 'missing_only') {
     console.log('🚨 BUILD VERSION', import.meta.env.VITE_BUILD_TIME || 'dev');
     if (!meeting) {
       console.warn('🚨 early return reason: handleSendInvites — meeting is null');
       return;
     }
-    console.log('send invite clicked', { meetingId: meeting.id, propertyId: meeting.property_id });
+    if (mode === 'all_current_eligible') {
+      const confirmed = window.confirm(
+        en
+          ? 'This will resend the meeting notice to all current eligible owners/council members, including recipients who were already sent or opened it. Continue?'
+          : '这会向当前所有合资格业主/业委会成员重新发送会议通知，包括已经发送或打开过的人。是否继续？',
+      );
+      if (!confirmed) return;
+    }
+    console.log('send invite clicked', {
+      meetingId: meeting.id,
+      propertyId: meeting.property_id,
+      mode,
+    });
     setBusy(true);
     setActionErr(null);
     setInviteToast(null);
     try {
-      const result = await sendMeetingInvitations(meeting.id, meeting.property_id, en ? 'en' : 'zh');
+      const result = await sendMeetingInvitations(meeting.id, meeting.property_id, en ? 'en' : 'zh', {
+        mode,
+      });
       console.log('recipients count', result.attempted);
       if (result.attempted === 0) {
-        const msg = en
-          ? 'All eligible recipients have already been invited.'
-          : '所有符合资格的成员均已邀请。';
+        const msg =
+          mode === 'all_current_eligible'
+            ? en
+              ? 'No eligible recipients to send.'
+              : '没有符合发送条件的成员。'
+            : en
+              ? 'All eligible recipients have already been invited.'
+              : '所有符合资格的成员均已邀请。';
         setInviteToast({ kind: 'error', text: msg });
         setActionErr(msg);
         return;
@@ -1523,10 +1542,15 @@ export function MeetingDetail() {
         setInviteToast({ kind: 'error', text: msg });
         return;
       }
-      const okMsg = en
-        ? `Invitation emails sent: ${result.sent}`
-        : `已成功发送 ${result.sent} 封会议邀请邮件`;
-      console.log('send-meeting-invite success', { sent: result.sent });
+      const okMsg =
+        mode === 'all_current_eligible'
+          ? en
+            ? `Formal resend completed: ${result.sent} invitation emails sent.`
+            : `正式重发完成：已成功发送 ${result.sent} 封会议邀请邮件。`
+          : en
+            ? `Invitation emails sent: ${result.sent}`
+            : `已成功发送 ${result.sent} 封会议邀请邮件`;
+      console.log('send-meeting-invite success', { sent: result.sent, mode });
       setInviteToast({ kind: 'success', text: okMsg });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -2842,11 +2866,20 @@ export function MeetingDetail() {
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={handleSendInvites}
+                  onClick={() => void handleSendInvites('missing_only')}
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-clearstrata-ui-primary text-white text-sm hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:opacity-50"
                 >
                   <Users size={16} />
-                  {t('meeting_vote_send_meeting_vote_invites')}
+                  {en ? 'Send Missing Invites' : '补发未发送'}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void handleSendInvites('all_current_eligible')}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-clearstrata-ui-primary text-clearstrata-ui-primary text-sm hover:bg-clearstrata-ui-primary/5 disabled:opacity-50"
+                >
+                  <Mail size={16} />
+                  {en ? 'Resend to All Current Eligible Voters' : '正式重发给全部'}
                 </button>
                 {inv.failed > 0 && (
                   <button

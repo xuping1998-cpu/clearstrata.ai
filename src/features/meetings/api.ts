@@ -1163,13 +1163,21 @@ export async function castBallot(voteId: string, selectedOptionKey: string, prop
  * Bulk invite: writes `meeting_invitations` as pending, then invokes `send-meeting-invite`
  * per member. Only marks `sent` after Resend succeeds; otherwise `failed`.
  */
+export type SendMeetingInvitationsMode = 'missing_only' | 'all_current_eligible';
+
+export type SendMeetingInvitationsOptions = {
+  mode?: SendMeetingInvitationsMode;
+};
+
 export async function sendMeetingInvitations(
   meetingId: string,
   propertyId: string,
   locale: 'en' | 'zh' = 'zh',
+  options: SendMeetingInvitationsOptions = {},
 ): Promise<SendMeetingInvitesResult> {
+  const mode: SendMeetingInvitationsMode = options.mode ?? 'missing_only';
   console.log('🚨 BUILD VERSION', import.meta.env.VITE_BUILD_TIME || 'dev');
-  console.log('🚨 sendMeetingInvitations CALLED', { meetingId, propertyId, locale });
+  console.log('🚨 sendMeetingInvitations CALLED', { meetingId, propertyId, locale, mode });
 
   const empty = (error: Error | null): SendMeetingInvitesResult => ({
     attempted: 0,
@@ -1205,18 +1213,33 @@ export async function sendMeetingInvitations(
       return empty(recipErr);
     }
 
-    const toSend = inviteRecipients.filter((r) => {
-      if (!r.invitation) return true;
-      const ds = r.invitation.delivery_status;
-      return ds === 'pending' || ds === 'failed';
-    });
+    if (inviteRecipients.length === 0) {
+      console.warn('🚨 early return reason:', 'no eligible invite recipients');
+      return empty(null);
+    }
+
+    const toSend =
+      mode === 'all_current_eligible'
+        ? inviteRecipients
+        : inviteRecipients.filter((r) => {
+            if (!r.invitation) return true;
+            const ds = r.invitation.delivery_status;
+            return ds === 'pending' || ds === 'failed';
+          });
 
     const userIds = toSend.map((r) => r.user_id);
 
-    console.log('[sendMeetingInvitations] recipients to send', userIds.length, 'of', inviteRecipients.length);
+    console.log(
+      '[sendMeetingInvitations] recipients to send',
+      userIds.length,
+      'of',
+      inviteRecipients.length,
+      'mode',
+      mode,
+    );
 
     if (userIds.length === 0) {
-      console.warn('🚨 early return reason:', 'no pending/failed recipients to send');
+      console.warn('🚨 early return reason:', 'no recipients to send for mode', mode);
       return empty(null);
     }
 
@@ -1226,15 +1249,26 @@ export async function sendMeetingInvitations(
       return empty(profErr);
     }
 
-    const pendingRows = userIds.map((userId) => ({
-      meeting_id: meetingId,
-      property_id: propertyId,
-      recipient_user_id: userId,
-      email: emailByUser[userId] ?? null,
-      delivery_channel: 'email',
-      delivery_status: 'pending',
-      sent_at: null as string | null,
-    }));
+    const pendingRows = userIds.map((userId) => {
+      const base = {
+        meeting_id: meetingId,
+        property_id: propertyId,
+        recipient_user_id: userId,
+        email: emailByUser[userId] ?? null,
+        delivery_channel: 'email' as const,
+        delivery_status: 'pending' as const,
+        sent_at: null as string | null,
+      };
+      if (mode === 'all_current_eligible') {
+        return {
+          ...base,
+          opened_at: null as string | null,
+          voted_at: null as string | null,
+          vote: null as 'approve' | 'reject' | 'abstain' | null,
+        };
+      }
+      return base;
+    });
 
     const { error: pendingErr } = await withProperty(
       supabase.from('meeting_invitations').upsert(pendingRows, {
