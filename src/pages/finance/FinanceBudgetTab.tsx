@@ -6,6 +6,7 @@ import { useProperty } from '../../contexts/PropertyContext';
 import { BudgetOverviewCard } from '../../components/dashboard/BudgetOverviewCard';
 import { AgmBudgetDocumentsPanel } from '../../components/finance/AgmBudgetDocumentsPanel';
 import { BudgetCategoryMappingsPanel } from '../../components/finance/BudgetCategoryMappingsPanel';
+import { BudgetExpenseVarianceDashboard } from '../../components/finance/BudgetExpenseVarianceDashboard';
 import { fetchDashboardBudgetSummary } from '../../lib/budget/dashboardApi';
 import { supabase } from '../../lib/supabase';
 import { canManageInvoiceReview, canUploadInvoicePackage } from '../../lib/financePermissions';
@@ -188,6 +189,12 @@ export function FinanceBudgetTab() {
         propertyId={currentPropertyId}
         fiscalYear={fiscalYear}
         canManage={canSetGovernance}
+        en={en}
+      />
+
+      <BudgetExpenseVarianceDashboard
+        propertyId={currentPropertyId}
+        fiscalYear={fiscalYear}
         en={en}
       />
 
