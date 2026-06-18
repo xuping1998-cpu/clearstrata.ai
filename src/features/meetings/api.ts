@@ -1393,11 +1393,15 @@ export type OwnerVoteMeetingLite = {
   status: string;
   voting_opens_at: string | null;
   voting_closes_at: string | null;
+  snapshot_freeze_at?: string | null;
   snapshot_frozen_at: string | null;
   scheduled_at?: string | null;
   meeting_type?: string | null;
   created_at: string;
 };
+
+/** Alias for owner-vote meeting rows loaded from `owner_vote_meetings`. */
+export type OwnerVoteMeeting = OwnerVoteMeetingLite;
 
 /** DB row subset including `description` for council-binding resolution (stripped before returning lite). */
 type OwnerVoteMeetingRowDb = OwnerVoteMeetingLite & { description?: string | null };
@@ -1408,6 +1412,7 @@ function ovDbRowToLite(r: OwnerVoteMeetingRowDb): OwnerVoteMeetingLite {
     status: r.status,
     voting_opens_at: r.voting_opens_at,
     voting_closes_at: r.voting_closes_at,
+    snapshot_freeze_at: r.snapshot_freeze_at ?? null,
     snapshot_frozen_at: r.snapshot_frozen_at,
     scheduled_at: r.scheduled_at,
     meeting_type: r.meeting_type,
@@ -1439,7 +1444,7 @@ async function fetchOwnerVoteMeetingCandidatesByTitle(
   const { data, error } = await supabase
     .from('owner_vote_meetings')
     .select(
-      'id,status,voting_opens_at,voting_closes_at,snapshot_frozen_at,created_at,scheduled_at,meeting_type,description',
+      'id,status,voting_opens_at,voting_closes_at,snapshot_freeze_at,snapshot_frozen_at,created_at,scheduled_at,meeting_type,description',
     )
     .eq('property_id', propertyId)
     .eq('title', titleTrim)
@@ -1459,7 +1464,7 @@ async function fetchOwnerVoteMeetingsByBindingMarkerSubstring(propertyId: string
   const { data, error } = await supabase
     .from('owner_vote_meetings')
     .select(
-      'id,status,voting_opens_at,voting_closes_at,snapshot_frozen_at,created_at,scheduled_at,meeting_type,description',
+      'id,status,voting_opens_at,voting_closes_at,snapshot_freeze_at,snapshot_frozen_at,created_at,scheduled_at,meeting_type,description',
     )
     .eq('property_id', propertyId)
     .ilike('description', needle);
@@ -1481,8 +1486,25 @@ async function resolveOwnerVoteMeetingDbRowForCouncil(
   const { rows: markedRows, error: mkErr } = await fetchOwnerVoteMeetingsByBindingMarkerSubstring(propertyId);
   if (mkErr) return { row: null, error: mkErr };
 
+  console.log('[OVResolve] markerRows', {
+    propertyId,
+    councilId,
+    count: markedRows.length,
+    rows: markedRows.map((r) => ({
+      id: r.id,
+      parsed: extractCouncilMeetingBinding(r.description ?? '').meta,
+    })),
+  });
+
   const boundToCouncil = markedRows.filter((r) => ownerVoteMeetingBindsCouncil(r.description ?? '', councilId));
   const markerPick = pickNewestOvDbByCreatedAt(boundToCouncil);
+
+  console.log('[OVResolve] boundToCouncil', {
+    councilId,
+    count: boundToCouncil.length,
+    picked: markerPick?.id,
+  });
+
   if (markerPick) return { row: markerPick, error: null };
 
   const title = councilMeetingTitleForOwnerVoteBinding(meeting).trim();
@@ -1722,6 +1744,12 @@ export async function fetchOwnerVoteMeetingMetaForCouncilMeeting(params: {
     console.error('[fetchOwnerVoteMeetingMetaForCouncilMeeting]', countErr);
   }
 
+  console.log('[OVMetaFetch] result', {
+    pickedId: picked?.id,
+    resolutionCount,
+    eligibleCount,
+  });
+
   return {
     meeting: picked,
     resolutions,
@@ -1729,6 +1757,25 @@ export async function fetchOwnerVoteMeetingMetaForCouncilMeeting(params: {
     eligibleCount,
     error: countErr ? new Error(countErr.message) : null,
   };
+}
+
+/** Council/admin/property_admin: set planned voter-roll freeze time (before snapshot is frozen). */
+export async function setOwnerVoteSnapshotFreezeAt(params: {
+  ownerVoteMeetingId: string;
+  snapshotFreezeAtIso: string;
+}): Promise<{ snapshotFreezeAt: string | null; error: Error | null }> {
+  const { ownerVoteMeetingId, snapshotFreezeAtIso } = params;
+  const { data, error } = await supabase.rpc('set_owner_vote_snapshot_freeze_at', {
+    p_meeting_id: ownerVoteMeetingId,
+    p_snapshot_freeze_at: snapshotFreezeAtIso,
+  });
+  if (error) return { snapshotFreezeAt: null, error: new Error(error.message) };
+  const d = data as { ok?: boolean; snapshot_freeze_at?: string } | null;
+  const at =
+    typeof d?.snapshot_freeze_at === 'string' && d.snapshot_freeze_at.trim()
+      ? d.snapshot_freeze_at
+      : snapshotFreezeAtIso;
+  return { snapshotFreezeAt: at, error: null };
 }
 
 /** Normalized row from `owner_vote_resolution_results` view. */

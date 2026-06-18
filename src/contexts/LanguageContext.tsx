@@ -124,6 +124,18 @@ const translations: Record<string, Record<Language, string>> = {
   meeting_ov_vote_opens: { en: 'Voting opens', zh: '投票开放' },
   meeting_ov_vote_closes: { en: 'Voting closes', zh: '投票截止' },
   meeting_ov_snapshot_frozen: { en: 'Snapshot frozen', zh: '冻结名单时间' },
+  meeting_ov_voter_roll_planned_freeze: {
+    en: 'Voter roll scheduled to freeze',
+    zh: '投票名单计划冻结',
+  },
+  meeting_ov_voter_roll_frozen_at: {
+    en: 'Voter roll frozen',
+    zh: '投票名单已冻结',
+  },
+  meeting_ov_freeze_roll_now: {
+    en: 'Freeze Voter Roll Now',
+    zh: '立即冻结名单',
+  },
   meeting_ov_eligible_count: { en: 'Eligible voters', zh: '应投户数' },
   meeting_ov_freeze_toast: { en: 'Eligibility list frozen', zh: '投票资格名单已冻结' },
   meeting_ov_need_res_and_freeze: {
@@ -401,6 +413,18 @@ const translations: Record<string, Record<Language, string>> = {
   meeting_format_live_remote: { en: 'Live Remote', zh: '实时远程会议' },
   meeting_format_hybrid: { en: 'Remote Written Meeting', zh: '远程书面会议' },
   meeting_format_written_remote: { en: 'Remote Written Meeting', zh: '远程书面会议' },
+  meeting_editor_voter_roll_freeze_label: {
+    en: 'Voting roll freeze time',
+    zh: '投票资格冻结时间',
+  },
+  meeting_editor_voter_roll_freeze_hint: {
+    en: 'Defaults to 7 days before voting closes. After the roll is frozen, this cannot be changed.',
+    zh: '默认为投票结束前 7 天。名单冻结后不可再修改。',
+  },
+  meeting_editor_voter_roll_freeze_readonly: {
+    en: 'The voter roll is already frozen; this time is locked.',
+    zh: '投票名单已冻结，此时间不可修改。',
+  },
   /** MeetingEditor dropdown — two user-visible buckets; values unchanged. */
   meeting_format_editor_option_hybrid: { en: 'Hybrid Meeting', zh: '混合会议' },
   meeting_format_editor_option_written_remote: {

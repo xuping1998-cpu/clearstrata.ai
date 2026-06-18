@@ -183,6 +183,9 @@ export function OwnerVotingInlineControlBar({
 
   const snapshotOk = !!(ov?.snapshot_frozen_at?.trim());
   const eligibleOk = meta.eligibleCount > 0;
+  const showManualFreezeNow =
+    isStaff && !!ov && !snapshotOk && !isCouncilMeetingEnded && !staffOvActionsReadOnly;
+  const plannedFreezeDisplayIso = ov?.snapshot_freeze_at?.trim() || meeting.scheduled_at?.trim() || null;
 
   const electionTimelineBlocksVoting = Boolean(
     electionNomRibbon?.nominationUiStatus === 'invalid',
@@ -311,6 +314,15 @@ export function OwnerVotingInlineControlBar({
           <p className="font-medium text-gray-900">{voteStatusLine()}</p>,
         )}
 
+        {ov
+          ? sectionCard(
+              snapshotOk ? t('meeting_ov_voter_roll_frozen_at') : t('meeting_ov_voter_roll_planned_freeze'),
+              <p className="font-medium text-gray-900">
+                {fmtTs(snapshotOk ? ov.snapshot_frozen_at : plannedFreezeDisplayIso, en)}
+              </p>,
+            )
+          : null}
+
         <div className="rounded-md border border-clearstrata-brand-100 bg-clearstrata-brand-50/35 px-3 py-2 shadow-inner space-y-1">
           <div className="text-xs font-medium text-gray-600">{summaryHeading}</div>
           <p className="text-gray-900 font-medium">{summaryBody}</p>
@@ -395,6 +407,18 @@ export function OwnerVotingInlineControlBar({
               <p className="text-sm text-gray-800 rounded-md border border-blue-100 bg-blue-50/70 px-3 py-2">
                 {v3AutoParticipationCopy}
               </p>
+              {showManualFreezeNow ? (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={ovBusy}
+                    onClick={() => void onFreezeSnapshot()}
+                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    {t('meeting_ov_freeze_roll_now')}
+                  </button>
+                </div>
+              ) : null}
               {!hideNavigateGoVote && (!isStaff || viewerIsEligibleVoter) ? (
                 <div className="flex flex-wrap gap-2">
                   <button
@@ -433,7 +457,7 @@ export function OwnerVotingInlineControlBar({
                         onClick={() => void onFreezeSnapshot()}
                         className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
                       >
-                        {t('meeting_ov_freeze')}
+                        {t('meeting_ov_freeze_roll_now')}
                       </button>
                     ) : null}
                     {showOpen ? (

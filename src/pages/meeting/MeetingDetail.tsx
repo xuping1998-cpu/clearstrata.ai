@@ -685,6 +685,10 @@ export function MeetingDetail() {
     };
   }, [showCouncilOwnerVoteUi, user?.id, ovMeta.meeting?.id]);
   const refreshOwnerVoteMeta = useCallback(async () => {
+    console.log('[OVRefresh] called', {
+      meetingId: meeting?.id,
+      propertyId: currentPropertyId,
+    });
     if (!meeting || !currentPropertyId || !isOwnerVotingMeeting(meeting)) {
       setOvMeta({ loading: false, meeting: null, resolutions: [], resolutionCount: 0, eligibleCount: 0 });
       setOvResolutionResults([]);
@@ -752,20 +756,30 @@ export function MeetingDetail() {
   }, [meeting, refreshOwnerVoteMeta]);
 
   /**
-   * V3 remote-written: no manual freeze button is rendered (hideStaffOvManualLifecycle),
-   * but `submit_owner_election_nomination` + `eligibleUnitNo` still require a frozen
-   * `owner_vote_voter_snapshot`. After meeting.scheduled_at, freeze once via the existing
-   * RPC so owner self-nomination becomes possible. AGM/legacy flows are unaffected.
+   * V3 remote-written: auto-freeze when snapshot_freeze_at is reached (fallback: scheduled_at for legacy rows).
+   * `submit_owner_election_nomination` + `eligibleUnitNo` require a frozen `owner_vote_voter_snapshot`.
    */
   useEffect(() => {
     if (!meeting || !isWrittenRemoteV3Meeting(meeting)) return;
-    const ovId = ovMeta.meeting?.id?.trim();
-    if (!ovId) return;
-    if (ovMeta.meeting?.snapshot_frozen_at?.trim()) return;
-    const scheduled = meeting.scheduled_at?.trim();
-    if (!scheduled) return;
-    const startMs = new Date(scheduled).getTime();
-    if (Number.isNaN(startMs) || Date.now() < startMs) return;
+    const ov = ovMeta.meeting;
+    const ovId = ov?.id?.trim();
+    if (!ovId || !ov) return;
+    if (ov.snapshot_frozen_at?.trim()) return;
+
+    const plannedIso = ov.snapshot_freeze_at?.trim();
+    let freezeAtMs: number | null = null;
+    if (plannedIso) {
+      const t = new Date(plannedIso).getTime();
+      freezeAtMs = Number.isNaN(t) ? null : t;
+    } else {
+      console.warn('[OV] snapshot_freeze_at missing');
+      const scheduled = meeting.scheduled_at?.trim();
+      if (scheduled) {
+        const t = new Date(scheduled).getTime();
+        freezeAtMs = Number.isNaN(t) ? null : t;
+      }
+    }
+    if (freezeAtMs == null || Date.now() < freezeAtMs) return;
     if (v3AutoFreezeAttemptedRef.current === ovId) return;
     v3AutoFreezeAttemptedRef.current = ovId;
     void (async () => {
@@ -776,7 +790,13 @@ export function MeetingDetail() {
       }
       await refreshOwnerVoteMeta();
     })();
-  }, [meeting, ovMeta.meeting?.id, ovMeta.meeting?.snapshot_frozen_at, refreshOwnerVoteMeta]);
+  }, [
+    meeting,
+    ovMeta.meeting?.id,
+    ovMeta.meeting?.snapshot_frozen_at,
+    ovMeta.meeting?.snapshot_freeze_at,
+    refreshOwnerVoteMeta,
+  ]);
 
   useEffect(() => {
     if (!evToast) return;

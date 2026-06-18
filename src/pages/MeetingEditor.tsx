@@ -10,6 +10,7 @@ import {
   editorAgendaRowsHaveElectionAgenda,
   ensureOwnerVoteMeetingAfterEditorElectionSave,
   fetchOwnerVoteMeetingMetaForCouncilMeeting,
+  setOwnerVoteSnapshotFreezeAt,
   getMeetingDetail,
   noticeReadiness,
   updateMeeting,
@@ -128,7 +129,48 @@ const defaultForm = {
   initiation_type: 'council_initiated' as MeetingInitiationType,
   total_voting_units: '',
   signed_units: '',
+  snapshot_freeze_at: '',
 };
+
+type OvEditorMeta = {
+  meetingId: string | null;
+  snapshot_frozen_at: string | null;
+  /** True when `owner_vote_meetings.snapshot_freeze_at` was loaded from DB. */
+  hadDbFreezeAt: boolean;
+};
+
+function isAgmOrSgmMeetingType(meetingType: MeetingType): boolean {
+  return meetingType === 'agm' || meetingType === 'sgm';
+}
+
+function resolveEditorVotingCloseIso(params: {
+  form: typeof defaultForm;
+  detailMeeting: MeetingRow | null;
+  editorRemoteWrittenV3Ui: boolean;
+  agendaCount: number;
+  useLegacyWrittenEmbed: boolean;
+}): string | null {
+  const { form, detailMeeting, editorRemoteWrittenV3Ui, agendaCount, useLegacyWrittenEmbed } = params;
+  const scheduledIso =
+    isoFromDatetimeLocal(form.scheduled_at) ?? detailMeeting?.scheduled_at?.trim() ?? null;
+  if (!scheduledIso) return null;
+  if (isWrittenRemoteUi(form.meeting_format_ui)) {
+    if (editorRemoteWrittenV3Ui && !useLegacyWrittenEmbed) {
+      return deriveRemoteWrittenV3CanonFromScheduledAt(scheduledIso)?.votingCloseIso ?? null;
+    }
+    return deriveCouncilElectionCanonFromScheduledAt(scheduledIso)?.votingCloseIso ?? null;
+  }
+  if (isAgmOrSgmMeetingType(form.meeting_type)) {
+    return deriveAgmSgmCanonDisplayWindows(scheduledIso, agendaCount > 0)?.votingCloseIso ?? null;
+  }
+  return null;
+}
+
+function defaultSnapshotFreezeLocalFromVotingClose(votingCloseIso: string): string {
+  const closeLocal = sliceDatetimeLocal(votingCloseIso);
+  if (!closeLocal) return '';
+  return addDaysDatetimeLocal(closeLocal, -7);
+}
 
 /**
  * Single editor dropdown; maps to existing `MeetingType` + governance `MeetingInitiationType` + `MeetingFormatUi`.
@@ -587,6 +629,8 @@ export function MeetingEditor() {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [voteLine, setVoteLine] = useState<'loading' | 'none' | string>('loading');
+  const [ovEditorMeta, setOvEditorMeta] = useState<OvEditorMeta | null>(null);
+  const snapshotFreezeTouchedRef = useRef(false);
   const [showOpeningStatementPrefillHint, setShowOpeningStatementPrefillHint] = useState(false);
 
   const agendaCount = useMemo(() => agendaItems.filter(agendaHasMeaningfulContent).length, [agendaItems]);
@@ -603,6 +647,27 @@ export function MeetingEditor() {
   const editorRemoteWrittenV3Ui =
     (isEdit && !!detailMeeting && isWrittenRemoteV3Meeting(detailMeeting)) ||
     (!isEdit && isWrittenRemoteUi(form.meeting_format_ui));
+
+  const showVoterRollFreezeField = isAgmOrSgmMeetingType(form.meeting_type);
+  const voterRollFreezeReadOnly = !!(ovEditorMeta?.snapshot_frozen_at?.trim());
+
+  const editorUseLegacyWrittenEmbed = useMemo(() => {
+    if (!isEdit || !detailMeeting || !isWrittenRemoteUi(form.meeting_format_ui)) return false;
+    const existingWrittenMeta = extractWrittenRemoteMeta(detailMeeting.description_zh).meta;
+    return existingWrittenMeta != null && !isWrittenRemoteV3Meta(existingWrittenMeta);
+  }, [isEdit, detailMeeting, form.meeting_format_ui]);
+
+  const editorVotingCloseIso = useMemo(
+    () =>
+      resolveEditorVotingCloseIso({
+        form,
+        detailMeeting,
+        editorRemoteWrittenV3Ui,
+        agendaCount,
+        useLegacyWrittenEmbed: editorUseLegacyWrittenEmbed,
+      }),
+    [form, detailMeeting, editorRemoteWrittenV3Ui, agendaCount, editorUseLegacyWrittenEmbed],
+  );
 
   const agendaIdsWithCouncilBallots = useMemo(() => {
     const s = new Set<string>();
@@ -638,6 +703,51 @@ export function MeetingEditor() {
     // Only read navigation state on new-meeting mount (not on every location.state change).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEdit]);
+
+  useEffect(() => {
+    snapshotFreezeTouchedRef.current = false;
+    setOvEditorMeta(null);
+  }, [meetingId]);
+
+  useEffect(() => {
+    if (!showVoterRollFreezeField || voterRollFreezeReadOnly || snapshotFreezeTouchedRef.current) return;
+    if (ovEditorMeta?.hadDbFreezeAt) return;
+    if (!editorVotingCloseIso) return;
+    const def = defaultSnapshotFreezeLocalFromVotingClose(editorVotingCloseIso);
+    if (!def) return;
+    setForm((f) => (f.snapshot_freeze_at === def ? f : { ...f, snapshot_freeze_at: def }));
+  }, [showVoterRollFreezeField, voterRollFreezeReadOnly, ovEditorMeta?.hadDbFreezeAt, editorVotingCloseIso]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (!isEdit || !detailMeeting || !currentPropertyId || !isOwnerVotingMeeting(detailMeeting)) {
+        setOvEditorMeta(null);
+        return;
+      }
+      const res = await fetchOwnerVoteMeetingMetaForCouncilMeeting({
+        propertyId: currentPropertyId,
+        meeting: detailMeeting,
+      });
+      if (cancelled) return;
+      const hadDbFreezeAt = Boolean(res.meeting?.snapshot_freeze_at?.trim());
+      setOvEditorMeta({
+        meetingId: res.meeting?.id ?? null,
+        snapshot_frozen_at: res.meeting?.snapshot_frozen_at ?? null,
+        hadDbFreezeAt,
+      });
+      if (hadDbFreezeAt && res.meeting?.snapshot_freeze_at) {
+        snapshotFreezeTouchedRef.current = false;
+        setForm((f) => ({
+          ...f,
+          snapshot_freeze_at: sliceDatetimeLocal(res.meeting!.snapshot_freeze_at),
+        }));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isEdit, detailMeeting, currentPropertyId]);
 
   useEffect(() => {
     if (!isEdit || !meetingId || !currentPropertyId || !user) {
@@ -997,6 +1107,37 @@ export function MeetingEditor() {
         : `会议已保存，但未能自动关联业主表决会议：${error.message}`;
     };
 
+    const persistVoterRollFreezeAt = async (councilMeetingRow: MeetingRow): Promise<string | null> => {
+      if (!isAgmOrSgmMeetingType(form.meeting_type)) return null;
+      if (ovEditorMeta?.snapshot_frozen_at?.trim()) return null;
+      const loc = form.snapshot_freeze_at.trim();
+      if (!loc) return null;
+      const freezeIso = isoFromDatetimeLocal(loc);
+      if (!freezeIso) {
+        return en ? 'Invalid voting roll freeze time.' : '投票资格冻结时间无效。';
+      }
+      let ovId = ovEditorMeta?.meetingId ?? null;
+      if (!ovId) {
+        const meta = await fetchOwnerVoteMeetingMetaForCouncilMeeting({
+          propertyId: currentPropertyId,
+          meeting: councilMeetingRow,
+        });
+        if (meta.meeting?.snapshot_frozen_at?.trim()) return null;
+        ovId = meta.meeting?.id ?? null;
+      }
+      if (!ovId) return null;
+      const { error } = await setOwnerVoteSnapshotFreezeAt({
+        ownerVoteMeetingId: ovId,
+        snapshotFreezeAtIso: freezeIso,
+      });
+      if (error) {
+        return en
+          ? `Could not save voting roll freeze time: ${error.message}`
+          : `无法保存投票资格冻结时间：${error.message}`;
+      }
+      return null;
+    };
+
     if (!isEdit) {
       const { id, error } = await createMeeting({
         propertyId: currentPropertyId,
@@ -1040,8 +1181,23 @@ export function MeetingEditor() {
         return;
       }
       const ovWarnCreate = await runOwnerVoteEnsureAfterAgendaSave(id);
+      const councilRowCreate = buildCouncilMeetingRowAfterEditorSave({
+        meetingId: id,
+        propertyId: currentPropertyId,
+        fiscalYear,
+        form,
+        descriptionZhFinal,
+        scheduledIso,
+        dbFormat,
+        votingOpenIso: written ? votingOpenIso : null,
+        votingCloseIso: written ? votingCloseIso : null,
+        createdBy: user.id,
+        prior: null,
+      });
+      const freezeWarnCreate = await persistVoterRollFreezeAt(councilRowCreate);
       setSaving(false);
-      if (ovWarnCreate) setErr(ovWarnCreate);
+      const createWarn = [ovWarnCreate, freezeWarnCreate].filter(Boolean).join(' ') || null;
+      if (createWarn) setErr(createWarn);
       navigate(`/meetings/${id}`);
       return;
     }
@@ -1083,11 +1239,26 @@ export function MeetingEditor() {
       return;
     }
     const ovWarnEdit = await runOwnerVoteEnsureAfterAgendaSave(meetingId!);
+    const councilRowEdit = buildCouncilMeetingRowAfterEditorSave({
+      meetingId: meetingId!,
+      propertyId: currentPropertyId,
+      fiscalYear,
+      form,
+      descriptionZhFinal,
+      scheduledIso,
+      dbFormat,
+      votingOpenIso: written ? votingOpenIso : null,
+      votingCloseIso: written ? votingCloseIso : null,
+      createdBy: user.id,
+      prior: detailMeeting,
+    });
+    const freezeWarnEdit = await persistVoterRollFreezeAt(councilRowEdit);
     setSaving(false);
     setPendingDeleteServerIds([]);
     setAgendaItems(meaningful);
     setEditingClientId(null);
-    if (ovWarnEdit) setErr(ovWarnEdit);
+    const editWarn = [ovWarnEdit, freezeWarnEdit].filter(Boolean).join(' ') || null;
+    if (editWarn) setErr(editWarn);
     navigate(`/meetings/${meetingId}`);
   }
 
@@ -1401,6 +1572,30 @@ export function MeetingEditor() {
             ) : null}
           </div>
         )}
+
+        {showVoterRollFreezeField ? (
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              {t('meeting_editor_voter_roll_freeze_label')}
+            </label>
+            <input
+              type="datetime-local"
+              value={form.snapshot_freeze_at}
+              readOnly={voterRollFreezeReadOnly}
+              disabled={voterRollFreezeReadOnly}
+              onChange={(e) => {
+                snapshotFreezeTouchedRef.current = true;
+                setForm((f) => ({ ...f, snapshot_freeze_at: e.target.value }));
+              }}
+              className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2 text-gray-900 disabled:bg-gray-100 disabled:text-gray-600"
+            />
+            <p className="mt-2 text-xs text-gray-600 leading-relaxed">
+              {voterRollFreezeReadOnly
+                ? t('meeting_editor_voter_roll_freeze_readonly')
+                : t('meeting_editor_voter_roll_freeze_hint')}
+            </p>
+          </div>
+        ) : null}
 
         <div>
           <label className="block text-sm font-medium text-gray-700">{t('meeting_status')}</label>
