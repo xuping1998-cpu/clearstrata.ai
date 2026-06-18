@@ -505,15 +505,20 @@ export async function listWorkflowStaffOptions(propertyId: string): Promise<Work
   });
 }
 
+/** All active property managers with valid auth user ids. */
+export function findPropertyManagers(
+  staffOptions: WorkflowStaffOption[],
+): WorkflowStaffOption[] {
+  return staffOptions.filter(
+    (s) => String(s.role).toLowerCase() === 'manager' && Boolean(s.user_id?.trim()),
+  );
+}
+
 /** First active property manager with a valid auth user id. */
 export function findPropertyManager(
   staffOptions: WorkflowStaffOption[],
 ): WorkflowStaffOption | null {
-  return (
-    staffOptions.find(
-      (s) => String(s.role).toLowerCase() === 'manager' && Boolean(s.user_id?.trim()),
-    ) ?? null
-  );
+  return findPropertyManagers(staffOptions)[0] ?? null;
 }
 
 export function workflowStaffLabel(staff: WorkflowStaffOption, en: boolean): string {

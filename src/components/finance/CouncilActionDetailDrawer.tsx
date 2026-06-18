@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Briefcase,
@@ -24,7 +24,7 @@ import {
   assignCouncilAction,
   canInteractCouncilActionWorkflow,
   canManageCouncilActionWorkflow,
-  findPropertyManager,
+  findPropertyManagers,
   createActionComment,
   createCouncilDiscussionFromAction,
   eventTypeLabel,
@@ -94,7 +94,10 @@ export function CouncilActionDetailDrawer({
   const [dueDate, setDueDate] = useState(action.due_date ?? '');
   const [commentDraft, setCommentDraft] = useState('');
   const [showAssignFocus, setShowAssignFocus] = useState(false);
+  const [showManagerPicker, setShowManagerPicker] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+
+  const managerCandidates = useMemo(() => findPropertyManagers(staff), [staff]);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -150,10 +153,9 @@ export function CouncilActionDetailDrawer({
   };
 
   const handleAssignManager = async () => {
-    const assignedMsg = en ? 'Assigned to property manager.' : '已分配给物业经理。';
-    const manager = findPropertyManager(staff);
+    const managers = findPropertyManagers(staff);
 
-    if (!manager?.user_id?.trim()) {
+    if (managers.length === 0) {
       const hasManagerRoleWithoutUser = staff.some(
         (s) => String(s.role).toLowerCase() === 'manager' && !s.user_id?.trim(),
       );
@@ -164,6 +166,7 @@ export function CouncilActionDetailDrawer({
             : '物业经理尚未接受邀请，无法分配。',
         );
         setShowAssignFocus(true);
+        setShowManagerPicker(false);
         return;
       }
       setMessage(
@@ -172,13 +175,37 @@ export function CouncilActionDetailDrawer({
           : '未找到物业经理，请先在人员管理中添加物业经理。',
       );
       setShowAssignFocus(true);
+      setShowManagerPicker(false);
+      return;
+    }
+
+    if (managers.length > 1) {
+      setShowManagerPicker(true);
+      setMessage(en ? 'Please select a property manager to assign.' : '请选择要分配的物业经理。');
+      return;
+    }
+
+    await assignManagerTo(managers[0]);
+  };
+
+  const assignManagerTo = async (manager: WorkflowStaffOption) => {
+    const assignedMsg = en ? 'Assigned to property manager.' : '已分配给物业经理。';
+    const alreadyMsg = en ? 'Already assigned to this property manager.' : '已分配给该物业经理。';
+
+    if (!manager.user_id?.trim()) {
+      setMessage(
+        en
+          ? 'The manager has not accepted the invitation yet.'
+          : '物业经理尚未接受邀请，无法分配。',
+      );
       return;
     }
 
     const currentAssignee = assignedTo || action.assigned_to || '';
     if (currentAssignee === manager.user_id) {
       setAssignedTo(manager.user_id);
-      setMessage(assignedMsg);
+      setShowManagerPicker(false);
+      setMessage(alreadyMsg);
       return;
     }
 
@@ -191,6 +218,7 @@ export function CouncilActionDetailDrawer({
       setMessage(error ?? (en ? 'Assign failed' : '分配失败'));
       return;
     }
+    setShowManagerPicker(false);
     setMessage(assignedMsg);
     onUpdated();
     await reload();
@@ -463,6 +491,55 @@ export function CouncilActionDetailDrawer({
                     {en ? 'Assign Manager' : '分配经理'}
                   </button>
                 </div>
+                {showManagerPicker && managerCandidates.length > 1 ? (
+                  <div className="mt-3 rounded-lg border border-violet-200 bg-white p-3">
+                    <h6 className="text-xs font-semibold text-violet-950">
+                      {en ? 'Select property manager' : '选择物业经理'}
+                    </h6>
+                    <ul className="mt-2 space-y-2">
+                      {managerCandidates.map((manager) => {
+                        const isCurrent =
+                          (assignedTo || action.assigned_to || '') === manager.user_id;
+                        return (
+                          <li
+                            key={manager.user_id}
+                            className="flex items-center justify-between gap-2 rounded-md border border-gray-100 bg-gray-50 px-2 py-2 text-sm"
+                          >
+                            <div className="min-w-0">
+                              <div className="font-medium text-gray-900">
+                                {workflowStaffLabel(manager, en)}
+                              </div>
+                              {manager.email ? (
+                                <div className="truncate text-xs text-gray-500">{manager.email}</div>
+                              ) : null}
+                            </div>
+                            <button
+                              type="button"
+                              disabled={saving || isCurrent}
+                              onClick={() => void assignManagerTo(manager)}
+                              className="shrink-0 rounded-lg bg-violet-700 px-2.5 py-1 text-xs font-semibold text-white hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {isCurrent
+                                ? en
+                                  ? 'Assigned'
+                                  : '已分配'
+                                : en
+                                  ? 'Assign'
+                                  : '分配'}
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    <button
+                      type="button"
+                      className="mt-2 text-xs text-gray-500 hover:text-gray-700"
+                      onClick={() => setShowManagerPicker(false)}
+                    >
+                      {en ? 'Cancel' : '取消'}
+                    </button>
+                  </div>
+                ) : null}
               </section>
 
               <section className="mt-4">
