@@ -8,6 +8,7 @@ import { AgmBudgetDocumentsPanel } from '../../components/finance/AgmBudgetDocum
 import { BudgetCategoryMappingsPanel } from '../../components/finance/BudgetCategoryMappingsPanel';
 import { BudgetExpenseVarianceDashboard } from '../../components/finance/BudgetExpenseVarianceDashboard';
 import { RevenueReconciliationDashboard } from '../../components/finance/RevenueReconciliationDashboard';
+import { BudgetRiskAlertsPanel } from '../../components/finance/BudgetRiskAlertsPanel';
 import { fetchDashboardBudgetSummary } from '../../lib/budget/dashboardApi';
 import { supabase } from '../../lib/supabase';
 import { canManageInvoiceReview, canUploadInvoicePackage } from '../../lib/financePermissions';
@@ -200,6 +201,12 @@ export function FinanceBudgetTab() {
       />
 
       <RevenueReconciliationDashboard
+        propertyId={currentPropertyId}
+        fiscalYear={fiscalYear}
+        en={en}
+      />
+
+      <BudgetRiskAlertsPanel
         propertyId={currentPropertyId}
         fiscalYear={fiscalYear}
         en={en}
