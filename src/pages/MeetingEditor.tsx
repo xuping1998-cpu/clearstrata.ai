@@ -10,7 +10,8 @@ import {
   editorAgendaRowsHaveElectionAgenda,
   ensureOwnerVoteMeetingAfterEditorElectionSave,
   fetchOwnerVoteMeetingMetaForCouncilMeeting,
-  setOwnerVoteSnapshotFreezeAt,
+  councilMeetingOwnerVoteVotingWindow,
+  syncOwnerVoteMeetingWindowForCouncilMeeting,
   getMeetingDetail,
   noticeReadiness,
   updateMeeting,
@@ -1107,33 +1108,38 @@ export function MeetingEditor() {
         : `会议已保存，但未能自动关联业主表决会议：${error.message}`;
     };
 
-    const persistVoterRollFreezeAt = async (councilMeetingRow: MeetingRow): Promise<string | null> => {
+    const persistOwnerVoteWindowSync = async (councilMeetingRow: MeetingRow): Promise<string | null> => {
       if (!isAgmOrSgmMeetingType(form.meeting_type)) return null;
+      if (!isOwnerVotingMeeting(councilMeetingRow)) return null;
       if (ovEditorMeta?.snapshot_frozen_at?.trim()) return null;
+
+      const { votingOpensAt, votingClosesAt } = councilMeetingOwnerVoteVotingWindow(councilMeetingRow);
+
+      let snapshotFreezeIso: string | null = null;
       const loc = form.snapshot_freeze_at.trim();
-      if (!loc) return null;
-      const freezeIso = isoFromDatetimeLocal(loc);
-      if (!freezeIso) {
-        return en ? 'Invalid voting roll freeze time.' : '投票资格冻结时间无效。';
+      if (loc) {
+        snapshotFreezeIso = isoFromDatetimeLocal(loc);
+        if (!snapshotFreezeIso) {
+          return en ? 'Invalid voting roll freeze time.' : '投票资格冻结时间无效。';
+        }
       }
-      let ovId = ovEditorMeta?.meetingId ?? null;
-      if (!ovId) {
-        const meta = await fetchOwnerVoteMeetingMetaForCouncilMeeting({
-          propertyId: currentPropertyId,
-          meeting: councilMeetingRow,
-        });
-        if (meta.meeting?.snapshot_frozen_at?.trim()) return null;
-        ovId = meta.meeting?.id ?? null;
-      }
-      if (!ovId) return null;
-      const { error } = await setOwnerVoteSnapshotFreezeAt({
-        ownerVoteMeetingId: ovId,
-        snapshotFreezeAtIso: freezeIso,
+
+      const result = await syncOwnerVoteMeetingWindowForCouncilMeeting({
+        propertyId: currentPropertyId,
+        meeting: councilMeetingRow,
+        votingOpensAt,
+        votingClosesAt,
+        snapshotFreezeAt: snapshotFreezeIso,
+        hadUserSnapshotFreeze:
+          Boolean(ovEditorMeta?.hadDbFreezeAt) ||
+          snapshotFreezeTouchedRef.current ||
+          Boolean(loc),
       });
-      if (error) {
+
+      if (result.error) {
         return en
-          ? `Could not save voting roll freeze time: ${error.message}`
-          : `无法保存投票资格冻结时间：${error.message}`;
+          ? `Could not sync owner vote window: ${result.error.message}`
+          : `无法同步业主表决投票窗口：${result.error.message}`;
       }
       return null;
     };
@@ -1194,7 +1200,7 @@ export function MeetingEditor() {
         createdBy: user.id,
         prior: null,
       });
-      const freezeWarnCreate = await persistVoterRollFreezeAt(councilRowCreate);
+      const freezeWarnCreate = await persistOwnerVoteWindowSync(councilRowCreate);
       setSaving(false);
       const createWarn = [ovWarnCreate, freezeWarnCreate].filter(Boolean).join(' ') || null;
       if (createWarn) setErr(createWarn);
@@ -1252,7 +1258,7 @@ export function MeetingEditor() {
       createdBy: user.id,
       prior: detailMeeting,
     });
-    const freezeWarnEdit = await persistVoterRollFreezeAt(councilRowEdit);
+    const freezeWarnEdit = await persistOwnerVoteWindowSync(councilRowEdit);
     setSaving(false);
     setPendingDeleteServerIds([]);
     setAgendaItems(meaningful);

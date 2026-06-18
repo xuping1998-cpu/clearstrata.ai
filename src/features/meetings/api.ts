@@ -2,6 +2,7 @@ import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
 import { withProperty } from '../../lib/supabaseTenant';
 import { deriveOwnerVoteMeetingVotingTimes } from './meetingFormatModel';
+import { addDaysIso } from './ownerVotingCouncil';
 import {
   councilMeetingBindingMarkerSubstring,
   councilMeetingTitleForOwnerVoteBinding,
@@ -2078,6 +2079,144 @@ export async function setOwnerVoteSnapshotFreezeAt(params: {
       ? d.snapshot_freeze_at
       : snapshotFreezeAtIso;
   return { snapshotFreezeAt: at, error: null };
+}
+
+export type SyncOwnerVoteMeetingWindowResult = {
+  ok: boolean;
+  updated: boolean;
+  reason?: string;
+  ownerVoteMeetingId?: string | null;
+  error: Error | null;
+};
+
+function resolveOwnerVoteSnapshotFreezeAt(params: {
+  votingClosesAt: string;
+  requestedIso?: string | null;
+  existingIso?: string | null;
+  hadUserSnapshotFreeze: boolean;
+}): string {
+  const defaultIso = addDaysIso(params.votingClosesAt, -7);
+  const closeMs = Date.parse(params.votingClosesAt);
+
+  let candidate = defaultIso;
+  if (params.requestedIso?.trim()) {
+    const t = Date.parse(params.requestedIso.trim());
+    if (!Number.isNaN(t)) candidate = new Date(t).toISOString();
+  } else if (params.hadUserSnapshotFreeze && params.existingIso?.trim()) {
+    const t = Date.parse(params.existingIso.trim());
+    if (!Number.isNaN(t)) candidate = new Date(t).toISOString();
+  }
+
+  const candMs = Date.parse(candidate);
+  if (Number.isNaN(closeMs) || Number.isNaN(candMs) || candMs >= closeMs) {
+    return defaultIso;
+  }
+  return candidate;
+}
+
+/**
+ * After council AGM/SGM save: sync bound `owner_vote_meetings` voting window + planned freeze time.
+ * Skips when snapshot is already frozen.
+ */
+export async function syncOwnerVoteMeetingWindowForCouncilMeeting(params: {
+  propertyId: string;
+  meeting: MeetingRow;
+  votingOpensAt: string;
+  votingClosesAt: string;
+  snapshotFreezeAt?: string | null;
+  hadUserSnapshotFreeze?: boolean;
+}): Promise<SyncOwnerVoteMeetingWindowResult> {
+  const {
+    propertyId,
+    meeting,
+    votingOpensAt,
+    votingClosesAt,
+    snapshotFreezeAt,
+    hadUserSnapshotFreeze = false,
+  } = params;
+
+  if (!isOwnerVotingMeeting(meeting)) {
+    return {
+      ok: true,
+      updated: false,
+      reason: 'not_owner_vote_meeting',
+      ownerVoteMeetingId: null,
+      error: null,
+    };
+  }
+
+  const { row, error: resErr } = await resolveOwnerVoteMeetingDbRowForCouncil(propertyId, meeting);
+  if (resErr) {
+    return { ok: false, updated: false, error: resErr };
+  }
+  if (!row) {
+    return {
+      ok: true,
+      updated: false,
+      reason: 'no_owner_vote_meeting',
+      ownerVoteMeetingId: null,
+      error: null,
+    };
+  }
+
+  if (String(row.snapshot_frozen_at ?? '').trim()) {
+    return {
+      ok: true,
+      updated: false,
+      reason: 'skipped_frozen',
+      ownerVoteMeetingId: row.id,
+      error: null,
+    };
+  }
+
+  const resolvedFreezeAt = resolveOwnerVoteSnapshotFreezeAt({
+    votingClosesAt: votingClosesAt,
+    requestedIso: snapshotFreezeAt,
+    existingIso: row.snapshot_freeze_at,
+    hadUserSnapshotFreeze,
+  });
+
+  const scheduledIso = meeting.scheduled_at?.trim()
+    ? new Date(meeting.scheduled_at).toISOString()
+    : null;
+
+  const { error: upErr } = await withProperty(
+    supabase
+      .from('owner_vote_meetings')
+      .update({
+        voting_opens_at: votingOpensAt,
+        voting_closes_at: votingClosesAt,
+        snapshot_freeze_at: resolvedFreezeAt,
+        scheduled_at: scheduledIso,
+        updated_at: new Date().toISOString(),
+      } as Record<string, unknown>)
+      .eq('id', row.id) as any,
+    propertyId,
+  );
+
+  if (upErr) {
+    return {
+      ok: false,
+      updated: false,
+      ownerVoteMeetingId: row.id,
+      error: new Error((upErr as { message?: string }).message ?? 'Failed to sync owner vote window'),
+    };
+  }
+
+  return {
+    ok: true,
+    updated: true,
+    ownerVoteMeetingId: row.id,
+    error: null,
+  };
+}
+
+/** Council meeting row → owner_vote voting window (V3 / written-remote / row fields). */
+export function councilMeetingOwnerVoteVotingWindow(meeting: MeetingRow): {
+  votingOpensAt: string;
+  votingClosesAt: string;
+} {
+  return deriveOwnerVoteMeetingVotingTimes(meeting);
 }
 
 /** Normalized row from `owner_vote_resolution_results` view. */
