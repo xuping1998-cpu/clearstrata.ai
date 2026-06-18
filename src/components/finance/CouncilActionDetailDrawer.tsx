@@ -24,6 +24,7 @@ import {
   assignCouncilAction,
   canInteractCouncilActionWorkflow,
   canManageCouncilActionWorkflow,
+  findPropertyManager,
   createActionComment,
   createCouncilDiscussionFromAction,
   eventTypeLabel,
@@ -144,6 +145,53 @@ export function CouncilActionDetailDrawer({
       return;
     }
     setMessage(en ? 'Assignee updated.' : '负责人已更新。');
+    onUpdated();
+    await reload();
+  };
+
+  const handleAssignManager = async () => {
+    const assignedMsg = en ? 'Assigned to property manager.' : '已分配给物业经理。';
+    const manager = findPropertyManager(staff);
+
+    if (!manager?.user_id?.trim()) {
+      const hasManagerRoleWithoutUser = staff.some(
+        (s) => String(s.role).toLowerCase() === 'manager' && !s.user_id?.trim(),
+      );
+      if (hasManagerRoleWithoutUser) {
+        setMessage(
+          en
+            ? 'The manager has not accepted the invitation yet.'
+            : '物业经理尚未接受邀请，无法分配。',
+        );
+        setShowAssignFocus(true);
+        return;
+      }
+      setMessage(
+        en
+          ? 'No property manager found. Please add a manager first.'
+          : '未找到物业经理，请先在人员管理中添加物业经理。',
+      );
+      setShowAssignFocus(true);
+      return;
+    }
+
+    const currentAssignee = assignedTo || action.assigned_to || '';
+    if (currentAssignee === manager.user_id) {
+      setAssignedTo(manager.user_id);
+      setMessage(assignedMsg);
+      return;
+    }
+
+    setSaving(true);
+    setMessage(null);
+    setAssignedTo(manager.user_id);
+    const { ok, error } = await assignCouncilAction(action.id, manager.user_id);
+    setSaving(false);
+    if (!ok) {
+      setMessage(error ?? (en ? 'Assign failed' : '分配失败'));
+      return;
+    }
+    setMessage(assignedMsg);
     onUpdated();
     await reload();
   };
@@ -407,8 +455,8 @@ export function CouncilActionDetailDrawer({
                   </button>
                   <button
                     type="button"
-                    disabled={!canManage}
-                    onClick={() => setShowAssignFocus(true)}
+                    disabled={!canManage || saving || loading}
+                    onClick={() => void handleAssignManager()}
                     className="inline-flex items-center gap-1 rounded-lg border border-violet-200 bg-white px-2.5 py-1 text-xs font-medium text-violet-900 hover:bg-violet-50 disabled:opacity-50"
                   >
                     <Briefcase className="size-3.5" aria-hidden />

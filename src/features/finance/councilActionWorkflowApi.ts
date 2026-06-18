@@ -505,6 +505,17 @@ export async function listWorkflowStaffOptions(propertyId: string): Promise<Work
   });
 }
 
+/** First active property manager with a valid auth user id. */
+export function findPropertyManager(
+  staffOptions: WorkflowStaffOption[],
+): WorkflowStaffOption | null {
+  return (
+    staffOptions.find(
+      (s) => String(s.role).toLowerCase() === 'manager' && Boolean(s.user_id?.trim()),
+    ) ?? null
+  );
+}
+
 export function workflowStaffLabel(staff: WorkflowStaffOption, en: boolean): string {
   const name = en
     ? staff.full_name_en || staff.full_name_zh || staff.email
