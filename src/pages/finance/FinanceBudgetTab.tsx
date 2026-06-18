@@ -7,6 +7,7 @@ import { BudgetOverviewCard } from '../../components/dashboard/BudgetOverviewCar
 import { AgmBudgetDocumentsPanel } from '../../components/finance/AgmBudgetDocumentsPanel';
 import { BudgetCategoryMappingsPanel } from '../../components/finance/BudgetCategoryMappingsPanel';
 import { BudgetExpenseVarianceDashboard } from '../../components/finance/BudgetExpenseVarianceDashboard';
+import { RevenueReconciliationDashboard } from '../../components/finance/RevenueReconciliationDashboard';
 import { fetchDashboardBudgetSummary } from '../../lib/budget/dashboardApi';
 import { supabase } from '../../lib/supabase';
 import { canManageInvoiceReview, canUploadInvoicePackage } from '../../lib/financePermissions';
@@ -193,6 +194,12 @@ export function FinanceBudgetTab() {
       />
 
       <BudgetExpenseVarianceDashboard
+        propertyId={currentPropertyId}
+        fiscalYear={fiscalYear}
+        en={en}
+      />
+
+      <RevenueReconciliationDashboard
         propertyId={currentPropertyId}
         fiscalYear={fiscalYear}
         en={en}
