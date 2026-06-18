@@ -20,7 +20,7 @@ import {
   translationKeyForOwnerVoteOpenGate,
   translationKeyForOwnerVoteOwnerNavigationGate,
   fetchMeetingExtras,
-  invitationSummary,
+  invitationRecipientSummary,
   mapVoteRuleToOwnerVoteThreshold,
   markMeetingInvitationOpened,
   meetingTitleZhFirst,
@@ -33,7 +33,7 @@ import {
   type MeetingAgendaRow,
   type MeetingBallotRow,
   type MeetingDetailBundle,
-  type MeetingInvitationRow,
+  type MeetingInviteRecipientRow,
   type MeetingVoteOptionRow,
   type MeetingVoteRow,
   type MeetingRow,
@@ -302,6 +302,7 @@ const initialBundle = (): MeetingDetailBundle => ({
   ballotsByVoteId: {},
   myBallotsByVoteId: {},
   invitations: [],
+  inviteRecipients: [],
   resolutions: [],
 });
 
@@ -341,9 +342,6 @@ export function MeetingDetail() {
     election_nomination_opens_dl: string;
     election_nomination_closes_dl: string;
   } | null>(null);
-  const [inviteProfileById, setInviteProfileById] = useState<
-    Record<string, { full_name_en: string | null; full_name_zh: string | null; email: string | null }>
-  >({});
   const [inviteToast, setInviteToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
   const [evToast, setEvToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
   const [ovBusy, setOvBusy] = useState(false);
@@ -429,40 +427,6 @@ export function MeetingDetail() {
   useEffect(() => {
     void load();
   }, [load]);
-
-  useEffect(() => {
-    if (shouldDeferAutoPropertyRedirects()) return;
-    const ids = Array.from(new Set(bundle.invitations.map((i) => i.recipient_user_id).filter(Boolean)));
-    if (ids.length === 0) {
-      setInviteProfileById({});
-      return;
-    }
-    let cancelled = false;
-    void supabase
-      .from('profiles')
-      .select('id, full_name_en, full_name_zh, email')
-      .in('id', ids)
-      .then(({ data, error }) => {
-        if (cancelled || error || !data) return;
-        const next: Record<string, { full_name_en: string | null; full_name_zh: string | null; email: string | null }> = {};
-        for (const p of data as {
-          id: string;
-          full_name_en: string | null;
-          full_name_zh: string | null;
-          email: string | null;
-        }[]) {
-          next[p.id] = {
-            full_name_en: p.full_name_en,
-            full_name_zh: p.full_name_zh,
-            email: p.email,
-          };
-        }
-        setInviteProfileById(next);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [bundle.invitations, location.pathname, location.hash, location.search]);
 
   const meeting = bundle.meeting;
 
@@ -1535,7 +1499,9 @@ export function MeetingDetail() {
       const result = await sendMeetingInvitations(meeting.id, meeting.property_id, en ? 'en' : 'zh');
       console.log('recipients count', result.attempted);
       if (result.attempted === 0) {
-        const msg = en ? 'No property members to invite.' : '没有可邀请的成员。';
+        const msg = en
+          ? 'All eligible recipients have already been invited.'
+          : '所有符合资格的成员均已邀请。';
         setInviteToast({ kind: 'error', text: msg });
         setActionErr(msg);
         return;
@@ -1744,20 +1710,33 @@ export function MeetingDetail() {
     );
   }
 
-  const inv = invitationSummary(bundle.invitations);
+  const inv = invitationRecipientSummary(bundle.inviteRecipients);
   const meetingAgendaLocked = isMeetingClosedForVoting(meeting.status);
   const remoteWrittenV3NoticeStartedLock = remoteWrittenV3MeetingAgendaEditBlocked(meeting);
   const agendaStructureEditLocked = meetingAgendaLocked || remoteWrittenV3NoticeStartedLock;
   const openRatePct = inv.total ? Math.min(100, Math.round((inv.openedCount / inv.total) * 100)) : 0;
   const voteRatePct = inv.total ? Math.min(100, Math.round((inv.voted / inv.total) * 100)) : 0;
 
-  function inviteTrackingStatusLabel(row: MeetingInvitationRow) {
-    if (row.delivery_status === 'voted') return en ? 'Voted' : '已投票';
+  function inviteRecipientStatusLabel(row: MeetingInviteRecipientRow) {
+    if (!row.invitation) return en ? 'Not sent' : '未发送';
+    if (row.delivery_status === 'failed') return en ? 'Failed' : '失败';
+    if (row.delivery_status === 'voted' || row.invitation.vote) return en ? 'Voted' : '已投票';
     if (row.opened_at) return en ? 'Opened' : '已打开';
-    return en ? 'Not opened' : '未打开';
+    if (row.delivery_status === 'sent') return en ? 'Sent' : '已发送';
+    if (row.delivery_status === 'pending') return en ? 'Pending' : '待发送';
+    return row.delivery_status ?? '—';
   }
 
-  function inviteVoteResultLabel(v: MeetingInvitationRow['vote']) {
+  function inviteRecipientRoleLabel(role: string) {
+    const r = role.trim().toLowerCase();
+    if (r === 'council') return en ? 'Council' : '业委会';
+    if (r === 'owner') return en ? 'Owner' : '业主';
+    return role;
+  }
+
+  function inviteVoteResultLabel(
+    v: 'approve' | 'reject' | 'abstain' | null | undefined,
+  ) {
     if (!v) return '—';
     if (v === 'approve') return en ? 'Approve' : '赞成';
     if (v === 'reject') return en ? 'Reject' : '反对';
@@ -2746,14 +2725,14 @@ export function MeetingDetail() {
               <Mail size={18} />
               {en ? meetingUiStrings.sectionInvite.en : meetingUiStrings.sectionInvite.zh}
             </h2>
-            {bundle.invitations.length === 0 ? (
+            {bundle.inviteRecipients.length === 0 ? (
               <p className="text-sm text-gray-600 mb-4">
                 {en
-                  ? 'No invitations recorded for this meeting yet. Summary below will update when invites exist.'
-                  : '暂无邀请记录。有邀请后下方统计会更新。'}
+                  ? 'No eligible owner/council members with a unit number for this property.'
+                  : '当前物业没有符合邀请条件的业主/业委会成员（需有房号）。'}
               </p>
             ) : null}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 text-sm mb-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 text-sm mb-4">
               <div>
                 <p className="text-gray-500">{en ? 'Total' : '邀请数'}</p>
                 <p className="text-xl font-semibold">{inv.total}</p>
@@ -2761,6 +2740,10 @@ export function MeetingDetail() {
               <div>
                 <p className="text-gray-500">{en ? 'Sent' : '已发送'}</p>
                 <p className="text-xl font-semibold">{inv.sent}</p>
+              </div>
+              <div>
+                <p className="text-gray-500">{en ? 'Not sent' : '未发送'}</p>
+                <p className="text-xl font-semibold">{inv.notSent}</p>
               </div>
               <div>
                 <p className="text-gray-500">{en ? 'Opened' : '已打开'}</p>
@@ -2776,7 +2759,7 @@ export function MeetingDetail() {
               </div>
             </div>
 
-            {bundle.invitations.length > 0 ? (
+            {bundle.inviteRecipients.length > 0 ? (
               <div className="mb-6 space-y-4">
                 <h3 className="text-sm font-semibold text-gray-900">
                   {en ? 'Invitation tracking' : '邀请明细'}
@@ -2815,29 +2798,36 @@ export function MeetingDetail() {
                   <table className="min-w-full text-sm text-left">
                     <thead className="bg-gray-50 text-gray-600">
                       <tr>
-                        <th className="px-3 py-2 font-medium">{en ? 'Owner' : '业主'}</th>
+                        <th className="px-3 py-2 font-medium">{en ? 'Member' : '业主/成员'}</th>
                         <th className="px-3 py-2 font-medium">{en ? 'Email' : '邮箱'}</th>
+                        <th className="px-3 py-2 font-medium">{en ? 'Role' : '角色'}</th>
+                        <th className="px-3 py-2 font-medium">{en ? 'Unit' : '房号'}</th>
                         <th className="px-3 py-2 font-medium">{en ? 'Status' : '状态'}</th>
                         <th className="px-3 py-2 font-medium whitespace-nowrap">{en ? 'Opened at' : '打开时间'}</th>
                         <th className="px-3 py-2 font-medium">{en ? 'Vote' : '投票结果'}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {bundle.invitations.map((row) => {
-                        const prof = inviteProfileById[row.recipient_user_id];
-                        const ownerName = en
-                          ? prof?.full_name_en || prof?.full_name_zh || '—'
-                          : prof?.full_name_zh || prof?.full_name_en || '—';
-                        const email = row.email ?? prof?.email ?? '—';
+                      {bundle.inviteRecipients.map((row) => {
+                        const memberName = en
+                          ? row.full_name_en || row.full_name_zh || '—'
+                          : row.full_name_zh || row.full_name_en || '—';
+                        const email = row.email ?? '—';
                         return (
-                          <tr key={row.id} className="bg-white">
-                            <td className="px-3 py-2 text-gray-900">{ownerName}</td>
+                          <tr key={row.user_id} className="bg-white">
+                            <td className="px-3 py-2 text-gray-900">{memberName}</td>
                             <td className="px-3 py-2 text-gray-700 break-all max-w-[200px]">{email}</td>
-                            <td className="px-3 py-2 text-gray-800">{inviteTrackingStatusLabel(row)}</td>
+                            <td className="px-3 py-2 text-gray-800">{inviteRecipientRoleLabel(row.role)}</td>
+                            <td className="px-3 py-2 text-gray-800">{row.unit_no ?? '—'}</td>
+                            <td className="px-3 py-2 text-gray-800">{inviteRecipientStatusLabel(row)}</td>
                             <td className="px-3 py-2 text-gray-600 whitespace-nowrap">
-                              {row.opened_at ? new Date(row.opened_at).toLocaleString(en ? 'en-CA' : 'zh-CN') : '—'}
+                              {row.opened_at
+                                ? new Date(row.opened_at).toLocaleString(en ? 'en-CA' : 'zh-CN')
+                                : '—'}
                             </td>
-                            <td className="px-3 py-2 text-gray-800">{inviteVoteResultLabel(row.vote)}</td>
+                            <td className="px-3 py-2 text-gray-800">
+                              {inviteVoteResultLabel(row.invitation?.vote ?? null)}
+                            </td>
                           </tr>
                         );
                       })}

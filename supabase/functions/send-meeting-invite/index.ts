@@ -877,21 +877,28 @@ Deno.serve(async (req: Request) => {
       return apiResponse(false, "Meeting not found", null, 404);
     }
 
-    const { count: eligibleOwnerCount, error: memErr } = await supabaseAdmin
+    const { data: memberRows, error: memErr } = await supabaseAdmin
       .from("property_members")
-      .select("user_id", { count: "exact", head: true })
+      .select("user_id, role, unit_no")
       .eq("property_id", property_id)
       .eq("user_id", user_id)
       .eq("status", "active")
-      .eq("role", "owner");
+      .in("role", ["owner", "council"]);
 
     if (memErr) {
       return apiResponse(false, "Authorization check failed", { memErr }, 500);
     }
-    if ((eligibleOwnerCount ?? 0) === 0) {
+
+    const eligibleRow = (memberRows ?? []).find((row) => {
+      const unit = String(row.unit_no ?? "").trim();
+      const role = String(row.role ?? "").trim().toLowerCase();
+      return unit.length > 0 && (role === "owner" || role === "council");
+    });
+
+    if (!eligibleRow) {
       return apiResponse(
         false,
-        "Recipient is not an active owner of this property.",
+        "Recipient is not an active eligible voter of this property.",
         { code: "FORBIDDEN" },
         403,
       );

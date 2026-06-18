@@ -108,41 +108,42 @@ async function loadInviteEmailsByUserId(userIds: string[]): Promise<{
   return { emailByUser, error: null };
 }
 
-/** Meeting invite UI/send: only active owners are eligible recipients. */
-async function loadActiveOwnerUserIds(propertyId: string): Promise<{
-  userIds: Set<string>;
-  error: Error | null;
-}> {
-  const { data: members, error: membersError } = await withProperty(
-    supabase.from('property_members').select('user_id') as any,
-    propertyId,
-  )
-    .eq('status', 'active')
-    .eq('role', 'owner');
+type VoteRecipientMemberRow = {
+  user_id: string;
+  unit_no: string | null;
+  role: string;
+  status: string;
+};
 
-  if (membersError) {
-    return {
-      userIds: new Set(),
-      error: new Error(
-        (membersError as { message?: string }).message ?? 'Failed to load active owner members',
-      ),
-    };
-  }
-
-  const userIds = new Set(
-    (members ?? []).map((m: { user_id: string }) => m.user_id).filter(Boolean),
-  );
-  return { userIds, error: null };
+function voteRecipientRoleRank(role: string): number {
+  return String(role ?? '').trim().toLowerCase() === 'council' ? 1 : 2;
 }
 
-async function filterInvitationsToActiveOwners(
-  invitations: MeetingInvitationRow[],
-  propertyId: string,
-): Promise<MeetingInvitationRow[]> {
-  if (invitations.length === 0) return invitations;
-  const { userIds, error } = await loadActiveOwnerUserIds(propertyId);
-  if (error) return [];
-  return invitations.filter((inv) => userIds.has(inv.recipient_user_id));
+function compareVoteRecipientPriority(a: VoteRecipientMemberRow, b: VoteRecipientMemberRow): number {
+  const ra = voteRecipientRoleRank(a.role);
+  const rb = voteRecipientRoleRank(b.role);
+  if (ra !== rb) return ra - rb;
+  return a.user_id.localeCompare(b.user_id);
+}
+
+/** One recipient per unit; council beats owner (matches freeze_owner_vote_snapshot). */
+function pickEligibleVoteRecipientsFromMemberRows(rows: VoteRecipientMemberRow[]): VoteRecipientMemberRow[] {
+  const eligible = rows.filter((r) => {
+    const unit = String(r.unit_no ?? '').trim();
+    const role = String(r.role ?? '').trim().toLowerCase();
+    return r.status === 'active' && unit && (role === 'owner' || role === 'council');
+  });
+  const byUnit = new Map<string, VoteRecipientMemberRow>();
+  for (const r of eligible) {
+    const key = String(r.unit_no).trim().toLowerCase();
+    const prev = byUnit.get(key);
+    if (!prev || compareVoteRecipientPriority(r, prev) < 0) {
+      byUnit.set(key, r);
+    }
+  }
+  return [...byUnit.values()].sort((a, b) =>
+    String(a.unit_no).trim().toLowerCase().localeCompare(String(b.unit_no).trim().toLowerCase()),
+  );
 }
 
 /** Invoke send-meeting-invite per recipient and sync meeting_invitations delivery_status. */
@@ -314,6 +315,21 @@ export interface MeetingInvitationRow {
   created_at: string | null;
 }
 
+/** Current eligible invitee merged with optional `meeting_invitations` tracking row. */
+export interface MeetingInviteRecipientRow {
+  user_id: string;
+  unit_no: string | null;
+  email: string | null;
+  full_name_en: string | null;
+  full_name_zh: string | null;
+  role: string;
+  member_status: string;
+  invitation: MeetingInvitationRow | null;
+  delivery_status: string | null;
+  opened_at: string | null;
+  voted_at: string | null;
+}
+
 export interface MeetingResolutionRow {
   id: string;
   meeting_id: string;
@@ -347,6 +363,7 @@ export interface MeetingDetailBundle {
   ballotsByVoteId: Record<string, MeetingBallotRow[]>;
   myBallotsByVoteId: Record<string, MeetingBallotRow | undefined>;
   invitations: MeetingInvitationRow[];
+  inviteRecipients: MeetingInviteRecipientRow[];
   resolutions: MeetingResolutionRow[];
 }
 
@@ -558,6 +575,7 @@ const emptyExtras = (): MeetingDetailExtras => ({
   ballotsByVoteId: {},
   myBallotsByVoteId: {},
   invitations: [],
+  inviteRecipients: [],
   resolutions: [],
 });
 
@@ -582,6 +600,119 @@ export async function fetchMeetingCore(meetingId: string, propertyId: string) {
  * Agenda, new-model votes + options + ballots, invitations, resolutions.
  * Each sub-query is tolerant of errors (returns empty slice); never touches `meeting_votes_legacy`.
  */
+
+const INVITE_SENT_DELIVERY_STATUSES = new Set(['sent', 'opened', 'delivered', 'voted']);
+
+async function loadInviteProfilesByUserId(userIds: string[]): Promise<{
+  profileById: Record<
+    string,
+    { email: string | null; full_name_en: string | null; full_name_zh: string | null }
+  >;
+  error: Error | null;
+}> {
+  if (userIds.length === 0) {
+    return { profileById: {}, error: null };
+  }
+  const { data: profRows, error: profErr } = await supabase
+    .from('profiles')
+    .select('id, email, full_name_en, full_name_zh')
+    .in('id', userIds);
+  if (profErr) {
+    return { profileById: {}, error: new Error(profErr.message ?? 'Failed to load profiles') };
+  }
+  const profileById: Record<
+    string,
+    { email: string | null; full_name_en: string | null; full_name_zh: string | null }
+  > = {};
+  for (const p of (profRows ?? []) as {
+    id: string;
+    email: string | null;
+    full_name_en: string | null;
+    full_name_zh: string | null;
+  }[]) {
+    profileById[p.id] = {
+      email: p.email ?? null,
+      full_name_en: p.full_name_en ?? null,
+      full_name_zh: p.full_name_zh ?? null,
+    };
+  }
+  return { profileById, error: null };
+}
+
+/** Current eligible owner/council invitees with optional `meeting_invitations` tracking. */
+export async function fetchMeetingInviteRecipients(
+  meetingId: string,
+  propertyId: string,
+): Promise<{ recipients: MeetingInviteRecipientRow[]; error: Error | null }> {
+  try {
+    const { data: members, error: membersError } = await withProperty(
+      supabase.from('property_members').select('user_id, unit_no, role, status') as any,
+      propertyId,
+    )
+      .eq('status', 'active')
+      .in('role', ['owner', 'council']);
+
+    if (membersError) {
+      return {
+        recipients: [],
+        error: new Error(
+          (membersError as { message?: string }).message ?? 'Failed to load property members',
+        ),
+      };
+    }
+
+    const picked = pickEligibleVoteRecipientsFromMemberRows((members ?? []) as VoteRecipientMemberRow[]);
+    if (picked.length === 0) {
+      return { recipients: [], error: null };
+    }
+
+    const userIds = picked.map((m) => m.user_id);
+    const [{ profileById, error: profErr }, invRes] = await Promise.all([
+      loadInviteProfilesByUserId(userIds),
+      withProperty(supabase.from('meeting_invitations').select('*') as any, propertyId).eq(
+        'meeting_id',
+        meetingId,
+      ),
+    ]);
+
+    if (profErr) {
+      return { recipients: [], error: profErr };
+    }
+
+    const invByUser = new Map<string, MeetingInvitationRow>();
+    if (!invRes.error && invRes.data) {
+      for (const inv of invRes.data as MeetingInvitationRow[]) {
+        invByUser.set(inv.recipient_user_id, inv);
+      }
+    }
+
+    const recipients: MeetingInviteRecipientRow[] = picked.map((m) => {
+      const prof = profileById[m.user_id];
+      const invitation = invByUser.get(m.user_id) ?? null;
+      return {
+        user_id: m.user_id,
+        unit_no: String(m.unit_no ?? '').trim() || null,
+        email: prof?.email ?? invitation?.email ?? null,
+        full_name_en: prof?.full_name_en ?? null,
+        full_name_zh: prof?.full_name_zh ?? null,
+        role: m.role,
+        member_status: m.status,
+        invitation,
+        delivery_status: invitation?.delivery_status ?? null,
+        opened_at: invitation?.opened_at ?? null,
+        voted_at: invitation?.voted_at ?? null,
+      };
+    });
+
+    return { recipients, error: null };
+  } catch (e) {
+    return {
+      recipients: [],
+      error: e instanceof Error ? e : new Error('Failed to load invite recipients'),
+    };
+  }
+}
+
 export async function fetchMeetingExtras(meetingId: string, propertyId: string): Promise<MeetingDetailExtras> {
   try {
     const uid = (await supabase.auth.getUser()).data.user?.id ?? null;
@@ -642,16 +773,14 @@ export async function fetchMeetingExtras(meetingId: string, propertyId: string):
       }
     }
 
+    let inviteRecipients: MeetingInviteRecipientRow[] = [];
     let invitations: MeetingInvitationRow[] = [];
-    const invRes = await withProperty(
-      supabase.from('meeting_invitations').select('*') as any,
-      propertyId,
-    ).eq('meeting_id', meetingId);
-    if (!invRes.error && invRes.data) {
-      invitations = await filterInvitationsToActiveOwners(
-        invRes.data as MeetingInvitationRow[],
-        propertyId,
-      );
+    const inviteRecipRes = await fetchMeetingInviteRecipients(meetingId, propertyId);
+    if (!inviteRecipRes.error) {
+      inviteRecipients = inviteRecipRes.recipients;
+      invitations = inviteRecipients
+        .map((r) => r.invitation)
+        .filter((x): x is MeetingInvitationRow => x != null);
     }
 
     let resolutions: MeetingResolutionRow[] = [];
@@ -669,6 +798,7 @@ export async function fetchMeetingExtras(meetingId: string, propertyId: string):
       ballotsByVoteId,
       myBallotsByVoteId,
       invitations,
+      inviteRecipients,
       resolutions,
     };
   } catch {
@@ -751,15 +881,11 @@ export async function getMeetingDetail(meetingId: string, propertyId: string): P
     }
   }
 
-  const invRes = await withProperty(
-    supabase.from('meeting_invitations').select('*') as any,
-    propertyId,
-  ).eq('meeting_id', meetingId);
-  const invitationsError = invRes.error;
-  const invitations: MeetingInvitationRow[] =
-    !invitationsError && invRes.data
-      ? await filterInvitationsToActiveOwners(invRes.data as MeetingInvitationRow[], propertyId)
-      : [];
+  const inviteRecipRes = await fetchMeetingInviteRecipients(meetingId, propertyId);
+  const inviteRecipients: MeetingInviteRecipientRow[] = inviteRecipRes.error ? [] : inviteRecipRes.recipients;
+  const invitations: MeetingInvitationRow[] = inviteRecipients
+    .map((r) => r.invitation)
+    .filter((x): x is MeetingInvitationRow => x != null);
 
   const resRes = await withProperty(
     supabase.from('meeting_resolutions').select(RESOLUTION_DETAIL_COLUMNS) as any,
@@ -778,6 +904,7 @@ export async function getMeetingDetail(meetingId: string, propertyId: string): P
     ballotsByVoteId,
     myBallotsByVoteId,
     invitations,
+    inviteRecipients,
     resolutions,
   };
 }
@@ -1069,19 +1196,27 @@ export async function sendMeetingInvitations(
       return empty(new Error(sessionErr?.message ?? 'Not signed in'));
     }
 
-    const { userIds: eligibleOwnerIds, error: membersError } = await loadActiveOwnerUserIds(propertyId);
-
-    if (membersError) {
-      console.warn('🚨 early return reason:', 'property_members query failed', membersError);
-      return empty(membersError);
+    const { recipients: inviteRecipients, error: recipErr } = await fetchMeetingInviteRecipients(
+      meetingId,
+      propertyId,
+    );
+    if (recipErr) {
+      console.warn('🚨 early return reason:', 'fetchMeetingInviteRecipients failed', recipErr);
+      return empty(recipErr);
     }
 
-    const userIds = Array.from(eligibleOwnerIds);
+    const toSend = inviteRecipients.filter((r) => {
+      if (!r.invitation) return true;
+      const ds = r.invitation.delivery_status;
+      return ds === 'pending' || ds === 'failed';
+    });
 
-    console.log('[sendMeetingInvitations] recipients count', userIds.length);
+    const userIds = toSend.map((r) => r.user_id);
+
+    console.log('[sendMeetingInvitations] recipients to send', userIds.length, 'of', inviteRecipients.length);
 
     if (userIds.length === 0) {
-      console.warn('🚨 early return reason:', 'recipientsList empty (no property members)');
+      console.warn('🚨 early return reason:', 'no pending/failed recipients to send');
       return empty(null);
     }
 
@@ -1149,7 +1284,7 @@ export async function resetFailedInvitations(meetingId: string, propertyId: stri
     .eq('delivery_status', 'failed');
 }
 
-/** Aggregates counts for rows loaded from `meeting_invitations` (see fetchMeetingExtras / getMeetingDetail). */
+/** Aggregates counts for rows loaded from `meeting_invitations` (legacy). */
 export function invitationSummary(inv: MeetingInvitationRow[]) {
   return {
     total: inv.length,
@@ -1160,6 +1295,64 @@ export function invitationSummary(inv: MeetingInvitationRow[]) {
     pending: inv.filter((r) => r.delivery_status === 'pending').length,
     /** Rows with a recorded open (includes voted). */
     openedCount: inv.filter((r) => r.opened_at != null || r.delivery_status === 'voted').length,
+  };
+}
+
+export type InvitationRecipientSummary = {
+  total: number;
+  sent: number;
+  opened: number;
+  voted: number;
+  failed: number;
+  pending: number;
+  notSent: number;
+  openedCount: number;
+};
+
+/** Aggregates invite tracking for current eligible recipients (preferred for meeting detail UI). */
+export function invitationRecipientSummary(
+  recipients: MeetingInviteRecipientRow[],
+): InvitationRecipientSummary {
+  let sent = 0;
+  let opened = 0;
+  let voted = 0;
+  let failed = 0;
+  let pending = 0;
+  let notSent = 0;
+  let openedCount = 0;
+
+  for (const r of recipients) {
+    const inv = r.invitation;
+    const ds = r.delivery_status ?? inv?.delivery_status ?? null;
+
+    if (!inv) {
+      notSent += 1;
+      continue;
+    }
+
+    if (ds === 'failed') failed += 1;
+    if (ds === 'pending') pending += 1;
+    if (ds && INVITE_SENT_DELIVERY_STATUSES.has(ds)) sent += 1;
+    if (ds === 'voted' || inv.vote) voted += 1;
+
+    const openedAt = r.opened_at ?? inv.opened_at;
+    if (openedAt) {
+      opened += 1;
+      openedCount += 1;
+    } else if (ds === 'voted' || inv.vote) {
+      openedCount += 1;
+    }
+  }
+
+  return {
+    total: recipients.length,
+    sent,
+    opened,
+    voted,
+    failed,
+    pending,
+    notSent,
+    openedCount,
   };
 }
 
