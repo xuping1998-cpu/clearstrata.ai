@@ -1676,6 +1676,52 @@ export function translationKeyForOwnerVoteOwnerNavigationGate(
   return translationKeyForOwnerVoteOpenGate(reason);
 }
 
+type PropertyMemberEligibleRow = { unit_no: unknown; role: unknown };
+
+/** Active owner/council units eligible before snapshot freeze (matches freeze RPC unit dedupe). */
+export function countOwnerVoteEligibleNowFromPropertyMembers(rows: PropertyMemberEligibleRow[]): number {
+  const byUnit = new Map<string, number>();
+  for (const r of rows) {
+    const unit = String(r.unit_no ?? '').trim();
+    if (!unit) continue;
+    const role = String(r.role ?? '')
+      .trim()
+      .toLowerCase();
+    if (role !== 'owner' && role !== 'council') continue;
+    const rank = role === 'council' ? 1 : 2;
+    const key = unit.toLowerCase();
+    const prev = byUnit.get(key);
+    if (prev == null || rank < prev) byUnit.set(key, rank);
+  }
+  return byUnit.size;
+}
+
+export async function fetchOwnerVoteEligibleNowCount(
+  propertyId: string,
+): Promise<{ count: number; error: Error | null }> {
+  const { data, error } = await supabase
+    .from('property_members')
+    .select('unit_no, role')
+    .eq('property_id', propertyId)
+    .eq('status', 'active');
+
+  if (error) return { count: 0, error: new Error(error.message) };
+
+  return {
+    count: countOwnerVoteEligibleNowFromPropertyMembers((data ?? []) as PropertyMemberEligibleRow[]),
+    error: null,
+  };
+}
+
+/** UI: frozen snapshot count when frozen; live property_members count otherwise. */
+export function resolveOwnerVoteDisplayEligible(params: {
+  snapshotFrozenAt: string | null | undefined;
+  eligibleCount: number;
+  eligibleNowCount: number;
+}): number {
+  return String(params.snapshotFrozenAt ?? '').trim() ? params.eligibleCount : params.eligibleNowCount;
+}
+
 /**
  * Loads `owner_vote_meetings` for this council AGM/SGM: binding marker beats title heuristic.
  */
@@ -1687,22 +1733,49 @@ export async function fetchOwnerVoteMeetingMetaForCouncilMeeting(params: {
   resolutions: Array<{ id: string; title: string; threshold: string; display_order: number | null }>;
   resolutionCount: number;
   eligibleCount: number;
+  eligibleNowCount: number;
   error: Error | null;
 }> {
   const { propertyId, meeting } = params;
 
+  const { count: eligibleNowCount, error: eligibleNowErr } = await fetchOwnerVoteEligibleNowCount(propertyId);
+  if (eligibleNowErr) {
+    console.error('[fetchOwnerVoteMeetingMetaForCouncilMeeting] eligibleNow', eligibleNowErr);
+  }
+
   if (!isOwnerVotingMeeting(meeting)) {
-    return { meeting: null, resolutions: [], resolutionCount: 0, eligibleCount: 0, error: null };
+    return {
+      meeting: null,
+      resolutions: [],
+      resolutionCount: 0,
+      eligibleCount: 0,
+      eligibleNowCount,
+      error: null,
+    };
   }
 
   const { row: resolvedDb, error: resErr } = await resolveOwnerVoteMeetingDbRowForCouncil(propertyId, meeting);
   if (resErr) {
-    return { meeting: null, resolutions: [], resolutionCount: 0, eligibleCount: 0, error: resErr };
+    return {
+      meeting: null,
+      resolutions: [],
+      resolutionCount: 0,
+      eligibleCount: 0,
+      eligibleNowCount,
+      error: resErr,
+    };
   }
 
   const picked = resolvedDb ? ovDbRowToLite(resolvedDb) : null;
   if (!picked) {
-    return { meeting: null, resolutions: [], resolutionCount: 0, eligibleCount: 0, error: null };
+    return {
+      meeting: null,
+      resolutions: [],
+      resolutionCount: 0,
+      eligibleCount: 0,
+      eligibleNowCount,
+      error: null,
+    };
   }
 
   const mid = String(picked.id);
@@ -1748,6 +1821,7 @@ export async function fetchOwnerVoteMeetingMetaForCouncilMeeting(params: {
     pickedId: picked?.id,
     resolutionCount,
     eligibleCount,
+    eligibleNowCount,
   });
 
   return {
@@ -1755,6 +1829,7 @@ export async function fetchOwnerVoteMeetingMetaForCouncilMeeting(params: {
     resolutions,
     resolutionCount,
     eligibleCount,
+    eligibleNowCount,
     error: countErr ? new Error(countErr.message) : null,
   };
 }

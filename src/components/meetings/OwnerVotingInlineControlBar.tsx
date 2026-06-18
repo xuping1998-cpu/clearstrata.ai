@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { evaluateOwnerVoteOpenGate, type MeetingRow, type OwnerVoteMeetingLite } from '@/features/meetings/api';
+import { evaluateOwnerVoteOpenGate, resolveOwnerVoteDisplayEligible, type MeetingRow, type OwnerVoteMeetingLite } from '@/features/meetings/api';
 import {
   councilMeetingVotingWindowFallback,
   councilWrittenRemoteWindows,
@@ -23,7 +23,10 @@ export type OwnerVoteInlineMetaState = {
   meeting: OwnerVoteMeetingLite | null;
   resolutions: Array<{ id: string; title: string; threshold: string; display_order?: number | null }>;
   resolutionCount: number;
+  /** Frozen snapshot eligible units (`owner_vote_voter_snapshot`). */
   eligibleCount: number;
+  /** Live eligible units from `property_members` before freeze. */
+  eligibleNowCount: number;
 };
 
 export type OwnerVotingInlineControlBarProps = {
@@ -182,7 +185,15 @@ export function OwnerVotingInlineControlBar({
   const showClose = !hideStaffOvManualLifecycle && !isCouncilMeetingEnded && isStaff && ovStatusLower === 'open';
 
   const snapshotOk = !!(ov?.snapshot_frozen_at?.trim());
-  const eligibleOk = meta.eligibleCount > 0;
+  const displayEligibleCount =
+    ov && !meta.loading
+      ? resolveOwnerVoteDisplayEligible({
+          snapshotFrozenAt: ov.snapshot_frozen_at,
+          eligibleCount: meta.eligibleCount,
+          eligibleNowCount: meta.eligibleNowCount,
+        })
+      : null;
+  const eligibleOk = snapshotOk ? meta.eligibleCount > 0 : meta.eligibleNowCount > 0;
   const showManualFreezeNow =
     isStaff && !!ov && !snapshotOk && !isCouncilMeetingEnded && !staffOvActionsReadOnly;
   const plannedFreezeDisplayIso = ov?.snapshot_freeze_at?.trim() || meeting.scheduled_at?.trim() || null;
@@ -245,15 +256,20 @@ export function OwnerVotingInlineControlBar({
     ov && !meta.loading ? meta.resolutionCount : Math.max(0, Number(councilFormalResolutionAgendaCount) || 0);
   /** totalCandidates = Σ candidates.length across election agenda metas (buildElectionNominationRibbon). */
   const candidatesShown = hasElectionAgenda ? (electionNomRibbon?.totalCandidates ?? 0) : 0;
-  const eligibleShown = ov && !meta.loading ? meta.eligibleCount : null;
-  const eligDisplay = eligibleShown != null ? String(eligibleShown) : '—';
+  const eligDisplay = displayEligibleCount != null ? String(displayEligibleCount) : '—';
 
-  const summaryBody = hasElectionAgenda
-    ? t('meeting_flow_summary_line_full')
-        .replace('{res}', String(resolutionsShown))
-        .replace('{cand}', String(candidatesShown))
-        .replace('{elig}', eligDisplay)
-    : t('meeting_flow_summary_line_plain').replace('{res}', String(resolutionsShown)).replace('{elig}', eligDisplay);
+  const summaryLineKey = hasElectionAgenda
+    ? snapshotOk
+      ? 'meeting_flow_summary_line_full'
+      : 'meeting_flow_summary_line_full_now'
+    : snapshotOk
+      ? 'meeting_flow_summary_line_plain'
+      : 'meeting_flow_summary_line_plain_now';
+
+  const summaryBody = t(summaryLineKey)
+    .replace('{res}', String(resolutionsShown))
+    .replace('{cand}', String(candidatesShown))
+    .replace('{elig}', eligDisplay);
 
   const summaryHeading = hasElectionAgenda ? t('meeting_flow_summary_heading_full') : t('meeting_flow_summary_heading_plain');
 
@@ -314,6 +330,22 @@ export function OwnerVotingInlineControlBar({
           <p className="font-medium text-gray-900">{voteStatusLine()}</p>,
         )}
 
+        {ov && !meta.loading
+          ? sectionCard(
+              snapshotOk ? t('meeting_ov_eligible_frozen') : t('meeting_ov_eligible_now'),
+              <p className="font-medium text-gray-900">{displayEligibleCount ?? '—'}</p>,
+            )
+          : null}
+
+        {ov
+          ? sectionCard(
+              t('meeting_ev_snapshot_label'),
+              <p className="font-medium text-gray-900">
+                {snapshotOk ? t('meeting_ov_frozen') : t('meeting_ov_not_frozen')}
+              </p>,
+            )
+          : null}
+
         {ov
           ? sectionCard(
               snapshotOk ? t('meeting_ov_voter_roll_frozen_at') : t('meeting_ov_voter_roll_planned_freeze'),
@@ -326,14 +358,6 @@ export function OwnerVotingInlineControlBar({
         <div className="rounded-md border border-clearstrata-brand-100 bg-clearstrata-brand-50/35 px-3 py-2 shadow-inner space-y-1">
           <div className="text-xs font-medium text-gray-600">{summaryHeading}</div>
           <p className="text-gray-900 font-medium">{summaryBody}</p>
-          {ov ? (
-            <p className="text-xs text-gray-600">
-              {t('meeting_ev_snapshot_label')}:{' '}
-              <span className="font-medium text-gray-800">
-                {ov.snapshot_frozen_at ? t('meeting_ov_frozen') : t('meeting_ov_not_frozen')}
-              </span>
-            </p>
-          ) : null}
         </div>
       </div>
 

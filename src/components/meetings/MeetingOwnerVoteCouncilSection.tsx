@@ -9,6 +9,7 @@ import {
   ensureOwnerVoteMeetingForCouncilMeeting,
   ensureOwnerVoteResolutionForMeeting,
   fetchOwnerVoteMeetingMetaForCouncilMeeting,
+  resolveOwnerVoteDisplayEligible,
   translationKeyForOwnerVoteOpenGate,
   type MeetingAgendaRow,
   type MeetingRow,
@@ -208,6 +209,7 @@ export function MeetingOwnerVoteCouncilSection({ meeting, agendaItems, isStaff }
   const [ovMeeting, setOvMeeting] = useState<OvMeetingRow | null>(null);
   const [resolutions, setResolutions] = useState<OvResolution[]>([]);
   const [eligibleCount, setEligibleCount] = useState(0);
+  const [eligibleNowCount, setEligibleNowCount] = useState(0);
   const [resultByResolution, setResultByResolution] = useState<Record<string, ResolutionResultNorm>>({});
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<OvToast>(null);
@@ -229,6 +231,7 @@ export function MeetingOwnerVoteCouncilSection({ meeting, agendaItems, isStaff }
     setResolutions([]);
     if (!meeting.property_id || !titleTrim) {
       setEligibleCount(0);
+      setEligibleNowCount(0);
       setResultByResolution({});
       setLoading(false);
       return;
@@ -247,6 +250,7 @@ export function MeetingOwnerVoteCouncilSection({ meeting, agendaItems, isStaff }
         setOvMeeting(null);
         setResolutions([]);
         setEligibleCount(0);
+      setEligibleNowCount(0);
         setResultByResolution({});
         return;
       }
@@ -267,6 +271,7 @@ export function MeetingOwnerVoteCouncilSection({ meeting, agendaItems, isStaff }
       }));
       setResolutions(resMapped);
       setEligibleCount(r.eligibleCount);
+      setEligibleNowCount(r.eligibleNowCount);
 
       const { data: resultRows, error: e4 } = await supabase
         .from('owner_vote_resolution_results')
@@ -515,6 +520,16 @@ export function MeetingOwnerVoteCouncilSection({ meeting, agendaItems, isStaff }
     );
   }
 
+  const snapshotFrozen = !!(ovMeeting?.snapshot_frozen_at?.trim());
+  const displayEligible =
+    ovMeeting != null
+      ? resolveOwnerVoteDisplayEligible({
+          snapshotFrozenAt: ovMeeting.snapshot_frozen_at,
+          eligibleCount,
+          eligibleNowCount,
+        })
+      : 0;
+
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
       {toast ? (
@@ -607,8 +622,10 @@ export function MeetingOwnerVoteCouncilSection({ meeting, agendaItems, isStaff }
                 <span className="font-medium text-gray-900">{fmtTs(ovMeeting.snapshot_frozen_at)}</span>
               </p>
               <p>
-                <span className="text-gray-600">{t('meeting_ov_eligible_count')}:</span>{' '}
-                <span className="font-semibold text-gray-900">{eligibleCount}</span>
+                <span className="text-gray-600">
+                  {snapshotFrozen ? t('meeting_ov_eligible_frozen') : t('meeting_ov_eligible_now')}:
+                </span>{' '}
+                <span className="font-semibold text-gray-900">{displayEligible}</span>
               </p>
               <p>
                 <span className="text-gray-600">{t('meeting_ov_resolution_count')}:</span>{' '}
@@ -619,7 +636,7 @@ export function MeetingOwnerVoteCouncilSection({ meeting, agendaItems, isStaff }
 
           {ovMeeting.status?.trim().toLowerCase() === 'draft' &&
           !hideStaffOvManualLifecycle &&
-          (!String(ovMeeting.snapshot_frozen_at ?? '').trim() || eligibleCount <= 0) ? (
+          (!snapshotFrozen || eligibleCount <= 0) ? (
             <p className="text-sm text-amber-800 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
               {t('meeting_ov_flow_hint_freeze_snap')}
             </p>

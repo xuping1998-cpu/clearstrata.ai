@@ -15,6 +15,7 @@ import {
   evaluateOwnerVoteOwnerNavigationGate,
   fetchOwnerVoteMeetingMetaForCouncilMeeting,
   fetchOwnerVoteResolutionResultsForOwnerMeeting,
+  resolveOwnerVoteDisplayEligible,
   fetchMeetingCore,
   translationKeyForOwnerVoteOpenGate,
   translationKeyForOwnerVoteOwnerNavigationGate,
@@ -352,7 +353,15 @@ export function MeetingDetail() {
     resolutions: Array<{ id: string; title: string; threshold: string; display_order?: number | null }>;
     resolutionCount: number;
     eligibleCount: number;
-  }>({ loading: false, meeting: null, resolutions: [], resolutionCount: 0, eligibleCount: 0 });
+    eligibleNowCount: number;
+  }>({
+    loading: false,
+    meeting: null,
+    resolutions: [],
+    resolutionCount: 0,
+    eligibleCount: 0,
+    eligibleNowCount: 0,
+  });
   const [ovResolutionResults, setOvResolutionResults] = useState<OwnerVoteResolutionResultNormalized[]>([]);
   const [ownerElectionBallots, setOwnerElectionBallots] = useState<OwnerElectionBallotLite[]>([]);
   const [viewerOvUnitNo, setViewerOvUnitNo] = useState<string | null>(null);
@@ -490,6 +499,16 @@ export function MeetingDetail() {
 
   const showCouncilOwnerVoteUi = !!(meeting && currentPropertyId && isOwnerVotingMeeting(meeting));
   const writtenRemoteV3Meeting = !!(meeting && isWrittenRemoteV3Meeting(meeting));
+
+  const ovDisplayEligible = useMemo(
+    () =>
+      resolveOwnerVoteDisplayEligible({
+        snapshotFrozenAt: ovMeta.meeting?.snapshot_frozen_at,
+        eligibleCount: ovMeta.eligibleCount,
+        eligibleNowCount: ovMeta.eligibleNowCount,
+      }),
+    [ovMeta.meeting?.snapshot_frozen_at, ovMeta.eligibleCount, ovMeta.eligibleNowCount],
+  );
 
   const governanceMeta = useMemo(() => {
     if (!meeting?.description_zh) return null;
@@ -690,7 +709,14 @@ export function MeetingDetail() {
       propertyId: currentPropertyId,
     });
     if (!meeting || !currentPropertyId || !isOwnerVotingMeeting(meeting)) {
-      setOvMeta({ loading: false, meeting: null, resolutions: [], resolutionCount: 0, eligibleCount: 0 });
+      setOvMeta({
+        loading: false,
+        meeting: null,
+        resolutions: [],
+        resolutionCount: 0,
+        eligibleCount: 0,
+        eligibleNowCount: 0,
+      });
       setOvResolutionResults([]);
       setOwnerElectionBallots([]);
       return;
@@ -712,6 +738,7 @@ export function MeetingDetail() {
       resolutions: r.resolutions,
       resolutionCount: r.resolutionCount,
       eligibleCount: r.eligibleCount,
+      eligibleNowCount: r.eligibleNowCount,
     });
     setOvResolutionResults(viewRows);
 
@@ -736,7 +763,14 @@ export function MeetingDetail() {
   useEffect(() => {
     if (shouldDeferAutoPropertyRedirects()) return;
     if (!meeting || !currentPropertyId || !isOwnerVotingMeeting(meeting)) {
-      setOvMeta({ loading: false, meeting: null, resolutions: [], resolutionCount: 0, eligibleCount: 0 });
+      setOvMeta({
+        loading: false,
+        meeting: null,
+        resolutions: [],
+        resolutionCount: 0,
+        eligibleCount: 0,
+        eligibleNowCount: 0,
+      });
       setOvResolutionResults([]);
       setOwnerElectionBallots([]);
       return;
@@ -2653,7 +2687,7 @@ export function MeetingDetail() {
                   ownerVoteMeeting={ovMeta.meeting}
                   resolutions={ovMeta.resolutions}
                   resultRows={ovResolutionResults}
-                  eligibleFallback={ovMeta.eligibleCount}
+                  eligibleFallback={ovDisplayEligible}
                   t={t}
                   languageEn={en}
                 />
@@ -2661,7 +2695,7 @@ export function MeetingDetail() {
               {!ovMeta.loading && ovMeta.meeting && electionBundles.length > 0 ? (
                 <CouncilElectionResultsBlock
                   ownerVoteStatus={ovMeta.meeting.status ?? ''}
-                  eligibleFallback={ovMeta.eligibleCount}
+                  eligibleFallback={ovDisplayEligible}
                   electionAgendas={electionBundles}
                   ballots={ownerElectionBallots}
                   languageEn={en}

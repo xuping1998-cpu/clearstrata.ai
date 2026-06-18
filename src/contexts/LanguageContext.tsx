@@ -132,6 +132,22 @@ const translations: Record<string, Record<Language, string>> = {
     en: 'Voter roll frozen',
     zh: '投票名单已冻结',
   },
+  meeting_ov_eligible_now: {
+    en: 'Current eligible now',
+    zh: '当前符合资格户数',
+  },
+  meeting_ov_eligible_frozen: {
+    en: 'Frozen eligible voters',
+    zh: '已冻结合资格户数',
+  },
+  meeting_flow_summary_line_plain_now: {
+    en: 'Resolutions (formal): {res} · Current eligible now: {elig}',
+    zh: '决议数 {res} · 当前符合资格户数 {elig}',
+  },
+  meeting_flow_summary_line_full_now: {
+    en: 'Resolutions (formal): {res} · Candidates: {cand} · Current eligible now: {elig}',
+    zh: '决议数 {res} · 候选人数 {cand} · 当前符合资格户数 {elig}',
+  },
   meeting_ov_freeze_roll_now: {
     en: 'Freeze Voter Roll Now',
     zh: '立即冻结名单',
