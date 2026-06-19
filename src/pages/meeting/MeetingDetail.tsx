@@ -20,6 +20,7 @@ import {
   translationKeyForOwnerVoteOpenGate,
   translationKeyForOwnerVoteOwnerNavigationGate,
   fetchMeetingExtras,
+  fetchVotingNoticeRecipients,
   invitationRecipientSummary,
   mapVoteRuleToOwnerVoteThreshold,
   markMeetingInvitationOpened,
@@ -343,6 +344,8 @@ export function MeetingDetail() {
     election_nomination_closes_dl: string;
   } | null>(null);
   const [inviteToast, setInviteToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  const [votingNoticeRecipients, setVotingNoticeRecipients] = useState<MeetingInviteRecipientRow[]>([]);
+  const [votingNoticeToast, setVotingNoticeToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
   const [evToast, setEvToast] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
   const [ovBusy, setOvBusy] = useState(false);
   const [ovMeta, setOvMeta] = useState<{
@@ -717,8 +720,16 @@ export function MeetingDetail() {
       } else {
         setOwnerElectionBallots(((eb.data ?? []) as OwnerElectionBallotLite[]) ?? []);
       }
+
+      if (r.meeting.snapshot_frozen_at?.trim() && meeting) {
+        const vn = await fetchVotingNoticeRecipients(meeting.id, currentPropertyId, r.meeting.id);
+        setVotingNoticeRecipients(vn.error ? [] : vn.recipients);
+      } else {
+        setVotingNoticeRecipients([]);
+      }
     } else {
       setOwnerElectionBallots([]);
+      setVotingNoticeRecipients([]);
     }
 
     if (r.error) console.error('[MeetingDetail] owner vote meta', r.error);
@@ -795,6 +806,19 @@ export function MeetingDetail() {
     ovMeta.meeting?.snapshot_freeze_at,
     refreshOwnerVoteMeta,
   ]);
+
+  /** Deep link: scroll to owner voting section when hash or tab=voting is present. */
+  useEffect(() => {
+    if (!coreDone || !meeting) return;
+    const hash = location.hash.trim();
+    const tab = searchParams.get('tab')?.trim().toLowerCase();
+    if (hash !== '#owner-voting' && tab !== 'voting') return;
+    setShowVotingFlow(true);
+    const timer = window.setTimeout(() => {
+      document.getElementById('owner-voting')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [coreDone, meeting?.id, location.hash, searchParams]);
 
   useEffect(() => {
     if (!evToast) return;
@@ -1456,6 +1480,12 @@ export function MeetingDetail() {
     return () => window.clearTimeout(t);
   }, [inviteToast]);
 
+  useEffect(() => {
+    if (!votingNoticeToast) return;
+    const t = window.setTimeout(() => setVotingNoticeToast(null), 8000);
+    return () => window.clearTimeout(t);
+  }, [votingNoticeToast]);
+
   async function handleDeleteDraftMeeting() {
     if (!meeting || !canDeleteDraftMeeting) return;
     const confirmed = window.confirm(
@@ -1510,6 +1540,7 @@ export function MeetingDetail() {
     try {
       const result = await sendMeetingInvitations(meeting.id, meeting.property_id, en ? 'en' : 'zh', {
         mode,
+        noticeType: 'meeting_notice',
       });
       console.log('recipients count', result.attempted);
       if (result.attempted === 0) {
@@ -1545,11 +1576,11 @@ export function MeetingDetail() {
       const okMsg =
         mode === 'all_current_eligible'
           ? en
-            ? `Formal resend completed: ${result.sent} invitation emails sent.`
-            : `正式重发完成：已成功发送 ${result.sent} 封会议邀请邮件。`
+            ? `Formal resend completed: ${result.sent} meeting notice emails sent.`
+            : `正式重发完成：已成功发送 ${result.sent} 封会议通知邮件。`
           : en
-            ? `Invitation emails sent: ${result.sent}`
-            : `已成功发送 ${result.sent} 封会议邀请邮件`;
+            ? `Meeting notice emails sent: ${result.sent}`
+            : `已成功发送 ${result.sent} 封会议通知邮件`;
       console.log('send-meeting-invite success', { sent: result.sent, mode });
       setInviteToast({ kind: 'success', text: okMsg });
     } catch (e) {
@@ -1565,6 +1596,104 @@ export function MeetingDetail() {
         console.warn('[MeetingDetail] load after send failed (non-blocking)', loadErr);
       }
     }
+  }
+
+  async function handleSendVotingNotice(skipConfirm = false) {
+    if (!meeting || !ovMeta.meeting?.id) return;
+    if (!skipConfirm) {
+      const confirmed = window.confirm(
+        en
+          ? 'Send voting notice emails to all frozen eligible voters?'
+          : '向所有已冻结的正式选民发送投票通知邮件？',
+      );
+      if (!confirmed) return;
+    }
+    setBusy(true);
+    setActionErr(null);
+    setVotingNoticeToast(null);
+    try {
+      const result = await sendMeetingInvitations(meeting.id, meeting.property_id, en ? 'en' : 'zh', {
+        noticeType: 'voting_notice',
+        ownerVoteMeetingId: ovMeta.meeting.id,
+      });
+      if (result.attempted === 0) {
+        const msg = en ? 'No frozen eligible voters to notify.' : '没有可通知的冻结选民。';
+        setVotingNoticeToast({ kind: 'error', text: msg });
+        setActionErr(msg);
+        return;
+      }
+      if (result.failed > 0 && result.sent === 0) {
+        const msg =
+          result.errors[0]?.message ??
+          (en ? 'All voting notice emails failed.' : '全部投票通知发送失败。');
+        setVotingNoticeToast({ kind: 'error', text: msg });
+        setActionErr(msg);
+        return;
+      }
+      if (result.failed > 0) {
+        const msg = en
+          ? `Sent ${result.sent}, failed ${result.failed}.`
+          : `已发送 ${result.sent} 封，失败 ${result.failed} 封。`;
+        setVotingNoticeToast({ kind: 'error', text: msg });
+        setActionErr(msg);
+        return;
+      }
+      const okMsg = en
+        ? `Voting notice sent to ${result.sent} voters.`
+        : `已成功向 ${result.sent} 位选民发送投票通知。`;
+      setVotingNoticeToast({ kind: 'success', text: okMsg });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setVotingNoticeToast({ kind: 'error', text: msg });
+      setActionErr(msg);
+    } finally {
+      setBusy(false);
+      try {
+        await load();
+        await refreshOwnerVoteMeta();
+      } catch (loadErr) {
+        console.warn('[MeetingDetail] reload after voting notice failed', loadErr);
+      }
+    }
+  }
+
+  async function handleOpenOwnerVoteAndSendVotingNotice() {
+    if (!meeting || isMeetingClosedForVoting(meeting.status)) return;
+    const ov = ovMeta.meeting;
+    if (!ov?.id) return;
+
+    if (ov.status?.trim().toLowerCase() !== 'open') {
+      const gate = evaluateOwnerVoteOpenGate({
+        ov,
+        eligibleCount: ovMeta.eligibleCount,
+        resolutionCount: ovMeta.resolutionCount,
+        electionAgendaCount: electionBundles.length,
+        electionTimelineBlocksVoting: electionTimelineBlocksOwnerVote,
+      });
+      if (!gate.ok) {
+        setEvToast({
+          kind: 'error',
+          text: en
+            ? 'Voter roll is frozen. Please open voting first, then send the voting notice.'
+            : '名单已冻结。请先打开投票，然后发送投票通知。',
+        });
+        return;
+      }
+      setOvBusy(true);
+      const { error } = await supabase
+        .from('owner_vote_meetings')
+        .update({ status: 'open', updated_at: new Date().toISOString() } as Record<string, unknown>)
+        .eq('id', ov.id);
+      setOvBusy(false);
+      if (error) {
+        setEvToast({ kind: 'error', text: error.message });
+        return;
+      }
+      setEvToast({ kind: 'success', text: t('meeting_ev_open_toast') });
+      await refreshOwnerVoteMeta();
+    }
+
+    await handleSendVotingNotice(true);
   }
 
   async function handleRetryFailedInvites() {
@@ -1641,9 +1770,17 @@ export function MeetingDetail() {
       setEvToast({ kind: 'error', text: error.message });
     } else {
       setEvToast({ kind: 'success', text: t('meeting_ov_freeze_toast') });
+      await refreshOwnerVoteMeta();
+      const openAndSend = window.confirm(
+        en
+          ? 'The voter roll has been frozen. Would you like to open voting and send the voting notice now?'
+          : '投票名单已冻结。是否现在打开投票并发送投票通知？',
+      );
+      if (openAndSend) {
+        await handleOpenOwnerVoteAndSendVotingNotice();
+      }
     }
     setOvBusy(false);
-    await refreshOwnerVoteMeta();
   }
 
   async function handleOpenOwnerVoteMeeting() {
@@ -1735,6 +1872,15 @@ export function MeetingDetail() {
   }
 
   const inv = invitationRecipientSummary(bundle.inviteRecipients);
+  const votingInv = invitationRecipientSummary(votingNoticeRecipients);
+  const votingNoticeEnabled = Boolean(
+    ovMeta.meeting?.snapshot_frozen_at?.trim() &&
+      ovMeta.meeting?.status?.trim().toLowerCase() === 'open' &&
+      ovMeta.eligibleCount > 0,
+  );
+  const votingNoticeOpenRatePct = votingInv.total
+    ? Math.min(100, Math.round((votingInv.openedCount / votingInv.total) * 100))
+    : 0;
   const meetingAgendaLocked = isMeetingClosedForVoting(meeting.status);
   const remoteWrittenV3NoticeStartedLock = remoteWrittenV3MeetingAgendaEditBlocked(meeting);
   const agendaStructureEditLocked = meetingAgendaLocked || remoteWrittenV3NoticeStartedLock;
@@ -1862,7 +2008,7 @@ export function MeetingDetail() {
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 -mt-6 relative z-10">
         <div className="rounded-2xl border border-gray-200/90 bg-white p-5 sm:p-8 shadow-[0_16px_50px_-12px_rgba(6,61,47,0.14)] space-y-8">
-        {(inviteToast || evToast) ? (
+        {(inviteToast || votingNoticeToast || evToast) ? (
           <div className="fixed bottom-6 left-1/2 z-50 flex max-w-lg w-[min(100%,28rem)] -translate-x-1/2 flex-col gap-2 px-4">
             {inviteToast ? (
               <StatusAlert
@@ -1871,6 +2017,15 @@ export function MeetingDetail() {
                 className="shadow-lg"
               >
                 {inviteToast.text}
+              </StatusAlert>
+            ) : null}
+            {votingNoticeToast ? (
+              <StatusAlert
+                tone={votingNoticeToast.kind === 'success' ? 'success' : 'danger'}
+                variant="solid"
+                className="shadow-lg"
+              >
+                {votingNoticeToast.text}
               </StatusAlert>
             ) : null}
             {evToast ? (
@@ -2009,6 +2164,7 @@ export function MeetingDetail() {
                       </p>
                     ) : null}
                     {showCouncilOwnerVoteUi ? (
+                      <div id="owner-voting">
                       <OwnerVotingInlineControlBar
                         meeting={meeting}
                         isCouncilMeetingEnded={isMeetingClosedForVoting(meeting.status)}
@@ -2032,6 +2188,7 @@ export function MeetingDetail() {
                         onOpenVoting={() => void handleOpenOwnerVoteMeeting()}
                         onCloseVoting={() => void handleCloseOwnerVoteMeeting()}
                       />
+                      </div>
                     ) : null}
                   </div>
                 ) : null}
@@ -2744,19 +2901,31 @@ export function MeetingDetail() {
         {/* Layer 4 — invitations (staff / council / admin / property_admin / manager only) */}
         {canViewMeetingInvitePanel ? (
         <section className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm space-y-8">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 border-b pb-2 flex items-center gap-2">
-              <Mail size={18} />
-              {en ? meetingUiStrings.sectionInvite.en : meetingUiStrings.sectionInvite.zh}
-            </h2>
+          <h2 className="text-lg font-semibold text-gray-900 border-b pb-2 flex items-center gap-2">
+            <Mail size={18} />
+            {en ? meetingUiStrings.sectionInvite.en : meetingUiStrings.sectionInvite.zh}
+          </h2>
+
+          {/* Meeting Notice */}
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-base font-semibold text-gray-900">
+                {en ? 'Meeting Notice' : '会议通知'}
+              </h3>
+              <p className="text-sm text-gray-600 mt-1">
+                {en
+                  ? 'After the meeting starts: view the agenda, join discussion, and view or submit candidates.'
+                  : '会议开始后：查看议程、参与讨论、查看或提交候选人。'}
+              </p>
+            </div>
             {bundle.inviteRecipients.length === 0 ? (
-              <p className="text-sm text-gray-600 mb-4">
+              <p className="text-sm text-gray-600">
                 {en
                   ? 'No eligible owner/council members with a unit number for this property.'
                   : '当前物业没有符合邀请条件的业主/业委会成员（需有房号）。'}
               </p>
             ) : null}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 text-sm mb-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 text-sm">
               <div>
                 <p className="text-gray-500">{en ? 'Total' : '邀请数'}</p>
                 <p className="text-xl font-semibold">{inv.total}</p>
@@ -2784,84 +2953,40 @@ export function MeetingDetail() {
             </div>
 
             {bundle.inviteRecipients.length > 0 ? (
-              <div className="mb-6 space-y-4">
-                <h3 className="text-sm font-semibold text-gray-900">
-                  {en ? 'Invitation tracking' : '邀请明细'}
-                </h3>
-                <div className="space-y-3">
-                  <div>
-                    <div className="flex justify-between text-xs text-gray-600 mb-1">
-                      <span>{en ? 'Open rate' : '打开率'}</span>
-                      <span>
-                        {inv.openedCount}/{inv.total} · {openRatePct}%
-                      </span>
-                    </div>
-                    <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
-                      <div
-                        className="h-full bg-clearstrata-ui-primaryHover rounded-full transition-all"
-                        style={{ width: `${openRatePct}%` }}
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <div className="flex justify-between text-xs text-gray-600 mb-1">
-                      <span>{en ? 'Vote rate' : '投票率'}</span>
-                      <span>
-                        {inv.voted}/{inv.total} · {voteRatePct}%
-                      </span>
-                    </div>
-                    <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
-                      <div
-                        className="h-full bg-clearstrata-ui-primary rounded-full transition-all"
-                        style={{ width: `${voteRatePct}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
+              <div className="space-y-4">
+                <h4 className="text-sm font-semibold text-gray-900">
+                  {en ? 'Meeting notice tracking' : '会议通知明细'}
+                </h4>
                 <div className="overflow-x-auto border border-gray-200 rounded-lg">
                   <table className="min-w-full text-sm text-left">
                     <thead className="bg-gray-50 text-gray-600">
                       <tr>
                         <th className="px-3 py-2 font-medium">{en ? 'Member' : '业主/成员'}</th>
                         <th className="px-3 py-2 font-medium">{en ? 'Email' : '邮箱'}</th>
-                        <th className="px-3 py-2 font-medium">{en ? 'Role' : '角色'}</th>
                         <th className="px-3 py-2 font-medium">{en ? 'Unit' : '房号'}</th>
                         <th className="px-3 py-2 font-medium">{en ? 'Status' : '状态'}</th>
-                        <th className="px-3 py-2 font-medium whitespace-nowrap">{en ? 'Opened at' : '打开时间'}</th>
-                        <th className="px-3 py-2 font-medium">{en ? 'Vote' : '投票结果'}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {bundle.inviteRecipients.map((row) => {
-                        const memberName = en
-                          ? row.full_name_en || row.full_name_zh || '—'
-                          : row.full_name_zh || row.full_name_en || '—';
-                        const email = row.email ?? '—';
-                        return (
-                          <tr key={row.user_id} className="bg-white">
-                            <td className="px-3 py-2 text-gray-900">{memberName}</td>
-                            <td className="px-3 py-2 text-gray-700 break-all max-w-[200px]">{email}</td>
-                            <td className="px-3 py-2 text-gray-800">{inviteRecipientRoleLabel(row.role)}</td>
-                            <td className="px-3 py-2 text-gray-800">{row.unit_no ?? '—'}</td>
-                            <td className="px-3 py-2 text-gray-800">{inviteRecipientStatusLabel(row)}</td>
-                            <td className="px-3 py-2 text-gray-600 whitespace-nowrap">
-                              {row.opened_at
-                                ? new Date(row.opened_at).toLocaleString(en ? 'en-CA' : 'zh-CN')
-                                : '—'}
-                            </td>
-                            <td className="px-3 py-2 text-gray-800">
-                              {inviteVoteResultLabel(row.invitation?.vote ?? null)}
-                            </td>
-                          </tr>
-                        );
-                      })}
+                      {bundle.inviteRecipients.map((row) => (
+                        <tr key={row.user_id} className="bg-white">
+                          <td className="px-3 py-2 text-gray-900">
+                            {en
+                              ? row.full_name_en || row.full_name_zh || '—'
+                              : row.full_name_zh || row.full_name_en || '—'}
+                          </td>
+                          <td className="px-3 py-2 text-gray-700 break-all max-w-[200px]">{row.email ?? '—'}</td>
+                          <td className="px-3 py-2 text-gray-800">{row.unit_no ?? '—'}</td>
+                          <td className="px-3 py-2 text-gray-800">{inviteRecipientStatusLabel(row)}</td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
               </div>
             ) : null}
 
-            {canSendMeetingInvites && (
+            {canSendMeetingInvites ? (
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -2870,7 +2995,7 @@ export function MeetingDetail() {
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-clearstrata-ui-primary text-white text-sm hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:opacity-50"
                 >
                   <Users size={16} />
-                  {en ? 'Send Missing Invites' : '补发未发送'}
+                  {en ? 'Resend Missing Meeting Notices' : '补发会议通知'}
                 </button>
                 <button
                   type="button"
@@ -2879,9 +3004,9 @@ export function MeetingDetail() {
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-clearstrata-ui-primary text-clearstrata-ui-primary text-sm hover:bg-clearstrata-ui-primary/5 disabled:opacity-50"
                 >
                   <Mail size={16} />
-                  {en ? 'Resend to All Current Eligible Voters' : '正式重发给全部'}
+                  {en ? 'Resend Meeting Notice to All' : '正式重发会议通知给全部'}
                 </button>
-                {inv.failed > 0 && (
+                {inv.failed > 0 ? (
                   <button
                     type="button"
                     disabled={busy}
@@ -2891,10 +3016,70 @@ export function MeetingDetail() {
                     <RefreshCw size={16} />
                     {en ? 'Reset failed → pending' : '失败标为待重发'}
                   </button>
-                )}
+                ) : null}
               </div>
-            )}
+            ) : null}
           </div>
+
+          {/* Voting Notice */}
+          {ovMeta.meeting ? (
+            <div className="space-y-4 border-t border-gray-200 pt-6">
+              <div>
+                <h3 className="text-base font-semibold text-gray-900">
+                  {en ? 'Voting Notice' : '投票通知'}
+                </h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  {en
+                    ? 'After the voter roll is frozen and voting is opened: notify frozen eligible voters to cast ballots.'
+                    : '名单冻结并开放投票后：通知已冻结的正式选民进入平台投票。'}
+                </p>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+                <div>
+                  <p className="text-gray-500">{en ? 'Frozen voters' : '冻结选民数'}</p>
+                  <p className="text-xl font-semibold">{ovMeta.eligibleCount}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500">{en ? 'Voting status' : '投票状态'}</p>
+                  <p className="text-xl font-semibold capitalize">{ovMeta.meeting.status ?? '—'}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500">{en ? 'Voting closes' : '投票截止'}</p>
+                  <p className="text-sm font-semibold text-gray-900">
+                    {ovMeta.meeting.voting_closes_at
+                      ? new Date(ovMeta.meeting.voting_closes_at).toLocaleString(en ? 'en-CA' : 'zh-CN')
+                      : '—'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-gray-500">{en ? 'Notices sent' : '已发通知'}</p>
+                  <p className="text-xl font-semibold">
+                    {votingInv.sent}/{votingNoticeRecipients.length || ovMeta.eligibleCount}
+                  </p>
+                </div>
+              </div>
+              {!votingNoticeEnabled ? (
+                <p className="text-sm text-amber-800 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                  {en
+                    ? 'Voting notice is available after the voter roll is frozen and voting is opened.'
+                    : '投票通知将在名单冻结并开放投票后可发送。'}
+                </p>
+              ) : null}
+              {canSendMeetingInvites ? (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={busy || !votingNoticeEnabled}
+                    onClick={() => void handleSendVotingNotice()}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-clearstrata-ui-primary text-white text-sm hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryActive disabled:opacity-50"
+                  >
+                    <Mail size={16} />
+                    {en ? 'Send Voting Notice' : '发送投票通知'}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </section>
         ) : null}
         </div>

@@ -62,6 +62,8 @@ interface InviteRequestBody {
   propertyId?: string;
   locale?: "en" | "zh";
   user_email?: string;
+  notice_type?: "meeting_notice" | "voting_notice";
+  noticeType?: "meeting_notice" | "voting_notice";
 }
 
 const ELECTION_FIXED_PHASE_DAYS = 7;
@@ -711,6 +713,130 @@ function buildEmailHtml(p: InviteEmailHtmlParams): string {
 </html>`;
 }
 
+type VotingNoticeEmailParams = {
+  recipientNameZh: string;
+  recipientNameEn: string;
+  meetingTitleZh: string;
+  meetingTitleEn: string;
+  propertyNameZh: string;
+  propertyNameEn: string;
+  votingDeadlineZh: string;
+  votingDeadlineEn: string;
+  inviteLink: string;
+  signInUrl: string;
+  logoUrl: string;
+};
+
+function formatEmailDeadline(iso: string | null, locale: "en" | "zh"): string {
+  if (!iso?.trim()) return locale === "en" ? "See meeting page" : "请见会议页面";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString(locale === "en" ? "en-CA" : "zh-CN", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
+}
+
+function buildVotingNoticeEmailHtml(p: VotingNoticeEmailParams): string {
+  const safe = {
+    recipientNameZh: escapeHtml(p.recipientNameZh),
+    recipientNameEn: escapeHtml(p.recipientNameEn),
+    meetingTitleZh: escapeHtml(p.meetingTitleZh),
+    meetingTitleEn: escapeHtml(p.meetingTitleEn),
+    propertyNameZh: escapeHtml(p.propertyNameZh),
+    propertyNameEn: escapeHtml(p.propertyNameEn),
+    votingDeadlineZh: escapeHtml(p.votingDeadlineZh),
+    votingDeadlineEn: escapeHtml(p.votingDeadlineEn),
+    logoUrl: escapeHtml(p.logoUrl),
+    inviteLink: p.inviteLink,
+    signInUrl: p.signInUrl,
+  };
+
+  return `<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>投票已开放 / Voting Is Now Open</title>
+</head>
+<body style="margin:0;padding:0;background:#f6f9fc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,'PingFang SC','Microsoft YaHei',sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f9fc;padding:40px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06),0 4px 12px rgba(0,0,0,0.04);">
+          <tr>
+            <td style="background:#35C3D6;padding:16px 20px;text-align:center;">
+              <div style="margin-bottom:12px;">
+                <img src="${safe.logoUrl}" alt="ClearStrata" style="height:48px;object-fit:contain;display:block;margin:0 auto;" />
+              </div>
+              <div style="font-size:22px;font-weight:600;color:#ffffff;">
+                投票已开放 / Voting Is Now Open
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:32px 32px 24px;">
+              <p style="margin:0 0 8px;color:#374151;font-size:15px;line-height:1.65;">尊敬的 ${safe.recipientNameZh}：</p>
+              <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.65;">Dear ${safe.recipientNameEn},</p>
+              <p style="margin:0 0 12px;color:#374151;font-size:15px;line-height:1.65;">本次会议的候选人名单及投票资格名单已确认并冻结。正式投票现已开放。</p>
+              <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.65;">The candidate list and voter roll for this meeting have been finalized. Voting is now open.</p>
+              <table role="presentation" width="100%" style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:20px 22px;margin-bottom:20px;">
+                <tr><td style="padding:8px 0;border-bottom:1px solid #e5e7eb;">
+                  <p style="margin:0 0 4px;color:#6b7280;font-size:12px;font-weight:600;">会议 / Meeting</p>
+                  <p style="margin:0;color:#111827;font-size:15px;">${safe.meetingTitleZh}</p>
+                  <p style="margin:0;color:#374151;font-size:14px;">${safe.meetingTitleEn}</p>
+                </td></tr>
+                <tr><td style="padding:8px 0;border-bottom:1px solid #e5e7eb;">
+                  <p style="margin:0 0 4px;color:#6b7280;font-size:12px;font-weight:600;">物业 / Property</p>
+                  <p style="margin:0;color:#111827;font-size:15px;">${safe.propertyNameZh}</p>
+                  <p style="margin:0;color:#374151;font-size:14px;">${safe.propertyNameEn}</p>
+                </td></tr>
+                <tr><td style="padding:8px 0;">
+                  <p style="margin:0 0 4px;color:#6b7280;font-size:12px;font-weight:600;">投票截止 / Voting deadline</p>
+                  <p style="margin:0;color:#111827;font-size:15px;">${safe.votingDeadlineZh}</p>
+                  <p style="margin:0;color:#374151;font-size:14px;">${safe.votingDeadlineEn}</p>
+                </td></tr>
+              </table>
+              <p style="margin:0 0 12px;color:#374151;font-size:15px;line-height:1.65;">请点击下方按钮进入 ClearStrata 会议投票页面，查看议案及候选人资料，并在截止时间前完成表决。投票截止后，系统将自动统计结果并归档。感谢您的参与。</p>
+              <p style="margin:0 0 20px;color:#374151;font-size:15px;line-height:1.65;">Please click the button below to enter the ClearStrata meeting voting page, review the resolutions and candidates, and cast your vote before the deadline. After voting closes, results will be automatically counted and archived. Thank you for your participation.</p>
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:28px;">
+                <tr>
+                  <td align="center" style="padding:0 0 12px;">
+                    <a href="${safe.inviteLink}" style="display:inline-block;background:#35C3D6;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;padding:14px 28px;border-radius:8px;">进入会议投票 / Enter Meeting Voting</a>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:24px 0 0;color:#6b7280;font-size:12px;line-height:1.6;">
+                如果按钮无法打开，请复制以下链接：<br />
+                If the button does not open, copy this link:<br />
+                <a href="${safe.inviteLink}" style="color:#35C3D6;word-break:break-all;">${safe.inviteLink}</a>
+              </p>
+              <p style="margin:16px 0 0;color:#6b7280;font-size:12px;line-height:1.6;">
+                仅登录：<a href="${safe.signInUrl}" style="color:#35C3D6;word-break:break-all;">${safe.signInUrl}</a><br />
+                Sign in only: <a href="${safe.signInUrl}" style="color:#35C3D6;word-break:break-all;">${safe.signInUrl}</a>
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:20px 32px 28px;border-top:1px solid #f3f4f6;background:#fafafa;">
+              <p style="margin:0;color:#9ca3af;font-size:11px;line-height:1.5;">
+                此邮件由 ClearStrata 自动发送。<br />
+                This email was sent automatically by ClearStrata.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
 /** JSON API responses (always CORS + Content-Type for browser invoke). */
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -779,8 +905,10 @@ async function upsertInvitationDelivery(
     recipient_user_id: string;
     email: string;
     delivery_status: "sent" | "failed";
+    notice_type?: "meeting_notice" | "voting_notice";
   },
 ) {
+  const notice_type = params.notice_type ?? "meeting_notice";
   const { error } = await supabaseAdmin.from("meeting_invitations").upsert(
     {
       meeting_id: params.meeting_id,
@@ -790,8 +918,9 @@ async function upsertInvitationDelivery(
       delivery_channel: "email",
       delivery_status: params.delivery_status,
       sent_at: params.delivery_status === "sent" ? new Date().toISOString() : null,
+      notice_type,
     },
-    { onConflict: "meeting_id,recipient_user_id" },
+    { onConflict: "meeting_id,recipient_user_id,notice_type" },
   );
   if (error) {
     console.error("send-meeting-invite: invitation upsert failed", error);
@@ -838,12 +967,16 @@ Deno.serve(async (req: Request) => {
     const user_id = String(raw.user_id ?? raw.userId ?? "").trim();
     const property_id = String(raw.property_id ?? raw.propertyId ?? "").trim();
     const locale: "en" | "zh" = raw.locale === "en" ? "en" : "zh";
+    const noticeTypeRaw = raw.notice_type ?? raw.noticeType ?? "meeting_notice";
+    const notice_type: "meeting_notice" | "voting_notice" =
+      noticeTypeRaw === "voting_notice" ? "voting_notice" : "meeting_notice";
 
     console.log("[send-meeting-invite] params", {
       meeting_id,
       property_id,
       user_id,
       locale,
+      notice_type,
     });
 
     if (!meeting_id || !user_id) {
@@ -859,13 +992,15 @@ Deno.serve(async (req: Request) => {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
-    const [{ data: meeting, error: meetingErr }, { data: profile, error: profileErr }] =
+    const [{ data: meeting, error: meetingErr }, { data: profile, error: profileErr }, { data: propertyRow }] =
       await Promise.all([
         supabaseAdmin.from("meetings").select(
           "id, property_id, title_en, title_zh, meeting_type, description_zh, scheduled_at, duration_minutes, is_virtual, meeting_link, location, meeting_format, voting_open_at, voting_close_at, created_by",
         ).eq("id", meeting_id).eq("property_id", property_id)
           .maybeSingle(),
         supabaseAdmin.from("profiles").select("full_name_en, full_name_zh, email").eq("id", user_id)
+          .maybeSingle(),
+        supabaseAdmin.from("properties").select("name_en, name_zh, display_name").eq("id", property_id)
           .maybeSingle(),
       ]);
 
@@ -877,31 +1012,74 @@ Deno.serve(async (req: Request) => {
       return apiResponse(false, "Meeting not found", null, 404);
     }
 
-    const { data: memberRows, error: memErr } = await supabaseAdmin
-      .from("property_members")
-      .select("user_id, role, unit_no")
-      .eq("property_id", property_id)
-      .eq("user_id", user_id)
-      .eq("status", "active")
-      .in("role", ["owner", "council"]);
-
-    if (memErr) {
-      return apiResponse(false, "Authorization check failed", { memErr }, 500);
-    }
-
-    const eligibleRow = (memberRows ?? []).find((row) => {
-      const unit = String(row.unit_no ?? "").trim();
-      const role = String(row.role ?? "").trim().toLowerCase();
-      return unit.length > 0 && (role === "owner" || role === "council");
-    });
-
-    if (!eligibleRow) {
-      return apiResponse(
-        false,
-        "Recipient is not an active eligible voter of this property.",
-        { code: "FORBIDDEN" },
-        403,
+    if (notice_type === "voting_notice") {
+      const { data: ovMeetingId, error: ovResolveErr } = await supabaseAdmin.rpc(
+        "_archive_resolve_owner_vote_meeting_id",
+        { p_property_id: property_id, p_council_meeting_id: meeting_id },
       );
+      if (ovResolveErr || !ovMeetingId) {
+        return apiResponse(false, "Owner vote meeting not found", ovResolveErr, 404);
+      }
+      const ovId = String(ovMeetingId);
+      const { data: ovRow, error: ovErr } = await supabaseAdmin
+        .from("owner_vote_meetings")
+        .select("id, status, snapshot_frozen_at, voting_closes_at")
+        .eq("id", ovId)
+        .maybeSingle();
+      if (ovErr || !ovRow) {
+        return apiResponse(false, "Owner vote meeting not found", ovErr, 404);
+      }
+      if (!ovRow.snapshot_frozen_at) {
+        return apiResponse(false, "Voter roll is not frozen", { code: "SNAPSHOT_NOT_FROZEN" }, 403);
+      }
+      if (String(ovRow.status ?? "").trim().toLowerCase() !== "open") {
+        return apiResponse(false, "Voting is not open", { code: "VOTING_NOT_OPEN" }, 403);
+      }
+      const { data: snapRow, error: snapErr } = await supabaseAdmin
+        .from("owner_vote_voter_snapshot")
+        .select("user_id")
+        .eq("meeting_id", ovId)
+        .eq("user_id", user_id)
+        .eq("is_eligible", true)
+        .maybeSingle();
+      if (snapErr) {
+        return apiResponse(false, "Snapshot authorization check failed", snapErr, 500);
+      }
+      if (!snapRow) {
+        return apiResponse(
+          false,
+          "Recipient is not on the frozen eligible voter roll.",
+          { code: "FORBIDDEN" },
+          403,
+        );
+      }
+    } else {
+      const { data: memberRows, error: memErr } = await supabaseAdmin
+        .from("property_members")
+        .select("user_id, role, unit_no")
+        .eq("property_id", property_id)
+        .eq("user_id", user_id)
+        .eq("status", "active")
+        .in("role", ["owner", "council"]);
+
+      if (memErr) {
+        return apiResponse(false, "Authorization check failed", { memErr }, 500);
+      }
+
+      const eligibleRow = (memberRows ?? []).find((row) => {
+        const unit = String(row.unit_no ?? "").trim();
+        const role = String(row.role ?? "").trim().toLowerCase();
+        return unit.length > 0 && (role === "owner" || role === "council");
+      });
+
+      if (!eligibleRow) {
+        return apiResponse(
+          false,
+          "Recipient is not an active eligible voter of this property.",
+          { code: "FORBIDDEN" },
+          403,
+        );
+      }
     }
 
     if (profileErr || !profile || !profile.email) {
@@ -918,99 +1096,136 @@ Deno.serve(async (req: Request) => {
     const normalizedBaseUrl = normalizeAppBaseUrl(Deno.env.get("APP_BASE_URL"));
     const logoUrl = `${normalizedBaseUrl}/logo-email.png`;
 
-    const inviteToken = crypto.randomUUID();
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-    const { error: tokenInsErr } = await supabaseAdmin.from("invite_tokens").insert({
-      user_id,
-      meeting_id,
-      token: inviteToken,
-      expires_at: expiresAt,
-    });
-    if (tokenInsErr) {
-      console.error("[send-meeting-invite] invite_tokens insert failed", tokenInsErr);
-      return apiResponse(false, "Could not create invite token", { detail: tokenInsErr.message }, 500);
+    const m = meeting as Record<string, unknown>;
+    const meetingTitleZh = String(m.title_zh ?? m.title_en ?? "会议").trim();
+    const meetingTitleEn = String(m.title_en ?? m.title_zh ?? "Meeting").trim();
+    const prop = propertyRow as { name_en?: string; name_zh?: string; display_name?: string } | null;
+    const propertyNameZh = prop?.name_zh?.trim() || prop?.display_name?.trim() || "物业";
+    const propertyNameEn = prop?.name_en?.trim() || prop?.display_name?.trim() || "Property";
+
+    let inviteLink: string;
+    let signInUrl: string;
+    let htmlTemplate: string;
+    let emailSubject: string;
+    let inviteToken: string | null = null;
+
+    if (notice_type === "voting_notice") {
+      const votingPath = `/meetings/${meeting_id}#owner-voting`;
+      inviteLink = `${normalizedBaseUrl}${votingPath}`;
+      signInUrl = `${normalizedBaseUrl}/login?redirect=${encodeURIComponent(votingPath)}`;
+
+      const { data: ovMeetingId } = await supabaseAdmin.rpc("_archive_resolve_owner_vote_meeting_id", {
+        p_property_id: property_id,
+        p_council_meeting_id: meeting_id,
+      });
+      let votingClosesAt: string | null = null;
+      if (ovMeetingId) {
+        const { data: ovRow } = await supabaseAdmin
+          .from("owner_vote_meetings")
+          .select("voting_closes_at")
+          .eq("id", ovMeetingId)
+          .maybeSingle();
+        votingClosesAt = typeof ovRow?.voting_closes_at === "string" ? ovRow.voting_closes_at : null;
+      }
+
+      htmlTemplate = buildVotingNoticeEmailHtml({
+        recipientNameZh,
+        recipientNameEn,
+        meetingTitleZh,
+        meetingTitleEn,
+        propertyNameZh,
+        propertyNameEn,
+        votingDeadlineZh: formatEmailDeadline(votingClosesAt, "zh"),
+        votingDeadlineEn: formatEmailDeadline(votingClosesAt, "en"),
+        inviteLink,
+        signInUrl,
+        logoUrl,
+      });
+      emailSubject = "【ClearStrata】投票已开放，请进入会议表决 / [ClearStrata] Voting Is Now Open";
+    } else {
+      inviteToken = crypto.randomUUID();
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      const { error: tokenInsErr } = await supabaseAdmin.from("invite_tokens").insert({
+        user_id,
+        meeting_id,
+        token: inviteToken,
+        expires_at: expiresAt,
+      });
+      if (tokenInsErr) {
+        console.error("[send-meeting-invite] invite_tokens insert failed", tokenInsErr);
+        return apiResponse(false, "Could not create invite token", { detail: tokenInsErr.message }, 500);
+      }
+
+      const meetingMagicUrl = `${normalizedBaseUrl}/invite?token=${inviteToken}`;
+      signInUrl =
+        `${normalizedBaseUrl}/login?redirect=${
+          encodeURIComponent(`/meetings/${meeting_id}?entry=invite`)
+        }`;
+      inviteLink = meetingMagicUrl;
+
+      console.log("[MeetingInviteEmail] inviteToken", inviteToken);
+      console.log("[MeetingInviteEmail] meetingMagicUrl", meetingMagicUrl);
+
+      const [{ count: electionAgendaCount, error: electionAgendaErr }, { data: ovMeetingId }] =
+        await Promise.all([
+          supabaseAdmin
+            .from("meeting_agenda_items")
+            .select("id", { count: "exact", head: true })
+            .eq("meeting_id", meeting_id)
+            .like("description_zh", "%clearstrata-election-agenda%"),
+          supabaseAdmin.rpc("_archive_resolve_owner_vote_meeting_id", {
+            p_property_id: property_id,
+            p_council_meeting_id: meeting_id,
+          }),
+        ]);
+
+      if (electionAgendaErr) {
+        console.warn("[send-meeting-invite] election agenda count failed (non-fatal)", electionAgendaErr);
+      }
+
+      let ownerVoteVotingOpens: string | null = null;
+      let ownerVoteVotingCloses: string | null = null;
+      const resolvedOvId = typeof ovMeetingId === "string" ? ovMeetingId : null;
+      if (resolvedOvId) {
+        const { data: ovRow } = await supabaseAdmin
+          .from("owner_vote_meetings")
+          .select("voting_opens_at, voting_closes_at")
+          .eq("id", resolvedOvId)
+          .maybeSingle();
+        if (ovRow) {
+          ownerVoteVotingOpens = typeof ovRow.voting_opens_at === "string"
+            ? ovRow.voting_opens_at
+            : null;
+          ownerVoteVotingCloses = typeof ovRow.voting_closes_at === "string"
+            ? ovRow.voting_closes_at
+            : null;
+        }
+      }
+
+      const inviteFields = buildInviteEmailFields(m, {
+        hasElectionAgenda: (electionAgendaCount ?? 0) > 0,
+        ownerVoteVotingOpens,
+        ownerVoteVotingCloses,
+      });
+
+      htmlTemplate = buildEmailHtml({
+        recipientNameZh,
+        recipientNameEn,
+        fields: inviteFields,
+        inviteLink,
+        signInUrl,
+        logoUrl,
+      });
+      emailSubject = "会议通知 / Meeting Notice";
     }
-
-    const meetingMagicUrl = `${normalizedBaseUrl}/invite?token=${inviteToken}`;
-    const signInUrl =
-      `${normalizedBaseUrl}/login?redirect=${
-        encodeURIComponent(`/meetings/${meeting_id}?entry=invite`)
-      }`;
-    const inviteLink = meetingMagicUrl;
-
-    console.log("[MeetingInviteEmail] inviteToken", inviteToken);
-    console.log("[MeetingInviteEmail] meetingMagicUrl", meetingMagicUrl);
 
     console.log("[send-meeting-invite] base url debug:", {
       raw: Deno.env.get("APP_BASE_URL"),
       normalizedBaseUrl,
-      meetingMagicUrl,
-      signInUrl,
-      logoUrl,
-    });
-
-    console.log("meeting raw:", meeting);
-
-    const m = meeting as Record<string, unknown>;
-
-    const [{ count: electionAgendaCount, error: electionAgendaErr }, { data: ovMeetingId }] =
-      await Promise.all([
-        supabaseAdmin
-          .from("meeting_agenda_items")
-          .select("id", { count: "exact", head: true })
-          .eq("meeting_id", meeting_id)
-          .like("description_zh", "%clearstrata-election-agenda%"),
-        supabaseAdmin.rpc("_archive_resolve_owner_vote_meeting_id", {
-          p_property_id: property_id,
-          p_council_meeting_id: meeting_id,
-        }),
-      ]);
-
-    if (electionAgendaErr) {
-      console.warn("[send-meeting-invite] election agenda count failed (non-fatal)", electionAgendaErr);
-    }
-
-    let ownerVoteVotingOpens: string | null = null;
-    let ownerVoteVotingCloses: string | null = null;
-    const resolvedOvId = typeof ovMeetingId === "string" ? ovMeetingId : null;
-    if (resolvedOvId) {
-      const { data: ovRow } = await supabaseAdmin
-        .from("owner_vote_meetings")
-        .select("voting_opens_at, voting_closes_at")
-        .eq("id", resolvedOvId)
-        .maybeSingle();
-      if (ovRow) {
-        ownerVoteVotingOpens = typeof ovRow.voting_opens_at === "string"
-          ? ovRow.voting_opens_at
-          : null;
-        ownerVoteVotingCloses = typeof ovRow.voting_closes_at === "string"
-          ? ovRow.voting_closes_at
-          : null;
-      }
-    }
-
-    const inviteFields = buildInviteEmailFields(m, {
-      hasElectionAgenda: (electionAgendaCount ?? 0) > 0,
-      ownerVoteVotingOpens,
-      ownerVoteVotingCloses,
-    });
-
-    console.log("[send-meeting-invite] email fields", {
-      normalizedBaseUrl,
-      meetingMagicUrl,
-      signInUrl,
-      logoUrl,
-      remoteWritten: isWrittenRemoteUi(meetingFormatUiFromRow(m)),
-      inviteFieldCount: inviteFields.length,
-    });
-
-    const htmlTemplate = buildEmailHtml({
-      recipientNameZh,
-      recipientNameEn,
-      fields: inviteFields,
       inviteLink,
       signInUrl,
       logoUrl,
+      notice_type,
     });
 
     const email = profile.email as string;
@@ -1032,7 +1247,7 @@ Deno.serve(async (req: Request) => {
       const res = await resend.emails.send({
         from: "ClearStrata <noreply@clearstrata.ai>",
         to: email,
-        subject: "会议邀请 / Meeting Invitation",
+        subject: emailSubject,
         html: htmlTemplate,
       });
 
@@ -1053,13 +1268,16 @@ Deno.serve(async (req: Request) => {
           resendName === "validation_error" &&
           /testing email|only send|verify a domain|can only send/i.test(msgLower);
 
-        await supabaseAdmin.from("invite_tokens").delete().eq("token", inviteToken);
+        if (inviteToken) {
+          await supabaseAdmin.from("invite_tokens").delete().eq("token", inviteToken);
+        }
         await upsertInvitationDelivery(supabaseAdmin, {
           meeting_id,
           property_id,
           recipient_user_id: user_id,
           email,
           delivery_status: "failed",
+          notice_type,
         });
 
         if (isTestingRecipientRestriction) {
@@ -1090,8 +1308,9 @@ Deno.serve(async (req: Request) => {
         recipient_user_id: user_id,
         email,
         delivery_status: "sent",
+        notice_type,
       });
-      if (!invDeliveryErr) {
+      if (!invDeliveryErr && notice_type === "meeting_notice") {
         const noticeSentIso = new Date().toISOString();
         const { error: noticeSentErr } = await supabaseAdmin
           .from("meetings")
@@ -1102,19 +1321,22 @@ Deno.serve(async (req: Request) => {
           console.warn("[send-meeting-invite] meetings.notice_sent_at update failed (non-fatal)", noticeSentErr);
         }
       }
-      console.log("[send-meeting-invite] success", { email_id: emailId });
+      console.log("[send-meeting-invite] success", { email_id: emailId, notice_type });
       return apiResponse(true, "Email sent", { email_id: emailId }, 200);
     } catch (err) {
       console.error("❌ resend error FULL", JSON.stringify(unknownToSerializable(err), null, 2));
       console.error("❌ resend error raw object", err);
 
-      await supabaseAdmin.from("invite_tokens").delete().eq("token", inviteToken);
+      if (inviteToken) {
+        await supabaseAdmin.from("invite_tokens").delete().eq("token", inviteToken);
+      }
       await upsertInvitationDelivery(supabaseAdmin, {
         meeting_id,
         property_id,
         recipient_user_id: user_id,
         email,
         delivery_status: "failed",
+        notice_type,
       });
 
       return sendEmailFailedResponse("Failed to send email", err, 500);

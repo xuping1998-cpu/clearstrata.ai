@@ -30,7 +30,9 @@ export async function invokeSendMeetingInviteEdge(params: {
   propertyId: string;
   userId: string;
   locale: 'en' | 'zh';
+  noticeType?: MeetingNoticeType;
 }): Promise<{ ok: boolean; message: string; detail?: unknown }> {
+  const noticeType = params.noticeType ?? 'meeting_notice';
   const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
   if (!anonKey) {
     return { ok: false, message: 'Missing VITE_SUPABASE_ANON_KEY', detail: null };
@@ -40,6 +42,7 @@ export async function invokeSendMeetingInviteEdge(params: {
     meetingId: params.meetingId,
     propertyId: params.propertyId,
     userId: params.userId,
+    noticeType,
   });
   const { data, error } = await supabase.functions.invoke('send-meeting-invite', {
     body: {
@@ -47,6 +50,8 @@ export async function invokeSendMeetingInviteEdge(params: {
       propertyId: params.propertyId,
       userId: params.userId,
       locale: params.locale,
+      noticeType,
+      notice_type: noticeType,
     },
     headers: {
       Authorization: `Bearer ${anonKey}`,
@@ -154,8 +159,9 @@ async function dispatchMeetingInviteEmails(params: {
   userIds: string[];
   emailByUser: Record<string, string | null>;
   locale: 'en' | 'zh';
+  noticeType?: MeetingNoticeType;
 }): Promise<SendMeetingInvitesResult> {
-  const { meetingId, propertyId, userIds, emailByUser, locale } = params;
+  const { meetingId, propertyId, userIds, emailByUser, locale, noticeType = 'meeting_notice' } = params;
   const errors: { userId: string; message: string }[] = [];
   let sent = 0;
   let failed = 0;
@@ -166,6 +172,7 @@ async function dispatchMeetingInviteEmails(params: {
       propertyId,
       userId,
       locale,
+      noticeType,
     });
 
     if (r.ok) {
@@ -182,7 +189,8 @@ async function dispatchMeetingInviteEmails(params: {
             property_id: propertyId,
           } as any)
           .eq('meeting_id', meetingId)
-          .eq('recipient_user_id', userId) as any,
+          .eq('recipient_user_id', userId)
+          .eq('notice_type', noticeType) as any,
         propertyId,
       );
       if (upErr) {
@@ -200,7 +208,8 @@ async function dispatchMeetingInviteEmails(params: {
             property_id: propertyId,
           } as any)
           .eq('meeting_id', meetingId)
-          .eq('recipient_user_id', userId) as any,
+          .eq('recipient_user_id', userId)
+          .eq('notice_type', noticeType) as any,
         propertyId,
       );
     }
@@ -313,6 +322,7 @@ export interface MeetingInvitationRow {
   voted_at: string | null;
   /** approve / reject / abstain (mapped from ballot option keys for / against / abstain). */
   vote: 'approve' | 'reject' | 'abstain' | null;
+  notice_type?: string;
   created_at: string | null;
 }
 
@@ -670,10 +680,9 @@ export async function fetchMeetingInviteRecipients(
     const userIds = picked.map((m) => m.user_id);
     const [{ profileById, error: profErr }, invRes] = await Promise.all([
       loadInviteProfilesByUserId(userIds),
-      withProperty(supabase.from('meeting_invitations').select('*') as any, propertyId).eq(
-        'meeting_id',
-        meetingId,
-      ),
+      withProperty(supabase.from('meeting_invitations').select('*') as any, propertyId)
+        .eq('meeting_id', meetingId)
+        .eq('notice_type', 'meeting_notice'),
     ]);
 
     if (profErr) {
@@ -710,6 +719,96 @@ export async function fetchMeetingInviteRecipients(
     return {
       recipients: [],
       error: e instanceof Error ? e : new Error('Failed to load invite recipients'),
+    };
+  }
+}
+
+/** Frozen-roll eligible voters merged with `meeting_invitations` where notice_type = voting_notice. */
+export async function fetchVotingNoticeRecipients(
+  councilMeetingId: string,
+  propertyId: string,
+  ownerVoteMeetingId: string,
+): Promise<{ recipients: MeetingInviteRecipientRow[]; error: Error | null }> {
+  try {
+    const snapRes = await supabase
+      .from('owner_vote_voter_snapshot')
+      .select('user_id, unit_no, is_eligible')
+      .eq('meeting_id', ownerVoteMeetingId)
+      .eq('is_eligible', true);
+
+    if (snapRes.error) {
+      return {
+        recipients: [],
+        error: new Error(snapRes.error.message ?? 'Failed to load voter snapshot'),
+      };
+    }
+
+    const snapRows = (snapRes.data ?? []) as {
+      user_id: string;
+      unit_no: string | null;
+      is_eligible: boolean;
+    }[];
+
+    if (snapRows.length === 0) {
+      return { recipients: [], error: null };
+    }
+
+    const userIds = [...new Set(snapRows.map((r) => r.user_id))];
+    const unitByUser = new Map(snapRows.map((r) => [r.user_id, r.unit_no]));
+
+    const [{ profileById, error: profErr }, invRes, membRes] = await Promise.all([
+      loadInviteProfilesByUserId(userIds),
+      withProperty(supabase.from('meeting_invitations').select('*') as any, propertyId)
+        .eq('meeting_id', councilMeetingId)
+        .eq('notice_type', 'voting_notice'),
+      withProperty(supabase.from('property_members').select('user_id, role, status') as any, propertyId)
+        .in('user_id', userIds)
+        .eq('status', 'active'),
+    ]);
+
+    if (profErr) {
+      return { recipients: [], error: profErr };
+    }
+
+    const roleByUser = new Map<string, string>();
+    for (const m of (membRes.data ?? []) as { user_id: string; role: string; status: string }[]) {
+      roleByUser.set(m.user_id, m.role);
+    }
+
+    const invByUser = new Map<string, MeetingInvitationRow>();
+    if (!invRes.error && invRes.data) {
+      for (const inv of invRes.data as MeetingInvitationRow[]) {
+        invByUser.set(inv.recipient_user_id, inv);
+      }
+    }
+
+    const recipients: MeetingInviteRecipientRow[] = userIds.map((userId) => {
+      const prof = profileById[userId];
+      const invitation = invByUser.get(userId) ?? null;
+      return {
+        user_id: userId,
+        unit_no: unitByUser.get(userId) ?? null,
+        email: prof?.email ?? invitation?.email ?? null,
+        full_name_en: prof?.full_name_en ?? null,
+        full_name_zh: prof?.full_name_zh ?? null,
+        role: roleByUser.get(userId) ?? 'owner',
+        member_status: 'active',
+        invitation,
+        delivery_status: invitation?.delivery_status ?? null,
+        opened_at: invitation?.opened_at ?? null,
+        voted_at: invitation?.voted_at ?? null,
+      };
+    });
+
+    recipients.sort((a, b) =>
+      String(a.unit_no ?? '').localeCompare(String(b.unit_no ?? ''), undefined, { numeric: true }),
+    );
+
+    return { recipients, error: null };
+  } catch (e) {
+    return {
+      recipients: [],
+      error: e instanceof Error ? e : new Error('Failed to load voting notice recipients'),
     };
   }
 }
@@ -1166,8 +1265,13 @@ export async function castBallot(voteId: string, selectedOptionKey: string, prop
  */
 export type SendMeetingInvitationsMode = 'missing_only' | 'all_current_eligible';
 
+export type MeetingNoticeType = 'meeting_notice' | 'voting_notice';
+
 export type SendMeetingInvitationsOptions = {
   mode?: SendMeetingInvitationsMode;
+  noticeType?: MeetingNoticeType;
+  /** Required when noticeType = voting_notice */
+  ownerVoteMeetingId?: string;
 };
 
 export async function sendMeetingInvitations(
@@ -1177,8 +1281,9 @@ export async function sendMeetingInvitations(
   options: SendMeetingInvitationsOptions = {},
 ): Promise<SendMeetingInvitesResult> {
   const mode: SendMeetingInvitationsMode = options.mode ?? 'missing_only';
+  const noticeType: MeetingNoticeType = options.noticeType ?? 'meeting_notice';
   console.log('🚨 BUILD VERSION', import.meta.env.VITE_BUILD_TIME || 'dev');
-  console.log('🚨 sendMeetingInvitations CALLED', { meetingId, propertyId, locale, mode });
+  console.log('🚨 sendMeetingInvitations CALLED', { meetingId, propertyId, locale, mode, noticeType });
 
   const empty = (error: Error | null): SendMeetingInvitesResult => ({
     attempted: 0,
@@ -1205,22 +1310,59 @@ export async function sendMeetingInvitations(
       return empty(new Error(sessionErr?.message ?? 'Not signed in'));
     }
 
-    const { recipients: inviteRecipients, error: recipErr } = await fetchMeetingInviteRecipients(
-      meetingId,
-      propertyId,
-    );
-    if (recipErr) {
-      console.warn('🚨 early return reason:', 'fetchMeetingInviteRecipients failed', recipErr);
-      return empty(recipErr);
+    let inviteRecipients: MeetingInviteRecipientRow[] = [];
+
+    if (noticeType === 'voting_notice') {
+      const ovId = options.ownerVoteMeetingId?.trim();
+      if (!ovId) {
+        return empty(new Error('ownerVoteMeetingId is required for voting notices'));
+      }
+
+      const { data: ovRow, error: ovErr } = await supabase
+        .from('owner_vote_meetings')
+        .select('id, status, snapshot_frozen_at')
+        .eq('id', ovId)
+        .eq('property_id', propertyId)
+        .maybeSingle();
+
+      if (ovErr) {
+        return empty(new Error(ovErr.message ?? 'Failed to load owner vote meeting'));
+      }
+      if (!ovRow) {
+        return empty(new Error('Owner vote meeting not found'));
+      }
+      if (!String(ovRow.snapshot_frozen_at ?? '').trim()) {
+        return empty(new Error('Voter roll is not frozen yet'));
+      }
+      if (String(ovRow.status ?? '').trim().toLowerCase() !== 'open') {
+        return empty(new Error('Owner vote meeting is not open'));
+      }
+
+      const snapRes = await fetchVotingNoticeRecipients(meetingId, propertyId, ovId);
+      if (snapRes.error) {
+        return empty(snapRes.error);
+      }
+      inviteRecipients = snapRes.recipients;
+      if (inviteRecipients.length === 0) {
+        return empty(new Error('No eligible voters in frozen snapshot'));
+      }
+    } else {
+      const recipRes = await fetchMeetingInviteRecipients(meetingId, propertyId);
+      if (recipRes.error) {
+        console.warn('🚨 early return reason:', 'fetchMeetingInviteRecipients failed', recipRes.error);
+        return empty(recipRes.error);
+      }
+      inviteRecipients = recipRes.recipients;
+      if (inviteRecipients.length === 0) {
+        console.warn('🚨 early return reason:', 'no eligible invite recipients');
+        return empty(null);
+      }
     }
 
-    if (inviteRecipients.length === 0) {
-      console.warn('🚨 early return reason:', 'no eligible invite recipients');
-      return empty(null);
-    }
+    const effectiveMode = noticeType === 'voting_notice' ? 'all_current_eligible' : mode;
 
     const toSend =
-      mode === 'all_current_eligible'
+      effectiveMode === 'all_current_eligible'
         ? inviteRecipients
         : inviteRecipients.filter((r) => {
             if (!r.invitation) return true;
@@ -1236,11 +1378,13 @@ export async function sendMeetingInvitations(
       'of',
       inviteRecipients.length,
       'mode',
-      mode,
+      effectiveMode,
+      'noticeType',
+      noticeType,
     );
 
     if (userIds.length === 0) {
-      console.warn('🚨 early return reason:', 'no recipients to send for mode', mode);
+      console.warn('🚨 early return reason:', 'no recipients to send for mode', effectiveMode);
       return empty(null);
     }
 
@@ -1259,8 +1403,9 @@ export async function sendMeetingInvitations(
         delivery_channel: 'email' as const,
         delivery_status: 'pending' as const,
         sent_at: null as string | null,
+        notice_type: noticeType,
       };
-      if (mode === 'all_current_eligible') {
+      if (effectiveMode === 'all_current_eligible') {
         return {
           ...base,
           opened_at: null as string | null,
@@ -1273,7 +1418,7 @@ export async function sendMeetingInvitations(
 
     const { error: pendingErr } = await withProperty(
       supabase.from('meeting_invitations').upsert(pendingRows, {
-        onConflict: 'meeting_id,recipient_user_id',
+        onConflict: 'meeting_id,recipient_user_id,notice_type',
       }) as any,
       propertyId,
     );
@@ -1291,6 +1436,7 @@ export async function sendMeetingInvitations(
       userIds,
       emailByUser,
       locale,
+      noticeType,
     });
   } catch (error) {
     console.error('🚨 invoke failed', error);
@@ -1310,12 +1456,17 @@ export async function markInvitationsSent(meetingId: string, propertyId: string)
   return { error };
 }
 
-export async function resetFailedInvitations(meetingId: string, propertyId: string) {
+export async function resetFailedInvitations(
+  meetingId: string,
+  propertyId: string,
+  noticeType: MeetingNoticeType = 'meeting_notice',
+) {
   return await withProperty(
     supabase.from('meeting_invitations').update({ delivery_status: 'pending', sent_at: null, property_id: propertyId }) as any,
     propertyId,
   )
     .eq('meeting_id', meetingId)
+    .eq('notice_type', noticeType)
     .eq('delivery_status', 'failed');
 }
 
