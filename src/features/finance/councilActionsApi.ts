@@ -37,6 +37,7 @@ export type CouncilAction = {
   created_at: string;
   completed_at: string | null;
   completed_by: string | null;
+  manager_task_id: string | null;
 };
 
 export type CouncilActionsSummary = {
@@ -78,6 +79,7 @@ function mapActionRow(
     created_at: String(r.created_at),
     completed_at: r.completed_at != null ? String(r.completed_at) : null,
     completed_by: r.completed_by != null ? String(r.completed_by) : null,
+    manager_task_id: r.manager_task_id != null ? String(r.manager_task_id) : null,
   };
 }
 
@@ -146,7 +148,7 @@ export async function listCouncilActions(propertyId: string): Promise<CouncilAct
   const { data, error } = await supabase
     .from('council_actions')
     .select(
-      'id, property_id, alert_type, alert_category, title, description, action_type, status, priority, assigned_to, due_date, assigned_at, created_by, created_at, completed_at, completed_by',
+      'id, property_id, alert_type, alert_category, title, description, action_type, status, priority, assigned_to, due_date, assigned_at, created_by, created_at, completed_at, completed_by, manager_task_id',
     )
     .eq('property_id', propertyId)
     .order('created_at', { ascending: false });
@@ -215,7 +217,7 @@ export async function findOpenCouncilActionForAlert(
   const { data, error } = await supabase
     .from('council_actions')
     .select(
-      'id, property_id, alert_type, alert_category, title, description, action_type, status, priority, assigned_to, due_date, assigned_at, created_by, created_at, completed_at, completed_by',
+      'id, property_id, alert_type, alert_category, title, description, action_type, status, priority, assigned_to, due_date, assigned_at, created_by, created_at, completed_at, completed_by, manager_task_id',
     )
     .eq('property_id', propertyId)
     .eq('alert_type', alert.alert_type)
@@ -259,7 +261,7 @@ export async function createCouncilActionFromAlert(
       created_by: userId,
     })
     .select(
-      'id, property_id, alert_type, alert_category, title, description, action_type, status, priority, assigned_to, due_date, assigned_at, created_by, created_at, completed_at, completed_by',
+      'id, property_id, alert_type, alert_category, title, description, action_type, status, priority, assigned_to, due_date, assigned_at, created_by, created_at, completed_at, completed_by, manager_task_id',
     )
     .single();
 

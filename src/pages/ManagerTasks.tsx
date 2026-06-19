@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ClipboardList, Loader2, Send, Star } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -16,7 +16,11 @@ export type ManagerTaskType =
   | 'dispute'
   | 'vendor'
   | 'invoice_review'
-  | 'maintenance';
+  | 'maintenance'
+  | 'budget_review'
+  | 'owner_fee_collection'
+  | 'finance_mapping'
+  | 'follow_up';
 
 export type ManagerTaskRow = {
   id: string;
@@ -28,6 +32,8 @@ export type ManagerTaskRow = {
   dispute_status: string | null;
   dispute_result: string | null;
   created_at: string;
+  source_type: string | null;
+  council_action_id: string | null;
 };
 
 type OwnerRequest = {
@@ -291,6 +297,10 @@ const TASK_KIND_LABELS: Record<string, { zh: string; en: string }> = {
   vendor: { zh: '采购申报', en: 'Procurement' },
   invoice_upload: { zh: '发票上传', en: 'Invoice upload' },
   invoice_review: { zh: '发票上传', en: 'Invoice upload' },
+  budget_review: { zh: '预算审查', en: 'Budget review' },
+  owner_fee_collection: { zh: '追缴物业费', en: 'Fee collection' },
+  finance_mapping: { zh: '科目映射', en: 'Finance mapping' },
+  follow_up: { zh: '跟进事项', en: 'Follow-up' },
 };
 
 function taskTypeLabel(kind: string, en: boolean): string {
@@ -1719,6 +1729,7 @@ export function ManagerTasks() {
   const { session } = useAuth();
   const { currentPropertyId, roleInProperty } = useProperty();
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const { toasts, show: showToast } = useToast();
 
   // ── Filter tab ───────────────────────────────────────────────────────────────
@@ -1748,7 +1759,7 @@ export function ManagerTasks() {
     setTaskError(null);
     const { data, error } = await supabase
       .from('manager_tasks')
-      .select('id, property_id, task_type, title, description, status, dispute_status, dispute_result, created_at')
+      .select('id, property_id, task_type, title, description, status, dispute_status, dispute_result, created_at, source_type, council_action_id')
       .eq('property_id', currentPropertyId)
       .order('created_at', { ascending: false });
     if (error) {
@@ -2367,6 +2378,12 @@ export function ManagerTasks() {
   }, [monthlyReports, isPropertyManagerRole]);
 
   const linkedRequestId = searchParams.get('requestId');
+  const linkedTaskId = searchParams.get('taskId');
+
+  useEffect(() => {
+    if (!linkedTaskId) return;
+    navigate(`/property-admin/tasks/${linkedTaskId}`, { replace: true });
+  }, [linkedTaskId, navigate]);
 
   useEffect(() => {
     if (!linkedRequestId) return;

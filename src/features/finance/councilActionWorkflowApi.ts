@@ -34,7 +34,8 @@ export type CouncilActionEventType =
   | 'due_date_changed'
   | 'completed'
   | 'comment_added'
-  | 'attachment_added';
+  | 'attachment_added'
+  | 'manager_completed';
 
 export type CouncilActionEvent = {
   id: string;
@@ -132,6 +133,7 @@ export function eventTypeLabel(type: CouncilActionEventType, en: boolean): strin
     completed: { en: 'Completed', zh: '已完成' },
     comment_added: { en: 'Comment Added', zh: '新增评论' },
     attachment_added: { en: 'Attachment Added', zh: '新增附件' },
+    manager_completed: { en: 'Manager Submitted Results', zh: '物业经理已提交处理结果' },
   };
   return en ? labels[type].en : labels[type].zh;
 }

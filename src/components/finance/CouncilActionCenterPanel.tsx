@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Briefcase, CalendarDays, Loader2, Map, ShoppingCart, Users } from 'lucide-react';
 import { CouncilActionDetailDrawer } from './CouncilActionDetailDrawer';
 import {
@@ -51,6 +51,8 @@ export function CouncilActionCenterPanel({
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<CouncilAction[]>([]);
   const [selected, setSelected] = useState<CouncilAction | null>(null);
+  const [searchParams] = useSearchParams();
+  const actionIdFromUrl = searchParams.get('actionId');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -62,6 +64,12 @@ export function CouncilActionCenterPanel({
   useEffect(() => {
     void load();
   }, [load, refreshKey]);
+
+  useEffect(() => {
+    if (!actionIdFromUrl || loading) return;
+    const found = rows.find((r) => r.id === actionIdFromUrl);
+    if (found) setSelected(found);
+  }, [actionIdFromUrl, rows, loading]);
 
   const summary = useMemo(() => summarizeCouncilActions(rows), [rows]);
   const today = new Date().toISOString().slice(0, 10);

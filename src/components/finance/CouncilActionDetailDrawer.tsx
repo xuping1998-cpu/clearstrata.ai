@@ -46,6 +46,18 @@ import {
   type CouncilActionEvent,
   type WorkflowStaffOption,
 } from '../../features/finance/councilActionWorkflowApi';
+import {
+  createManagerTaskFromCouncilAction,
+  fetchManagerTaskForCouncilAction,
+  getManagerTaskRollupForAction,
+  getTaskAttachmentSignedUrl,
+  isManagerTaskCompleted,
+  managerCompletedEventExcerpt,
+  managerTaskHref,
+  managerTaskStatusLabel,
+  type CouncilActionLinkedManagerTask,
+  type ManagerTaskRollup,
+} from '../../features/finance/councilActionManagerBridgeApi';
 
 type Props = {
   action: CouncilAction;
@@ -96,6 +108,8 @@ export function CouncilActionDetailDrawer({
   const [showAssignFocus, setShowAssignFocus] = useState(false);
   const [showManagerPicker, setShowManagerPicker] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [managerTask, setManagerTask] = useState<CouncilActionLinkedManagerTask | null>(null);
+  const [managerRollup, setManagerRollup] = useState<ManagerTaskRollup | null>(null);
 
   const managerCandidates = useMemo(() => findPropertyManagers(staff), [staff]);
 
@@ -113,6 +127,10 @@ export function CouncilActionDetailDrawer({
     setAttachments(attachmentRows);
     setEvents(eventRows);
     setStaff(staffOptions);
+    const linkedTask = await fetchManagerTaskForCouncilAction(action.id);
+    setManagerTask(linkedTask);
+    const rollup = await getManagerTaskRollupForAction(action.id);
+    setManagerRollup(rollup);
     setLoading(false);
   }, [action, fiscalYear]);
 
@@ -205,7 +223,20 @@ export function CouncilActionDetailDrawer({
     if (currentAssignee === manager.user_id) {
       setAssignedTo(manager.user_id);
       setShowManagerPicker(false);
-      setMessage(alreadyMsg);
+      const taskResult = await createManagerTaskFromCouncilAction(
+        action.id,
+        manager.user_id,
+        fiscalYear,
+        en,
+      );
+      setSaving(false);
+      if (taskResult.error) {
+        setMessage(taskResult.error);
+      } else {
+        setMessage(alreadyMsg);
+      }
+      onUpdated();
+      await reload();
       return;
     }
 
@@ -213,13 +244,37 @@ export function CouncilActionDetailDrawer({
     setMessage(null);
     setAssignedTo(manager.user_id);
     const { ok, error } = await assignCouncilAction(action.id, manager.user_id);
-    setSaving(false);
     if (!ok) {
+      setSaving(false);
       setMessage(error ?? (en ? 'Assign failed' : '分配失败'));
       return;
     }
+
+    const taskResult = await createManagerTaskFromCouncilAction(
+      action.id,
+      manager.user_id,
+      fiscalYear,
+      en,
+    );
+    setSaving(false);
+    if (taskResult.error) {
+      setMessage(
+        taskResult.error ??
+          (en ? 'Assigned, but manager task creation failed.' : '已分配，但经理任务创建失败。'),
+      );
+      onUpdated();
+      await reload();
+      return;
+    }
+
     setShowManagerPicker(false);
-    setMessage(assignedMsg);
+    setMessage(
+      taskResult.existing
+        ? en
+          ? 'Assigned. Manager task already exists.'
+          : '已分配。经理任务已存在。'
+        : assignedMsg,
+    );
     onUpdated();
     await reload();
   };
@@ -542,6 +597,162 @@ export function CouncilActionDetailDrawer({
                 ) : null}
               </section>
 
+              <section className="mt-4 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                <h5 className="text-sm font-semibold text-slate-950">
+                  {en ? 'Manager task' : '经理任务'}
+                </h5>
+                <div className="mt-2 border-t border-slate-200 pt-3">
+                  {managerTask ? (
+                    <dl className="grid gap-2 text-sm">
+                      <div>
+                        <dt className="text-gray-500">{en ? 'Status' : '状态'}</dt>
+                        <dd className="font-medium text-gray-900">
+                          {managerTaskStatusLabel(managerTask.status, en)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-gray-500">{en ? 'Assignee' : '负责人'}</dt>
+                        <dd className="font-medium text-gray-900">
+                          {managerTask.assignee_name ?? (en ? 'Unassigned' : '未分配')}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-gray-500">{en ? 'Created' : '创建时间'}</dt>
+                        <dd className="font-medium text-gray-900">
+                          {new Date(managerTask.created_at).toLocaleString(en ? 'en-CA' : 'zh-CN')}
+                        </dd>
+                      </div>
+                      <div className="pt-1">
+                        <Link
+                          to={managerTaskHref(managerTask.id)}
+                          className="inline-flex rounded-lg bg-violet-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-800"
+                        >
+                          {en ? 'Open manager task' : '打开经理任务'}
+                        </Link>
+                      </div>
+                    </dl>
+                  ) : (
+                    <p className="text-sm text-gray-500">
+                      {en ? 'No manager task created yet.' : '尚未创建经理任务'}
+                    </p>
+                  )}
+                </div>
+              </section>
+
+              {(managerRollup || managerTask || action.manager_task_id) ? (
+                <section className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/40 p-3">
+                  <h5 className="text-sm font-semibold text-emerald-950">
+                    {en ? 'Manager feedback' : '经理反馈'}
+                  </h5>
+                  {managerRollup && isManagerTaskCompleted(managerRollup.task_status) ? (
+                    <div className="mt-3 space-y-3 text-sm">
+                      <p className="font-medium text-emerald-900">
+                        {en
+                          ? 'The property manager has submitted results.'
+                          : '物业经理已提交处理结果'}
+                      </p>
+                      <div>
+                        <div className="text-gray-500">{en ? 'Outcome' : '处理结果'}</div>
+                        <p className="mt-1 whitespace-pre-wrap font-medium text-gray-900">
+                          {managerRollup.manager_feedback?.trim() || (en ? '—' : '—')}
+                        </p>
+                      </div>
+                      <div>
+                        <div className="text-gray-500">{en ? 'Completed at' : '完成时间'}</div>
+                        <p className="font-medium text-gray-900">
+                          {managerRollup.completed_at
+                            ? new Date(managerRollup.completed_at).toLocaleString(en ? 'en-CA' : 'zh-CN')
+                            : '—'}
+                        </p>
+                      </div>
+                      <div>
+                        <div className="text-gray-500">{en ? 'Submitted by' : '处理人'}</div>
+                        <p className="font-medium text-gray-900">
+                          {managerRollup.manager_feedback_by_name ??
+                            managerRollup.assigned_to_name ??
+                            (en ? '—' : '—')}
+                        </p>
+                      </div>
+                      <div>
+                        <div className="text-gray-500">{en ? 'Attachments' : '附件'}</div>
+                        {managerRollup.attachments.length === 0 ? (
+                          <p className="mt-1 text-gray-500">
+                            {en ? 'No manager attachments yet.' : '暂无经理附件'}
+                          </p>
+                        ) : (
+                          <ul className="mt-1 space-y-1">
+                            {managerRollup.attachments.map((a) => (
+                              <li
+                                key={a.id}
+                                className="flex items-center justify-between gap-2 rounded border border-emerald-100 bg-white px-2 py-1.5"
+                              >
+                                <span className="truncate">{a.file_name}</span>
+                                <button
+                                  type="button"
+                                  className="shrink-0 text-xs font-medium text-emerald-800 hover:underline"
+                                  onClick={() =>
+                                    void getTaskAttachmentSignedUrl(a.storage_path).then((url) => {
+                                      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+                                    })
+                                  }
+                                >
+                                  {en ? 'View' : '查看'}
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                      {canManage && status !== 'completed' ? (
+                        <div className="flex flex-wrap gap-2 border-t border-emerald-200/80 pt-3">
+                          <p className="w-full text-xs font-medium text-emerald-900">
+                            {en ? 'Council review' : '业委会审核'}
+                          </p>
+                          <button
+                            type="button"
+                            disabled={saving}
+                            onClick={() => void handleComplete()}
+                            className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
+                          >
+                            {en ? 'Mark council action complete' : '标记业委会行动完成'}
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="mt-3 space-y-2 text-sm">
+                      <div>
+                        <span className="text-gray-500">
+                          {en ? 'Manager task status' : '经理任务状态'}：
+                        </span>{' '}
+                        <span className="font-medium text-gray-900">
+                          {managerRollup
+                            ? managerTaskStatusLabel(managerRollup.task_status, en)
+                            : managerTask
+                              ? managerTaskStatusLabel(managerTask.status, en)
+                              : en
+                                ? 'Pending'
+                                : '待处理'}
+                        </span>
+                      </div>
+                      <p className="text-gray-600">
+                        {en
+                          ? 'Waiting for the property manager to submit results.'
+                          : '等待物业经理提交处理结果。'}
+                      </p>
+                      {(managerRollup?.task_id ?? managerTask?.id) ? (
+                        <Link
+                          to={managerTaskHref(managerRollup?.task_id ?? managerTask!.id)}
+                          className="inline-flex rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-900 hover:bg-emerald-50"
+                        >
+                          {en ? 'Open manager task' : '打开经理任务'}
+                        </Link>
+                      ) : null}
+                    </div>
+                  )}
+                </section>
+              ) : null}
+
               <section className="mt-4">
                 <h5 className="text-sm font-semibold text-gray-900">
                   {en ? 'Discussion' : '讨论'}
@@ -661,17 +872,30 @@ export function CouncilActionDetailDrawer({
                   <p className="mt-2 text-sm text-gray-500">{en ? 'No events yet.' : '暂无记录。'}</p>
                 ) : (
                   <ul className="mt-2 space-y-2">
-                    {events.map((ev) => (
+                    {events.map((ev) => {
+                      const managerExcerpt =
+                        ev.event_type === 'manager_completed'
+                          ? managerCompletedEventExcerpt(ev, managerRollup?.manager_feedback)
+                          : null;
+                      return (
                       <li key={ev.id} className="text-sm">
                         <div className="font-medium text-gray-900">
                           {eventTypeLabel(ev.event_type, en)}
                         </div>
+                        {managerExcerpt ? (
+                          <p className="mt-1 text-gray-600">
+                            {managerExcerpt.length > 160
+                              ? `${managerExcerpt.slice(0, 160)}…`
+                              : managerExcerpt}
+                          </p>
+                        ) : null}
                         <div className="text-xs text-gray-500">
                           {ev.actor_name ?? (en ? 'System' : '系统')} ·{' '}
                           {new Date(ev.created_at).toLocaleString()}
                         </div>
                       </li>
-                    ))}
+                    );
+                    })}
                   </ul>
                 )}
               </section>

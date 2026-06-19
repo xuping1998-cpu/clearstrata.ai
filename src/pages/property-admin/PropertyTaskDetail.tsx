@@ -15,15 +15,33 @@ import { TaskLinkedInvoicesSection } from '../../components/property-admin/TaskL
 import { computeInvoiceFeeAnomaly, type FeeAnomalyState } from '../../lib/invoiceFeeAnomaly';
 import { computeQuoteInvoiceVariance, type QuoteVarianceResult } from '../../lib/quoteInvoiceVariance';
 import type { ManagerTaskType } from '../ManagerTasks';
+import {
+  councilActionFinanceHref,
+  fetchCouncilActionSourceForManagerTask,
+  isManagerTaskCompleted,
+  managerTaskStatusLabel,
+  saveManagerTaskFeedback,
+  syncCouncilActionStatus,
+} from '../../features/finance/councilActionManagerBridgeApi';
+import { statusLabel, type CouncilActionStatus } from '../../features/finance/councilActionsApi';
 
 function taskTypeLabel(kind: ManagerTaskType, en: boolean): string {
-  const m: Record<ManagerTaskType, [string, string]> = {
+  const m: Record<string, [string, string]> = {
     repair: ['Repair', '维修'],
     vendor: ['Vendor', '供应商'],
     invoice_review: ['Invoice review', '发票审核'],
     dispute: ['Dispute', '纠纷调解'],
+    owner_request: ['Owner request', '业主诉求'],
+    procurement: ['Procurement', '采购申报'],
+    invoice_upload: ['Invoice upload', '发票上传'],
+    maintenance: ['Maintenance', '维护'],
+    budget_review: ['Budget review', '预算审查'],
+    owner_fee_collection: ['Fee collection', '追缴物业费'],
+    finance_mapping: ['Finance mapping', '科目映射'],
+    follow_up: ['Follow-up', '跟进事项'],
   };
-  return en ? m[kind][0] : m[kind][1];
+  const pair = m[kind] ?? [kind, kind];
+  return en ? pair[0] : pair[1];
 }
 
 function priorityLabel(p: string | null | undefined, en: boolean): string {
@@ -54,6 +72,11 @@ type TaskDetail = {
   assigned_to: string | null;
   created_at: string;
   updated_at: string;
+  source_type: string | null;
+  source_id: string | null;
+  council_action_id: string | null;
+  manager_feedback: string | null;
+  manager_feedback_at: string | null;
 };
 
 const STAFF_ROLES = new Set(['council', 'admin', 'manager', 'property_admin']);
@@ -116,8 +139,38 @@ export function PropertyTaskDetail() {
   const [quoteVariances, setQuoteVariances] = useState<
     { invoiceId: string; vendor: string; result: QuoteVarianceResult }[]
   >([]);
+  const [councilActionSource, setCouncilActionSource] = useState<{
+    actionId: string;
+    actionTitle: string;
+    actionStatus: string;
+    alertTypeLabel: string;
+  } | null>(null);
+  const [managerFeedback, setManagerFeedback] = useState('');
+  const [councilTaskStatus, setCouncilTaskStatus] = useState('open');
 
   const isStaff = roleInProperty != null && STAFF_ROLES.has(roleInProperty);
+
+  const canSubmitCouncilFeedback = useMemo(() => {
+    if (!task || task.source_type !== 'council_action' || !profile?.id || !isStaff) return false;
+    if (roleInProperty === 'manager' || roleInProperty === 'property_admin') return true;
+    return task.assigned_to === profile.id;
+  }, [task, profile?.id, isStaff, roleInProperty]);
+
+  const saveCouncilActionFeedback = async () => {
+    if (!taskId || !task || !canSubmitCouncilFeedback) return;
+    setSaving(true);
+    const { ok, error } = await saveManagerTaskFeedback(
+      taskId,
+      managerFeedback,
+      councilTaskStatus,
+    );
+    setSaving(false);
+    if (!ok) {
+      alert(error ?? (en ? 'Save failed' : '保存失败'));
+      return;
+    }
+    void load();
+  };
 
   const load = useCallback(async () => {
     if (!taskId || !currentPropertyId) return;
@@ -138,6 +191,19 @@ export function PropertyTaskDetail() {
     setTask(row);
     setDisputeStatus(row.dispute_status ?? '');
     setDisputeResult(row.dispute_result ?? '');
+    setManagerFeedback(row.manager_feedback ?? '');
+    setCouncilTaskStatus(row.status);
+
+    if (row.source_type === 'council_action') {
+      const source = await fetchCouncilActionSourceForManagerTask({
+        source_type: row.source_type,
+        council_action_id: row.council_action_id,
+      });
+      setCouncilActionSource(source);
+      void syncCouncilActionStatus(taskId);
+    } else {
+      setCouncilActionSource(null);
+    }
 
     const idsForProfiles = new Set<string>();
     if (row.created_by) idsForProfiles.add(row.created_by);
@@ -525,6 +591,111 @@ export function PropertyTaskDetail() {
           </div>
         </dl>
       </div>
+
+      {councilActionSource ? (
+        <div className="mt-4 rounded-xl border border-violet-200 bg-violet-50/50 p-4 shadow-sm">
+          <h2 className="text-sm font-semibold text-violet-950">{en ? 'Source' : '来源'}</h2>
+          <dl className="mt-2 space-y-1 text-sm text-violet-900">
+            <div>
+              <dt className="inline text-violet-700">{en ? 'Council action' : '关联业委会行动'}：</dt>
+              <dd className="inline font-medium">{councilActionSource.actionTitle || '—'}</dd>
+            </div>
+            <div>
+              <dt className="inline text-violet-700">{en ? 'Status' : '状态'}：</dt>
+              <dd className="inline font-medium">
+                {statusLabel(councilActionSource.actionStatus as CouncilActionStatus, en)}
+              </dd>
+            </div>
+          </dl>
+          <Link
+            to={councilActionFinanceHref(councilActionSource.actionId)}
+            className="mt-3 inline-flex rounded-lg border border-violet-300 bg-white px-3 py-1.5 text-xs font-semibold text-violet-900 hover:bg-violet-50"
+          >
+            {en ? 'View council action' : '查看业委会行动'}
+          </Link>
+          {isManagerTaskCompleted(task.status) ? (
+            <p className="mt-3 text-xs text-violet-800">
+              {en
+                ? 'This outcome will appear on the council action for board review.'
+                : '该处理结果将显示在 Council Action 中供业委会审核。'}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {task.source_type === 'council_action' ? (
+        <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/40 p-6 shadow-sm">
+          <h2 className="text-lg font-bold text-gray-900">
+            {en ? 'Council action outcome' : '业委会行动处理结果'}
+          </h2>
+          <p className="mt-1 text-xs text-gray-600">
+            {en
+              ? 'Submit results for council review. The action stays open until the board marks it complete.'
+              : '提交处理结果供业委会审核；业委会行动需手动标记完成，不会自动关闭。'}
+          </p>
+          <div className="mt-4 space-y-4">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                {en ? 'Task status' : '任务状态'}
+              </div>
+              {canSubmitCouncilFeedback ? (
+                <select
+                  className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                  value={councilTaskStatus}
+                  onChange={(e) => setCouncilTaskStatus(e.target.value)}
+                >
+                  <option value="open">{managerTaskStatusLabel('open', en)}</option>
+                  <option value="in_progress">{managerTaskStatusLabel('in_progress', en)}</option>
+                  <option value="resolved">{managerTaskStatusLabel('resolved', en)}</option>
+                  <option value="closed">{managerTaskStatusLabel('closed', en)}</option>
+                  <option value="completed">{managerTaskStatusLabel('completed', en)}</option>
+                </select>
+              ) : (
+                <p className="mt-1 text-sm font-medium">{managerTaskStatusLabel(task.status, en)}</p>
+              )}
+            </div>
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                {en ? 'Outcome / feedback' : '处理结果'}
+              </div>
+              {canSubmitCouncilFeedback ? (
+                <textarea
+                  className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                  rows={4}
+                  placeholder={
+                    en
+                      ? 'e.g. Verified arrears list; 3 units unpaid; reminders sent.'
+                      : '例如：已核对欠费清单，3户未缴，已发送提醒。'
+                  }
+                  value={managerFeedback}
+                  onChange={(e) => setManagerFeedback(e.target.value)}
+                />
+              ) : (
+                <p className="mt-1 whitespace-pre-wrap text-sm">{task.manager_feedback ?? '—'}</p>
+              )}
+            </div>
+            {canSubmitCouncilFeedback ? (
+              <button
+                type="button"
+                disabled={
+                  saving ||
+                  (isManagerTaskCompleted(councilTaskStatus) && !managerFeedback.trim())
+                }
+                onClick={() => void saveCouncilActionFeedback()}
+                className="rounded-lg bg-[#1D9E75] px-4 py-2 text-sm font-semibold text-white hover:bg-[#178a66] disabled:opacity-50"
+              >
+                {saving
+                  ? en
+                    ? 'Saving…'
+                    : '保存中…'
+                  : en
+                    ? 'Submit for council review'
+                    : '提交供业委会审核'}
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       {repairBeforeAfterPair ? (
         <RepairBeforeAfterCard
