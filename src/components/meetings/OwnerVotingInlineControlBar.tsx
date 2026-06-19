@@ -65,6 +65,27 @@ function fmtTs(iso: string | null | undefined, en: boolean): string {
   return d.toLocaleString(en ? 'en-CA' : 'zh-CN', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
+function formatVoterRollFreezeCountdown(
+  plannedIso: string | null | undefined,
+  now: Date,
+  en: boolean,
+): string | null {
+  const iso = plannedIso?.trim();
+  if (!iso) return null;
+  const targetMs = new Date(iso).getTime();
+  const nowMs = now.getTime();
+  if (Number.isNaN(targetMs) || targetMs <= nowMs) return null;
+  const totalHours = Math.floor((targetMs - nowMs) / (1000 * 60 * 60));
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+  if (en) {
+    const dayPart = days === 1 ? '1 day' : `${days} days`;
+    const hourPart = hours === 1 ? '1 hour' : `${hours} hours`;
+    return `${dayPart} ${hourPart}`;
+  }
+  return `${days}天 ${hours}小时`;
+}
+
 function sectionCard(label: ReactNode, children: ReactNode) {
   return (
     <div className="rounded-md border border-gray-100 bg-white px-3 py-2 shadow-sm space-y-1">
@@ -198,6 +219,8 @@ export function OwnerVotingInlineControlBar({
   const showManualFreezeNow =
     isStaff && !!ov && !snapshotOk && !isCouncilMeetingEnded && !staffOvActionsReadOnly;
   const plannedFreezeDisplayIso = ov?.snapshot_freeze_at?.trim() || meeting.scheduled_at?.trim() || null;
+  const voterRollFreezeCountdown = formatVoterRollFreezeCountdown(plannedFreezeDisplayIso, now, en);
+  const showVoterRollFreezeCountdown = !snapshotOk && voterRollFreezeCountdown != null;
 
   const electionTimelineBlocksVoting = Boolean(
     electionNomRibbon?.nominationUiStatus === 'invalid',
@@ -380,9 +403,37 @@ export function OwnerVotingInlineControlBar({
         {ov
           ? sectionCard(
               snapshotOk ? t('meeting_ov_voter_roll_frozen_at') : t('meeting_ov_voter_roll_planned_freeze'),
-              <p className="font-medium text-gray-900">
-                {fmtTs(snapshotOk ? ov.snapshot_frozen_at : plannedFreezeDisplayIso, en)}
-              </p>,
+              <>
+                <p className="font-medium text-gray-900">
+                  {fmtTs(snapshotOk ? ov.snapshot_frozen_at : plannedFreezeDisplayIso, en)}
+                </p>
+                {snapshotOk ? (
+                  <div
+                    className="mt-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm text-blue-950 space-y-1.5"
+                    role="status"
+                  >
+                    <p>{t('meeting_ov_voter_roll_post_freeze_p1')}</p>
+                    <p>{t('meeting_ov_voter_roll_post_freeze_p2')}</p>
+                    <p>{t('meeting_ov_voter_roll_post_freeze_p3')}</p>
+                  </div>
+                ) : (
+                  <div
+                    className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-950 space-y-1.5"
+                    role="alert"
+                  >
+                    {showVoterRollFreezeCountdown ? (
+                      <p className="font-semibold">
+                        {t('meeting_ov_voter_roll_freeze_countdown_prefix')} {voterRollFreezeCountdown}
+                      </p>
+                    ) : null}
+                    <p className="font-semibold">{t('meeting_ov_voter_roll_pre_freeze_note_title')}</p>
+                    <p>{t('meeting_ov_voter_roll_pre_freeze_p1')}</p>
+                    <p>{t('meeting_ov_voter_roll_pre_freeze_p2')}</p>
+                    <p>{t('meeting_ov_voter_roll_pre_freeze_p3')}</p>
+                    <p>{t('meeting_ov_voter_roll_pre_freeze_p4')}</p>
+                  </div>
+                )}
+              </>,
             )
           : null}
 

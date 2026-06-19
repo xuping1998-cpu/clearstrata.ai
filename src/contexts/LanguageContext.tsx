@@ -132,6 +132,39 @@ const translations: Record<string, Record<Language, string>> = {
     en: 'Voter roll frozen',
     zh: '投票名单已冻结',
   },
+  meeting_ov_voter_roll_freeze_countdown_prefix: {
+    en: 'Voter roll freezes in:',
+    zh: '距离名单冻结还有：',
+  },
+  meeting_ov_voter_roll_pre_freeze_note_title: { en: 'Please note:', zh: '请注意：' },
+  meeting_ov_voter_roll_pre_freeze_p1: {
+    en: 'The voter roll will be frozen at the time shown above.',
+    zh: '投票名单将在上述时间冻结。',
+  },
+  meeting_ov_voter_roll_pre_freeze_p2: {
+    en: 'Please join the property and confirm your unit information before the freeze time.',
+    zh: '请在冻结时间前进入物业并确认您的房号信息。',
+  },
+  meeting_ov_voter_roll_pre_freeze_p3: {
+    en: 'Only members who have joined the property before the freeze time will be eligible to vote in this meeting.',
+    zh: '只有在冻结时间前已加入物业的成员，才能参加本次会议正式投票。',
+  },
+  meeting_ov_voter_roll_pre_freeze_p4: {
+    en: 'Members joining the property after the freeze will not be eligible to vote in this meeting.',
+    zh: '冻结后新加入物业的成员，将不能参加本次会议投票。',
+  },
+  meeting_ov_voter_roll_post_freeze_p1: {
+    en: 'The voter roll has been frozen.',
+    zh: '投票名单已冻结。',
+  },
+  meeting_ov_voter_roll_post_freeze_p2: {
+    en: 'Only members who joined the property before the freeze time are eligible to vote in this meeting.',
+    zh: '只有在冻结时间前已加入物业的成员，才能参加本次会议正式投票。',
+  },
+  meeting_ov_voter_roll_post_freeze_p3: {
+    en: 'Members joining after the freeze are not eligible to vote in this meeting.',
+    zh: '冻结后新加入物业的成员，不能参加本次会议投票。',
+  },
   meeting_ov_eligible_now: {
     en: 'Current eligible now',
     zh: '当前符合资格户数',
