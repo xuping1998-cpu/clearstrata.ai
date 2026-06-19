@@ -45,6 +45,9 @@ const TILES: readonly QuickTile[] = [
     to: '__OWNER_REQUEST_TAB__',
     labelZh: '业主诉求',
     labelEn: 'Owner Requests',
+    descZh: '公开记录业主诉求、巡检记录、重要事项与经理月报，处理进程和评价接受业主监督。',
+    descEn:
+      'Track owner requests, inspections, important matters, and manager reports with transparent progress and community oversight.',
     Icon: ClipboardList,
     iconWrapClass:
       'bg-clearstrata-brand-700 ring-1 ring-clearstrata-brand-800/25 transition-colors duration-150 group-hover:bg-clearstrata-brand-800 group-hover:ring-clearstrata-brand-700/35',
@@ -52,8 +55,10 @@ const TILES: readonly QuickTile[] = [
   {
     id: 'invoice-search',
     to: '/finance/invoices',
-    labelZh: '发票查询',
-    labelEn: 'Invoice Search',
+    labelZh: '收支明细',
+    labelEn: 'Income & Expenses',
+    descZh: '公开展示物业收入、支出、预算与银行流水，让每一笔支出干净透明。',
+    descEn: 'View property income, expenses, budgets, and bank transactions with full transparency.',
     Icon: FileSearch,
     iconWrapClass:
       'bg-clearstrata-brand-600 ring-1 ring-clearstrata-brand-700/25 transition-colors duration-150 group-hover:bg-clearstrata-brand-700 group-hover:ring-clearstrata-brand-600/35',
