@@ -32,7 +32,10 @@ const TILES: readonly QuickTile[] = [
     /* 运行时替换为 meetingsHref（与侧栏会议投票入口一致） */
     to: '__MEETINGS__',
     labelZh: '会议投票',
-    labelEn: 'Meetings & Voting',
+    labelEn: 'Meeting Voting',
+    descZh: '远程书面会议支持在线讨论、议程表决与结果归档，保障公开透明。',
+    descEn:
+      'Remote written meetings support online discussion, agenda voting, and result archiving to ensure transparency.',
     Icon: CalendarDays,
     iconWrapClass:
       'bg-violet-600 ring-1 ring-violet-500/30 transition-colors duration-150 group-hover:bg-violet-700 group-hover:ring-violet-400/40',
