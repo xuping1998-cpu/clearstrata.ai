@@ -491,7 +491,8 @@ const translations: Record<string, Record<Language, string>> = {
 
   vote_not_enabled: { en: 'Not enabled', zh: '未启用' },
   vote_draft: { en: 'Not open yet', zh: '未开启' },
-  vote_open: { en: 'Voting open', zh: '投票中' },
+  vote_waiting_freeze: { en: 'Waiting for voter roll freeze', zh: '等待冻结' },
+  vote_open: { en: 'Voting Open', zh: '投票中' },
   vote_closed: { en: 'Voting closed', zh: '已关闭' },
   vote_archived: { en: 'Archived', zh: '已归档' },
 

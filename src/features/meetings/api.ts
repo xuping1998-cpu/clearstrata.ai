@@ -394,7 +394,10 @@ export async function fetchMeetingAgendaSummariesForMeetingIds(propertyId: strin
   return { rows: (data ?? []) as MeetingAgendaItemsListLiteRow[], error: null };
 }
 
-export type OwnerVoteMeetingCardRow = Pick<OwnerVoteMeetingLite, 'status' | 'voting_opens_at' | 'voting_closes_at'>;
+export type OwnerVoteMeetingCardRow = Pick<
+  OwnerVoteMeetingLite,
+  'status' | 'voting_opens_at' | 'voting_closes_at' | 'snapshot_frozen_at'
+>;
 
 /**
  * Latest `owner_vote_meetings` row per council title binding (tie-break newest `created_at`).
@@ -406,7 +409,7 @@ export async function fetchLatestOwnerVoteMeetingCardRowsByCouncilTitles(propert
 
   const { data, error } = await supabase
     .from('owner_vote_meetings')
-    .select('title,status,voting_opens_at,voting_closes_at,created_at')
+    .select('title,status,voting_opens_at,voting_closes_at,snapshot_frozen_at,created_at')
     .eq('property_id', propertyId)
     .in('title', uniq);
 
@@ -425,6 +428,7 @@ export async function fetchLatestOwnerVoteMeetingCardRowsByCouncilTitles(propert
       status?: unknown;
       voting_opens_at?: unknown;
       voting_closes_at?: unknown;
+      snapshot_frozen_at?: unknown;
     };
     const titleKey = typeof row.title === 'string' ? row.title.trim() : '';
     if (!titleKey || byTitle[titleKey]) continue;
@@ -433,6 +437,7 @@ export async function fetchLatestOwnerVoteMeetingCardRowsByCouncilTitles(propert
       status: statusVal,
       voting_opens_at: typeof row.voting_opens_at === 'string' ? row.voting_opens_at : null,
       voting_closes_at: typeof row.voting_closes_at === 'string' ? row.voting_closes_at : null,
+      snapshot_frozen_at: typeof row.snapshot_frozen_at === 'string' ? row.snapshot_frozen_at : null,
     };
   }
 

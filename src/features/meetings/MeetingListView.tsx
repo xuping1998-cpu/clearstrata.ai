@@ -143,8 +143,9 @@ function councilVotePhaseLabelFromLite(
   if (!isOwnerVotingMeeting(m) || !councilBindingTitle) return '';
 
   if (isWrittenRemoteV3Meeting(m)) {
-    const v3Status = getWrittenRemoteV3DisplayStatus(m);
+    const v3Status = getWrittenRemoteV3DisplayStatus(m, ovLite);
     if (v3Status === 'draft') return translate('vote_draft');
+    if (v3Status === 'waiting_freeze') return translate('vote_waiting_freeze');
     if (v3Status === 'open') return translate('vote_open');
     if (v3Status === 'closed') return translate('meeting_status_closed');
   }
@@ -444,7 +445,7 @@ export function MeetingListView({ variant }: Props) {
                         {formatUiDisp.primary}
                       </span>
                       <span className="px-2 py-0.5 rounded-full text-xs font-semibold border border-clearstrata-ui-softBorder bg-clearstrata-brand-100 text-clearstrata-brand-800">
-                        {labelMeetingDisplayStatus(m, en)}
+                        {labelMeetingDisplayStatus(m, en, ovLite)}
                       </span>
                     </div>
                     {formatUiDisp.secondary ? (

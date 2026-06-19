@@ -230,24 +230,57 @@ export function isWrittenRemoteV3Meeting(meeting: Pick<MeetingRow, 'description_
   return isWrittenRemoteV3Meta(meta);
 }
 
-/** UI-only lifecycle for V3 remote-written meetings (does not read `meetings.status`). */
-export type WrittenRemoteV3DisplayStatus = 'draft' | 'open' | 'closed';
+/** Formal owner-vote fields used for V3 display status (not timeline-derived). */
+export type WrittenRemoteV3OvLite = {
+  snapshot_frozen_at?: string | null;
+  status?: string | null;
+  voting_closes_at?: string | null;
+};
 
-/** Derive list/detail badge phase from `scheduled_at` + 14-day participation window. */
-export function getWrittenRemoteV3DisplayStatus(
+/** UI-only formal voting lifecycle for V3 remote-written meetings. */
+export type WrittenRemoteV3DisplayStatus = 'draft' | 'waiting_freeze' | 'open' | 'closed';
+
+/**
+ * V3 formal vote display status:
+ * - draft: before `scheduled_at`
+ * - waiting_freeze: participation started; snapshot not frozen or OV not open
+ * - open: frozen snapshot + OV open + before `voting_closes_at`
+ * - closed: OV closed or past `voting_closes_at`
+ */
+export function resolveWrittenRemoteV3FormalVoteStatus(
   meeting: Pick<MeetingRow, 'description_zh' | 'scheduled_at'>,
+  ov?: WrittenRemoteV3OvLite | null,
   now: Date = new Date(),
 ): WrittenRemoteV3DisplayStatus | null {
   if (!isWrittenRemoteV3Meeting(meeting)) return null;
-  const t0 = meeting.scheduled_at?.trim();
-  if (!t0) return null;
-  const startMs = new Date(t0).getTime();
-  if (Number.isNaN(startMs)) return null;
-  const endMs = startMs + REMOTE_WRITTEN_V3_PARTICIPATION_DAYS * 24 * 60 * 60 * 1000;
+
   const n = now.getTime();
-  if (n < startMs) return 'draft';
-  if (n < endMs) return 'open';
-  return 'closed';
+  const ovStatus = String(ov?.status ?? '').trim().toLowerCase();
+  const closeIso = ov?.voting_closes_at?.trim() ?? '';
+  const closeMs = closeIso ? new Date(closeIso).getTime() : NaN;
+
+  if (ovStatus === 'closed') return 'closed';
+  if (Number.isFinite(closeMs) && n >= closeMs) return 'closed';
+
+  const scheduled = meeting.scheduled_at?.trim() ?? '';
+  const startMs = scheduled ? new Date(scheduled).getTime() : NaN;
+  if (!scheduled || Number.isNaN(startMs) || n < startMs) return 'draft';
+
+  const snapshotOk = !!String(ov?.snapshot_frozen_at ?? '').trim();
+  if (snapshotOk && ovStatus === 'open') {
+    if (!closeIso || Number.isNaN(closeMs) || n < closeMs) return 'open';
+  }
+
+  return 'waiting_freeze';
+}
+
+/** @deprecated Prefer `resolveWrittenRemoteV3FormalVoteStatus` — name kept for call sites. */
+export function getWrittenRemoteV3DisplayStatus(
+  meeting: Pick<MeetingRow, 'description_zh' | 'scheduled_at'>,
+  ov?: WrittenRemoteV3OvLite | null,
+  now: Date = new Date(),
+): WrittenRemoteV3DisplayStatus | null {
+  return resolveWrittenRemoteV3FormalVoteStatus(meeting, ov, now);
 }
 
 /** Read-only copy: V3 participation is system-scheduled (no manual enable/freeze/open/close). */

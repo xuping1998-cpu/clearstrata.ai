@@ -28,8 +28,10 @@ export type MeetingElectionCandidatesPanelProps = {
   meetingId: string;
   /** Owner Vote `owner_vote_meetings.id`, required for owner nomination / governance RPCs. */
   ownerVoteMeetingId?: string | null;
-  /** Snapshot `unit_no` for the viewer (owner). */
+  /** Live `property_members.unit_no` for nomination (active owner/council). */
   eligibleUnitNo?: string | null;
+  /** Frozen snapshot `unit_no` for election ballot casting only. */
+  votingEligibleUnitNo?: string | null;
   currentUserId?: string | null;
   meetingCreatedBy?: string | null;
   governanceInitiationType?: string | null;
@@ -187,6 +189,7 @@ export function MeetingElectionCandidatesPanel({
   meetingId,
   ownerVoteMeetingId,
   eligibleUnitNo,
+  votingEligibleUnitNo = null,
   currentUserId = null,
   canModerateCandidates = false,
   resultsLocked = false,
@@ -262,7 +265,7 @@ export function MeetingElectionCandidatesPanel({
 
   const canShowBallotForm =
     governanceRpcEnabled &&
-    !!eligibleUnitNo?.trim() &&
+    !!votingEligibleUnitNo?.trim() &&
     formalVotingAllowed &&
     legacyOvVotingOpen &&
     acceptedCandidates.length > 0 &&

@@ -4,6 +4,7 @@ import {
   councilMeetingVotingWindowFallback,
   councilWrittenRemoteWindows,
   isWrittenRemoteV3Meeting,
+  resolveWrittenRemoteV3FormalVoteStatus,
   writtenRemoteV3AutoParticipationCopy,
 } from '@/features/meetings/meetingFormatModel';
 import {
@@ -226,17 +227,11 @@ export function OwnerVotingInlineControlBar({
     if (isCouncilMeetingEnded) return t('meeting_status_closed');
     if (!ov) return t('vote_not_enabled');
     if (hideStaffOvManualLifecycle) {
-      const v3 = deriveRemoteWrittenV3CanonFromScheduledAt(meeting.scheduled_at);
-      if (v3) {
-        const n = now.getTime();
-        const t0 = new Date(v3.votingOpenIso).getTime();
-        const t1 = new Date(v3.votingCloseIso).getTime();
-        if (!Number.isNaN(t0) && !Number.isNaN(t1)) {
-          if (n < t0) return t('vote_draft');
-          if (n >= t1) return t('vote_closed');
-          return t('vote_open');
-        }
-      }
+      const v3Status = resolveWrittenRemoteV3FormalVoteStatus(meeting, ov, now);
+      if (v3Status === 'draft') return t('vote_draft');
+      if (v3Status === 'waiting_freeze') return t('vote_waiting_freeze');
+      if (v3Status === 'open') return t('vote_open');
+      if (v3Status === 'closed') return t('meeting_status_closed');
     }
     switch (ovStatusLower) {
       case 'draft':

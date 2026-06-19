@@ -366,6 +366,8 @@ export function MeetingDetail() {
   const [ovResolutionResults, setOvResolutionResults] = useState<OwnerVoteResolutionResultNormalized[]>([]);
   const [ownerElectionBallots, setOwnerElectionBallots] = useState<OwnerElectionBallotLite[]>([]);
   const [viewerOvUnitNo, setViewerOvUnitNo] = useState<string | null>(null);
+  /** Active owner/council unit from `property_members` — nomination only (not voting). */
+  const [viewerLiveUnitNo, setViewerLiveUnitNo] = useState<string | null>(null);
   const [showMeetingInfo, setShowMeetingInfo] = useState(false);
   const [showVotingFlow, setShowVotingFlow] = useState(true);
   const openedTrackedRef = useRef<string | null>(null);
@@ -670,6 +672,38 @@ export function MeetingDetail() {
       cancelled = true;
     };
   }, [showCouncilOwnerVoteUi, user?.id, ovMeta.meeting?.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!user?.id || !currentPropertyId) {
+      setViewerLiveUnitNo(null);
+      return undefined;
+    }
+    void (async () => {
+      const { data, error } = await supabase
+        .from('property_members')
+        .select('unit_no, role')
+        .eq('user_id', user.id)
+        .eq('property_id', currentPropertyId)
+        .eq('status', 'active');
+      if (cancelled) return;
+      if (error) {
+        setViewerLiveUnitNo(null);
+        return;
+      }
+      const row = (data ?? []).find((r) => {
+        const role = String(r.role ?? '')
+          .trim()
+          .toLowerCase();
+        const unit = String(r.unit_no ?? '').trim();
+        return (role === 'owner' || role === 'council') && unit.length > 0;
+      });
+      setViewerLiveUnitNo(row?.unit_no != null ? String(row.unit_no).trim() : null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, currentPropertyId]);
   const refreshOwnerVoteMeta = useCallback(async () => {
     console.log('[OVRefresh] called', {
       meetingId: meeting?.id,
@@ -766,7 +800,7 @@ export function MeetingDetail() {
 
   /**
    * V3 remote-written: auto-freeze when snapshot_freeze_at is reached (fallback: scheduled_at for legacy rows).
-   * `submit_owner_election_nomination` + `eligibleUnitNo` require a frozen `owner_vote_voter_snapshot`.
+   * V3 auto-freeze still requires `owner_vote_voter_snapshot` for formal voting; nominations use live `property_members`.
    */
   useEffect(() => {
     if (!meeting || !isWrittenRemoteV3Meeting(meeting)) return;
@@ -1953,7 +1987,9 @@ export function MeetingDetail() {
                 <dl className="mt-4 space-y-2 text-sm text-white/95 border-t border-white/25 pt-4">
                   <div className="flex flex-wrap gap-x-2 gap-y-1">
                     <dt className="text-white/75 shrink-0">{en ? 'Status' : '状态'}</dt>
-                    <dd className="font-semibold text-white">{labelMeetingDisplayStatus(meeting, en)}</dd>
+                    <dd className="font-semibold text-white">
+                      {labelMeetingDisplayStatus(meeting, en, ovMeta.meeting ?? undefined)}
+                    </dd>
                   </div>
                   <div className="flex flex-wrap gap-x-2 gap-y-1">
                     <dt className="text-white/75 shrink-0">{en ? 'Time' : '时间'}</dt>
@@ -2650,7 +2686,8 @@ export function MeetingDetail() {
                               propertyId={propertyIdForAgenda}
                               meetingId={meeting.id}
                               ownerVoteMeetingId={showCouncilOwnerVoteUi ? ovMeta.meeting?.id : null}
-                              eligibleUnitNo={viewerOvUnitNo}
+                              eligibleUnitNo={viewerLiveUnitNo}
+                              votingEligibleUnitNo={viewerOvUnitNo}
                               currentUserId={user?.id ?? null}
                               meetingCreatedBy={meeting.created_by ?? null}
                               governanceInitiationType={governanceMeta?.initiation_type ?? null}

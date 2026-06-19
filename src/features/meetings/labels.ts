@@ -1,5 +1,5 @@
 import type { MeetingFormat, MeetingRow, MeetingStatus, MeetingType, VoteRule, VoteStatus } from './api';
-import { getWrittenRemoteV3DisplayStatus, meetingFormatUiFromRow } from './meetingFormatModel';
+import { getWrittenRemoteV3DisplayStatus, meetingFormatUiFromRow, type WrittenRemoteV3OvLite } from './meetingFormatModel';
 
 const meetingTypeZh: Record<MeetingType, string> = {
   agm: 'AGM',
@@ -124,14 +124,16 @@ export function labelStatus(t: string, en: boolean): string {
   return t;
 }
 
-/** List/detail badge: V3 remote-written uses scheduled_at + 14d; legacy uses DB status. */
+/** List/detail badge: V3 formal vote status from OV snapshot + status; legacy uses DB status. */
 export function labelMeetingDisplayStatus(
   meeting: Pick<MeetingRow, 'status' | 'description_zh' | 'scheduled_at'>,
   en: boolean,
+  ov?: WrittenRemoteV3OvLite | null,
 ): string {
-  const v3Status = getWrittenRemoteV3DisplayStatus(meeting);
-  if (v3Status === 'draft') return en ? 'Draft' : '草稿';
-  if (v3Status === 'open') return en ? 'Open' : '进行中';
+  const v3Status = getWrittenRemoteV3DisplayStatus(meeting, ov);
+  if (v3Status === 'draft') return en ? 'Not open yet' : '未开启';
+  if (v3Status === 'waiting_freeze') return en ? 'Waiting for voter roll freeze' : '等待冻结';
+  if (v3Status === 'open') return en ? 'Voting Open' : '投票中';
   if (v3Status === 'closed') return en ? 'Closed' : '已结束';
   return labelStatus(meeting.status, en);
 }
