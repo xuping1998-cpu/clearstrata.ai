@@ -273,56 +273,92 @@ export function OwnerVotingInlineControlBar({
 
   const summaryHeading = hasElectionAgenda ? t('meeting_flow_summary_heading_full') : t('meeting_flow_summary_heading_plain');
 
+  const v3MeetingPeriodLabel = hasElectionAgenda
+    ? t('meeting_v3_meeting_period_with_nomination')
+    : t('meeting_v3_meeting_period_discussion_only');
+  const v3ParticipationOpenIso = v3Canon?.publicNoticeOpenIso ?? displayPublicNoticeOpens;
+  const v3ParticipationCloseIso = v3Canon?.publicNoticeCloseIso ?? displayPublicNoticeCloses;
+  const v3FormalVotingCloseIso =
+    v3Canon?.votingCloseIso ?? displayVotingCloses ?? ov?.voting_closes_at ?? null;
+  const v3FormalVotingClosesFmt = fmtTs(v3FormalVotingCloseIso, en);
+  const v3FormalVotingOpen = snapshotOk && ovStatusLower === 'open';
+  const v3FormalVotingBody = (
+    v3FormalVotingOpen ? t('meeting_v3_formal_voting_body_open') : t('meeting_v3_formal_voting_body_pending')
+  ).replace('{closes}', v3FormalVotingClosesFmt);
+
   return (
     <div className="mb-6 rounded-lg border border-gray-200 bg-gray-50/80 px-4 py-3 text-sm space-y-4">
       <h3 className="text-base font-semibold text-gray-900">{t('meeting_ev_status_title')}</h3>
 
       <div className="space-y-3">
-        {showNoticeSection
-          ? sectionCard(
-              noticePeriodLabel,
+        {isV3 ? (
+          <>
+            {sectionCard(
+              v3MeetingPeriodLabel,
+              !v3ParticipationOpenIso && !v3ParticipationCloseIso ? (
+                <p className="text-gray-500">{flowNotSet}</p>
+              ) : (
+                <p className="text-gray-900">
+                  {fmtTs(v3ParticipationOpenIso, en)} <span className="text-gray-400 px-1">–</span>{' '}
+                  {fmtTs(v3ParticipationCloseIso, en)}
+                </p>
+              ),
+            )}
+            {sectionCard(
+              t('meeting_v3_formal_voting_label'),
+              <p className="text-gray-900">{v3FormalVotingBody}</p>,
+            )}
+          </>
+        ) : (
+          <>
+            {showNoticeSection
+              ? sectionCard(
+                  noticePeriodLabel,
+                  agmSgmStrict && !agmDisp ? (
+                    <p className="text-gray-500">{flowNotSet}</p>
+                  ) : (
+                    <p className="text-gray-900">
+                      {fmtTs(displayPublicNoticeOpens, en)} <span className="text-gray-400 px-1">–</span>{' '}
+                      {fmtTs(displayPublicNoticeCloses, en)}
+                    </p>
+                  ),
+                )
+              : null}
+
+            {hasElectionAgenda && electionNomRibbon
+              ? sectionCard(
+                  t('meeting_flow_nomination_period_label'),
+                  <>
+                    <p className="text-gray-900">
+                      {agmSgmStrict && !agmDisp ? (
+                        <span className="text-gray-500">{flowNotSet}</span>
+                      ) : displayNominationOpens || displayNominationCloses ? (
+                        <>
+                          {fmtTs(displayNominationOpens, en)}{' '}
+                          <span className="text-gray-400 px-1">–</span>{' '}
+                          {fmtTs(displayNominationCloses, en)}
+                        </>
+                      ) : (
+                        <span className="text-gray-500">—</span>
+                      )}
+                    </p>
+                    <p className="text-xs text-gray-600 mt-1 font-medium">{nominationPhaseLabel}</p>
+                  </>,
+                )
+              : null}
+
+            {sectionCard(
+              t('meeting_ov_voting_period_combined_label'),
               agmSgmStrict && !agmDisp ? (
                 <p className="text-gray-500">{flowNotSet}</p>
               ) : (
                 <p className="text-gray-900">
-                  {fmtTs(displayPublicNoticeOpens, en)} <span className="text-gray-400 px-1">–</span>{' '}
-                  {fmtTs(displayPublicNoticeCloses, en)}
+                  {fmtTs(displayVotingOpens, en)} <span className="text-gray-400 px-1">–</span>{' '}
+                  {fmtTs(displayVotingCloses, en)}
                 </p>
               ),
-            )
-          : null}
-
-        {hasElectionAgenda && electionNomRibbon
-          ? sectionCard(
-              t('meeting_flow_nomination_period_label'),
-              <>
-                <p className="text-gray-900">
-                  {agmSgmStrict && !agmDisp ? (
-                    <span className="text-gray-500">{flowNotSet}</span>
-                  ) : displayNominationOpens || displayNominationCloses ? (
-                    <>
-                      {fmtTs(displayNominationOpens, en)}{' '}
-                      <span className="text-gray-400 px-1">–</span>{' '}
-                      {fmtTs(displayNominationCloses, en)}
-                    </>
-                  ) : (
-                    <span className="text-gray-500">—</span>
-                  )}
-                </p>
-                <p className="text-xs text-gray-600 mt-1 font-medium">{nominationPhaseLabel}</p>
-              </>,
-            )
-          : null}
-
-        {sectionCard(
-          t('meeting_ov_voting_period_combined_label'),
-          agmSgmStrict && !agmDisp ? (
-            <p className="text-gray-500">{flowNotSet}</p>
-          ) : (
-            <p className="text-gray-900">
-              {fmtTs(displayVotingOpens, en)} <span className="text-gray-400 px-1">–</span> {fmtTs(displayVotingCloses, en)}
-            </p>
-          ),
+            )}
+          </>
         )}
 
         {sectionCard(

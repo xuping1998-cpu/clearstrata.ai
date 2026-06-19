@@ -248,6 +248,23 @@ const translations: Record<string, Record<Language, string>> = {
 
   meeting_ov_discussion_period_label: { en: 'Public Notice Period', zh: '公示期' },
   meeting_ov_voting_period_combined_label: { en: 'Voting period', zh: '投票期' },
+  meeting_v3_meeting_period_with_nomination: {
+    en: 'Meeting Period / Discussion & Nomination',
+    zh: '会议期 / 讨论与提名期',
+  },
+  meeting_v3_meeting_period_discussion_only: {
+    en: 'Meeting Period / Discussion',
+    zh: '会议期 / 讨论期',
+  },
+  meeting_v3_formal_voting_label: { en: 'Formal Voting', zh: '正式投票' },
+  meeting_v3_formal_voting_body_pending: {
+    en: 'Opens after the voter roll is frozen, closes {closes}',
+    zh: '名单冻结后开放，截止 {closes}',
+  },
+  meeting_v3_formal_voting_body_open: {
+    en: 'Formal voting is open, closes {closes}',
+    zh: '已开放，截止 {closes}',
+  },
   meeting_format_written_remote_display: {
     en: 'Remote Written Meeting',
     zh: '远程书面会议',
