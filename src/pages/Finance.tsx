@@ -135,9 +135,9 @@ export function Finance() {
       </div>
 
       {canView && visibleTabs.length > 0 && (
-        <div className="mb-6 flex min-w-0 flex-col gap-3 border-b border-gray-200 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
-          <div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:thin]">
-            <nav className="flex min-w-0 flex-wrap gap-1 sm:min-w-max sm:flex-nowrap">
+        <div className="mb-6">
+          <div className="border-b border-gray-200">
+            <nav className="flex flex-wrap gap-1 sm:gap-2">
               {visibleTabs.map((tab) => (
                 <button
                   key={tab.key}
@@ -156,7 +156,7 @@ export function Finance() {
             </nav>
           </div>
           {activeTab === 'invoices' && (
-            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 pb-3">
+            <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
               {canUploadPkg ? (
                 <button
                   type="button"
