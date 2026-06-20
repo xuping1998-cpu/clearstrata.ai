@@ -60,14 +60,24 @@ export function CouncilActionCenterPanel({
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [actions, readyForReview] = await Promise.all([
-      listCouncilActions(propertyId),
-      listCouncilActionsReadyForReview(propertyId, fiscalYear),
-    ]);
-    setRows(actions);
-    setReadyForReviewCount(readyForReview.length);
-    setReadyForReviewIds(new Set(readyForReview.map((r) => r.id)));
-    setLoading(false);
+    try {
+      const [actionsResult, readyForReviewResult] = await Promise.all([
+        listCouncilActions(propertyId),
+        listCouncilActionsReadyForReview(propertyId, fiscalYear),
+      ]);
+      const safeActions = actionsResult ?? [];
+      const safeReadyForReview = readyForReviewResult ?? [];
+      setRows(safeActions);
+      setReadyForReviewCount(safeReadyForReview.length);
+      setReadyForReviewIds(new Set(safeReadyForReview.map((r) => r.id)));
+    } catch (err) {
+      console.error('CouncilActionCenterPanel load failed:', err);
+      setRows([]);
+      setReadyForReviewCount(0);
+      setReadyForReviewIds(new Set());
+    } finally {
+      setLoading(false);
+    }
   }, [propertyId, fiscalYear]);
 
   useEffect(() => {
@@ -80,7 +90,7 @@ export function CouncilActionCenterPanel({
     if (found) setSelected(found);
   }, [actionIdFromUrl, rows, loading]);
 
-  const summary = useMemo(() => summarizeCouncilActions(rows), [rows]);
+  const summary = useMemo(() => summarizeCouncilActions(rows ?? []), [rows]);
   const visibleRows = useMemo(() => {
     if (!reviewQueueOnly) return rows;
     return rows.filter((r) => readyForReviewIds.has(r.id));
@@ -283,16 +293,24 @@ export function CouncilActionCenterPanel({
           onClose={() => setSelected(null)}
           onUpdated={() => {
             void (async () => {
-              const [actions, readyForReview] = await Promise.all([
-                listCouncilActions(propertyId),
-                listCouncilActionsReadyForReview(propertyId, fiscalYear),
-              ]);
-              setRows(actions);
-              setReadyForReviewCount(readyForReview.length);
-              setReadyForReviewIds(new Set(readyForReview.map((r) => r.id)));
-              setSelected((prev) =>
-                prev ? actions.find((r) => r.id === prev.id) ?? null : null,
-              );
+              try {
+                const [actionsResult, readyForReviewResult] = await Promise.all([
+                  listCouncilActions(propertyId),
+                  listCouncilActionsReadyForReview(propertyId, fiscalYear),
+                ]);
+                const safeActions = actionsResult ?? [];
+                const safeReadyForReview = readyForReviewResult ?? [];
+                setRows(safeActions);
+                setReadyForReviewCount(safeReadyForReview.length);
+                setReadyForReviewIds(new Set(safeReadyForReview.map((r) => r.id)));
+                setSelected((prev) =>
+                  prev ? safeActions.find((r) => r.id === prev.id) ?? null : null,
+                );
+              } catch (err) {
+                console.error('CouncilActionCenterPanel refresh failed:', err);
+                setReadyForReviewCount(0);
+                setReadyForReviewIds(new Set());
+              }
             })();
           }}
         />

@@ -163,10 +163,16 @@ export async function listCouncilActions(propertyId: string): Promise<CouncilAct
     .eq('property_id', propertyId)
     .order('created_at', { ascending: false });
 
-  if (error || !data?.length) return [];
+  if (error) {
+    console.error('listCouncilActions failed:', error);
+    return [];
+  }
+
+  const safeData = data ?? [];
+  if (!safeData.length) return [];
 
   const assigneeIds = [
-    ...new Set(data.map((r) => r.assigned_to).filter((id): id is string => id != null)),
+    ...new Set(safeData.map((r) => r.assigned_to).filter((id): id is string => id != null)),
   ];
   const profileMap = new Map<string, { full_name_en?: string | null; full_name_zh?: string | null }>();
   if (assigneeIds.length) {
@@ -179,7 +185,7 @@ export async function listCouncilActions(propertyId: string): Promise<CouncilAct
     }
   }
 
-  return data.map((r) =>
+  return safeData.map((r) =>
     mapActionRow(
       r as Record<string, unknown>,
       r.assigned_to ? profileMap.get(String(r.assigned_to)) : null,
@@ -188,15 +194,16 @@ export async function listCouncilActions(propertyId: string): Promise<CouncilAct
 }
 
 export function summarizeCouncilActions(rows: CouncilAction[]): CouncilActionsSummary {
+  const safeRows = rows ?? [];
   const today = new Date().toISOString().slice(0, 10);
-  const active = rows.filter((r) => r.status === 'open' || r.status === 'in_progress');
-  const completedCount = rows.filter((r) => r.status === 'completed').length;
+  const active = safeRows.filter((r) => r.status === 'open' || r.status === 'in_progress');
+  const completedCount = safeRows.filter((r) => r.status === 'completed').length;
   return {
-    openCount: rows.filter((r) => r.status === 'open').length,
-    inProgressCount: rows.filter((r) => r.status === 'in_progress').length,
+    openCount: safeRows.filter((r) => r.status === 'open').length,
+    inProgressCount: safeRows.filter((r) => r.status === 'in_progress').length,
     completedCount,
     overdueCount: active.filter((r) => r.due_date != null && r.due_date < today).length,
-    completionRate: rows.length === 0 ? null : (completedCount / rows.length) * 100,
+    completionRate: safeRows.length === 0 ? null : (completedCount / safeRows.length) * 100,
   };
 }
 

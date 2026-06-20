@@ -130,23 +130,32 @@ export function CouncilActionDetailDrawer({
 
   const reload = useCallback(async () => {
     setLoading(true);
-    const [riskSummary, commentRows, attachmentRows, eventRows, staffOptions] = await Promise.all([
-      fetchRiskSummaryForAction(action.property_id, fiscalYear, action),
-      listActionComments(action.id),
-      listActionAttachments(action.id),
-      listActionEvents(action.id),
-      listWorkflowStaffOptions(action.property_id),
-    ]);
-    setRisk(riskSummary);
-    setComments(commentRows);
-    setAttachments(attachmentRows);
-    setEvents(eventRows);
-    setStaff(staffOptions);
-    const linkedTask = await fetchManagerTaskForCouncilAction(action.id);
-    setManagerTask(linkedTask);
-    const rollup = await getManagerTaskRollupForAction(action.id);
-    setManagerRollup(rollup);
-    setLoading(false);
+    try {
+      const [riskSummary, commentRows, attachmentRows, eventRows, staffOptions] = await Promise.all([
+        fetchRiskSummaryForAction(action.property_id, fiscalYear, action),
+        listActionComments(action.id),
+        listActionAttachments(action.id),
+        listActionEvents(action.id),
+        listWorkflowStaffOptions(action.property_id),
+      ]);
+      setRisk(riskSummary);
+      setComments(commentRows ?? []);
+      setAttachments(attachmentRows ?? []);
+      setEvents(eventRows ?? []);
+      setStaff(staffOptions ?? []);
+      const linkedTask = await fetchManagerTaskForCouncilAction(action.id);
+      setManagerTask(linkedTask);
+      const rollup = await getManagerTaskRollupForAction(action.id);
+      setManagerRollup(rollup);
+    } catch (err) {
+      console.error('CouncilActionDetailDrawer reload failed:', err);
+      setComments([]);
+      setAttachments([]);
+      setEvents([]);
+      setStaff([]);
+    } finally {
+      setLoading(false);
+    }
   }, [action, fiscalYear]);
 
   useEffect(() => {
@@ -759,13 +768,13 @@ export function CouncilActionDetailDrawer({
                       </div>
                       <div>
                         <div className="text-gray-500">{en ? 'Attachments' : '附件'}</div>
-                        {managerRollup.attachments.length === 0 ? (
+                        {((managerRollup.attachments ?? []).length === 0) ? (
                           <p className="mt-1 text-gray-500">
                             {en ? 'No manager attachments yet.' : '暂无经理附件'}
                           </p>
                         ) : (
                           <ul className="mt-1 space-y-1">
-                            {managerRollup.attachments.map((a) => (
+                            {(managerRollup.attachments ?? []).map((a) => (
                               <li
                                 key={a.id}
                                 className="flex items-center justify-between gap-2 rounded border border-emerald-100 bg-white px-2 py-1.5"

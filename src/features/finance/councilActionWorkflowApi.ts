@@ -235,16 +235,19 @@ export async function listActionComments(actionId: string): Promise<CouncilActio
     .eq('action_id', actionId)
     .order('created_at', { ascending: true });
 
-  if (error || !data?.length) return [];
+  if (error) return [];
 
-  const userIds = [...new Set(data.map((r) => String(r.created_by)))];
-  const propertyId = String(data[0].property_id);
+  const safeData = data ?? [];
+  if (!safeData.length) return [];
+
+  const userIds = [...new Set(safeData.map((r) => String(r.created_by)))];
+  const propertyId = String(safeData[0].property_id);
   const [profiles, roles] = await Promise.all([
     loadProfileMap(userIds),
     loadMemberRoleMap(propertyId, userIds),
   ]);
 
-  return data.map((r) => ({
+  return safeData.map((r) => ({
     id: String(r.id),
     action_id: String(r.action_id),
     property_id: propertyId,
@@ -284,12 +287,15 @@ export async function listActionAttachments(actionId: string): Promise<CouncilAc
     .eq('action_id', actionId)
     .order('created_at', { ascending: true });
 
-  if (error || !data?.length) return [];
+  if (error) return [];
 
-  const userIds = [...new Set(data.map((r) => String(r.uploaded_by)))];
+  const safeData = data ?? [];
+  if (!safeData.length) return [];
+
+  const userIds = [...new Set(safeData.map((r) => String(r.uploaded_by)))];
   const profiles = await loadProfileMap(userIds);
 
-  return data.map((r) => ({
+  return safeData.map((r) => ({
     id: String(r.id),
     action_id: String(r.action_id),
     property_id: String(r.property_id),
@@ -356,14 +362,17 @@ export async function listActionEvents(actionId: string): Promise<CouncilActionE
     .eq('action_id', actionId)
     .order('created_at', { ascending: false });
 
-  if (error || !data?.length) return [];
+  if (error) return [];
+
+  const safeData = data ?? [];
+  if (!safeData.length) return [];
 
   const actorIds = [
-    ...new Set(data.map((r) => r.actor_id).filter((id): id is string => id != null)),
+    ...new Set(safeData.map((r) => r.actor_id).filter((id): id is string => id != null)),
   ];
   const profiles = await loadProfileMap(actorIds);
 
-  return data.map((r) => ({
+  return safeData.map((r) => ({
     id: String(r.id),
     action_id: String(r.action_id),
     property_id: String(r.property_id),

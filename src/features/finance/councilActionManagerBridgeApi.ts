@@ -723,41 +723,52 @@ export async function listCouncilActionsReadyForReview(
   propertyId: string,
   _fiscalYear?: number,
 ): Promise<CouncilAction[]> {
-  const actions = await listCouncilActions(propertyId);
-  const direct = actions.filter(
-    (a) => a.status !== 'completed' && a.review_status === 'ready_for_review',
-  );
-  const directIds = new Set(direct.map((a) => a.id));
+  try {
+    const actions = (await listCouncilActions(propertyId)) ?? [];
+    const direct = actions.filter(
+      (a) => a.status !== 'completed' && a.review_status === 'ready_for_review',
+    );
+    const directIds = new Set(direct.map((a) => a.id));
 
-  const candidates = actions.filter(
-    (a) =>
-      a.status !== 'completed' &&
-      a.manager_task_id &&
-      !directIds.has(a.id) &&
-      a.review_status !== 'returned' &&
-      a.review_status !== 'approved',
-  );
+    const candidates = actions.filter(
+      (a) =>
+        a.status !== 'completed' &&
+        a.manager_task_id &&
+        !directIds.has(a.id) &&
+        a.review_status !== 'returned' &&
+        a.review_status !== 'approved',
+    );
 
-  if (!candidates.length) return direct;
+    if (!candidates.length) return direct;
 
-  const taskIds = candidates
-    .map((a) => a.manager_task_id)
-    .filter((id): id is string => id != null);
+    const taskIds = candidates
+      .map((a) => a.manager_task_id)
+      .filter((id): id is string => id != null);
 
-  const { data: tasks } = await supabase
-    .from('manager_tasks')
-    .select('id, manager_feedback, status')
-    .in('id', taskIds);
+    const { data: tasks, error: tasksErr } = await supabase
+      .from('manager_tasks')
+      .select('id, manager_feedback, status')
+      .in('id', taskIds);
 
-  const taskMap = new Map((tasks ?? []).map((t) => [String(t.id), t]));
-  const heuristic = candidates.filter((a) => {
-    const task = a.manager_task_id ? taskMap.get(a.manager_task_id) : null;
-    if (!task) return false;
-    const feedback = extractManagerFeedback(task as Record<string, unknown>);
-    return feedback.length > 0 && isManagerTaskCompleted(String(task.status ?? ''));
-  });
+    if (tasksErr) {
+      console.error('listCouncilActionsReadyForReview tasks query failed:', tasksErr);
+      return direct;
+    }
 
-  return [...direct, ...heuristic];
+    const safeTasks = tasks ?? [];
+    const taskMap = new Map(safeTasks.map((t) => [String(t.id), t]));
+    const heuristic = candidates.filter((a) => {
+      const task = a.manager_task_id ? taskMap.get(a.manager_task_id) : null;
+      if (!task) return false;
+      const feedback = extractManagerFeedback(task as Record<string, unknown>);
+      return feedback.length > 0 && isManagerTaskCompleted(String(task.status ?? ''));
+    });
+
+    return [...direct, ...heuristic];
+  } catch (err) {
+    console.error('listCouncilActionsReadyForReview failed:', err);
+    return [];
+  }
 }
 
 export async function fetchCouncilActionSourceForManagerTask(
