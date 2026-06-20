@@ -275,11 +275,12 @@ function parseEvidenceUrls(raw: unknown): string[] {
   return raw.filter((u): u is string => typeof u === 'string' && u.length > 0);
 }
 
-// ── Nav tabs（全部 + 四类） ─────────────────────────────────────────────────────
+// ── Nav tabs（全部 + 五类） ─────────────────────────────────────────────────────
 
 const NAV_TABS = [
   { key: 'all', label: '全部', labelEn: 'All' },
   { key: 'owner_request', label: '业主诉求', labelEn: 'Owner request' },
+  { key: 'council_assigned', label: '业委会分派', labelEn: 'Council assigned' },
   { key: 'inspection', label: '巡检记录', labelEn: 'Inspection records' },
   { key: 'public_matter', label: '重要事项', labelEn: 'Important Updates' },
   { key: 'manager_report', label: '经理月报', labelEn: 'Manager report' },
@@ -305,6 +306,11 @@ const TASK_KIND_LABELS: Record<string, { zh: string; en: string }> = {
 
 function isCouncilAssignedTask(row: ManagerTaskRow): boolean {
   return row.source_type === 'council_action' || row.council_action_id != null;
+}
+
+function isCouncilAssignedOpenTask(row: ManagerTaskRow): boolean {
+  const status = row.status.trim().toLowerCase();
+  return row.source_type === 'council_action' && status !== 'completed' && status !== 'closed';
 }
 
 function taskTypeLabel(kind: string, en: boolean): string {
@@ -1751,7 +1757,7 @@ export function ManagerTasks() {
     setSearchParams(nextParams, { replace: true });
   };
 
-  // ── Manager tasks（仅「全部」拉取表格） ───────────────────────────────────────
+  // ── Manager tasks（「全部」与「业委会分派」拉取） ─────────────────────────────
 
   const [rows, setRows] = useState<ManagerTaskRow[]>([]);
   const [loadingTasks, setLoadingTasks] = useState(false);
@@ -2289,7 +2295,7 @@ export function ManagerTasks() {
   // ── Effects ───────────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (filterType === 'all') {
+    if (filterType === 'all' || filterType === 'council_assigned') {
       void loadTasks();
     }
   }, [loadTasks, filterType]);
@@ -2319,6 +2325,7 @@ export function ManagerTasks() {
   }, [loadMonthlyBundle, filterType]);
 
   const isOwnerRequestTab = filterType === 'owner_request';
+  const isCouncilAssignedTab = filterType === 'council_assigned';
   const isAllTab = filterType === 'all';
   const isInspectionTab = filterType === 'inspection';
   const isPublicMatterTab = filterType === 'public_matter';
@@ -2333,7 +2340,10 @@ export function ManagerTasks() {
     [rows],
   );
 
-  const regularRows = useMemo(() => rows.filter((r) => !isCouncilAssignedTask(r)), [rows]);
+  const councilAssignedOpenCount = useMemo(
+    () => rows.filter(isCouncilAssignedOpenTask).length,
+    [rows],
+  );
   /** 巡检 / 公共事项 / 月报·空白单：非经理只读预览，不展示提交类按钮 */
   const ownerFormReadOnly = !isPropertyManagerRole;
 
@@ -2452,20 +2462,22 @@ export function ManagerTasks() {
     </div>
   );
 
-  const taskTableSection = regularRows.length > 0 ? renderManagerTaskTable(regularRows) : null;
+  const councilAssignedSectionHeader = (
+    <div>
+      <h2 className="text-sm font-bold text-gray-800 border-b border-gray-200 pb-2">
+        {en ? 'Council Assigned Tasks' : '业委会分派的任务'}
+      </h2>
+      <p className="mt-2 text-xs text-gray-600 leading-relaxed">
+        {en
+          ? 'Tasks assigned by council from budget risks, revenue reconciliation, or expense variance.'
+          : '由业委会根据预算风险、收入对账或支出差异分派给物业经理的事项。'}
+      </p>
+    </div>
+  );
 
   const councilAssignedSection = (
     <section className="space-y-4">
-      <div>
-        <h2 className="text-sm font-bold text-gray-800 border-b border-gray-200 pb-2">
-          {en ? 'Council Assigned Tasks' : '业委会分派的任务'}
-        </h2>
-        <p className="mt-2 text-xs text-gray-600 leading-relaxed">
-          {en
-            ? 'Tasks assigned by council from budget risks, revenue reconciliation, or expense variance.'
-            : '由业委会根据预算风险、收入对账或支出差异分派给物业经理的事项。'}
-        </p>
-      </div>
+      {councilAssignedSectionHeader}
       {councilAssignedRows.length > 0 ? (
         renderManagerTaskTable(councilAssignedRows)
       ) : (
@@ -2475,6 +2487,16 @@ export function ManagerTasks() {
       )}
     </section>
   );
+
+  const councilAssignedSummarySection =
+    councilAssignedRows.length > 0 ? (
+      <section className="space-y-4">
+        <h2 className="text-sm font-bold text-gray-800 border-b border-gray-200 pb-2">
+          {en ? 'Council assigned' : '业委会分派'}
+        </h2>
+        {renderManagerTaskTable(councilAssignedRows)}
+      </section>
+    ) : null;
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
@@ -2519,6 +2541,12 @@ export function ManagerTasks() {
             }`}
           >
             {en ? t.labelEn : t.label}
+            {t.key === 'council_assigned' && councilAssignedOpenCount > 0 ? (
+              <span className="ml-1 inline-flex items-center gap-0.5">
+                <span aria-hidden>🔴</span>
+                <span>{councilAssignedOpenCount}</span>
+              </span>
+            ) : null}
           </button>
         ))}
       </div>
@@ -2656,7 +2684,25 @@ export function ManagerTasks() {
         </div>
       )}
 
-      {/* ── 全部：业主诉求 + 公开巡检（不含 draft）──────────────────────────── */}
+      {/* ── 业委会分派：独立栏目 ─────────────────────────────────────────────── */}
+      {isCouncilAssignedTab && (
+        <>
+          {taskError ? (
+            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+              {taskError}
+            </div>
+          ) : null}
+          {loadingTasks ? (
+            <div className="flex justify-center py-20">
+              <Loader2 className="h-10 w-10 animate-spin text-[#1D9E75]" />
+            </div>
+          ) : (
+            councilAssignedSection
+          )}
+        </>
+      )}
+
+      {/* ── 全部：各栏目摘要 ─────────────────────────────────────────────────── */}
       {isAllTab && (
         <>
           {taskError ? (
@@ -2668,7 +2714,6 @@ export function ManagerTasks() {
               <Loader2 className="h-10 w-10 animate-spin text-[#1D9E75]" />
             </div>
           ) : ownerRequests.length === 0 &&
-            regularRows.length === 0 &&
             councilAssignedRows.length === 0 &&
             inspectionsVisibleInAllTab.length === 0 &&
             publicMattersVisibleInAllTab.length === 0 &&
@@ -2700,7 +2745,7 @@ export function ManagerTasks() {
                 </section>
               ) : null}
 
-              {councilAssignedSection}
+              {councilAssignedSummarySection}
 
               {inspectionsVisibleInAllTab.length > 0 ? (
                 <section className="space-y-4">
@@ -2772,8 +2817,6 @@ export function ManagerTasks() {
                   </div>
                 </section>
               ) : null}
-
-              {taskTableSection}
             </div>
           )}
         </>
