@@ -138,6 +138,15 @@ export function CouncilActionDetailDrawer({
     void reload();
   }, [reload]);
 
+  const maybeCreateManagerTaskForAssignee = async (assigneeId: string | null) => {
+    if (!assigneeId) return null;
+
+    const manager = findPropertyManagers(staff).find((m) => m.user_id === assigneeId);
+    if (!manager) return null;
+
+    return await createManagerTaskFromCouncilAction(action.id, assigneeId, fiscalYear, en);
+  };
+
   const saveFields = async () => {
     setSaving(true);
     setMessage(null);
@@ -159,13 +168,33 @@ export function CouncilActionDetailDrawer({
 
   const handleAssign = async () => {
     setSaving(true);
+    setMessage(null);
     const { ok, error } = await assignCouncilAction(action.id, assignedTo || null);
-    setSaving(false);
     if (!ok) {
+      setSaving(false);
       setMessage(error ?? (en ? 'Assign failed' : '分配失败'));
       return;
     }
-    setMessage(en ? 'Assignee updated.' : '负责人已更新。');
+
+    const taskResult = await maybeCreateManagerTaskForAssignee(assignedTo || null);
+    setSaving(false);
+
+    if (taskResult?.error) {
+      setMessage(
+        en
+          ? `Assignee updated, but manager task creation failed: ${taskResult.error}`
+          : `负责人已更新，但经理任务创建失败：${taskResult.error}`,
+      );
+    } else if (taskResult?.existing) {
+      setMessage(en ? 'Manager task already exists.' : '经理任务已存在。');
+    } else if (taskResult?.task) {
+      setMessage(
+        en ? 'Assignee updated and manager task created.' : '负责人已更新，并已创建经理任务。',
+      );
+    } else {
+      setMessage(en ? 'Assignee updated.' : '负责人已更新。');
+    }
+
     onUpdated();
     await reload();
   };
@@ -223,15 +252,13 @@ export function CouncilActionDetailDrawer({
     if (currentAssignee === manager.user_id) {
       setAssignedTo(manager.user_id);
       setShowManagerPicker(false);
-      const taskResult = await createManagerTaskFromCouncilAction(
-        action.id,
-        manager.user_id,
-        fiscalYear,
-        en,
-      );
+      setSaving(true);
+      const taskResult = await maybeCreateManagerTaskForAssignee(manager.user_id);
       setSaving(false);
-      if (taskResult.error) {
+      if (taskResult?.error) {
         setMessage(taskResult.error);
+      } else if (taskResult?.existing) {
+        setMessage(en ? 'Manager task already exists.' : '经理任务已存在。');
       } else {
         setMessage(alreadyMsg);
       }
@@ -250,14 +277,9 @@ export function CouncilActionDetailDrawer({
       return;
     }
 
-    const taskResult = await createManagerTaskFromCouncilAction(
-      action.id,
-      manager.user_id,
-      fiscalYear,
-      en,
-    );
+    const taskResult = await maybeCreateManagerTaskForAssignee(manager.user_id);
     setSaving(false);
-    if (taskResult.error) {
+    if (taskResult?.error) {
       setMessage(
         taskResult.error ??
           (en ? 'Assigned, but manager task creation failed.' : '已分配，但经理任务创建失败。'),
@@ -269,7 +291,7 @@ export function CouncilActionDetailDrawer({
 
     setShowManagerPicker(false);
     setMessage(
-      taskResult.existing
+      taskResult?.existing
         ? en
           ? 'Assigned. Manager task already exists.'
           : '已分配。经理任务已存在。'
