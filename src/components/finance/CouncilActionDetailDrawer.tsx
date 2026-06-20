@@ -380,11 +380,22 @@ export function CouncilActionDetailDrawer({
     await reload();
   };
 
+  const managerTaskIsReadyForReview =
+    Boolean(managerRollup?.manager_feedback?.trim()) &&
+    ['resolved', 'closed', 'completed'].includes(
+      String(managerRollup?.task_status ?? '').toLowerCase(),
+    );
+  const isReadyForCouncilReview =
+    reviewStatus === 'ready_for_review' || managerTaskIsReadyForReview;
   const showCouncilReviewPanel =
     Boolean(action.manager_task_id) &&
     Boolean(managerRollup?.manager_feedback?.trim()) &&
-    reviewStatus === 'ready_for_review' &&
+    isReadyForCouncilReview &&
+    reviewStatus !== 'returned' &&
+    reviewStatus !== 'approved' &&
     status !== 'completed';
+  const showReviewStatusSyncHint =
+    showCouncilReviewPanel && reviewStatus !== 'ready_for_review' && managerTaskIsReadyForReview;
 
   const handleComment = async () => {
     setSaving(true);
@@ -841,6 +852,13 @@ export function CouncilActionDetailDrawer({
                       ? 'This task is awaiting council review.'
                       : '该任务正在等待业委会审核。'}
                   </p>
+                  {showReviewStatusSyncHint ? (
+                    <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900">
+                      {en
+                        ? 'This task meets the review criteria, but review_status is not yet synced; it will be corrected automatically when you approve or return.'
+                        : '该任务已满足审核条件，但 review_status 尚未同步；审核通过/退回时将自动修正状态。'}
+                    </p>
+                  ) : null}
                   <div className="mt-3 flex flex-wrap gap-2">
                     <button
                       type="button"
