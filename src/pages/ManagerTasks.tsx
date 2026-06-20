@@ -297,11 +297,15 @@ const TASK_KIND_LABELS: Record<string, { zh: string; en: string }> = {
   vendor: { zh: '采购申报', en: 'Procurement' },
   invoice_upload: { zh: '发票上传', en: 'Invoice upload' },
   invoice_review: { zh: '发票上传', en: 'Invoice upload' },
-  budget_review: { zh: '预算审查', en: 'Budget review' },
-  owner_fee_collection: { zh: '追缴物业费', en: 'Fee collection' },
-  finance_mapping: { zh: '科目映射', en: 'Finance mapping' },
+  budget_review: { zh: '预算审查', en: 'Budget Review' },
+  owner_fee_collection: { zh: '追缴物业费', en: 'Fee Collection' },
+  finance_mapping: { zh: '财务映射', en: 'Finance Mapping' },
   follow_up: { zh: '跟进事项', en: 'Follow-up' },
 };
+
+function isCouncilAssignedTask(row: ManagerTaskRow): boolean {
+  return row.source_type === 'council_action' || row.council_action_id != null;
+}
 
 function taskTypeLabel(kind: string, en: boolean): string {
   const L = TASK_KIND_LABELS[kind];
@@ -2320,6 +2324,16 @@ export function ManagerTasks() {
   const isPublicMatterTab = filterType === 'public_matter';
   const isManagerReportTab = filterType === 'manager_report';
   const isPropertyManagerRole = roleInProperty === 'manager';
+
+  const councilAssignedRows = useMemo(
+    () =>
+      rows
+        .filter(isCouncilAssignedTask)
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
+    [rows],
+  );
+
+  const regularRows = useMemo(() => rows.filter((r) => !isCouncilAssignedTask(r)), [rows]);
   /** 巡检 / 公共事项 / 月报·空白单：非经理只读预览，不展示提交类按钮 */
   const ownerFormReadOnly = !isPropertyManagerRole;
 
@@ -2396,7 +2410,7 @@ export function ManagerTasks() {
     return () => window.clearTimeout(t);
   }, [linkedRequestId, filterType, ownerRequests.length, loadingOR]);
 
-  const taskTableSection = (
+  const renderManagerTaskTable = (taskRows: ManagerTaskRow[]) => (
     <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
       <table className="min-w-full text-left text-sm">
         <thead className="bg-gray-50 text-gray-700">
@@ -2410,7 +2424,7 @@ export function ManagerTasks() {
           </tr>
         </thead>
         <tbody>
-          {rows.map((r) => (
+          {taskRows.map((r) => (
             <tr key={r.id} className="border-t border-gray-100">
               <td className="px-3 py-2.5 font-medium text-gray-900">{r.title || '—'}</td>
               <td className="px-3 py-2.5">{taskTypeLabel(r.task_type, en)}</td>
@@ -2425,10 +2439,10 @@ export function ManagerTasks() {
               </td>
               <td className="px-3 py-2.5">
                 <Link
-                  to={`/property-admin/tasks/${r.id}`}
+                  to={`/manager-tasks?taskId=${r.id}`}
                   className="font-medium text-[#1D9E75] hover:underline"
                 >
-                  {en ? 'View detail' : '查看详情'}
+                  {en ? 'View Details' : '查看详情'}
                 </Link>
               </td>
             </tr>
@@ -2436,6 +2450,30 @@ export function ManagerTasks() {
         </tbody>
       </table>
     </div>
+  );
+
+  const taskTableSection = regularRows.length > 0 ? renderManagerTaskTable(regularRows) : null;
+
+  const councilAssignedSection = (
+    <section className="space-y-4">
+      <div>
+        <h2 className="text-sm font-bold text-gray-800 border-b border-gray-200 pb-2">
+          {en ? 'Council Assigned Tasks' : '业委会分派的任务'}
+        </h2>
+        <p className="mt-2 text-xs text-gray-600 leading-relaxed">
+          {en
+            ? 'Tasks assigned by council from budget risks, revenue reconciliation, or expense variance.'
+            : '由业委会根据预算风险、收入对账或支出差异分派给物业经理的事项。'}
+        </p>
+      </div>
+      {councilAssignedRows.length > 0 ? (
+        renderManagerTaskTable(councilAssignedRows)
+      ) : (
+        <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-sm text-gray-500">
+          {en ? 'No council assigned tasks yet.' : '暂无业委会分派的任务。'}
+        </div>
+      )}
+    </section>
   );
 
   // ── Render ────────────────────────────────────────────────────────────────────
@@ -2629,7 +2667,12 @@ export function ManagerTasks() {
             <div className="flex justify-center py-20">
               <Loader2 className="h-10 w-10 animate-spin text-[#1D9E75]" />
             </div>
-          ) : ownerRequests.length === 0 && rows.length === 0 && inspectionsVisibleInAllTab.length === 0 && publicMattersVisibleInAllTab.length === 0 && monthlyPublishedInAllTab.length === 0 ? (
+          ) : ownerRequests.length === 0 &&
+            regularRows.length === 0 &&
+            councilAssignedRows.length === 0 &&
+            inspectionsVisibleInAllTab.length === 0 &&
+            publicMattersVisibleInAllTab.length === 0 &&
+            monthlyPublishedInAllTab.length === 0 ? (
             <div className="rounded-xl border border-gray-200 bg-white p-12 text-center text-gray-500">
               <ClipboardList className="mx-auto mb-3 h-10 w-10 text-gray-300" />
               {en ? 'No tasks.' : '暂无任务'}
@@ -2656,6 +2699,8 @@ export function ManagerTasks() {
                   </div>
                 </section>
               ) : null}
+
+              {councilAssignedSection}
 
               {inspectionsVisibleInAllTab.length > 0 ? (
                 <section className="space-y-4">
@@ -2728,7 +2773,7 @@ export function ManagerTasks() {
                 </section>
               ) : null}
 
-              {rows.length > 0 ? taskTableSection : null}
+              {taskTableSection}
             </div>
           )}
         </>
