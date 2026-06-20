@@ -165,11 +165,14 @@ export function PropertyTaskDetail() {
 
   const saveCouncilActionFeedback = async () => {
     if (!taskId || !task || !canSubmitCouncilFeedback) return;
+    const submitStatus = isManagerTaskCompleted(councilTaskStatus)
+      ? councilTaskStatus
+      : 'completed';
     setSaving(true);
     const { ok, error } = await saveManagerTaskFeedback(
       taskId,
       managerFeedback,
-      councilTaskStatus,
+      submitStatus,
     );
     setSaving(false);
     if (!ok) {
@@ -197,6 +200,12 @@ export function PropertyTaskDetail() {
     Boolean(task?.manager_feedback?.trim());
 
   const showCouncilReturnNotice = councilActionSource?.reviewStatus === 'returned';
+
+  const showCouncilFeedbackIncomplete =
+    task?.source_type === 'council_action' &&
+    Boolean(task?.manager_feedback?.trim()) &&
+    !isManagerTaskCompleted(task.status) &&
+    councilActionSource?.reviewStatus !== 'ready_for_review';
 
   const load = useCallback(async () => {
     if (!taskId || !currentPropertyId) return;
@@ -591,6 +600,19 @@ export function PropertyTaskDetail() {
               {councilActionSource.reviewNote}
             </p>
           ) : null}
+        </div>
+      ) : null}
+
+      {showCouncilFeedbackIncomplete ? (
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <p className="font-semibold">
+            {en ? 'Outcome saved but not submitted for review' : '处理结果已保存，但任务尚未提交审核'}
+          </p>
+          <p className="mt-1">
+            {en
+              ? 'Click “Submit for council review” below to send this to the board.'
+              : '请点击下方「提交供业委会审核」。'}
+          </p>
         </div>
       ) : null}
 

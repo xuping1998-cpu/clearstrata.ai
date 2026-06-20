@@ -88,13 +88,13 @@ export function resolveCouncilAssignedTaskStage(
   }
 
   const feedback = String(task.manager_feedback ?? '').trim();
-  if (feedback && linkedCouncilAction?.status !== 'completed') {
-    return 'waiting_council_review';
-  }
-
   const status = String(task.status ?? '').trim().toLowerCase();
-  if (!feedback || status === 'open') {
-    return 'waiting_manager';
+  if (
+    feedback &&
+    isManagerTaskCompleted(status) &&
+    linkedCouncilAction?.status !== 'completed'
+  ) {
+    return 'waiting_council_review';
   }
 
   return 'waiting_manager';
@@ -384,8 +384,16 @@ export async function saveManagerTaskFeedback(
     patch.manager_feedback_at = new Date().toISOString();
     patch.manager_feedback_by = userId;
   }
-  if (status?.trim()) {
-    patch.status = status.trim();
+
+  let resolvedStatus = status?.trim() ?? '';
+  if (trimmed) {
+    const normalized = resolvedStatus.toLowerCase();
+    if (!resolvedStatus || normalized === 'open') {
+      resolvedStatus = 'completed';
+    }
+  }
+  if (resolvedStatus) {
+    patch.status = resolvedStatus;
   }
 
   if (!Object.keys(patch).length) {
@@ -760,7 +768,7 @@ export async function listCouncilActionsReadyForReview(
     const heuristic = candidates.filter((a) => {
       const task = a.manager_task_id ? taskMap.get(a.manager_task_id) : null;
       if (!task) return false;
-      const feedback = extractManagerFeedback(task as Record<string, unknown>);
+      const feedback = extractManagerFeedback(task as Record<string, unknown>) ?? '';
       return feedback.length > 0 && isManagerTaskCompleted(String(task.status ?? ''));
     });
 
