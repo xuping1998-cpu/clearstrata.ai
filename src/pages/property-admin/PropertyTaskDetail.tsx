@@ -17,9 +17,12 @@ import { computeQuoteInvoiceVariance, type QuoteVarianceResult } from '../../lib
 import type { ManagerTaskType } from '../ManagerTasks';
 import {
   councilActionFinanceHref,
+  councilAssignedStageBadgeClass,
+  councilAssignedStageLabel,
   fetchCouncilActionSourceForManagerTask,
   isManagerTaskCompleted,
   managerTaskStatusLabel,
+  resolveCouncilAssignedTaskStage,
   saveManagerTaskFeedback,
   syncCouncilActionStatus,
 } from '../../features/finance/councilActionManagerBridgeApi';
@@ -144,6 +147,8 @@ export function PropertyTaskDetail() {
     actionTitle: string;
     actionStatus: string;
     alertTypeLabel: string;
+    dueDate: string | null;
+    assignerName: string | null;
   } | null>(null);
   const [managerFeedback, setManagerFeedback] = useState('');
   const [councilTaskStatus, setCouncilTaskStatus] = useState('open');
@@ -172,6 +177,18 @@ export function PropertyTaskDetail() {
     void load();
   };
 
+  const councilTaskStage = useMemo(() => {
+    if (!task || task.source_type !== 'council_action') return null;
+    return resolveCouncilAssignedTaskStage(
+      { status: task.status, manager_feedback: task.manager_feedback },
+      councilActionSource ? { status: councilActionSource.actionStatus as CouncilActionStatus } : null,
+    );
+  }, [task, councilActionSource]);
+
+  const showCouncilReviewNotice =
+    Boolean(task?.manager_feedback?.trim()) &&
+    councilActionSource?.actionStatus !== 'completed';
+
   const load = useCallback(async () => {
     if (!taskId || !currentPropertyId) return;
     setLoading(true);
@@ -195,10 +212,13 @@ export function PropertyTaskDetail() {
     setCouncilTaskStatus(row.status);
 
     if (row.source_type === 'council_action') {
-      const source = await fetchCouncilActionSourceForManagerTask({
-        source_type: row.source_type,
-        council_action_id: row.council_action_id,
-      });
+      const source = await fetchCouncilActionSourceForManagerTask(
+        {
+          source_type: row.source_type,
+          council_action_id: row.council_action_id,
+        },
+        en,
+      );
       setCouncilActionSource(source);
       void syncCouncilActionStatus(taskId);
     } else {
@@ -551,6 +571,17 @@ export function PropertyTaskDetail() {
 
       <h1 className="text-2xl font-bold text-gray-900">{en ? 'Task detail' : '任务详情'}</h1>
 
+      {showCouncilReviewNotice ? (
+        <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
+          <p className="font-semibold">{en ? '✅ Results submitted' : '✅ 已提交处理结果'}</p>
+          <p className="mt-1">
+            {en
+              ? 'This task is awaiting council review. The board will close the linked council action after confirmation.'
+              : '该任务正在等待业委会审核。业委会确认后将关闭对应 Council Action。'}
+          </p>
+        </div>
+      ) : null}
+
       {/* 摘要 */}
       <div className="mt-4 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-2">
@@ -606,6 +637,26 @@ export function PropertyTaskDetail() {
                 {statusLabel(councilActionSource.actionStatus as CouncilActionStatus, en)}
               </dd>
             </div>
+            <div>
+              <dt className="inline text-violet-700">{en ? 'Assigned by' : '指派人'}：</dt>
+              <dd className="inline font-medium">{councilActionSource.assignerName ?? '—'}</dd>
+            </div>
+            <div>
+              <dt className="inline text-violet-700">{en ? 'Due date' : '截止日期'}：</dt>
+              <dd className="inline font-medium">{councilActionSource.dueDate ?? '—'}</dd>
+            </div>
+            {councilTaskStage ? (
+              <div>
+                <dt className="inline text-violet-700">{en ? 'Current stage' : '当前阶段'}：</dt>
+                <dd className="inline">
+                  <span
+                    className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${councilAssignedStageBadgeClass(councilTaskStage)}`}
+                  >
+                    {councilAssignedStageLabel(councilTaskStage, en)}
+                  </span>
+                </dd>
+              </div>
+            ) : null}
           </dl>
           <Link
             to={councilActionFinanceHref(councilActionSource.actionId)}

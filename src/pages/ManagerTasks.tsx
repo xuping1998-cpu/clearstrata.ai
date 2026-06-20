@@ -5,6 +5,15 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useProperty } from '../contexts/PropertyContext';
 import { supabase } from '../lib/supabase';
+import {
+  councilAssignedStageBadgeClass,
+  councilAssignedStageLabel,
+  fetchCouncilActionLinksForTasks,
+  resolveCouncilAssignedTaskStage,
+  type CouncilActionTaskLink,
+  type CouncilAssignedTaskStage,
+} from '../features/finance/councilActionManagerBridgeApi';
+import type { CouncilActionStatus } from '../features/finance/councilActionsApi';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -34,6 +43,7 @@ export type ManagerTaskRow = {
   created_at: string;
   source_type: string | null;
   council_action_id: string | null;
+  manager_feedback: string | null;
 };
 
 type OwnerRequest = {
@@ -306,11 +316,6 @@ const TASK_KIND_LABELS: Record<string, { zh: string; en: string }> = {
 
 function isCouncilAssignedTask(row: ManagerTaskRow): boolean {
   return row.source_type === 'council_action' || row.council_action_id != null;
-}
-
-function isCouncilAssignedOpenTask(row: ManagerTaskRow): boolean {
-  const status = row.status.trim().toLowerCase();
-  return row.source_type === 'council_action' && status !== 'completed' && status !== 'closed';
 }
 
 function taskTypeLabel(kind: string, en: boolean): string {
@@ -1760,6 +1765,7 @@ export function ManagerTasks() {
   // ── Manager tasks（「全部」与「业委会分派」拉取） ─────────────────────────────
 
   const [rows, setRows] = useState<ManagerTaskRow[]>([]);
+  const [councilActionLinks, setCouncilActionLinks] = useState<Record<string, CouncilActionTaskLink>>({});
   const [loadingTasks, setLoadingTasks] = useState(false);
   const [taskError, setTaskError] = useState<string | null>(null);
 
@@ -1769,18 +1775,32 @@ export function ManagerTasks() {
     setTaskError(null);
     const { data, error } = await supabase
       .from('manager_tasks')
-      .select('id, property_id, task_type, title, description, status, dispute_status, dispute_result, created_at, source_type, council_action_id')
+      .select(
+        'id, property_id, task_type, title, description, status, dispute_status, dispute_result, created_at, source_type, council_action_id, manager_feedback',
+      )
       .eq('property_id', currentPropertyId)
       .order('created_at', { ascending: false });
     if (error) {
       console.error(error);
       setTaskError(error.message);
       setRows([]);
+      setCouncilActionLinks({});
     } else {
-      setRows((data as ManagerTaskRow[]) ?? []);
+      const taskRows = (data as ManagerTaskRow[]) ?? [];
+      setRows(taskRows);
+      const actionIds = [
+        ...new Set(
+          taskRows
+            .filter(isCouncilAssignedTask)
+            .map((r) => r.council_action_id)
+            .filter((id): id is string => id != null),
+        ),
+      ];
+      const links = await fetchCouncilActionLinksForTasks(actionIds, en);
+      setCouncilActionLinks(links);
     }
     setLoadingTasks(false);
-  }, [currentPropertyId]);
+  }, [currentPropertyId, en]);
 
   // ── Owner requests ────────────────────────────────────────────────────────────
 
@@ -2340,9 +2360,33 @@ export function ManagerTasks() {
     [rows],
   );
 
-  const councilAssignedOpenCount = useMemo(
-    () => rows.filter(isCouncilAssignedOpenTask).length,
-    [rows],
+  const resolveRowStage = useCallback(
+    (row: ManagerTaskRow): CouncilAssignedTaskStage => {
+      const link = row.council_action_id ? councilActionLinks[row.council_action_id] : null;
+      return resolveCouncilAssignedTaskStage(
+        { status: row.status, manager_feedback: row.manager_feedback },
+        link ? { status: link.actionStatus as CouncilActionStatus } : null,
+      );
+    },
+    [councilActionLinks],
+  );
+
+  const councilStageCounts = useMemo(() => {
+    let waitingManagerCount = 0;
+    let waitingCouncilReviewCount = 0;
+    let completedCount = 0;
+    for (const row of councilAssignedRows) {
+      const stage = resolveRowStage(row);
+      if (stage === 'waiting_manager') waitingManagerCount += 1;
+      else if (stage === 'waiting_council_review') waitingCouncilReviewCount += 1;
+      else completedCount += 1;
+    }
+    return { waitingManagerCount, waitingCouncilReviewCount, completedCount };
+  }, [councilAssignedRows, resolveRowStage]);
+
+  const councilAssignedPendingCount = useMemo(
+    () => councilStageCounts.waitingManagerCount + councilStageCounts.waitingCouncilReviewCount,
+    [councilStageCounts],
   );
   /** 巡检 / 公共事项 / 月报·空白单：非经理只读预览，不展示提交类按钮 */
   const ownerFormReadOnly = !isPropertyManagerRole;
@@ -2420,45 +2464,80 @@ export function ManagerTasks() {
     return () => window.clearTimeout(t);
   }, [linkedRequestId, filterType, ownerRequests.length, loadingOR]);
 
-  const renderManagerTaskTable = (taskRows: ManagerTaskRow[]) => (
+  const renderCouncilAssignedTaskTable = (taskRows: ManagerTaskRow[]) => (
     <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
       <table className="min-w-full text-left text-sm">
         <thead className="bg-gray-50 text-gray-700">
           <tr>
             <th className="px-3 py-3 font-semibold">{en ? 'Title' : '标题'}</th>
             <th className="px-3 py-3 font-semibold">{en ? 'Type' : '类型'}</th>
-            <th className="px-3 py-3 font-semibold">{en ? 'Status' : '状态'}</th>
-            <th className="px-3 py-3 font-semibold">{en ? 'Sub-status' : '子状态'}</th>
+            <th className="px-3 py-3 font-semibold">{en ? 'Assigned by' : '指派人'}</th>
+            <th className="px-3 py-3 font-semibold">{en ? 'Due date' : '截止日期'}</th>
+            <th className="px-3 py-3 font-semibold">{en ? 'Stage' : '阶段'}</th>
             <th className="px-3 py-3 font-semibold">{en ? 'Created' : '创建时间'}</th>
             <th className="px-3 py-3 font-semibold">{en ? 'Action' : '操作'}</th>
           </tr>
         </thead>
         <tbody>
-          {taskRows.map((r) => (
-            <tr key={r.id} className="border-t border-gray-100">
-              <td className="px-3 py-2.5 font-medium text-gray-900">{r.title || '—'}</td>
-              <td className="px-3 py-2.5">{taskTypeLabel(r.task_type, en)}</td>
-              <td className="px-3 py-2.5">{r.status}</td>
-              <td className="px-3 py-2.5 text-gray-700">
-                {(r.task_type === 'dispute' || r.task_type === 'owner_request')
-                  ? r.dispute_status ?? '—'
-                  : '—'}
-              </td>
-              <td className="px-3 py-2.5 whitespace-nowrap text-xs text-gray-500">
-                {new Date(r.created_at).toLocaleString(en ? 'en-CA' : 'zh-CN')}
-              </td>
-              <td className="px-3 py-2.5">
-                <Link
-                  to={`/manager-tasks?taskId=${r.id}`}
-                  className="font-medium text-[#1D9E75] hover:underline"
-                >
-                  {en ? 'View Details' : '查看详情'}
-                </Link>
-              </td>
-            </tr>
-          ))}
+          {taskRows.map((r) => {
+            const link = r.council_action_id ? councilActionLinks[r.council_action_id] : null;
+            const stage = resolveRowStage(r);
+            return (
+              <tr key={r.id} className="border-t border-gray-100">
+                <td className="px-3 py-2.5 font-medium text-gray-900">{r.title || '—'}</td>
+                <td className="px-3 py-2.5">{taskTypeLabel(r.task_type, en)}</td>
+                <td className="px-3 py-2.5 text-gray-700">{link?.assignerName ?? '—'}</td>
+                <td className="px-3 py-2.5 whitespace-nowrap text-gray-700">{link?.dueDate ?? '—'}</td>
+                <td className="px-3 py-2.5">
+                  <span
+                    className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${councilAssignedStageBadgeClass(stage)}`}
+                  >
+                    {councilAssignedStageLabel(stage, en)}
+                  </span>
+                </td>
+                <td className="px-3 py-2.5 whitespace-nowrap text-xs text-gray-500">
+                  {new Date(r.created_at).toLocaleString(en ? 'en-CA' : 'zh-CN')}
+                </td>
+                <td className="px-3 py-2.5">
+                  <Link
+                    to={`/manager-tasks?taskId=${r.id}`}
+                    className="font-medium text-[#1D9E75] hover:underline"
+                  >
+                    {en ? 'View Details' : '查看详情'}
+                  </Link>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
+    </div>
+  );
+
+  const councilAssignedStatsCards = (
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+      <div className="rounded-xl border border-amber-100 bg-amber-50/50 px-3 py-2">
+        <div className="text-xs font-medium text-amber-800">
+          {en ? 'Awaiting manager' : '待经理处理'}
+        </div>
+        <div className="mt-0.5 text-lg font-bold tabular-nums text-amber-900">
+          {councilStageCounts.waitingManagerCount}
+        </div>
+      </div>
+      <div className="rounded-xl border border-sky-100 bg-sky-50/50 px-3 py-2">
+        <div className="text-xs font-medium text-sky-800">
+          {en ? 'Awaiting council review' : '待业委会审核'}
+        </div>
+        <div className="mt-0.5 text-lg font-bold tabular-nums text-sky-900">
+          {councilStageCounts.waitingCouncilReviewCount}
+        </div>
+      </div>
+      <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 px-3 py-2">
+        <div className="text-xs font-medium text-emerald-800">{en ? 'Completed' : '已完成'}</div>
+        <div className="mt-0.5 text-lg font-bold tabular-nums text-emerald-900">
+          {councilStageCounts.completedCount}
+        </div>
+      </div>
     </div>
   );
 
@@ -2477,9 +2556,10 @@ export function ManagerTasks() {
 
   const councilAssignedSection = (
     <section className="space-y-4">
+      {councilAssignedStatsCards}
       {councilAssignedSectionHeader}
       {councilAssignedRows.length > 0 ? (
-        renderManagerTaskTable(councilAssignedRows)
+        renderCouncilAssignedTaskTable(councilAssignedRows)
       ) : (
         <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-sm text-gray-500">
           {en ? 'No council assigned tasks yet.' : '暂无业委会分派的任务。'}
@@ -2494,7 +2574,7 @@ export function ManagerTasks() {
         <h2 className="text-sm font-bold text-gray-800 border-b border-gray-200 pb-2">
           {en ? 'Council assigned' : '业委会分派'}
         </h2>
-        {renderManagerTaskTable(councilAssignedRows)}
+        {renderCouncilAssignedTaskTable(councilAssignedRows)}
       </section>
     ) : null;
 
@@ -2541,10 +2621,10 @@ export function ManagerTasks() {
             }`}
           >
             {en ? t.labelEn : t.label}
-            {t.key === 'council_assigned' && councilAssignedOpenCount > 0 ? (
+            {t.key === 'council_assigned' && councilAssignedPendingCount > 0 ? (
               <span className="ml-1 inline-flex items-center gap-0.5">
                 <span aria-hidden>🔴</span>
-                <span>{councilAssignedOpenCount}</span>
+                <span>{councilAssignedPendingCount}</span>
               </span>
             ) : null}
           </button>

@@ -47,6 +47,99 @@ export type ManagerTaskRollup = {
   attachments: ManagerTaskRollupAttachment[];
 };
 
+export type CouncilAssignedTaskStage =
+  | 'waiting_manager'
+  | 'waiting_council_review'
+  | 'completed';
+
+export type CouncilAssignedManagerTask = {
+  status: string;
+  manager_feedback?: string | null;
+};
+
+export type CouncilActionTaskLink = {
+  actionId: string;
+  actionTitle: string;
+  actionStatus: string;
+  dueDate: string | null;
+  assignerName: string | null;
+};
+
+export function resolveCouncilAssignedTaskStage(
+  task: CouncilAssignedManagerTask,
+  linkedCouncilAction?: Pick<CouncilAction, 'status'> | null,
+): CouncilAssignedTaskStage {
+  if (linkedCouncilAction?.status === 'completed') {
+    return 'completed';
+  }
+
+  const feedback = String(task.manager_feedback ?? '').trim();
+  if (feedback && linkedCouncilAction?.status !== 'completed') {
+    return 'waiting_council_review';
+  }
+
+  const status = String(task.status ?? '').trim().toLowerCase();
+  if (!feedback || status === 'open') {
+    return 'waiting_manager';
+  }
+
+  return 'waiting_manager';
+}
+
+export function councilAssignedStageLabel(stage: CouncilAssignedTaskStage, en: boolean): string {
+  const labels: Record<CouncilAssignedTaskStage, { en: string; zh: string }> = {
+    waiting_manager: { en: 'Awaiting manager', zh: '待经理处理' },
+    waiting_council_review: { en: 'Awaiting council review', zh: '待业委会审核' },
+    completed: { en: 'Completed', zh: '已完成' },
+  };
+  return en ? labels[stage].en : labels[stage].zh;
+}
+
+export function councilAssignedStageBadgeClass(stage: CouncilAssignedTaskStage): string {
+  if (stage === 'waiting_manager') return 'bg-amber-100 text-amber-900';
+  if (stage === 'waiting_council_review') return 'bg-sky-100 text-sky-900';
+  return 'bg-emerald-100 text-emerald-900';
+}
+
+export async function fetchCouncilActionLinksForTasks(
+  councilActionIds: string[],
+  en = false,
+): Promise<Record<string, CouncilActionTaskLink>> {
+  const uniqueIds = [...new Set(councilActionIds.filter(Boolean))];
+  if (!uniqueIds.length) return {};
+
+  const { data, error } = await supabase
+    .from('council_actions')
+    .select('id, title, status, created_by, due_date')
+    .in('id', uniqueIds);
+
+  if (error || !data?.length) return {};
+
+  const creatorIds = [
+    ...new Set(data.map((r) => (r.created_by != null ? String(r.created_by) : '')).filter(Boolean)),
+  ];
+  const creatorNames = new Map<string, string | null>();
+  await Promise.all(
+    creatorIds.map(async (uid) => {
+      creatorNames.set(uid, await loadProfileName(uid, en));
+    }),
+  );
+
+  const out: Record<string, CouncilActionTaskLink> = {};
+  for (const row of data) {
+    const id = String(row.id);
+    const createdBy = row.created_by != null ? String(row.created_by) : null;
+    out[id] = {
+      actionId: id,
+      actionTitle: String(row.title ?? ''),
+      actionStatus: String(row.status ?? ''),
+      dueDate: row.due_date != null ? String(row.due_date).slice(0, 10) : null,
+      assignerName: createdBy ? creatorNames.get(createdBy) ?? null : null,
+    };
+  }
+  return out;
+}
+
 const MANAGER_TASK_COMPLETED = new Set(['completed', 'resolved', 'closed']);
 
 export function isManagerTaskCompleted(status: string | null | undefined): boolean {
@@ -503,26 +596,33 @@ export async function syncCouncilActionStatus(
 
 export async function fetchCouncilActionSourceForManagerTask(
   task: Pick<CouncilActionLinkedManagerTask, 'source_type' | 'council_action_id'>,
+  en = false,
 ): Promise<{
   actionId: string;
   actionTitle: string;
   actionStatus: string;
   alertTypeLabel: string;
+  dueDate: string | null;
+  assignerName: string | null;
 } | null> {
   if (task.source_type !== 'council_action' || !task.council_action_id) return null;
 
   const { data, error } = await supabase
     .from('council_actions')
-    .select('id, title, alert_type, status')
+    .select('id, title, alert_type, status, created_by, due_date')
     .eq('id', task.council_action_id)
     .maybeSingle();
 
   if (error || !data) return null;
+  const createdBy = data.created_by != null ? String(data.created_by) : null;
+  const assignerName = await loadProfileName(createdBy, en);
   return {
     actionId: String(data.id),
     actionTitle: String(data.title ?? ''),
     actionStatus: String(data.status ?? ''),
     alertTypeLabel: alertTypeLabel(String(data.alert_type ?? ''), true),
+    dueDate: data.due_date != null ? String(data.due_date).slice(0, 10) : null,
+    assignerName,
   };
 }
 
