@@ -167,7 +167,7 @@ export function PropertyTaskDetail() {
     if (!taskId || !task || !canSubmitCouncilFeedback) return;
     const submitStatus = isManagerTaskCompleted(councilTaskStatus)
       ? councilTaskStatus
-      : 'completed';
+      : 'resolved';
     setSaving(true);
     const { ok, error } = await saveManagerTaskFeedback(
       taskId,
@@ -744,7 +744,6 @@ export function PropertyTaskDetail() {
                   <option value="in_progress">{managerTaskStatusLabel('in_progress', en)}</option>
                   <option value="resolved">{managerTaskStatusLabel('resolved', en)}</option>
                   <option value="closed">{managerTaskStatusLabel('closed', en)}</option>
-                  <option value="completed">{managerTaskStatusLabel('completed', en)}</option>
                 </select>
               ) : (
                 <p className="mt-1 text-sm font-medium">{managerTaskStatusLabel(task.status, en)}</p>

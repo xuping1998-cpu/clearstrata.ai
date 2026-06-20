@@ -389,8 +389,12 @@ export async function saveManagerTaskFeedback(
   if (trimmed) {
     const normalized = resolvedStatus.toLowerCase();
     if (!resolvedStatus || normalized === 'open') {
-      resolvedStatus = 'completed';
+      resolvedStatus = 'resolved';
     }
+  }
+  // manager_tasks_status_check forbids 'completed'; coerce to the allowed 'resolved'.
+  if (resolvedStatus.toLowerCase() === 'completed') {
+    resolvedStatus = 'resolved';
   }
   if (resolvedStatus) {
     patch.status = resolvedStatus;
