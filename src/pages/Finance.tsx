@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { FileText, TrendingUp, PieChart, FileSpreadsheet, Upload, Landmark } from 'lucide-react';
+import { FileText, TrendingUp, PieChart, FileSpreadsheet, Upload, Landmark, ClipboardList } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useProperty } from '../contexts/PropertyContext';
 import { BackButton } from '../components/BackButton';
@@ -8,12 +8,13 @@ import { InvoiceManagement, type InvoiceManagementHandle } from './finance/Invoi
 import InvoiceInterpreter from './finance/InvoiceInterpreter';
 import { RevenueDashboard } from './finance/RevenueDashboard';
 import { FinanceBudgetTab } from './finance/FinanceBudgetTab';
+import { FinanceCouncilActionsTab } from './finance/FinanceCouncilActionsTab';
 import { BankTransactionsTab } from './finance/BankTransactionsTab';
 import { DemoPropertyMockFinancePanel } from '@/components/demoProperty/DemoPropertyMockFinancePanel';
 import { DemoCreatePropertyCtaCard } from '@/components/onboarding/DemoCreatePropertyCta';
 import { canViewInvoiceReview, canUploadInvoicePackage, canManageInvoiceReview } from '../lib/financePermissions';
 
-type FinanceTab = 'invoices' | 'bank' | 'budget' | 'interpreter' | 'revenue';
+type FinanceTab = 'invoices' | 'bank' | 'budget' | 'interpreter' | 'revenue' | 'council-actions';
 
 interface TabConfig {
   key: FinanceTab;
@@ -28,6 +29,7 @@ const mainNavTabs: TabConfig[] = [
   { key: 'bank', labelEn: 'Bank Transactions', labelZh: '银行流水', icon: <Landmark size={18} /> },
   { key: 'budget', labelEn: 'AGM Approved Budget', labelZh: 'AGM批准预算', icon: <PieChart size={18} /> },
   { key: 'revenue', labelEn: 'Revenue Dashboard', labelZh: '收入看板', icon: <TrendingUp size={18} /> },
+  { key: 'council-actions', labelEn: 'Council Action Center', labelZh: '业委会行动中心', icon: <ClipboardList size={18} /> },
 ];
 
 const FINANCE_SUBTITLE = {
@@ -52,7 +54,7 @@ export function Finance() {
     );
   }
 
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const canView = canViewInvoiceReview(currentRole);
   const canUploadPkg = canUploadInvoicePackage(currentRole);
   const canManageMatch = canManageInvoiceReview(currentRole);
@@ -61,6 +63,17 @@ export function Finance() {
   const visibleTabs = useMemo(() => (canView ? mainNavTabs : []), [canView]);
 
   const [activeTab, setActiveTab] = useState<FinanceTab>('invoices');
+  const handleTabClick = (key: FinanceTab) => {
+    setActiveTab(key);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('tab', key);
+        return next;
+      },
+      { replace: true },
+    );
+  };
   const invoiceLedgerRef = useRef<InvoiceManagementHandle>(null);
   const [invoiceToolbarUploading, setInvoiceToolbarUploading] = useState(false);
 
@@ -76,7 +89,7 @@ export function Finance() {
     if (!canView) return;
 
     const tab = searchParams.get('tab') as FinanceTab | null;
-    const validTabs = ['invoices', 'bank', 'budget', 'interpreter', 'revenue'] as const;
+    const validTabs = ['invoices', 'bank', 'budget', 'interpreter', 'revenue', 'council-actions'] as const;
 
     if ((filterDanger || filterAudit || filterAbnormal || filterHighRisk) && canView) {
       setActiveTab('invoices');
@@ -129,7 +142,7 @@ export function Finance() {
                 <button
                   key={tab.key}
                   type="button"
-                  onClick={() => setActiveTab(tab.key)}
+                  onClick={() => handleTabClick(tab.key)}
                   className={`flex items-center gap-1.5 whitespace-nowrap border-b-2 px-2.5 pb-3 text-sm font-medium transition-colors sm:gap-2 sm:px-4 ${
                     activeTab === tab.key
                       ? 'border-[#1D9E75] text-[#1D9E75]'
@@ -212,6 +225,7 @@ export function Finance() {
       {canView && activeTab === 'budget' && <FinanceBudgetTab />}
       {canView && activeTab === 'interpreter' && <InvoiceInterpreter />}
       {canView && activeTab === 'revenue' && <RevenueDashboard />}
+      {canView && activeTab === 'council-actions' && <FinanceCouncilActionsTab />}
     </div>
   );
 }
