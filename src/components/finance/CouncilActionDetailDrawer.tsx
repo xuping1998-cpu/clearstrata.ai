@@ -19,6 +19,7 @@ import {
   type CouncilAction,
   type CouncilActionPriority,
   type CouncilActionStatus,
+  type CouncilReviewStatus,
 } from '../../features/finance/councilActionsApi';
 import {
   assignCouncilAction,
@@ -37,6 +38,7 @@ import {
   mappingHref,
   markCouncilActionComplete,
   procurementNewJobHref,
+  reviewEventExcerpt,
   suggestedWorkflowActions,
   uploadActionAttachment,
   workflowStaffLabel,
@@ -47,6 +49,7 @@ import {
   type WorkflowStaffOption,
 } from '../../features/finance/councilActionWorkflowApi';
 import {
+  approveCouncilActionReview,
   createManagerTaskFromCouncilAction,
   fetchManagerTaskForCouncilAction,
   getManagerTaskRollupForAction,
@@ -55,6 +58,7 @@ import {
   managerCompletedEventExcerpt,
   managerTaskHref,
   managerTaskStatusLabel,
+  returnCouncilActionToManager,
   type CouncilActionLinkedManagerTask,
   type ManagerTaskRollup,
 } from '../../features/finance/councilActionManagerBridgeApi';
@@ -110,8 +114,19 @@ export function CouncilActionDetailDrawer({
   const [message, setMessage] = useState<string | null>(null);
   const [managerTask, setManagerTask] = useState<CouncilActionLinkedManagerTask | null>(null);
   const [managerRollup, setManagerRollup] = useState<ManagerTaskRollup | null>(null);
+  const [reviewStatus, setReviewStatus] = useState<CouncilReviewStatus>(action.review_status ?? 'not_ready');
+  const [returnNote, setReturnNote] = useState('');
+  const [showReturnForm, setShowReturnForm] = useState(false);
 
   const managerCandidates = useMemo(() => findPropertyManagers(staff), [staff]);
+
+  useEffect(() => {
+    setStatus(action.status);
+    setPriority(action.priority);
+    setAssignedTo(action.assigned_to ?? '');
+    setDueDate(action.due_date ?? '');
+    setReviewStatus(action.review_status ?? 'not_ready');
+  }, [action]);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -310,10 +325,57 @@ export function CouncilActionDetailDrawer({
       return;
     }
     setStatus('completed');
+    setReviewStatus('approved');
     setMessage(en ? 'Action marked complete.' : '行动已标记完成。');
     onUpdated();
     await reload();
   };
+
+  const handleApproveReview = async () => {
+    setSaving(true);
+    setMessage(null);
+    const { ok, error } = await approveCouncilActionReview(action.id);
+    setSaving(false);
+    if (!ok) {
+      setMessage(error ?? (en ? 'Approval failed' : '审核通过失败'));
+      return;
+    }
+    setStatus('completed');
+    setReviewStatus('approved');
+    setShowReturnForm(false);
+    setReturnNote('');
+    setMessage(en ? 'Council approved and closed.' : '业委会已审核通过并关闭。');
+    onUpdated();
+    await reload();
+  };
+
+  const handleReturnToManager = async () => {
+    if (!returnNote.trim()) {
+      setMessage(en ? 'Please enter a return reason.' : '请输入退回原因。');
+      return;
+    }
+    setSaving(true);
+    setMessage(null);
+    const { ok, error } = await returnCouncilActionToManager(action.id, returnNote);
+    setSaving(false);
+    if (!ok) {
+      setMessage(error ?? (en ? 'Return failed' : '退回失败'));
+      return;
+    }
+    setStatus('in_progress');
+    setReviewStatus('returned');
+    setShowReturnForm(false);
+    setReturnNote('');
+    setMessage(en ? 'Returned to manager for follow-up.' : '已退回物业经理补充。');
+    onUpdated();
+    await reload();
+  };
+
+  const showCouncilReviewPanel =
+    Boolean(action.manager_task_id) &&
+    Boolean(managerRollup?.manager_feedback?.trim()) &&
+    reviewStatus === 'ready_for_review' &&
+    status !== 'completed';
 
   const handleComment = async () => {
     setSaving(true);
@@ -725,21 +787,6 @@ export function CouncilActionDetailDrawer({
                           </ul>
                         )}
                       </div>
-                      {canManage && status !== 'completed' ? (
-                        <div className="flex flex-wrap gap-2 border-t border-emerald-200/80 pt-3">
-                          <p className="w-full text-xs font-medium text-emerald-900">
-                            {en ? 'Council review' : '业委会审核'}
-                          </p>
-                          <button
-                            type="button"
-                            disabled={saving}
-                            onClick={() => void handleComplete()}
-                            className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
-                          >
-                            {en ? 'Mark council action complete' : '标记业委会行动完成'}
-                          </button>
-                        </div>
-                      ) : null}
                     </div>
                   ) : (
                     <div className="mt-3 space-y-2 text-sm">
@@ -772,6 +819,60 @@ export function CouncilActionDetailDrawer({
                       ) : null}
                     </div>
                   )}
+                </section>
+              ) : null}
+
+              {showCouncilReviewPanel && canManage ? (
+                <section className="mt-4 rounded-xl border border-sky-200 bg-sky-50/50 p-3">
+                  <h5 className="text-sm font-semibold text-sky-950">
+                    {en ? 'Council review' : '业委会审核'}
+                  </h5>
+                  <p className="mt-2 text-sm text-sky-900">
+                    {en
+                      ? 'This task is awaiting council review.'
+                      : '该任务正在等待业委会审核。'}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() => void handleApproveReview()}
+                      className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
+                    >
+                      {en ? 'Approve & close' : '通过并关闭'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() => setShowReturnForm((v) => !v)}
+                      className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-900 hover:bg-amber-50 disabled:opacity-50"
+                    >
+                      {en ? 'Return to manager' : '退回经理'}
+                    </button>
+                  </div>
+                  {showReturnForm ? (
+                    <div className="mt-3 space-y-2">
+                      <textarea
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                        rows={3}
+                        placeholder={
+                          en
+                            ? 'Enter return reason, e.g. please attach collection notice.'
+                            : '请输入退回原因，例如：请补充催缴记录或附件。'
+                        }
+                        value={returnNote}
+                        onChange={(e) => setReturnNote(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        disabled={saving || !returnNote.trim()}
+                        onClick={() => void handleReturnToManager()}
+                        className="rounded-lg bg-amber-600 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+                      >
+                        {en ? 'Confirm return' : '确认退回'}
+                      </button>
+                    </div>
+                  ) : null}
                 </section>
               ) : null}
 
@@ -874,7 +975,7 @@ export function CouncilActionDetailDrawer({
                 ) : null}
               </section>
 
-              {canManage && status !== 'completed' ? (
+              {canManage && status !== 'completed' && !showCouncilReviewPanel ? (
                 <button
                   type="button"
                   disabled={saving}
@@ -899,16 +1000,21 @@ export function CouncilActionDetailDrawer({
                         ev.event_type === 'manager_completed'
                           ? managerCompletedEventExcerpt(ev, managerRollup?.manager_feedback)
                           : null;
+                      const reviewExcerpt =
+                        ev.event_type === 'review_approved' || ev.event_type === 'review_returned'
+                          ? reviewEventExcerpt(ev)
+                          : null;
+                      const excerpt = managerExcerpt ?? reviewExcerpt;
                       return (
                       <li key={ev.id} className="text-sm">
                         <div className="font-medium text-gray-900">
                           {eventTypeLabel(ev.event_type, en)}
                         </div>
-                        {managerExcerpt ? (
+                        {excerpt ? (
                           <p className="mt-1 text-gray-600">
-                            {managerExcerpt.length > 160
-                              ? `${managerExcerpt.slice(0, 160)}…`
-                              : managerExcerpt}
+                            {excerpt.length > 160
+                              ? `${excerpt.slice(0, 160)}…`
+                              : excerpt}
                           </p>
                         ) : null}
                         <div className="text-xs text-gray-500">

@@ -7,6 +7,8 @@ import {
 
 export type CouncilActionStatus = 'open' | 'in_progress' | 'completed' | 'dismissed';
 
+export type CouncilReviewStatus = 'not_ready' | 'ready_for_review' | 'approved' | 'returned';
+
 export type CouncilActionPriority = 'low' | 'medium' | 'high' | 'critical';
 
 export type CouncilActionType =
@@ -38,6 +40,10 @@ export type CouncilAction = {
   completed_at: string | null;
   completed_by: string | null;
   manager_task_id: string | null;
+  review_status: CouncilReviewStatus;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  review_note: string | null;
 };
 
 export type CouncilActionsSummary = {
@@ -80,6 +86,10 @@ function mapActionRow(
     completed_at: r.completed_at != null ? String(r.completed_at) : null,
     completed_by: r.completed_by != null ? String(r.completed_by) : null,
     manager_task_id: r.manager_task_id != null ? String(r.manager_task_id) : null,
+    review_status: (r.review_status as CouncilReviewStatus) ?? 'not_ready',
+    reviewed_by: r.reviewed_by != null ? String(r.reviewed_by) : null,
+    reviewed_at: r.reviewed_at != null ? String(r.reviewed_at) : null,
+    review_note: r.review_note != null ? String(r.review_note) : null,
   };
 }
 
@@ -148,7 +158,7 @@ export async function listCouncilActions(propertyId: string): Promise<CouncilAct
   const { data, error } = await supabase
     .from('council_actions')
     .select(
-      'id, property_id, alert_type, alert_category, title, description, action_type, status, priority, assigned_to, due_date, assigned_at, created_by, created_at, completed_at, completed_by, manager_task_id',
+      'id, property_id, alert_type, alert_category, title, description, action_type, status, priority, assigned_to, due_date, assigned_at, created_by, created_at, completed_at, completed_by, manager_task_id, review_status, reviewed_by, reviewed_at, review_note',
     )
     .eq('property_id', propertyId)
     .order('created_at', { ascending: false });
@@ -217,7 +227,7 @@ export async function findOpenCouncilActionForAlert(
   const { data, error } = await supabase
     .from('council_actions')
     .select(
-      'id, property_id, alert_type, alert_category, title, description, action_type, status, priority, assigned_to, due_date, assigned_at, created_by, created_at, completed_at, completed_by, manager_task_id',
+      'id, property_id, alert_type, alert_category, title, description, action_type, status, priority, assigned_to, due_date, assigned_at, created_by, created_at, completed_at, completed_by, manager_task_id, review_status, reviewed_by, reviewed_at, review_note',
     )
     .eq('property_id', propertyId)
     .eq('alert_type', alert.alert_type)
@@ -261,7 +271,7 @@ export async function createCouncilActionFromAlert(
       created_by: userId,
     })
     .select(
-      'id, property_id, alert_type, alert_category, title, description, action_type, status, priority, assigned_to, due_date, assigned_at, created_by, created_at, completed_at, completed_by, manager_task_id',
+      'id, property_id, alert_type, alert_category, title, description, action_type, status, priority, assigned_to, due_date, assigned_at, created_by, created_at, completed_at, completed_by, manager_task_id, review_status, reviewed_by, reviewed_at, review_note',
     )
     .single();
 
@@ -274,7 +284,19 @@ export async function createCouncilActionFromAlert(
 export async function updateCouncilAction(
   id: string,
   patch: Partial<
-    Pick<CouncilAction, 'status' | 'priority' | 'assigned_to' | 'due_date' | 'title' | 'description'>
+    Pick<
+      CouncilAction,
+      | 'status'
+      | 'priority'
+      | 'assigned_to'
+      | 'due_date'
+      | 'title'
+      | 'description'
+      | 'review_status'
+      | 'reviewed_by'
+      | 'reviewed_at'
+      | 'review_note'
+    >
   >,
 ): Promise<{ ok: boolean; error: string | null }> {
   const { error } = await supabase.from('council_actions').update(patch).eq('id', id);

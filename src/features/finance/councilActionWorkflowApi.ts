@@ -35,7 +35,9 @@ export type CouncilActionEventType =
   | 'completed'
   | 'comment_added'
   | 'attachment_added'
-  | 'manager_completed';
+  | 'manager_completed'
+  | 'review_approved'
+  | 'review_returned';
 
 export type CouncilActionEvent = {
   id: string;
@@ -134,8 +136,18 @@ export function eventTypeLabel(type: CouncilActionEventType, en: boolean): strin
     comment_added: { en: 'Comment Added', zh: '新增评论' },
     attachment_added: { en: 'Attachment Added', zh: '新增附件' },
     manager_completed: { en: 'Manager Submitted Results', zh: '物业经理已提交处理结果' },
+    review_approved: { en: 'Council approved and closed', zh: '业委会审核通过并关闭' },
+    review_returned: { en: 'Council returned to manager', zh: '业委会退回经理补充' },
   };
   return en ? labels[type].en : labels[type].zh;
+}
+
+export function reviewEventExcerpt(
+  event: { new_value: Record<string, unknown> | null },
+): string | null {
+  const note = event.new_value?.note;
+  if (typeof note === 'string' && note.trim()) return note.trim();
+  return null;
 }
 
 async function loadProfileMap(userIds: string[]) {

@@ -1,8 +1,8 @@
 import { supabase } from '../../lib/supabase';
 import type { BudgetRiskAlertType } from './budgetRiskAlertsApi';
 import { alertTypeLabel } from './budgetRiskAlertsApi';
-import type { CouncilAction } from './councilActionsApi';
-import { updateCouncilAction } from './councilActionsApi';
+import type { CouncilAction, CouncilReviewStatus } from './councilActionsApi';
+import { listCouncilActions, updateCouncilAction } from './councilActionsApi';
 import { fetchRiskSummaryForAction } from './councilActionWorkflowApi';
 
 export type CouncilActionManagerTaskType =
@@ -61,16 +61,30 @@ export type CouncilActionTaskLink = {
   actionId: string;
   actionTitle: string;
   actionStatus: string;
+  reviewStatus: CouncilReviewStatus;
+  reviewNote: string | null;
   dueDate: string | null;
   assignerName: string | null;
 };
 
+export type CouncilActionStageContext = Pick<CouncilAction, 'status' | 'review_status'>;
+
 export function resolveCouncilAssignedTaskStage(
   task: CouncilAssignedManagerTask,
-  linkedCouncilAction?: Pick<CouncilAction, 'status'> | null,
+  linkedCouncilAction?: CouncilActionStageContext | null,
 ): CouncilAssignedTaskStage {
-  if (linkedCouncilAction?.status === 'completed') {
+  const reviewStatus = linkedCouncilAction?.review_status;
+
+  if (linkedCouncilAction?.status === 'completed' || reviewStatus === 'approved') {
     return 'completed';
+  }
+
+  if (reviewStatus === 'returned') {
+    return 'waiting_manager';
+  }
+
+  if (reviewStatus === 'ready_for_review') {
+    return 'waiting_council_review';
   }
 
   const feedback = String(task.manager_feedback ?? '').trim();
@@ -110,7 +124,7 @@ export async function fetchCouncilActionLinksForTasks(
 
   const { data, error } = await supabase
     .from('council_actions')
-    .select('id, title, status, created_by, due_date')
+    .select('id, title, status, created_by, due_date, review_status, review_note')
     .in('id', uniqueIds);
 
   if (error || !data?.length) return {};
@@ -133,6 +147,8 @@ export async function fetchCouncilActionLinksForTasks(
       actionId: id,
       actionTitle: String(row.title ?? ''),
       actionStatus: String(row.status ?? ''),
+      reviewStatus: (row.review_status as CouncilReviewStatus) ?? 'not_ready',
+      reviewNote: row.review_note != null ? String(row.review_note) : null,
       dueDate: row.due_date != null ? String(row.due_date).slice(0, 10) : null,
       assignerName: createdBy ? creatorNames.get(createdBy) ?? null : null,
     };
@@ -529,7 +545,7 @@ export async function syncCouncilActionStatus(
 
   const { data: action, error: actionErr } = await supabase
     .from('council_actions')
-    .select('id, property_id, status')
+    .select('id, property_id, status, review_status')
     .eq('id', actionId)
     .maybeSingle();
 
@@ -589,9 +605,159 @@ export async function syncCouncilActionStatus(
       });
       if (logErr) return { ok: false, error: logErr.message };
     }
+
+    if (feedback && actionStatus !== 'completed') {
+      const { error: reviewErr } = await updateCouncilAction(actionId, {
+        review_status: 'ready_for_review',
+      });
+      if (reviewErr) return { ok: false, error: reviewErr };
+    }
   }
 
   return { ok: true, error: null };
+}
+
+export async function approveCouncilActionReview(
+  actionId: string,
+  note?: string,
+): Promise<{ ok: boolean; error: string | null }> {
+  const { data: userData } = await supabase.auth.getUser();
+  const userId = userData.user?.id ?? null;
+  if (!userId) return { ok: false, error: 'Not authenticated' };
+
+  const { data: action, error: fetchErr } = await supabase
+    .from('council_actions')
+    .select('id, property_id, manager_task_id')
+    .eq('id', actionId)
+    .maybeSingle();
+
+  if (fetchErr || !action) {
+    return { ok: false, error: fetchErr?.message ?? 'Council action not found' };
+  }
+
+  const now = new Date().toISOString();
+  const trimmedNote = note?.trim() || null;
+  const { error: updateErr } = await updateCouncilAction(actionId, {
+    status: 'completed',
+    review_status: 'approved',
+    reviewed_by: userId,
+    reviewed_at: now,
+    review_note: trimmedNote,
+  });
+  if (updateErr) return { ok: false, error: updateErr };
+
+  if (action.manager_task_id) {
+    const { error: taskErr } = await supabase
+      .from('manager_tasks')
+      .update({ status: 'closed' })
+      .eq('id', String(action.manager_task_id));
+    if (taskErr) return { ok: false, error: taskErr.message };
+  }
+
+  const { error: logErr } = await supabase.rpc('log_council_action_event', {
+    p_action_id: actionId,
+    p_property_id: String(action.property_id),
+    p_actor_id: userId,
+    p_event_type: 'review_approved',
+    p_old_value: null,
+    p_new_value: { note: trimmedNote },
+  });
+  if (logErr) return { ok: false, error: logErr.message };
+
+  return { ok: true, error: null };
+}
+
+export async function returnCouncilActionToManager(
+  actionId: string,
+  note: string,
+): Promise<{ ok: boolean; error: string | null }> {
+  const trimmed = note.trim();
+  if (!trimmed) return { ok: false, error: 'Return note is required' };
+
+  const { data: userData } = await supabase.auth.getUser();
+  const userId = userData.user?.id ?? null;
+  if (!userId) return { ok: false, error: 'Not authenticated' };
+
+  const { data: action, error: fetchErr } = await supabase
+    .from('council_actions')
+    .select('id, property_id, manager_task_id')
+    .eq('id', actionId)
+    .maybeSingle();
+
+  if (fetchErr || !action) {
+    return { ok: false, error: fetchErr?.message ?? 'Council action not found' };
+  }
+
+  const now = new Date().toISOString();
+  const { error: updateErr } = await updateCouncilAction(actionId, {
+    status: 'in_progress',
+    review_status: 'returned',
+    reviewed_by: userId,
+    reviewed_at: now,
+    review_note: trimmed,
+  });
+  if (updateErr) return { ok: false, error: updateErr };
+
+  if (action.manager_task_id) {
+    const { error: taskErr } = await supabase
+      .from('manager_tasks')
+      .update({ status: 'in_progress' })
+      .eq('id', String(action.manager_task_id));
+    if (taskErr) return { ok: false, error: taskErr.message };
+  }
+
+  const { error: logErr } = await supabase.rpc('log_council_action_event', {
+    p_action_id: actionId,
+    p_property_id: String(action.property_id),
+    p_actor_id: userId,
+    p_event_type: 'review_returned',
+    p_old_value: null,
+    p_new_value: { note: trimmed },
+  });
+  if (logErr) return { ok: false, error: logErr.message };
+
+  return { ok: true, error: null };
+}
+
+export async function listCouncilActionsReadyForReview(
+  propertyId: string,
+  _fiscalYear?: number,
+): Promise<CouncilAction[]> {
+  const actions = await listCouncilActions(propertyId);
+  const direct = actions.filter(
+    (a) => a.status !== 'completed' && a.review_status === 'ready_for_review',
+  );
+  const directIds = new Set(direct.map((a) => a.id));
+
+  const candidates = actions.filter(
+    (a) =>
+      a.status !== 'completed' &&
+      a.manager_task_id &&
+      !directIds.has(a.id) &&
+      a.review_status !== 'returned' &&
+      a.review_status !== 'approved',
+  );
+
+  if (!candidates.length) return direct;
+
+  const taskIds = candidates
+    .map((a) => a.manager_task_id)
+    .filter((id): id is string => id != null);
+
+  const { data: tasks } = await supabase
+    .from('manager_tasks')
+    .select('id, manager_feedback, status')
+    .in('id', taskIds);
+
+  const taskMap = new Map((tasks ?? []).map((t) => [String(t.id), t]));
+  const heuristic = candidates.filter((a) => {
+    const task = a.manager_task_id ? taskMap.get(a.manager_task_id) : null;
+    if (!task) return false;
+    const feedback = extractManagerFeedback(task as Record<string, unknown>);
+    return feedback.length > 0 && isManagerTaskCompleted(String(task.status ?? ''));
+  });
+
+  return [...direct, ...heuristic];
 }
 
 export async function fetchCouncilActionSourceForManagerTask(
@@ -604,12 +770,14 @@ export async function fetchCouncilActionSourceForManagerTask(
   alertTypeLabel: string;
   dueDate: string | null;
   assignerName: string | null;
+  reviewStatus: CouncilReviewStatus;
+  reviewNote: string | null;
 } | null> {
   if (task.source_type !== 'council_action' || !task.council_action_id) return null;
 
   const { data, error } = await supabase
     .from('council_actions')
-    .select('id, title, alert_type, status, created_by, due_date')
+    .select('id, title, alert_type, status, created_by, due_date, review_status, review_note')
     .eq('id', task.council_action_id)
     .maybeSingle();
 
@@ -623,6 +791,8 @@ export async function fetchCouncilActionSourceForManagerTask(
     alertTypeLabel: alertTypeLabel(String(data.alert_type ?? ''), true),
     dueDate: data.due_date != null ? String(data.due_date).slice(0, 10) : null,
     assignerName,
+    reviewStatus: (data.review_status as CouncilReviewStatus) ?? 'not_ready',
+    reviewNote: data.review_note != null ? String(data.review_note) : null,
   };
 }
 

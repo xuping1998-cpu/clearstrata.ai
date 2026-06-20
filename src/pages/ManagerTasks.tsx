@@ -2365,7 +2365,12 @@ export function ManagerTasks() {
       const link = row.council_action_id ? councilActionLinks[row.council_action_id] : null;
       return resolveCouncilAssignedTaskStage(
         { status: row.status, manager_feedback: row.manager_feedback },
-        link ? { status: link.actionStatus as CouncilActionStatus } : null,
+        link
+          ? {
+              status: link.actionStatus as CouncilActionStatus,
+              review_status: link.reviewStatus,
+            }
+          : null,
       );
     },
     [councilActionLinks],

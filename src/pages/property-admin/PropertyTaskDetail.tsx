@@ -26,7 +26,7 @@ import {
   saveManagerTaskFeedback,
   syncCouncilActionStatus,
 } from '../../features/finance/councilActionManagerBridgeApi';
-import { statusLabel, type CouncilActionStatus } from '../../features/finance/councilActionsApi';
+import { statusLabel, type CouncilActionStatus, type CouncilReviewStatus } from '../../features/finance/councilActionsApi';
 
 function taskTypeLabel(kind: ManagerTaskType, en: boolean): string {
   const m: Record<string, [string, string]> = {
@@ -149,6 +149,8 @@ export function PropertyTaskDetail() {
     alertTypeLabel: string;
     dueDate: string | null;
     assignerName: string | null;
+    reviewStatus: CouncilReviewStatus;
+    reviewNote: string | null;
   } | null>(null);
   const [managerFeedback, setManagerFeedback] = useState('');
   const [councilTaskStatus, setCouncilTaskStatus] = useState('open');
@@ -181,13 +183,20 @@ export function PropertyTaskDetail() {
     if (!task || task.source_type !== 'council_action') return null;
     return resolveCouncilAssignedTaskStage(
       { status: task.status, manager_feedback: task.manager_feedback },
-      councilActionSource ? { status: councilActionSource.actionStatus as CouncilActionStatus } : null,
+      councilActionSource
+        ? {
+            status: councilActionSource.actionStatus as CouncilActionStatus,
+            review_status: councilActionSource.reviewStatus,
+          }
+        : null,
     );
   }, [task, councilActionSource]);
 
   const showCouncilReviewNotice =
-    Boolean(task?.manager_feedback?.trim()) &&
-    councilActionSource?.actionStatus !== 'completed';
+    councilTaskStage === 'waiting_council_review' &&
+    Boolean(task?.manager_feedback?.trim());
+
+  const showCouncilReturnNotice = councilActionSource?.reviewStatus === 'returned';
 
   const load = useCallback(async () => {
     if (!taskId || !currentPropertyId) return;
@@ -570,6 +579,20 @@ export function PropertyTaskDetail() {
       </button>
 
       <h1 className="text-2xl font-bold text-gray-900">{en ? 'Task detail' : '任务详情'}</h1>
+
+      {showCouncilReturnNotice ? (
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <p className="font-semibold">
+            {en ? 'Council returned this task for follow-up' : '业委会已退回，请补充处理结果'}
+          </p>
+          {councilActionSource?.reviewNote ? (
+            <p className="mt-2 whitespace-pre-wrap">
+              <span className="font-medium">{en ? 'Reason: ' : '退回原因：'}</span>
+              {councilActionSource.reviewNote}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       {showCouncilReviewNotice ? (
         <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">

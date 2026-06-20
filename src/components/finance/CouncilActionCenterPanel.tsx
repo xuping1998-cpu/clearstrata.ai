@@ -13,6 +13,7 @@ import {
   type CouncilActionStatus,
 } from '../../features/finance/councilActionsApi';
 import { mappingHref, procurementNewJobHref } from '../../features/finance/councilActionWorkflowApi';
+import { listCouncilActionsReadyForReview } from '../../features/finance/councilActionManagerBridgeApi';
 import { alertTypeLabel } from '../../features/finance/budgetRiskAlertsApi';
 
 type Props = {
@@ -50,16 +51,24 @@ export function CouncilActionCenterPanel({
 }: Props) {
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<CouncilAction[]>([]);
+  const [readyForReviewCount, setReadyForReviewCount] = useState(0);
+  const [readyForReviewIds, setReadyForReviewIds] = useState<Set<string>>(new Set());
+  const [reviewQueueOnly, setReviewQueueOnly] = useState(false);
   const [selected, setSelected] = useState<CouncilAction | null>(null);
   const [searchParams] = useSearchParams();
   const actionIdFromUrl = searchParams.get('actionId');
 
   const load = useCallback(async () => {
     setLoading(true);
-    const actions = await listCouncilActions(propertyId);
+    const [actions, readyForReview] = await Promise.all([
+      listCouncilActions(propertyId),
+      listCouncilActionsReadyForReview(propertyId, fiscalYear),
+    ]);
     setRows(actions);
+    setReadyForReviewCount(readyForReview.length);
+    setReadyForReviewIds(new Set(readyForReview.map((r) => r.id)));
     setLoading(false);
-  }, [propertyId]);
+  }, [propertyId, fiscalYear]);
 
   useEffect(() => {
     void load();
@@ -72,6 +81,10 @@ export function CouncilActionCenterPanel({
   }, [actionIdFromUrl, rows, loading]);
 
   const summary = useMemo(() => summarizeCouncilActions(rows), [rows]);
+  const visibleRows = useMemo(() => {
+    if (!reviewQueueOnly) return rows;
+    return rows.filter((r) => readyForReviewIds.has(r.id));
+  }, [rows, reviewQueueOnly, readyForReviewIds]);
   const today = new Date().toISOString().slice(0, 10);
 
   if (loading) {
@@ -96,7 +109,7 @@ export function CouncilActionCenterPanel({
         </p>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
+      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-6">
         <div className="rounded-xl border border-amber-100 bg-amber-50/50 px-3 py-2">
           <div className="text-xs font-medium text-amber-800">{en ? 'Open' : '待处理'}</div>
           <div className="mt-0.5 text-lg font-bold tabular-nums text-amber-900">{summary.openCount}</div>
@@ -107,6 +120,22 @@ export function CouncilActionCenterPanel({
             {summary.inProgressCount}
           </div>
         </div>
+        <button
+          type="button"
+          onClick={() => setReviewQueueOnly((v) => !v)}
+          className={`rounded-xl border px-3 py-2 text-left transition-colors ${
+            reviewQueueOnly
+              ? 'border-indigo-300 bg-indigo-100 ring-2 ring-indigo-200'
+              : 'border-indigo-100 bg-indigo-50/50 hover:bg-indigo-50'
+          }`}
+        >
+          <div className="text-xs font-medium text-indigo-800">
+            {en ? 'Ready for Review' : '待业委会审核'}
+          </div>
+          <div className="mt-0.5 text-lg font-bold tabular-nums text-indigo-900">
+            {readyForReviewCount}
+          </div>
+        </button>
         <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 px-3 py-2">
           <div className="text-xs font-medium text-emerald-800">{en ? 'Completed' : '已完成'}</div>
           <div className="mt-0.5 text-lg font-bold tabular-nums text-emerald-900">
@@ -171,6 +200,10 @@ export function CouncilActionCenterPanel({
             ? 'No council actions yet. Create one from a budget risk alert above.'
             : '暂无业委会行动。请从上方预算风险预警创建。'}
         </p>
+      ) : reviewQueueOnly && visibleRows.length === 0 ? (
+        <p className="mt-4 text-sm text-gray-500">
+          {en ? 'No actions awaiting council review.' : '暂无待业委会审核的行动。'}
+        </p>
       ) : (
         <div className="mt-4 overflow-x-auto">
           <table className="min-w-full text-left text-sm">
@@ -185,7 +218,7 @@ export function CouncilActionCenterPanel({
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => {
+              {visibleRows.map((row) => {
                 const overdue =
                   (row.status === 'open' || row.status === 'in_progress') &&
                   row.due_date != null &&
@@ -250,9 +283,16 @@ export function CouncilActionCenterPanel({
           onClose={() => setSelected(null)}
           onUpdated={() => {
             void (async () => {
-              const actions = await listCouncilActions(propertyId);
+              const [actions, readyForReview] = await Promise.all([
+                listCouncilActions(propertyId),
+                listCouncilActionsReadyForReview(propertyId, fiscalYear),
+              ]);
               setRows(actions);
-              setSelected((prev) => actions.find((r) => r.id === prev?.id) ?? null);
+              setReadyForReviewCount(readyForReview.length);
+              setReadyForReviewIds(new Set(readyForReview.map((r) => r.id)));
+              setSelected((prev) =>
+                prev ? actions.find((r) => r.id === prev.id) ?? null : null,
+              );
             })();
           }}
         />
