@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { BarChart3, Loader2, Map, PieChart, ShieldAlert, Wallet } from 'lucide-react';
+import { BarChart3, Loader2, Map, ShieldAlert, Wallet } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useProperty } from '../../contexts/PropertyContext';
 import { CompactBudgetOverviewCard } from '../../components/finance/CompactBudgetOverviewCard';
@@ -179,46 +179,39 @@ export function FinanceBudgetTab() {
     },
   ];
 
+  const fiscalYearControl = (
+    <label className="flex items-center gap-2 text-sm text-gray-600">
+      <span className="whitespace-nowrap">{en ? 'Fiscal year' : '财年'}</span>
+      <select
+        className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-900 shadow-sm"
+        value={fiscalYear}
+        onChange={(e) => setFiscalYear(Number(e.target.value))}
+      >
+        {years.map((y) => (
+          <option key={y} value={y}>
+            {y}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-clearstrata-ui-primary text-white">
-            <PieChart size={20} aria-hidden />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">
-              {en ? 'AGM Approved Budget overview' : 'AGM 批准预算概览'}
-            </h2>
-            <p className="mt-1 text-sm text-gray-500">
-              {en
-                ? 'Fiscal-year totals approved at AGM for the selected property.'
-                : '当前物业所选财年由 AGM 批准的预算额度与执行情况。'}
-            </p>
-          </div>
-        </div>
-        <label className="flex items-center gap-2 text-sm text-gray-600">
-          <span className="whitespace-nowrap">{en ? 'Fiscal year' : '财年'}</span>
-          <select
-            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 shadow-sm"
-            value={fiscalYear}
-            onChange={(e) => setFiscalYear(Number(e.target.value))}
-          >
-            {years.map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
       {!summary ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-950 shadow-sm">
-          {en ? 'AGM-approved budget summary is unavailable for this year.' : '暂无法加载该财年的 AGM 批准预算摘要。'}
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span className="text-sm font-semibold text-gray-900">
+              {en ? 'Budget overview' : '预算概览'}
+            </span>
+            {fiscalYearControl}
+          </div>
+          <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+            {en ? 'AGM-approved budget summary is unavailable for this year.' : '暂无法加载该财年的 AGM 批准预算摘要。'}
+          </p>
         </div>
       ) : (
-        <CompactBudgetOverviewCard summary={summary} language={language} />
+        <CompactBudgetOverviewCard summary={summary} language={language} headerRight={fiscalYearControl} />
       )}
 
       <AgmBudgetDocumentsPanel

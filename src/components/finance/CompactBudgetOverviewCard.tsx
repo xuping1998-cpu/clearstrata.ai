@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ChevronDown, ChevronUp, PieChart } from 'lucide-react';
 import { formatCurrency, type DashboardBudgetSummary } from '../../lib/budget/dashboardApi';
 import { BudgetOverviewCard } from '../dashboard/BudgetOverviewCard';
@@ -8,6 +8,8 @@ type Lang = 'en' | 'zh';
 export type CompactBudgetOverviewCardProps = {
   summary: DashboardBudgetSummary;
   language: Lang;
+  /** Rendered at the right edge of the header row (e.g. the fiscal-year selector). */
+  headerRight?: ReactNode;
 };
 
 /**
@@ -15,7 +17,7 @@ export type CompactBudgetOverviewCardProps = {
  * "Expand" toggle reveals the original detailed `BudgetOverviewCard` (embedded).
  * No data sourcing or business logic — purely a presentational wrapper.
  */
-export function CompactBudgetOverviewCard({ summary, language }: CompactBudgetOverviewCardProps) {
+export function CompactBudgetOverviewCard({ summary, language, headerRight }: CompactBudgetOverviewCardProps) {
   const en = language === 'en';
   const [expanded, setExpanded] = useState(false);
   const overBudget = summary.remaining_budget < 0 || summary.budget_utilization > 1;
@@ -50,7 +52,7 @@ export function CompactBudgetOverviewCard({ summary, language }: CompactBudgetOv
 
   return (
     <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-clearstrata-brand-100 text-clearstrata-brand-800">
             <PieChart size={18} aria-hidden />
@@ -64,8 +66,11 @@ export function CompactBudgetOverviewCard({ summary, language }: CompactBudgetOv
             {overBudget ? (en ? 'Over budget' : '超支') : en ? 'Within budget' : '预算内'}
           </span>
         </div>
+        {headerRight ? <div className="flex items-center">{headerRight}</div> : null}
+      </div>
 
-        <div className="flex flex-1 flex-wrap items-center gap-x-4 gap-y-2 lg:flex-nowrap lg:justify-end">
+      <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 lg:flex-nowrap">
           {metrics.map((m, i) => (
             <div
               key={m.label}
@@ -77,15 +82,15 @@ export function CompactBudgetOverviewCard({ summary, language }: CompactBudgetOv
               </div>
             </div>
           ))}
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 lg:ml-2 lg:border-l lg:border-gray-200"
-          >
-            {expanded ? <ChevronUp size={14} aria-hidden /> : <ChevronDown size={14} aria-hidden />}
-            {expanded ? (en ? 'Collapse' : '收起') : en ? 'Expand' : '展开'}
-          </button>
         </div>
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="inline-flex shrink-0 items-center gap-1 self-start rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 lg:self-auto"
+        >
+          {expanded ? <ChevronUp size={14} aria-hidden /> : <ChevronDown size={14} aria-hidden />}
+          {expanded ? (en ? 'Collapse' : '收起') : en ? 'Expand' : '展开'}
+        </button>
       </div>
 
       {expanded ? (
