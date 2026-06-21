@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AlertCircle, Gauge, Info, Loader2, Receipt, Users } from 'lucide-react';
+import { AlertCircle, ChevronDown, ChevronUp, Gauge, Info, Loader2, Receipt, Users } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { formatCurrency } from '../../lib/budget/dashboardApi';
 
@@ -58,6 +58,7 @@ function ownerDisplayName(
 export function RevenueGovernancePanel({ propertyId, language, canSeeArrears }: RevenueGovernancePanelProps) {
   const en = language === 'en';
   const [loading, setLoading] = useState(true);
+  const [showDefinition, setShowDefinition] = useState(false);
   const [collection, setCollection] = useState<CollectionRate | null>(null);
   const [outstanding, setOutstanding] = useState(0);
   const [arrears, setArrears] = useState<ArrearsRow[]>([]);
@@ -288,31 +289,45 @@ export function RevenueGovernancePanel({ propertyId, language, canSeeArrears }: 
             </div>
           </div>
 
-          <div className="rounded-2xl border border-sky-200 bg-sky-50/50 p-4 text-sm text-sky-950">
-            <div className="flex items-center gap-2 font-semibold">
-              <Info size={16} aria-hidden />
-              {en ? 'Revenue metric definitions' : '收入口径说明'}
-            </div>
-            <p className="mt-2 leading-relaxed">
-              {en
-                ? 'Budget realization is based on mapped bank credits vs AGM revenue budget. Owner arrears are based on the latest owner ledger balance. The two use different bases but together indicate revenue risk.'
-                : '预算执行率基于银行入账与 AGM 收入预算；业主欠费基于业主 ledger 最新余额。两者口径不同，但共同用于判断收入风险。'}
-            </p>
+          <div className="rounded-2xl border border-sky-200 bg-sky-50/50 px-4 py-2.5 text-sm text-sky-950">
+            <button
+              type="button"
+              onClick={() => setShowDefinition((v) => !v)}
+              className="flex w-full items-center justify-between gap-2 font-semibold"
+            >
+              <span className="flex items-center gap-2">
+                <Info size={16} aria-hidden />
+                {en ? 'Revenue metric definitions' : '收入口径说明'}
+              </span>
+              {showDefinition ? <ChevronUp size={16} aria-hidden /> : <ChevronDown size={16} aria-hidden />}
+            </button>
+            {showDefinition ? (
+              <p className="mt-2 leading-relaxed">
+                {en
+                  ? 'Budget realization is based on mapped bank credits vs AGM revenue budget. Owner arrears are based on the latest owner ledger balance. The two use different bases but together indicate revenue risk.'
+                  : '预算执行率基于银行入账与 AGM 收入预算；业主欠费基于业主 ledger 最新余额。两者口径不同，但共同用于判断收入风险。'}
+              </p>
+            ) : null}
           </div>
 
           {canSeeArrears ? (
             <>
-              <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-                <div className="border-b border-gray-200 p-4">
-                  <h3 className="text-base font-bold text-gray-900">
-                    {en ? 'Units in Arrears' : '欠费单位'}
-                  </h3>
+              {arrears.length === 0 ? (
+                <div className="flex items-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm">
+                  <span className="font-semibold text-gray-900">
+                    {en ? 'Units in Arrears (0)' : '欠费单位（0）'}
+                  </span>
+                  <span className="text-emerald-700">
+                    {en ? '✓ No owners currently in arrears' : '✓ 当前没有欠费业主'}
+                  </span>
                 </div>
-                {arrears.length === 0 ? (
-                  <p className="p-6 text-sm text-gray-500">
-                    {en ? 'No owners currently in arrears.' : '当前没有欠费业主。'}
-                  </p>
-                ) : (
+              ) : (
+                <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+                  <div className="border-b border-gray-200 p-4">
+                    <h3 className="text-base font-bold text-gray-900">
+                      {en ? `Units in Arrears (${arrears.length})` : `欠费单位（${arrears.length}）`}
+                    </h3>
+                  </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead className="border-b border-gray-200 bg-gray-50 text-xs uppercase text-gray-500">
@@ -341,20 +356,25 @@ export function RevenueGovernancePanel({ propertyId, language, canSeeArrears }: 
                       </tbody>
                     </table>
                   </div>
-                )}
-              </div>
-
-              <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-                <div className="border-b border-gray-200 p-4">
-                  <h3 className="text-base font-bold text-gray-900">
-                    {en ? 'Recent Payments' : '最近收款'}
-                  </h3>
                 </div>
-                {recentPayments.length === 0 ? (
-                  <p className="p-6 text-sm text-gray-500">
-                    {en ? 'No recent payments recorded.' : '暂无最近收款记录。'}
-                  </p>
-                ) : (
+              )}
+
+              {recentPayments.length === 0 ? (
+                <div className="flex items-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm">
+                  <span className="font-semibold text-gray-900">
+                    {en ? 'Recent Payments (0)' : '最近收款（0）'}
+                  </span>
+                  <span className="text-gray-500">
+                    {en ? 'No recent payments recorded' : '暂无最近收款记录'}
+                  </span>
+                </div>
+              ) : (
+                <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+                  <div className="border-b border-gray-200 p-4">
+                    <h3 className="text-base font-bold text-gray-900">
+                      {en ? `Recent Payments (${recentPayments.length})` : `最近收款（${recentPayments.length}）`}
+                    </h3>
+                  </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead className="border-b border-gray-200 bg-gray-50 text-xs uppercase text-gray-500">
@@ -381,8 +401,8 @@ export function RevenueGovernancePanel({ propertyId, language, canSeeArrears }: 
                       </tbody>
                     </table>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </>
           ) : null}
         </>
