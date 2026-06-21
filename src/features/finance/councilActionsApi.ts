@@ -288,6 +288,75 @@ export async function createCouncilActionFromAlert(
   return { action: mapActionRow(data as Record<string, unknown>), error: null, existing: false };
 }
 
+/**
+ * Titles of council actions that are still in flight (status != completed) for a property.
+ * Used to dedup manually-created governance actions by exact title.
+ */
+export async function listNonCompletedActionTitles(propertyId: string): Promise<Set<string>> {
+  const { data, error } = await supabase
+    .from('council_actions')
+    .select('title, status')
+    .eq('property_id', propertyId)
+    .neq('status', 'completed');
+
+  if (error || !data) return new Set();
+  return new Set(data.map((r) => String(r.title)));
+}
+
+export type ManualCouncilActionInput = {
+  propertyId: string;
+  title: string;
+  description?: string | null;
+  action_type: CouncilActionType;
+  priority: CouncilActionPriority;
+  alert_type?: string | null;
+  alert_category?: string | null;
+};
+
+/**
+ * Create a council action that is NOT derived from a budget_risk_alerts row
+ * (e.g. governance follow-ups from the Revenue Governance panel).
+ * Dedup rule: same property + status != completed + exact title match.
+ * Pass `dedupeTitles` to treat multiple title variants (en/zh) as the same action.
+ */
+export async function createManualCouncilAction(
+  input: ManualCouncilActionInput,
+  dedupeTitles?: string[],
+): Promise<{ action: CouncilAction | null; error: string | null; existing: boolean }> {
+  const existingTitles = await listNonCompletedActionTitles(input.propertyId);
+  const candidates = dedupeTitles && dedupeTitles.length > 0 ? dedupeTitles : [input.title];
+  if (candidates.some((t) => existingTitles.has(t))) {
+    return { action: null, error: null, existing: true };
+  }
+
+  const { data: userData } = await supabase.auth.getUser();
+  const userId = userData.user?.id ?? null;
+
+  const { data, error } = await supabase
+    .from('council_actions')
+    .insert({
+      property_id: input.propertyId,
+      alert_type: input.alert_type ?? null,
+      alert_category: input.alert_category ?? null,
+      title: input.title,
+      description: input.description ?? null,
+      action_type: input.action_type,
+      status: 'open',
+      priority: input.priority,
+      due_date: suggestedDueDate(input.priority),
+      created_by: userId,
+    })
+    .select(
+      'id, property_id, alert_type, alert_category, title, description, action_type, status, priority, assigned_to, due_date, assigned_at, created_by, created_at, completed_at, completed_by, manager_task_id, review_status, reviewed_by, reviewed_at, review_note',
+    )
+    .single();
+
+  if (error || !data) {
+    return { action: null, error: error?.message ?? 'Insert failed', existing: false };
+  }
+  return { action: mapActionRow(data as Record<string, unknown>), error: null, existing: false };
+}
+
 export async function updateCouncilAction(
   id: string,
   patch: Partial<

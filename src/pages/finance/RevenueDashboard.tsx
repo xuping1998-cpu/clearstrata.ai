@@ -18,6 +18,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useProperty } from '../../contexts/PropertyContext';
 import { supabase } from '../../lib/supabase';
 import { RevenueGovernancePanel } from '../../components/finance/RevenueGovernancePanel';
+import { RevenueRiskActionsPanel } from '../../components/finance/RevenueRiskActionsPanel';
 
 interface SpecialLevy {
   id: string;
@@ -241,6 +242,12 @@ export function RevenueDashboard() {
         propertyId={currentPropertyId}
         language={language}
         canSeeArrears={canSeeArrearsDetail}
+      />
+
+      <RevenueRiskActionsPanel
+        propertyId={currentPropertyId}
+        language={language}
+        canManage={isCouncil}
       />
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
