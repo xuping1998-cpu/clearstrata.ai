@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AlertCircle, ChevronDown, ChevronUp, Gauge, Info, Loader2, Receipt, Users } from 'lucide-react';
+import { AlertCircle, Gauge, Loader2, Receipt, Users } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { formatCurrency } from '../../lib/budget/dashboardApi';
 
@@ -58,7 +58,6 @@ function ownerDisplayName(
 export function RevenueGovernancePanel({ propertyId, language, canSeeArrears }: RevenueGovernancePanelProps) {
   const en = language === 'en';
   const [loading, setLoading] = useState(true);
-  const [showDefinition, setShowDefinition] = useState(false);
   const [collection, setCollection] = useState<CollectionRate | null>(null);
   const [outstanding, setOutstanding] = useState(0);
   const [arrears, setArrears] = useState<ArrearsRow[]>([]);
@@ -287,27 +286,6 @@ export function RevenueGovernancePanel({ propertyId, language, canSeeArrears }: 
                 {en ? 'Payments received in last 30 days' : '近30天已收款合计'}
               </div>
             </div>
-          </div>
-
-          <div className="rounded-2xl border border-sky-200 bg-sky-50/50 px-4 py-2.5 text-sm text-sky-950">
-            <button
-              type="button"
-              onClick={() => setShowDefinition((v) => !v)}
-              className="flex w-full items-center justify-between gap-2 font-semibold"
-            >
-              <span className="flex items-center gap-2">
-                <Info size={16} aria-hidden />
-                {en ? 'Revenue metric definitions' : '收入口径说明'}
-              </span>
-              {showDefinition ? <ChevronUp size={16} aria-hidden /> : <ChevronDown size={16} aria-hidden />}
-            </button>
-            {showDefinition ? (
-              <p className="mt-2 leading-relaxed">
-                {en
-                  ? 'Budget realization is based on mapped bank credits vs AGM revenue budget. Owner arrears are based on the latest owner ledger balance. The two use different bases but together indicate revenue risk.'
-                  : '预算执行率基于银行入账与 AGM 收入预算；业主欠费基于业主 ledger 最新余额。两者口径不同，但共同用于判断收入风险。'}
-              </p>
-            ) : null}
           </div>
 
           {canSeeArrears ? (
