@@ -46,9 +46,6 @@ export function RevenueDashboard() {
   const [loading, setLoading] = useState(true);
   const [levies, setLevies] = useState<SpecialLevy[]>([]);
   const [arrears, setArrears] = useState<ArrearsOwner[]>([]);
-  const [monthlyIncome, setMonthlyIncome] = useState(0);
-  const [totalCollected, setTotalCollected] = useState(0);
-  const [totalOutstanding, setTotalOutstanding] = useState(0);
   const [showLevyForm, setShowLevyForm] = useState(false);
 
   const isCouncil =
@@ -159,23 +156,6 @@ export function RevenueDashboard() {
   }, [invoiceRows]);
 
   const loadFinancials = async () => {
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
-
-    let payQ = supabase
-      .from('ledger_transactions')
-      .select('payment_amount, charge_amount, balance, user_id')
-      .gte('transaction_date', monthStart)
-      .lte('transaction_date', monthEnd);
-    if (currentPropertyId) payQ = payQ.eq('property_id', currentPropertyId);
-    const { data: payments } = await payQ;
-
-    if (payments) {
-      const income = payments.reduce((sum, t) => sum + Number(t.payment_amount || 0), 0);
-      setMonthlyIncome(income);
-    }
-
     let latestQ = supabase
       .from('ledger_transactions')
       .select('user_id, balance, transaction_date')
@@ -191,21 +171,12 @@ export function RevenueDashboard() {
         }
       }
 
-      let collected = 0;
-      let outstanding = 0;
       const arrearsUsers: string[] = [];
-
       latestByUser.forEach((balance, userId) => {
-        if (balance <= 0) {
-          collected += Math.abs(balance);
-        } else {
-          outstanding += balance;
+        if (balance > 0) {
           arrearsUsers.push(userId);
         }
       });
-
-      setTotalCollected(collected);
-      setTotalOutstanding(outstanding);
 
       if (arrearsUsers.length > 0 && canSeeArrearsDetail && currentPropertyId) {
         const { data: profiles } = await supabase
@@ -271,47 +242,6 @@ export function RevenueDashboard() {
         language={language}
         canSeeArrears={canSeeArrearsDetail}
       />
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white rounded-xl p-6 shadow-sm border-l-4 border-clearstrata-ui-primary">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="p-2 bg-clearstrata-ui-soft rounded-lg border border-clearstrata-ui-softBorder/50">
-              <DollarSign size={20} className="text-clearstrata-ui-primary" />
-            </div>
-            <span className="text-sm text-gray-600">{l ? 'This Month Income' : '本月收入'}</span>
-          </div>
-          <div className="text-3xl font-bold text-gray-900">${monthlyIncome.toFixed(2)}</div>
-          <div className="text-xs text-gray-500 mt-1">
-            {l ? 'Strata fee payments received' : '已收到的物业费'}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl p-6 shadow-sm border-l-4 border-blue-500">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="p-2 bg-blue-50 rounded-lg">
-              <TrendingUp size={20} className="text-blue-500" />
-            </div>
-            <span className="text-sm text-gray-600">{l ? 'Total Collected' : '已收总额'}</span>
-          </div>
-          <div className="text-3xl font-bold text-gray-900">${totalCollected.toFixed(2)}</div>
-          <div className="text-xs text-gray-500 mt-1">
-            {l ? 'Owners with credit balance' : '业主账户结余'}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl p-6 shadow-sm border-l-4 border-red-500">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="p-2 bg-red-50 rounded-lg">
-              <AlertCircle size={20} className="text-red-500" />
-            </div>
-            <span className="text-sm text-gray-600">{l ? 'Outstanding' : '欠费总额'}</span>
-          </div>
-          <div className="text-3xl font-bold text-red-600">${totalOutstanding.toFixed(2)}</div>
-          <div className="text-xs text-gray-500 mt-1">
-            {l ? `${arrears.length} owner(s) overdue` : `${arrears.length} 位业主欠费`}
-          </div>
-        </div>
-      </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         <div className="bg-white rounded-xl p-4 sm:p-6 shadow-sm border border-gray-100">

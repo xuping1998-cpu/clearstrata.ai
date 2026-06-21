@@ -234,7 +234,7 @@ export function RevenueGovernancePanel({ propertyId, language, canSeeArrears }: 
             <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
               <div className="flex items-center gap-2 text-sm text-gray-600">
                 <Gauge size={16} className="text-clearstrata-ui-primary" aria-hidden />
-                {en ? 'Budget collection rate' : '预算收缴率'}
+                {en ? 'Budget Realization' : '预算执行率'}
               </div>
               <div className="mt-2 text-3xl font-bold tabular-nums text-gray-900">
                 {collection?.percent != null ? `${collection.percent.toFixed(1)}%` : '—'}
@@ -295,8 +295,8 @@ export function RevenueGovernancePanel({ propertyId, language, canSeeArrears }: 
             </div>
             <p className="mt-2 leading-relaxed">
               {en
-                ? 'Budget collection is based on mapped bank credits vs AGM revenue budget. Owner arrears are based on the latest owner ledger balance. The two use different bases but together indicate revenue risk.'
-                : '预算收缴率基于银行入账与 AGM 收入预算；业主欠费基于业主 ledger 最新余额。两者口径不同，但共同用于判断收入风险。'}
+                ? 'Budget realization is based on mapped bank credits vs AGM revenue budget. Owner arrears are based on the latest owner ledger balance. The two use different bases but together indicate revenue risk.'
+                : '预算执行率基于银行入账与 AGM 收入预算；业主欠费基于业主 ledger 最新余额。两者口径不同，但共同用于判断收入风险。'}
             </p>
           </div>
 
