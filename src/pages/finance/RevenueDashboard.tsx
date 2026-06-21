@@ -17,6 +17,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useProperty } from '../../contexts/PropertyContext';
 import { supabase } from '../../lib/supabase';
+import { RevenueGovernancePanel } from '../../components/finance/RevenueGovernancePanel';
 
 interface SpecialLevy {
   id: string;
@@ -265,6 +266,12 @@ export function RevenueDashboard() {
 
   return (
     <div className="space-y-6">
+      <RevenueGovernancePanel
+        propertyId={currentPropertyId}
+        language={language}
+        canSeeArrears={canSeeArrearsDetail}
+      />
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white rounded-xl p-6 shadow-sm border-l-4 border-clearstrata-ui-primary">
           <div className="flex items-center gap-3 mb-3">
