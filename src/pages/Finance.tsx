@@ -155,8 +155,29 @@ export function Finance() {
               ))}
             </nav>
           </div>
-          {activeTab === 'invoices' && (
-            <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+        </div>
+      )}
+
+      {!canView && (
+        <div className="mb-6 rounded-xl border border-gray-200 bg-gray-50/90 px-4 py-12 text-center text-sm text-gray-600">
+          {l
+            ? 'Financial oversight is available to owners and property staff (council, property admin, or manager).'
+            : '财务监督面向业主与物业工作人员（业委会、物业管理员或物业经理）。'}
+        </div>
+      )}
+
+      {canView && activeTab === 'invoices' && (
+        <>
+          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">
+                {l ? 'Invoice Review' : '发票审核'}
+              </h2>
+              <p className="mt-1 text-sm text-gray-500">
+                {l ? 'Upload, view, and review property invoices.' : '上传、查看与审核物业发票。'}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2 sm:justify-end">
               {canUploadPkg ? (
                 <button
                   type="button"
@@ -189,30 +210,19 @@ export function Finance() {
                 Excel
               </button>
             </div>
-          )}
-        </div>
-      )}
-
-      {!canView && (
-        <div className="mb-6 rounded-xl border border-gray-200 bg-gray-50/90 px-4 py-12 text-center text-sm text-gray-600">
-          {l
-            ? 'Financial oversight is available to owners and property staff (council, property admin, or manager).'
-            : '财务监督面向业主与物业工作人员（业委会、物业管理员或物业经理）。'}
-        </div>
-      )}
-
-      {canView && activeTab === 'invoices' && (
-        <InvoiceManagement
-          ref={invoiceLedgerRef}
-          hideToolbar
-          onUploadingChange={setInvoiceToolbarUploading}
-          highlightInvoiceId={invoiceHighlightId}
-          dangerFilterOnly={filterDanger}
-          auditFilterOnly={filterAudit}
-          abnormalFilterOnly={filterAbnormal}
-          highRiskFilterOnly={filterHighRisk}
-          rangeThisMonthOnly={rangeThisMonth}
-        />
+          </div>
+          <InvoiceManagement
+            ref={invoiceLedgerRef}
+            hideToolbar
+            onUploadingChange={setInvoiceToolbarUploading}
+            highlightInvoiceId={invoiceHighlightId}
+            dangerFilterOnly={filterDanger}
+            auditFilterOnly={filterAudit}
+            abnormalFilterOnly={filterAbnormal}
+            highRiskFilterOnly={filterHighRisk}
+            rangeThisMonthOnly={rangeThisMonth}
+          />
+        </>
       )}
       {canView && activeTab === 'bank' && (
         <BankTransactionsTab
