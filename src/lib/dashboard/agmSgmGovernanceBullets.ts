@@ -74,6 +74,9 @@ function deriveAgmSgmLifecyclePhase(
   ovLite: OwnerVoteMeetingCardRow | undefined,
   now: Date,
 ): AgmSgmLifecyclePhase | null {
+  const ovStatus = String(ovLite?.status ?? '').trim().toLowerCase();
+  if (ovStatus === 'archived') return null;
+
   const n = now.getTime();
   const voteOpenMs = msIso(ovLite?.voting_opens_at);
   const isV3 = isWrittenRemoteV3Meeting(meeting);
@@ -207,7 +210,11 @@ export async function fetchAgmSgmGovernanceBullets(params: {
 
   const meetingIds = agmSgmMeetings.map((m) => String(m.id).trim()).filter(Boolean);
   const publishedIds = await fetchFormalNoticePublishedMeetingIds(propertyId, meetingIds);
-  const activeMeetings = agmSgmMeetings.filter((m) => publishedIds.has(String(m.id).trim()));
+  const activeMeetings = agmSgmMeetings.filter(
+    (m) =>
+      publishedIds.has(String(m.id).trim()) &&
+      String(m.status ?? '').toLowerCase() !== 'archived',
+  );
   if (!activeMeetings.length) return [];
 
   const [{ rows: agendaRows, error: agendaErr }, ovRes] = await Promise.all([
