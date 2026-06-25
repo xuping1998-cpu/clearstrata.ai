@@ -74,6 +74,9 @@ function deriveAgmSgmLifecyclePhase(
   ovLite: OwnerVoteMeetingCardRow | undefined,
   now: Date,
 ): AgmSgmLifecyclePhase | null {
+  const meetingStatus = String(meeting.status ?? '').trim().toLowerCase();
+  if (meetingStatus === 'archived') return null;
+
   const ovStatus = String(ovLite?.status ?? '').trim().toLowerCase();
   if (ovStatus === 'archived') return null;
 

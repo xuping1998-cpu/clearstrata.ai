@@ -65,6 +65,12 @@ import {
 } from '../features/meetings/electionAgendaModel';
 import { canManagePropertyMeetings } from '@/lib/meetingPermissions';
 import {
+  buildSgmPauseNoticeToast,
+  ensureAndSendSgmPauseNoticeForMeeting,
+  isArchivedSgmMeeting,
+  shouldTriggerSgmPauseOnArchiveTransition,
+} from '@/lib/community/sgmPauseGovernance';
+import {
   isMeetingEditorDraftPrefill,
   mapPrefillAgendaRows,
   type MeetingEditorLocationState,
@@ -629,6 +635,7 @@ export function MeetingEditor() {
   const [loading, setLoading] = useState(isEdit);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [noticeMsg, setNoticeMsg] = useState<string | null>(null);
   const [voteLine, setVoteLine] = useState<'loading' | 'none' | string>('loading');
   const [ovEditorMeta, setOvEditorMeta] = useState<OvEditorMeta | null>(null);
   const snapshotFreezeTouchedRef = useRef(false);
@@ -808,6 +815,12 @@ export function MeetingEditor() {
             ? String(Math.floor(gov.signed_units))
             : '',
       });
+      if (isArchivedSgmMeeting(m) && user?.id && meetingId) {
+        void ensureAndSendSgmPauseNoticeForMeeting({
+          meetingId,
+          propertyId: currentPropertyId,
+        });
+      }
       setLoading(false);
     })();
     return () => {
@@ -1265,6 +1278,36 @@ export function MeetingEditor() {
     setEditingClientId(null);
     const editWarn = [ovWarnEdit, freezeWarnEdit].filter(Boolean).join(' ') || null;
     if (editWarn) setErr(editWarn);
+
+    const priorStatus = String(detailMeeting?.status ?? '').trim().toLowerCase();
+    const nextStatus = String(form.status ?? '').trim().toLowerCase();
+    const ovMetaForPause = await fetchOwnerVoteMeetingMetaForCouncilMeeting({
+      propertyId: currentPropertyId,
+      meeting: councilRowEdit,
+    });
+    const ovForPause = ovMetaForPause.meeting;
+
+    if (
+      shouldTriggerSgmPauseOnArchiveTransition({
+        priorStatus,
+        nextStatus,
+        meetingType: form.meeting_type,
+        snapshotFrozenAt: ovForPause?.snapshot_frozen_at,
+        ovStatus: ovForPause?.status,
+      })
+    ) {
+      const pauseRes = await ensureAndSendSgmPauseNoticeForMeeting({
+        meetingId: meetingId!,
+        propertyId: currentPropertyId,
+      });
+      const toast = buildSgmPauseNoticeToast(pauseRes, en);
+      if (toast) {
+        setNoticeMsg(toast);
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+      if (pauseRes.error) console.warn('[MeetingEditor] SGM pause notice', pauseRes.error);
+    }
+
     navigate(`/meetings/${meetingId}`);
   }
 
@@ -1846,6 +1889,7 @@ export function MeetingEditor() {
         </div>
 
         {err ? <p className="text-sm text-red-600">{err}</p> : null}
+        {noticeMsg ? <p className="text-sm text-emerald-700">{noticeMsg}</p> : null}
 
         <button type="submit" className="btn-primary" disabled={saving}>
           {saving ? <Loader2 className="size-4 animate-spin inline" /> : null}{' '}

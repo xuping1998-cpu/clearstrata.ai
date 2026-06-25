@@ -14,6 +14,10 @@ import {
 import { extractElectionAgendaMeta, isStrictAgmOrSgmMeeting } from '@/features/meetings/electionAgendaModel';
 import { isOwnerVotingMeeting } from '@/features/meetings/ownerVotingCouncil';
 import { fetchAgmSgmGovernanceBullets } from '@/lib/dashboard/agmSgmGovernanceBullets';
+import {
+  displaySgmPauseAnnouncementTitle,
+  isSgmPauseAnnouncementTitle,
+} from '@/lib/community/sgmPauseAnnouncement';
 import type { meetingsNavHref } from '@/lib/meetingPermissions';
 
 const GENERIC_VOTE_PRIORITY = 100;
@@ -187,7 +191,58 @@ async function fetchPendingVoteBullet(
   };
 }
 
-async function fetchAnnouncementBullets(propertyId: string): Promise<ImportantUpdatesBullet[]> {
+async function tryEnsureSgmPauseNoticeForProperty(propertyId: string, userId: string): Promise<void> {
+  try {
+    const { data: pm, error: pmErr } = await supabase
+      .from('property_members')
+      .select('role')
+      .eq('property_id', propertyId)
+      .eq('user_id', userId)
+      .eq('status', 'active')
+      .maybeSingle();
+
+    if (pmErr) return;
+
+    const role = String((pm as { role?: string } | null)?.role ?? '').trim().toLowerCase();
+    if (!['council', 'manager', 'admin', 'property_admin'].includes(role)) return;
+
+    const { data: archivedSgms, error: sgmErr } = await supabase
+      .from('meetings')
+      .select('id')
+      .eq('property_id', propertyId)
+      .eq('meeting_type', 'sgm')
+      .eq('status', 'archived')
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (sgmErr || !archivedSgms?.length) return;
+
+    const meetingId = String((archivedSgms[0] as { id?: string }).id ?? '').trim();
+    if (!meetingId) return;
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session?.access_token) return;
+
+    const res = await fetch('/api/ensure-and-send-sgm-pause-notice', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ property_id: propertyId, meeting_id: meetingId }),
+    });
+    if (res.status === 403 || res.status === 401) return;
+    if (!res.ok) {
+      console.warn('[useImportantUpdatesBullets] ensure SGM pause notice', res.status);
+    }
+  } catch (e) {
+    console.warn('[useImportantUpdatesBullets] ensure SGM pause notice', e);
+  }
+}
+
+async function fetchAnnouncementBullets(propertyId: string, langEn: boolean): Promise<ImportantUpdatesBullet[]> {
   const { data, error } = await supabase
     .from('community_notifications')
     .select('id, title, priority, created_at')
@@ -209,7 +264,9 @@ async function fetchAnnouncementBullets(propertyId: string): Promise<ImportantUp
 
   return sorted.slice(0, MAX_ANNOUNCEMENTS).map((row) => ({
     id: `announcement-${row.id}`,
-    text: row.title,
+    text: isSgmPauseAnnouncementTitle(row.title)
+      ? displaySgmPauseAnnouncementTitle(langEn)
+      : row.title,
     kind: 'notice' as const,
     actionUrl: '/owner-info?tab=announcements',
     source: 'announcement' as const,
@@ -272,10 +329,12 @@ export function useImportantUpdatesBullets({
       const pid = propertyId.trim();
       const uid = userId.trim();
 
+      await tryEnsureSgmPauseNoticeForProperty(pid, uid);
+
       const [agmSgmBullets, voteBullet, announcementBullets] = await Promise.all([
         fetchAgmSgmGovernanceBullets({ propertyId: pid, langEn, meetingsHref }),
         fetchPendingVoteBullet(pid, uid, langEn),
-        fetchAnnouncementBullets(pid),
+        fetchAnnouncementBullets(pid, langEn),
       ]);
 
       const merged: ImportantUpdatesBullet[] = [...agmSgmBullets];
