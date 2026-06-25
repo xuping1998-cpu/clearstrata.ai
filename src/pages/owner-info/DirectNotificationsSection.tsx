@@ -1,11 +1,10 @@
 /**
  * DirectNotificationsSection
- * Displays council→member single-user direct notifications (type = 'direct_message').
- * - Owners: see only their own messages, display sender name.
- * - Council/admin/manager: see all property direct messages, display recipient + sender.
+ * Personal notifications for the current user at the current property:
+ * - `notifications` rows with type = direct_message (council→member)
+ * - `user_notifications` rows with types in PERSONAL_USER_NOTIFICATION_TYPES (e.g. sgm_pause)
  *
- * Names are resolved via a secondary profiles batch query after loading notifications.
- * Nothing is stored in the notifications table itself.
+ * Council/admin/manager also see all property direct messages with recipient + sender labels.
  */
 import { useCallback, useEffect, useState } from 'react';
 import { Bell, Loader2 } from 'lucide-react';
@@ -13,6 +12,11 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useProperty } from '../../contexts/PropertyContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { supabase } from '../../lib/supabase';
+import {
+  displayUserNotificationMessage,
+  displayUserNotificationTitle,
+  PERSONAL_USER_NOTIFICATION_TYPES,
+} from '@/lib/notifications/userNotificationDisplay';
 
 type DirectMessage = {
   id: string;
@@ -23,7 +27,21 @@ type DirectMessage = {
   priority: string;
   read: boolean;
   created_at: string;
+  source: 'notifications';
 };
+
+type UserInboxMessage = {
+  id: string;
+  user_id: string;
+  title: string | null;
+  content: string | null;
+  read: boolean;
+  created_at: string;
+  source: 'user_notifications';
+  notification_type: string;
+};
+
+type PersonalNotification = DirectMessage | UserInboxMessage;
 
 const PRIORITY_LABEL: Record<string, [string, string]> = {
   normal:    ['Normal',    '普通'],
@@ -60,7 +78,7 @@ export function DirectNotificationsSection() {
     memberRole === 'manager' ||
     memberRole === 'property_admin';
 
-  const [messages, setMessages] = useState<DirectMessage[]>([]);
+  const [messages, setMessages] = useState<PersonalNotification[]>([]);
   const [userMap, setUserMap] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [loadingProfiles, setLoadingProfiles] = useState(false);
@@ -95,19 +113,63 @@ export function DirectNotificationsSection() {
         return;
       }
 
-      const rows = (notifData ?? []) as DirectMessage[];
-      setMessages(rows);
+      const rows = (notifData ?? []) as Omit<DirectMessage, 'source'>[];
+      const directRows: DirectMessage[] = rows.map((row) => ({ ...row, source: 'notifications' }));
 
-      // Step 2: collect all user ids needing name resolution
+      const { data: inboxData, error: inboxErr } = await supabase
+        .from('user_notifications')
+        .select('id, user_id, title, message, type, is_read, created_at')
+        .eq('user_id', user.id)
+        .eq('related_property_id', currentPropertyId)
+        .in('type', [...PERSONAL_USER_NOTIFICATION_TYPES])
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (inboxErr) {
+        setError(en ? 'Could not load notifications.' : '无法加载通知。');
+        console.warn('[DirectNotificationsSection] user_notifications load error', inboxErr);
+        return;
+      }
+
+      const inboxRows: UserInboxMessage[] = (inboxData ?? []).map((row) => {
+        const r = row as {
+          id: string;
+          user_id: string;
+          title?: string | null;
+          message?: string | null;
+          type?: string | null;
+          is_read?: boolean;
+          created_at: string;
+        };
+        const nType = String(r.type ?? '').toLowerCase();
+        return {
+          id: r.id,
+          user_id: r.user_id,
+          title: displayUserNotificationTitle(nType, r.title ?? '', en),
+          content: displayUserNotificationMessage(nType, r.message ?? ''),
+          read: Boolean(r.is_read),
+          created_at: r.created_at,
+          source: 'user_notifications',
+          notification_type: nType,
+        };
+      });
+
+      const merged = [...directRows, ...inboxRows].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      );
+      setMessages(merged);
+
+      const profileSourceRows = directRows;
+
+      // Step 2: collect user ids for direct-message sender/recipient labels
       const allIds = Array.from(
         new Set([
-          ...rows.map((n) => n.user_id),
-          ...rows.map((n) => n.created_by).filter((id): id is string => Boolean(id)),
+          ...profileSourceRows.map((n) => n.user_id),
+          ...profileSourceRows.map((n) => n.created_by).filter((id): id is string => Boolean(id)),
         ]),
       );
 
-      if (allIds.length === 0) return;
-
+      if (allIds.length > 0) {
       // Step 3: batch query profiles — only real columns: full_name_zh, full_name_en, email
       setLoadingProfiles(true);
       try {
@@ -138,6 +200,7 @@ export function DirectNotificationsSection() {
       } finally {
         setLoadingProfiles(false);
       }
+      }
     } finally {
       setLoading(false);
     }
@@ -145,16 +208,27 @@ export function DirectNotificationsSection() {
 
   useEffect(() => { void load(); }, [load]);
 
-  const markRead = async (id: string) => {
-    const { error: err } = await supabase
-      .from('notifications')
-      .update({ read: true })
-      .eq('id', id);
-    if (err) {
-      console.warn('[DirectNotificationsSection] markRead error', err);
-      return;
+  const markRead = async (item: PersonalNotification) => {
+    if (item.source === 'user_notifications') {
+      const { error: err } = await supabase
+        .from('user_notifications')
+        .update({ is_read: true })
+        .eq('id', item.id);
+      if (err) {
+        console.warn('[DirectNotificationsSection] markRead user_notifications error', err);
+        return;
+      }
+    } else {
+      const { error: err } = await supabase
+        .from('notifications')
+        .update({ read: true })
+        .eq('id', item.id);
+      if (err) {
+        console.warn('[DirectNotificationsSection] markRead error', err);
+        return;
+      }
     }
-    setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, read: true } : m)));
+    setMessages((prev) => prev.map((m) => (m.id === item.id && m.source === item.source ? { ...m, read: true } : m)));
   };
 
   const getPriorityLabel = (p: string) => {
@@ -201,9 +275,12 @@ export function DirectNotificationsSection() {
 
       {!loading && !error && messages.length > 0 && (
         <ul className="space-y-3">
-          {messages.map((m) => (
+          {messages.map((m) => {
+            const isInbox = m.source === 'user_notifications';
+            const priorityKey = isInbox ? 'important' : m.priority;
+            return (
             <li
-              key={m.id}
+              key={`${m.source}-${m.id}`}
               className={`rounded-xl border px-4 py-3 text-sm transition-colors ${
                 m.read ? 'bg-white border-gray-100' : 'bg-blue-50 border-blue-100'
               }`}
@@ -219,18 +296,22 @@ export function DirectNotificationsSection() {
                     </p>
                   )}
 
-                  {/* Staff: show recipient + sender. Owner: show sender only. */}
                   <p className="mt-1.5 text-xs text-gray-400 space-x-2">
-                    {isStaff && (
+                    {!isInbox && isStaff && (
                       <span>
                         {en ? 'To:' : '接收人：'}
                         <span className="font-medium text-gray-600 ml-1">{getDisplayName(m.user_id)}</span>
                       </span>
                     )}
-                    <span>
-                      {en ? 'From:' : '发送人：'}
-                      <span className="font-medium text-gray-600 ml-1">{getDisplayName(m.created_by)}</span>
-                    </span>
+                    {!isInbox && (
+                      <span>
+                        {en ? 'From:' : '发送人：'}
+                        <span className="font-medium text-gray-600 ml-1">{getDisplayName(m.created_by)}</span>
+                      </span>
+                    )}
+                    {isInbox && (
+                      <span>{en ? 'Property notice' : '物业通知'}</span>
+                    )}
                     <span>{formatDate(m.created_at, language)}</span>
                   </p>
                 </div>
@@ -238,15 +319,15 @@ export function DirectNotificationsSection() {
                 <div className="flex items-center gap-2 shrink-0">
                   <span
                     className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${
-                      PRIORITY_CLASS[m.priority] ?? PRIORITY_CLASS.normal
+                      PRIORITY_CLASS[priorityKey] ?? PRIORITY_CLASS.normal
                     }`}
                   >
-                    {getPriorityLabel(m.priority)}
+                    {getPriorityLabel(priorityKey)}
                   </span>
                   {!m.read && !isStaff && (
                     <button
                       type="button"
-                      onClick={() => void markRead(m.id)}
+                      onClick={() => void markRead(m)}
                       className="text-xs text-blue-700 hover:underline"
                     >
                       {en ? 'Mark read' : '标为已读'}
@@ -255,7 +336,8 @@ export function DirectNotificationsSection() {
                 </div>
               </div>
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
     </section>

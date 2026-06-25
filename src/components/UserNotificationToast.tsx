@@ -4,6 +4,11 @@ import { X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { supabase } from '../lib/supabase';
+import {
+  displayUserNotificationMessage,
+  displayUserNotificationTitle,
+  TOAST_EXCLUDED_USER_NOTIFICATION_TYPES,
+} from '@/lib/notifications/userNotificationDisplay';
 
 type NotificationRow = {
   id: string;
@@ -31,14 +36,10 @@ function displayNotificationCopy(
   row: NotificationRow,
   en: boolean,
 ): { title: string; message: string } {
-  if (!en) {
-    return { title: row.title, message: row.message };
-  }
-
   const type = String(row.type ?? '').toLowerCase();
-  const propertyName = parsePropertyNameFromJoinMessage(row.message);
 
-  if (type === 'join_request_approved') {
+  if (type === 'join_request_approved' && en) {
+    const propertyName = parsePropertyNameFromJoinMessage(row.message);
     return {
       title: 'Application approved',
       message: propertyName
@@ -47,7 +48,8 @@ function displayNotificationCopy(
     };
   }
 
-  if (type === 'join_request_rejected') {
+  if (type === 'join_request_rejected' && en) {
+    const propertyName = parsePropertyNameFromJoinMessage(row.message);
     return {
       title: 'Application not approved',
       message: propertyName
@@ -56,7 +58,10 @@ function displayNotificationCopy(
     };
   }
 
-  return { title: row.title, message: row.message };
+  return {
+    title: displayUserNotificationTitle(type, row.title, en),
+    message: displayUserNotificationMessage(type, row.message),
+  };
 }
 
 /**
@@ -75,13 +80,14 @@ export function UserNotificationToast() {
   const fetchAndMerge = useCallback(async () => {
     if (!user?.id) return;
 
+    const toastExcluded = `(${TOAST_EXCLUDED_USER_NOTIFICATION_TYPES.map((t) => `"${t}"`).join(',')})`;
+
     const { data, error } = await supabase
       .from('user_notifications')
       .select('id, type, title, message, link, is_read, created_at')
       .eq('user_id', user.id)
       .eq('is_read', false)
-      // Direct messages are shown in the owner-info announcements tab, not as toasts
-      .neq('type', 'direct_message')
+      .not('type', 'in', toastExcluded)
       .order('created_at', { ascending: false })
       .limit(5);
 
