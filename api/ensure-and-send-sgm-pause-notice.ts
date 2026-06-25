@@ -368,8 +368,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         message: messageBody,
         link: inAppLink,
         related_property_id: propertyId,
-        priority: 'important',
-        created_by: user.id,
         is_read: false,
       });
 
