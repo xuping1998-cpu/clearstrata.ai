@@ -2,6 +2,8 @@ import { supabase } from '@/lib/supabase';
 
 export const SGM_PAUSE_ANNOUNCEMENT_TITLE_ZH = '特别业主大会暂停通知';
 export const SGM_PAUSE_ANNOUNCEMENT_TITLE_EN = 'SGM Pause Notice';
+export const SGM_PAUSE_ANNOUNCEMENT_TITLE_BILINGUAL =
+  '特别业主大会暂停通知 / SGM Pause Notice';
 
 export const SGM_PAUSE_BODY_ZH = `本次特别业主大会暂缓推进。
 会议、提名、讨论及正式投票安排暂停。
@@ -19,16 +21,21 @@ export function sgmPauseMeetingMarker(meetingId: string): string {
 }
 
 export function buildSgmPauseAnnouncementContent(meetingId: string): string {
-  return `${SGM_PAUSE_BODY_ZH}\n\n---\n\n${SGM_PAUSE_BODY_EN}\n\n${sgmPauseMeetingMarker(meetingId)}`;
+  return `${SGM_PAUSE_BODY_ZH}\n---\n${SGM_PAUSE_BODY_EN}\n${sgmPauseMeetingMarker(meetingId)}`;
 }
 
 export function buildSgmPauseNotificationMessage(meetingId: string): string {
-  return `${SGM_PAUSE_BODY_ZH}\n\n---\n\n${SGM_PAUSE_BODY_EN}\n\n${sgmPauseMeetingMarker(meetingId)}`;
+  return `${SGM_PAUSE_BODY_ZH}\n---\n${SGM_PAUSE_BODY_EN}\n${sgmPauseMeetingMarker(meetingId)}`;
 }
 
 export function isSgmPauseAnnouncementTitle(title: string | null | undefined): boolean {
   const t = String(title ?? '').trim();
-  return t === SGM_PAUSE_ANNOUNCEMENT_TITLE_ZH || t === SGM_PAUSE_ANNOUNCEMENT_TITLE_EN;
+  return (
+    t === SGM_PAUSE_ANNOUNCEMENT_TITLE_BILINGUAL ||
+    t === SGM_PAUSE_ANNOUNCEMENT_TITLE_ZH ||
+    t === SGM_PAUSE_ANNOUNCEMENT_TITLE_EN ||
+    t.includes(SGM_PAUSE_ANNOUNCEMENT_TITLE_ZH)
+  );
 }
 
 export function displaySgmPauseAnnouncementTitle(langEn: boolean): string {
@@ -80,26 +87,35 @@ export type SgmPauseNoticeResult = {
   ok: boolean;
   skippedFully: boolean;
   announcementCreated: boolean;
-  memberNotificationsSent: number;
-  emailNotificationsSent: number;
+  announcementAlreadyExists: boolean;
+  recipientsCount: number;
+  memberNotificationsCreated: number;
+  memberNotificationsAlreadyExisting: number;
+  emailsSent: number;
   emailFailures: number;
-  partialEmailFailure: boolean;
+  /** @deprecated use memberNotificationsCreated */
+  memberNotificationsSent?: number;
+  /** @deprecated use emailsSent */
+  emailNotificationsSent?: number;
+  partialEmailFailure?: boolean;
   reason?: string;
   error?: string;
 };
 
 export function buildSgmPauseNoticeToast(result: SgmPauseNoticeResult, langEn: boolean): string | null {
+  const partialEmailFailure = result.emailFailures > 0 && (result.memberNotificationsCreated > 0 || result.announcementCreated);
+
   if (result.skippedFully) {
     return langEn
       ? 'Meeting paused; pause notice already exists — no resend.'
       : '会议已暂停，暂停通知已存在，无需重复发送。';
   }
-  if (result.partialEmailFailure) {
+  if (partialEmailFailure) {
     return langEn
       ? 'Meeting paused and announcement published; some emails failed — please retry later.'
       : '会议已暂停，公告已发布；部分邮件发送失败，请稍后重试。';
   }
-  if (result.ok && (result.announcementCreated || result.memberNotificationsSent > 0)) {
+  if (result.ok && (result.announcementCreated || result.memberNotificationsCreated > 0)) {
     return langEn
       ? 'Meeting paused; announcement and notifications sent to members.'
       : '会议已暂停，公告及通知已发送给成员。';
@@ -121,32 +137,14 @@ export async function ensureAndSendSgmPauseNoticeForMeeting(params: {
   const meetingId = params.meetingId.trim();
   const propertyId = params.propertyId.trim();
   if (!meetingId || !propertyId) {
-    return {
-      ok: false,
-      skippedFully: false,
-      announcementCreated: false,
-      memberNotificationsSent: 0,
-      emailNotificationsSent: 0,
-      emailFailures: 0,
-      partialEmailFailure: false,
-      error: 'meetingId and propertyId are required',
-    };
+    return emptySgmPauseResult({ error: 'meetingId and propertyId are required' });
   }
 
   const {
     data: { session },
   } = await supabase.auth.getSession();
   if (!session?.access_token) {
-    return {
-      ok: false,
-      skippedFully: false,
-      announcementCreated: false,
-      memberNotificationsSent: 0,
-      emailNotificationsSent: 0,
-      emailFailures: 0,
-      partialEmailFailure: false,
-      error: 'not_authenticated',
-    };
+    return emptySgmPauseResult({ error: 'not_authenticated' });
   }
 
   try {
@@ -165,39 +163,51 @@ export async function ensureAndSendSgmPauseNoticeForMeeting(params: {
     };
 
     if (!res.ok) {
-      return {
-        ok: false,
-        skippedFully: false,
-        announcementCreated: false,
-        memberNotificationsSent: 0,
-        emailNotificationsSent: 0,
-        emailFailures: 0,
-        partialEmailFailure: false,
-        error: payload.error ?? `HTTP ${res.status}`,
-      };
+      return emptySgmPauseResult({ error: payload.error ?? `HTTP ${res.status}` });
     }
 
-    return {
-      ok: Boolean(payload.ok ?? true),
-      skippedFully: Boolean(payload.skippedFully),
-      announcementCreated: Boolean(payload.announcementCreated),
-      memberNotificationsSent: Number(payload.memberNotificationsSent ?? 0),
-      emailNotificationsSent: Number(payload.emailNotificationsSent ?? 0),
-      emailFailures: Number(payload.emailFailures ?? 0),
-      partialEmailFailure: Boolean(payload.partialEmailFailure),
-      reason: payload.reason,
-      error: payload.error,
-    };
+    return parseSgmPauseNoticePayload(payload);
   } catch (e) {
-    return {
-      ok: false,
-      skippedFully: false,
-      announcementCreated: false,
-      memberNotificationsSent: 0,
-      emailNotificationsSent: 0,
-      emailFailures: 0,
-      partialEmailFailure: false,
-      error: e instanceof Error ? e.message : String(e),
-    };
+    return emptySgmPauseResult({ error: e instanceof Error ? e.message : String(e) });
   }
+}
+
+function emptySgmPauseResult(params: { error?: string }): SgmPauseNoticeResult {
+  return {
+    ok: false,
+    skippedFully: false,
+    announcementCreated: false,
+    announcementAlreadyExists: false,
+    recipientsCount: 0,
+    memberNotificationsCreated: 0,
+    memberNotificationsAlreadyExisting: 0,
+    emailsSent: 0,
+    emailFailures: 0,
+    error: params.error,
+  };
+}
+
+function parseSgmPauseNoticePayload(payload: Partial<SgmPauseNoticeResult>): SgmPauseNoticeResult {
+  const memberNotificationsCreated = Number(
+    payload.memberNotificationsCreated ?? payload.memberNotificationsSent ?? 0,
+  );
+  const emailsSent = Number(payload.emailsSent ?? payload.emailNotificationsSent ?? 0);
+  const emailFailures = Number(payload.emailFailures ?? 0);
+
+  return {
+    ok: Boolean(payload.ok ?? true),
+    skippedFully: Boolean(payload.skippedFully),
+    announcementCreated: Boolean(payload.announcementCreated),
+    announcementAlreadyExists: Boolean(payload.announcementAlreadyExists),
+    recipientsCount: Number(payload.recipientsCount ?? 0),
+    memberNotificationsCreated,
+    memberNotificationsAlreadyExisting: Number(payload.memberNotificationsAlreadyExisting ?? 0),
+    emailsSent,
+    emailFailures,
+    memberNotificationsSent: memberNotificationsCreated,
+    emailNotificationsSent: emailsSent,
+    partialEmailFailure: emailFailures > 0 && (memberNotificationsCreated > 0 || Boolean(payload.announcementCreated)),
+    reason: payload.reason,
+    error: payload.error,
+  };
 }

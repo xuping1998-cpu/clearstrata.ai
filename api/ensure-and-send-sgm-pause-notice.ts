@@ -6,6 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
+const TITLE_BILINGUAL = '特别业主大会暂停通知 / SGM Pause Notice';
 const TITLE_ZH = '特别业主大会暂停通知';
 const TITLE_EN = 'SGM Pause Notice';
 const BODY_ZH = `本次特别业主大会暂缓推进。
@@ -29,12 +30,16 @@ function meetingMarker(meetingId: string): string {
   return `<!--${MARKER_PREFIX}${meetingId.trim()}-->`;
 }
 
+function markerPattern(meetingId: string): string {
+  return `%${MARKER_PREFIX}${meetingId.trim()}%`;
+}
+
 function announcementContent(meetingId: string): string {
-  return `${BODY_ZH}\n\n---\n\n${BODY_EN}\n\n${meetingMarker(meetingId)}`;
+  return `${BODY_ZH}\n---\n${BODY_EN}\n${meetingMarker(meetingId)}`;
 }
 
 function notificationMessage(meetingId: string): string {
-  return `${BODY_ZH}\n\n---\n\n${BODY_EN}\n\n${meetingMarker(meetingId)}`;
+  return `${BODY_ZH}\n---\n${BODY_EN}\n${meetingMarker(meetingId)}`;
 }
 
 function normalizeAppBaseUrl(raw?: string | null): string {
@@ -76,7 +81,7 @@ function buildPauseEmailHtml(params: { openLink: string; logoUrl: string }): str
         </td></tr>
         <tr><td style="padding:32px 32px 24px;">
           <p style="margin:0 0 8px;color:#6b7280;font-size:12px;font-weight:600;">标题 / Title</p>
-          <p style="margin:0 0 20px;color:#111827;font-size:16px;font-weight:600;line-height:1.5;">${escapeHtml(TITLE_ZH)} / ${escapeHtml(TITLE_EN)}</p>
+          <p style="margin:0 0 20px;color:#111827;font-size:16px;font-weight:600;line-height:1.5;">${escapeHtml(TITLE_BILINGUAL)}</p>
           <p style="margin:0 0 8px;color:#6b7280;font-size:12px;font-weight:600;">内容 / Message</p>
           <p style="margin:0 0 12px;color:#374151;font-size:15px;line-height:1.65;white-space:pre-wrap;">${escapeHtml(BODY_ZH)}</p>
           <p style="margin:0 0 24px;color:#374151;font-size:15px;line-height:1.65;white-space:pre-wrap;">${escapeHtml(BODY_EN)}</p>
@@ -119,6 +124,11 @@ function isEligiblePauseArchive(params: {
   return true;
 }
 
+function isValidEmail(email: string): boolean {
+  const t = email.trim().toLowerCase();
+  return Boolean(t && t.includes('@'));
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   cors(res);
 
@@ -136,9 +146,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (!supabaseUrl || !serviceRoleKey) {
     return res.status(500).json({ ok: false, error: 'Server misconfigured' });
-  }
-  if (!resendKey) {
-    return res.status(503).json({ ok: false, error: 'RESEND_API_KEY not configured' });
   }
 
   const authHeader = req.headers.authorization;
@@ -246,22 +253,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({
       ok: true,
       skippedFully: true,
-      announcementCreated: false,
-      memberNotificationsSent: 0,
-      emailNotificationsSent: 0,
-      emailFailures: 0,
-      partialEmailFailure: false,
       reason: 'not_eligible',
+      announcementCreated: false,
+      announcementAlreadyExists: false,
+      recipientsCount: 0,
+      memberNotificationsCreated: 0,
+      memberNotificationsAlreadyExisting: 0,
+      emailsSent: 0,
+      emailFailures: 0,
     });
   }
 
-  const markerLike = `%${MARKER_PREFIX}${meetingId}%`;
-
   const { data: markedAnnouncements, error: annMarkerErr } = await admin
     .from('community_notifications')
-    .select('id, content')
+    .select('id')
     .eq('property_id', propertyId)
-    .ilike('content', markerLike)
+    .ilike('content', markerPattern(meetingId))
     .limit(1);
 
   if (annMarkerErr) {
@@ -270,37 +277,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { data: legacyAnnouncements, error: annLegacyErr } = await admin
     .from('community_notifications')
-    .select('id, content')
+    .select('id')
     .eq('property_id', propertyId)
-    .in('title', [TITLE_ZH, TITLE_EN])
-    .limit(5);
+    .ilike('title', `%${TITLE_ZH}%`)
+    .limit(1);
 
   if (annLegacyErr) {
     return res.status(500).json({ ok: false, error: annLegacyErr.message });
   }
 
-  const existingAnnouncement = [...(markedAnnouncements ?? []), ...(legacyAnnouncements ?? [])];
+  const hasMarkedAnnouncement = (markedAnnouncements ?? []).length > 0;
+  const hasLegacyAnnouncement = (legacyAnnouncements ?? []).length > 0;
+  const announcementAlreadyExists = hasMarkedAnnouncement || hasLegacyAnnouncement;
 
   let announcementCreated = false;
-  const hasMeetingMarkedAnnouncement = (markedAnnouncements ?? []).length > 0;
 
-  if (!hasMeetingMarkedAnnouncement) {
-    const legacyOnly = (legacyAnnouncements ?? []).length > 0;
+  if (!announcementAlreadyExists) {
+    const { error: annInsErr } = await admin.from('community_notifications').insert({
+      property_id: propertyId,
+      title: TITLE_BILINGUAL,
+      content: announcementContent(meetingId),
+      priority: 'important',
+      created_by: user.id,
+    });
 
-    if (!legacyOnly) {
-      const { error: annInsErr } = await admin.from('community_notifications').insert({
-        property_id: propertyId,
-        title: TITLE_ZH,
-        content: announcementContent(meetingId),
-        priority: 'important',
-        created_by: user.id,
-      });
-
-      if (annInsErr) {
-        return res.status(500).json({ ok: false, error: annInsErr.message });
-      }
-      announcementCreated = true;
+    if (annInsErr) {
+      return res.status(500).json({ ok: false, error: annInsErr.message });
     }
+    announcementCreated = true;
   }
 
   const { data: memberRows, error: memberErr } = await admin
@@ -324,10 +328,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { data: existingNotifications, error: notifSelErr } = await admin
     .from('user_notifications')
-    .select('user_id, message')
+    .select('user_id')
     .eq('related_property_id', propertyId)
     .eq('type', NOTIFICATION_TYPE)
-    .ilike('message', `%${MARKER_PREFIX}${meetingId}%`);
+    .ilike('message', markerPattern(meetingId));
 
   if (notifSelErr) {
     return res.status(500).json({ ok: false, error: notifSelErr.message });
@@ -337,20 +341,50 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     (existingNotifications ?? []).map((row) => String((row as { user_id?: string }).user_id ?? '')),
   );
 
-  const pendingRecipients = recipientIds.filter((uid) => !alreadyNotified.has(uid));
+  const memberNotificationsAlreadyExisting = recipientIds.filter((uid) => alreadyNotified.has(uid)).length;
 
   const appBase = normalizeAppBaseUrl(process.env.APP_BASE_URL);
   const logoUrl = `${appBase}/logo-email.png`;
   const announcementsLink = `${appBase}/owner-info?tab=announcements&propertyId=${encodeURIComponent(propertyId)}`;
-  const emailSubject = `【ClearStrata】${TITLE_ZH} / ${TITLE_EN}`;
+  const emailSubject = `【ClearStrata】${TITLE_BILINGUAL}`;
   const emailHtml = buildPauseEmailHtml({ openLink: announcementsLink, logoUrl });
-  const resend = new Resend(resendKey);
+  const resend = resendKey ? new Resend(resendKey) : null;
 
-  let memberNotificationsSent = 0;
-  let emailNotificationsSent = 0;
+  let memberNotificationsCreated = 0;
+  let emailsSent = 0;
   let emailFailures = 0;
 
-  for (const recipientUserId of pendingRecipients) {
+  const inAppLink = `/owner-info?tab=announcements&propertyId=${encodeURIComponent(propertyId)}`;
+  const messageBody = notificationMessage(meetingId);
+
+  for (const recipientUserId of recipientIds) {
+    const hadNotification = alreadyNotified.has(recipientUserId);
+
+    if (!hadNotification) {
+      const { error: insErr } = await admin.from('user_notifications').insert({
+        user_id: recipientUserId,
+        type: NOTIFICATION_TYPE,
+        title: TITLE_BILINGUAL,
+        message: messageBody,
+        link: inAppLink,
+        related_property_id: propertyId,
+        priority: 'important',
+        created_by: user.id,
+        is_read: false,
+      });
+
+      if (insErr) {
+        console.error('[ensure-and-send-sgm-pause-notice] user_notifications insert', {
+          recipientUserId,
+          error: insErr.message,
+        });
+        continue;
+      }
+
+      memberNotificationsCreated += 1;
+      alreadyNotified.add(recipientUserId);
+    }
+
     const { data: profile, error: profileErr } = await admin
       .from('profiles')
       .select('email')
@@ -362,38 +396,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       continue;
     }
 
-    const recipientEmail = String((profile as { email?: string } | null)?.email ?? '')
-      .trim()
-      .toLowerCase();
+    const recipientEmail = String((profile as { email?: string } | null)?.email ?? '').trim();
 
-    if (!recipientEmail || !recipientEmail.includes('@')) {
-      emailFailures += 1;
+    if (!isValidEmail(recipientEmail)) {
       continue;
     }
 
-    const { data: inserted, error: insErr } = await admin
-      .from('user_notifications')
-      .insert({
-        user_id: recipientUserId,
-        type: NOTIFICATION_TYPE,
-        title: TITLE_ZH,
-        message: notificationMessage(meetingId),
-        link: `/owner-info?tab=announcements&propertyId=${encodeURIComponent(propertyId)}`,
-        related_property_id: propertyId,
-        priority: 'important',
-        created_by: user.id,
-        is_read: false,
-      })
-      .select('id')
-      .maybeSingle();
-
-    if (insErr || !inserted?.id) {
+    if (!resend) {
       emailFailures += 1;
       continue;
     }
-
-    memberNotificationsSent += 1;
-    const notificationId = inserted.id as string;
 
     const mailRes = await resend.emails.send({
       from: 'ClearStrata <noreply@clearstrata.ai>',
@@ -404,29 +416,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (mailRes.error) {
       emailFailures += 1;
-      await admin.from('user_notifications').delete().eq('id', notificationId);
-      memberNotificationsSent -= 1;
+      console.error('[ensure-and-send-sgm-pause-notice] Resend failed', {
+        recipientUserId,
+        error: mailRes.error,
+      });
       continue;
     }
 
-    emailNotificationsSent += 1;
+    emailsSent += 1;
   }
 
   const skippedFully =
     !announcementCreated &&
-    pendingRecipients.length === 0 &&
-    (hasMeetingMarkedAnnouncement || (existingAnnouncement ?? []).length > 0);
-
-  const partialEmailFailure = emailFailures > 0 && (memberNotificationsSent > 0 || announcementCreated);
+    announcementAlreadyExists &&
+    memberNotificationsCreated === 0 &&
+    memberNotificationsAlreadyExisting === recipientIds.length;
 
   return res.status(200).json({
     ok: true,
     skippedFully,
     announcementCreated,
-    memberNotificationsSent,
-    emailNotificationsSent,
+    announcementAlreadyExists,
+    recipientsCount: recipientIds.length,
+    memberNotificationsCreated,
+    memberNotificationsAlreadyExisting,
+    emailsSent,
     emailFailures,
-    partialEmailFailure,
     owner_vote_meeting_id: ownerVoteMeetingId,
     meeting_id: meetingId,
     property_id: propertyId,
