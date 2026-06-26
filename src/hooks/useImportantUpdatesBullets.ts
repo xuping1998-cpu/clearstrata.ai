@@ -191,6 +191,14 @@ async function fetchPendingVoteBullet(
   };
 }
 
+/** Browser-session dedup: one POST per property + user + archived SGM meeting. */
+const sgmPauseNoticeCompletedKeys = new Set<string>();
+const sgmPauseNoticeInFlightKeys = new Set<string>();
+
+function sgmPauseNoticeDedupKey(propertyId: string, userId: string, meetingId: string): string {
+  return `${propertyId}:${userId}:${meetingId}`;
+}
+
 async function tryEnsureSgmPauseNoticeForProperty(propertyId: string, userId: string): Promise<void> {
   try {
     const { data: pm, error: pmErr } = await supabase
@@ -220,22 +228,34 @@ async function tryEnsureSgmPauseNoticeForProperty(propertyId: string, userId: st
     const meetingId = String((archivedSgms[0] as { id?: string }).id ?? '').trim();
     if (!meetingId) return;
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (!session?.access_token) return;
+    const dedupKey = sgmPauseNoticeDedupKey(propertyId, userId, meetingId);
+    if (sgmPauseNoticeCompletedKeys.has(dedupKey)) return;
+    if (!sgmPauseNoticeInFlightKeys.add(dedupKey)) return;
 
-    const res = await fetch('/api/ensure-and-send-sgm-pause-notice', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify({ property_id: propertyId, meeting_id: meetingId }),
-    });
-    if (res.status === 403 || res.status === 401) return;
-    if (!res.ok) {
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) return;
+
+      const res = await fetch('/api/ensure-and-send-sgm-pause-notice', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ property_id: propertyId, meeting_id: meetingId }),
+      });
+
+      if (res.ok) {
+        sgmPauseNoticeCompletedKeys.add(dedupKey);
+        return;
+      }
+
+      if (res.status === 403 || res.status === 401) return;
       console.warn('[useImportantUpdatesBullets] ensure SGM pause notice', res.status);
+    } finally {
+      sgmPauseNoticeInFlightKeys.delete(dedupKey);
     }
   } catch (e) {
     console.warn('[useImportantUpdatesBullets] ensure SGM pause notice', e);
