@@ -19,6 +19,43 @@ const NOTIFICATION_TYPE = 'sgm_pause';
 const MARKER_PREFIX = 'clearstrata-sgm-pause-meeting-id:';
 const RECIPIENT_ROLES = ['owner', 'council', 'manager', 'admin', 'property_admin'] as const;
 const APP_BASE_DEFAULT = 'https://app.clearstrata.ai';
+const MAX_SGM_PAUSE_EMAIL_ATTEMPTS = 3;
+
+type SgmPauseDeliverySummary = {
+  attemptCount: number;
+  hasSent: boolean;
+};
+
+function resendErrorMessage(error: unknown): string {
+  if (error == null) return 'Unknown Resend error';
+  if (typeof error === 'string') return error;
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const msg = (error as { message?: unknown }).message;
+    if (typeof msg === 'string' && msg.trim()) return msg.trim();
+  }
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
+function buildDeliverySummaryMap(
+  rows: Array<{ user_id?: string; status?: string }> | null | undefined,
+): Map<string, SgmPauseDeliverySummary> {
+  const map = new Map<string, SgmPauseDeliverySummary>();
+  for (const row of rows ?? []) {
+    const userId = String(row.user_id ?? '').trim();
+    if (!userId) continue;
+    const prev = map.get(userId) ?? { attemptCount: 0, hasSent: false };
+    prev.attemptCount += 1;
+    if (String(row.status ?? '').trim().toLowerCase() === 'sent') {
+      prev.hasSent = true;
+    }
+    map.set(userId, prev);
+  }
+  return map;
+}
 
 function cors(res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -261,6 +298,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       memberNotificationsAlreadyExisting: 0,
       emailsSent: 0,
       emailFailures: 0,
+      emailsSkippedAlreadySent: 0,
+      emailsSkippedMaxAttempts: 0,
+      emailAttemptsCreated: 0,
     });
   }
 
@@ -353,6 +393,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   let memberNotificationsCreated = 0;
   let emailsSent = 0;
   let emailFailures = 0;
+  let emailsSkippedAlreadySent = 0;
+  let emailsSkippedMaxAttempts = 0;
+  let emailAttemptsCreated = 0;
+
+  const { data: existingDeliveries, error: deliverySelErr } = await admin
+    .from('sgm_pause_email_deliveries')
+    .select('user_id, status')
+    .eq('meeting_id', meetingId);
+
+  if (deliverySelErr) {
+    return res.status(500).json({ ok: false, error: deliverySelErr.message });
+  }
+
+  const deliveryByUser = buildDeliverySummaryMap(
+    existingDeliveries as Array<{ user_id?: string; status?: string }> | null,
+  );
 
   const inAppLink = `/owner-info?tab=announcements&propertyId=${encodeURIComponent(propertyId)}`;
   const messageBody = notificationMessage(meetingId);
@@ -383,6 +439,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       alreadyNotified.add(recipientUserId);
     }
 
+    const deliverySummary = deliveryByUser.get(recipientUserId) ?? {
+      attemptCount: 0,
+      hasSent: false,
+    };
+
+    if (deliverySummary.hasSent) {
+      emailsSkippedAlreadySent += 1;
+      continue;
+    }
+
+    if (deliverySummary.attemptCount >= MAX_SGM_PAUSE_EMAIL_ATTEMPTS) {
+      emailsSkippedMaxAttempts += 1;
+      continue;
+    }
+
+    const attemptNo = deliverySummary.attemptCount + 1;
+
     const { data: profile, error: profileErr } = await admin
       .from('profiles')
       .select('email')
@@ -400,28 +473,57 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       continue;
     }
 
+    let deliveryStatus: 'sent' | 'failed' = 'failed';
+    let deliveryError: string | null = null;
+
     if (!resend) {
+      deliveryError = 'RESEND_API_KEY not configured';
       emailFailures += 1;
-      continue;
+    } else {
+      const mailRes = await resend.emails.send({
+        from: 'ClearStrata <noreply@clearstrata.ai>',
+        to: recipientEmail,
+        subject: emailSubject,
+        html: emailHtml,
+      });
+
+      if (mailRes.error) {
+        deliveryError = resendErrorMessage(mailRes.error);
+        emailFailures += 1;
+        console.error('[ensure-and-send-sgm-pause-notice] Resend failed', {
+          recipientUserId,
+          attemptNo,
+          error: mailRes.error,
+        });
+      } else {
+        deliveryStatus = 'sent';
+        emailsSent += 1;
+      }
     }
 
-    const mailRes = await resend.emails.send({
-      from: 'ClearStrata <noreply@clearstrata.ai>',
-      to: recipientEmail,
-      subject: emailSubject,
-      html: emailHtml,
+    const { error: deliveryInsErr } = await admin.from('sgm_pause_email_deliveries').insert({
+      meeting_id: meetingId,
+      property_id: propertyId,
+      user_id: recipientUserId,
+      email: recipientEmail,
+      status: deliveryStatus,
+      error_message: deliveryError,
+      attempt_no: attemptNo,
     });
 
-    if (mailRes.error) {
-      emailFailures += 1;
-      console.error('[ensure-and-send-sgm-pause-notice] Resend failed', {
+    if (deliveryInsErr) {
+      console.error('[ensure-and-send-sgm-pause-notice] delivery insert failed', {
         recipientUserId,
-        error: mailRes.error,
+        attemptNo,
+        error: deliveryInsErr.message,
       });
-      continue;
+    } else {
+      emailAttemptsCreated += 1;
+      deliveryByUser.set(recipientUserId, {
+        attemptCount: attemptNo,
+        hasSent: deliveryStatus === 'sent' || deliverySummary.hasSent,
+      });
     }
-
-    emailsSent += 1;
   }
 
   const skippedFully =
@@ -440,6 +542,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     memberNotificationsAlreadyExisting,
     emailsSent,
     emailFailures,
+    emailsSkippedAlreadySent,
+    emailsSkippedMaxAttempts,
+    emailAttemptsCreated,
     owner_vote_meeting_id: ownerVoteMeetingId,
     meeting_id: meetingId,
     property_id: propertyId,

@@ -93,6 +93,9 @@ export type SgmPauseNoticeResult = {
   memberNotificationsAlreadyExisting: number;
   emailsSent: number;
   emailFailures: number;
+  emailsSkippedAlreadySent: number;
+  emailsSkippedMaxAttempts: number;
+  emailAttemptsCreated: number;
   /** @deprecated use memberNotificationsCreated */
   memberNotificationsSent?: number;
   /** @deprecated use emailsSent */
@@ -183,6 +186,9 @@ function emptySgmPauseResult(params: { error?: string }): SgmPauseNoticeResult {
     memberNotificationsAlreadyExisting: 0,
     emailsSent: 0,
     emailFailures: 0,
+    emailsSkippedAlreadySent: 0,
+    emailsSkippedMaxAttempts: 0,
+    emailAttemptsCreated: 0,
     error: params.error,
   };
 }
@@ -193,6 +199,9 @@ function parseSgmPauseNoticePayload(payload: Partial<SgmPauseNoticeResult>): Sgm
   );
   const emailsSent = Number(payload.emailsSent ?? payload.emailNotificationsSent ?? 0);
   const emailFailures = Number(payload.emailFailures ?? 0);
+  const emailsSkippedAlreadySent = Number(payload.emailsSkippedAlreadySent ?? 0);
+  const emailsSkippedMaxAttempts = Number(payload.emailsSkippedMaxAttempts ?? 0);
+  const emailAttemptsCreated = Number(payload.emailAttemptsCreated ?? 0);
 
   return {
     ok: Boolean(payload.ok ?? true),
@@ -204,6 +213,9 @@ function parseSgmPauseNoticePayload(payload: Partial<SgmPauseNoticeResult>): Sgm
     memberNotificationsAlreadyExisting: Number(payload.memberNotificationsAlreadyExisting ?? 0),
     emailsSent,
     emailFailures,
+    emailsSkippedAlreadySent,
+    emailsSkippedMaxAttempts,
+    emailAttemptsCreated,
     memberNotificationsSent: memberNotificationsCreated,
     emailNotificationsSent: emailsSent,
     partialEmailFailure: emailFailures > 0 && (memberNotificationsCreated > 0 || Boolean(payload.announcementCreated)),
