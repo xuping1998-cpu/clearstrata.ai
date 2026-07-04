@@ -1,194 +1,291 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronDown, Megaphone } from 'lucide-react';
+import { ChevronDown, MessagesSquare } from 'lucide-react';
 
 export type ImportantUpdateKind = 'action' | 'notice';
 
-/** 占位：后续可由 props / hook 替换为真实公告、待办、通知数据源 */
+export type DeliberationContentType = 'discussion' | 'consultation' | 'notice';
+
+/** Reused by hooks — Phase 1 maps rows to deliberation content types in the card UI. */
 export type ImportantUpdatesBullet = {
-  /** 稳定键，便于列表 Diff / analytics */
   id: string;
   text: string;
-  /** 需要处理 vs 最新通知；缺省视为 notice */
   kind?: ImportantUpdateKind;
-  /** 立即查看跳转；缺省走公告 tab */
   actionUrl?: string;
   source?: 'vote' | 'announcement' | 'agm_sgm';
   createdAt?: string;
   priority?: number;
+  /** Optional explicit Phase 1 content type; inferred when omitted. */
+  contentType?: DeliberationContentType;
+  commentCount?: number;
+  remainingDays?: number;
+  openUntil?: string;
 };
 
 export type ImportantUpdatesDashboardCardProps = {
-  /** true = 英文主界面 */
   langEn: boolean;
-  /** 可选：接入真实数据时传入；缺省则用静态占位 */
   bullets?: ImportantUpdatesBullet[];
 };
+
+const DEFAULT_VIEW_URL = '/owner-info?tab=announcements';
 
 const FALLBACK_ZH: ImportantUpdatesBullet[] = [
   {
     id: 'sgm-vote',
     kind: 'action',
+    contentType: 'discussion',
     text: 'SGM 年度會議將於 6 月 19 日開放投票',
     actionUrl: '/voting',
   },
-  { id: 'elevator', kind: 'notice', text: '電梯維修通知' },
-  { id: 'agm', kind: 'notice', text: 'AGM 年度会议将于 6 月 15 日召开' },
+  { id: 'elevator', kind: 'notice', contentType: 'notice', text: '電梯維修通知' },
+  { id: 'agm', kind: 'notice', contentType: 'notice', text: 'AGM 年度会议将于 6 月 15 日召开' },
 ];
 
 const FALLBACK_EN: ImportantUpdatesBullet[] = [
   {
     id: 'sgm-vote',
     kind: 'action',
+    contentType: 'discussion',
     text: 'SGM annual meeting voting opens June 19',
     actionUrl: '/voting',
   },
-  { id: 'elevator', kind: 'notice', text: 'Elevator maintenance notice' },
-  { id: 'agm', kind: 'notice', text: 'AGM meeting scheduled for June 15' },
+  { id: 'elevator', kind: 'notice', contentType: 'notice', text: 'Elevator maintenance notice' },
+  { id: 'agm', kind: 'notice', contentType: 'notice', text: 'AGM meeting scheduled for June 15' },
 ];
 
-const DEFAULT_VIEW_URL = '/owner-info?tab=announcements';
+function inferContentType(item: ImportantUpdatesBullet): DeliberationContentType {
+  if (item.contentType) return item.contentType;
+  if (item.kind === 'notice' || item.source === 'announcement') return 'notice';
+  if (item.source === 'agm_sgm') {
+    const t = item.text;
+    if (/notice period|通知期|公示期|public notice|consultation/i.test(t)) return 'consultation';
+    return 'discussion';
+  }
+  if (item.kind === 'action' || item.source === 'vote') return 'discussion';
+  return 'notice';
+}
 
-function splitByKind(items: ImportantUpdatesBullet[]) {
-  const actions: ImportantUpdatesBullet[] = [];
+function phase1DemoDiscussions(langEn: boolean): ImportantUpdatesBullet[] {
+  return [
+    {
+      id: 'demo-discussion-pm',
+      contentType: 'discussion',
+      text: langEn ? 'Property Management Renewal' : '物业管理续约',
+      commentCount: 128,
+      remainingDays: 12,
+      actionUrl: '/meetings',
+    },
+    {
+      id: 'demo-consultation-budget',
+      contentType: 'consultation',
+      text: langEn ? '2027 Budget Proposal' : '2027 年度预算方案',
+      openUntil: langEn ? 'Open until Jul 15' : '开放至 7 月 15 日',
+      actionUrl: '/meetings',
+    },
+  ];
+}
+
+function partitionBullets(items: ImportantUpdatesBullet[]) {
+  const discussions: ImportantUpdatesBullet[] = [];
+  const consultations: ImportantUpdatesBullet[] = [];
   const notices: ImportantUpdatesBullet[] = [];
+
   for (const item of items) {
-    if (item.kind === 'action') actions.push(item);
+    const type = inferContentType(item);
+    if (type === 'discussion') discussions.push(item);
+    else if (type === 'consultation') consultations.push(item);
     else notices.push(item);
   }
-  return { actions, notices };
+
+  return { discussions, consultations, notices };
 }
 
-function actionBadgeLabel(count: number, langEn: boolean) {
-  if (langEn) return count === 1 ? '1 action item' : `${count} action items`;
-  return `需處理 ${count} 項`;
+function withPhase1DemoRows(items: ImportantUpdatesBullet[], langEn: boolean): ImportantUpdatesBullet[] {
+  const { discussions, consultations, notices } = partitionBullets(items);
+  const demos = phase1DemoDiscussions(langEn);
+  const demoDiscussions = demos.filter((d) => d.contentType === 'discussion');
+  const demoConsultations = demos.filter((d) => d.contentType === 'consultation');
+
+  return [
+    ...(discussions.length ? discussions : demoDiscussions),
+    ...(consultations.length ? consultations : demoConsultations),
+    ...notices,
+  ];
 }
 
-function noticeBadgeLabel(langEn: boolean) {
-  return langEn ? 'Latest notice' : '最新通知';
+type StatusDotProps = { variant: DeliberationContentType };
+
+function StatusDot({ variant }: StatusDotProps) {
+  const color =
+    variant === 'discussion'
+      ? 'bg-emerald-500'
+      : variant === 'consultation'
+        ? 'bg-amber-400'
+        : 'bg-clearstrata-ui-primary';
+  return <span className={`mt-2 h-2 w-2 shrink-0 rounded-full ${color}`} aria-hidden />;
 }
 
-type UpdateBadgeProps = {
-  variant: 'action' | 'notice';
-  label: string;
-};
-
-function UpdateBadge({ variant, label }: UpdateBadgeProps) {
-  const className =
-    variant === 'action'
-      ? 'rounded-full border border-orange-400 bg-orange-50/60 px-2 py-0.5 text-[11px] font-semibold leading-none text-orange-700 sm:text-xs'
-      : 'rounded-full bg-clearstrata-brand-50 px-2 py-0.5 text-[11px] font-semibold leading-none text-clearstrata-brand-800 ring-1 ring-clearstrata-brand-200 sm:text-xs';
-
-  return (
-    <span className={`inline-flex shrink-0 items-center ${className}`}>
-      {label}
-    </span>
-  );
-}
-
-type PreviewLineProps = {
+type DeliberationRowProps = {
   item: ImportantUpdatesBullet;
-  actionCount: number;
   langEn: boolean;
 };
 
-function PreviewLine({ item, actionCount, langEn }: PreviewLineProps) {
-  const isAction = item.kind === 'action';
-  const badgeLabel = isAction ? actionBadgeLabel(actionCount, langEn) : noticeBadgeLabel(langEn);
+function DeliberationRow({ item, langEn }: DeliberationRowProps) {
+  const type = inferContentType(item);
+  const url = item.actionUrl ?? DEFAULT_VIEW_URL;
+
+  const statusLabel =
+    type === 'discussion'
+      ? langEn
+        ? 'Discussion'
+        : '讨论中'
+      : type === 'consultation'
+        ? langEn
+          ? 'Public Consultation'
+          : '公开征求意见'
+        : langEn
+          ? 'Official Notice'
+          : '正式通知';
+
+  const metaParts: string[] = [statusLabel];
+  if (type === 'discussion' && item.commentCount != null) {
+    metaParts.push(langEn ? `${item.commentCount} Comments` : `${item.commentCount} 条评论`);
+  }
+  if (type === 'discussion' && item.remainingDays != null) {
+    metaParts.push(langEn ? `${item.remainingDays} Days Remaining` : `剩余 ${item.remainingDays} 天`);
+  }
+  if (type === 'consultation' && item.openUntil) {
+    metaParts.push(item.openUntil);
+  }
+
+  const ctaLabel =
+    type === 'discussion'
+      ? langEn
+        ? 'Join Discussion'
+        : '参与讨论'
+      : type === 'consultation'
+        ? langEn
+          ? 'View Consultation'
+          : '查看意见'
+        : langEn
+          ? 'View'
+          : '查看';
 
   return (
-    <div className="flex min-w-0 items-start gap-2 text-[13px] leading-snug text-gray-800 sm:text-sm">
-      <UpdateBadge variant={isAction ? 'action' : 'notice'} label={badgeLabel} />
-      <span className="min-w-0 flex-1 pt-px">{item.text}</span>
+    <div className="rounded-xl border border-gray-100 bg-gray-50/60 px-3 py-2.5 sm:px-3.5 sm:py-3">
+      <div className="flex items-start gap-2.5">
+        <StatusDot variant={type} />
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-semibold leading-snug text-gray-900 sm:text-sm">{item.text}</p>
+          <p className="mt-0.5 text-[11px] leading-snug text-gray-600 sm:text-xs">{metaParts.join(' · ')}</p>
+          <Link
+            to={url}
+            className="mt-2 inline-flex items-center justify-center rounded-lg border border-clearstrata-ui-softBorder bg-white px-2.5 py-1 text-[11px] font-semibold text-clearstrata-brand-900 shadow-sm hover:bg-clearstrata-brand-50 active:bg-clearstrata-brand-100/80 sm:text-xs"
+          >
+            {ctaLabel}
+          </Link>
+        </div>
+      </div>
     </div>
   );
 }
 
-type GroupedListProps = {
+type SectionBlockProps = {
   title: string;
   items: ImportantUpdatesBullet[];
+  langEn: boolean;
 };
 
-function GroupedList({ title, items }: GroupedListProps) {
+function SectionBlock({ title, items, langEn }: SectionBlockProps) {
   if (items.length === 0) return null;
-
   return (
     <div>
-      <h3 className="mb-1.5 text-xs font-semibold text-gray-700">{title}</h3>
-      <ul className="space-y-1.5">
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">{title}</h3>
+      <div className="space-y-2">
         {items.map((row) => (
-          <li key={row.id} className="flex min-w-0 items-start gap-2.5 text-[13px] leading-snug text-gray-800 sm:text-sm">
-            <span
-              className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
-                row.kind === 'action' ? 'bg-orange-400' : 'bg-clearstrata-ui-primary'
-              }`}
-              aria-hidden
-            />
-            <span className="min-w-0 flex-1">{row.text}</span>
-          </li>
+          <DeliberationRow key={row.id} item={row} langEn={langEn} />
         ))}
-      </ul>
+      </div>
     </div>
   );
 }
 
 /**
- * 首页「透明社区治理」首屏模块：重要事項 / Important Updates 摺叠卡片。
+ * Project One Phase 1 — Community Deliberation landing (replaces Important Updates top card).
+ * Data: reuses Important Updates bullets; no schema or API changes.
  */
-export function ImportantUpdatesDashboardCard({ langEn, bullets }: ImportantUpdatesDashboardCardProps) {
+export function CommunityDeliberationDashboardCard({ langEn, bullets }: ImportantUpdatesDashboardCardProps) {
   const [expanded, setExpanded] = useState(false);
 
-  const title = langEn ? 'Important Updates' : '重要事項';
+  const titleZh = '社区议事厅';
+  const titleEn = 'Community Deliberation';
+  const motto = langEn
+    ? 'Good governance begins with listening.'
+    : '良好的治理，始于认真倾听。';
   const subtitle = langEn
-    ? 'Community updates, action items and latest notices'
-    : '社區重要公告、待辦事項與最新通知';
-  const cta = langEn ? 'View now' : '立即查看';
-  const emptyText = langEn ? 'No new important updates right now' : '目前沒有新的重要事項';
-  const actionGroupTitle = langEn ? 'Action required' : '需要處理';
-  const noticeGroupTitle = langEn ? 'Latest notices' : '最新通知';
-  const expandLabel = langEn ? (expanded ? 'Collapse updates' : 'Expand updates') : expanded ? '收起' : '展開';
+    ? 'Every important community decision begins with open discussion.'
+    : '每一项重要社区决策，都始于公开讨论。';
+  const emptyText = langEn ? 'No community matters to show right now' : '目前没有社区议事事项';
+  const expandLabel = langEn ? (expanded ? 'Collapse' : 'Expand') : expanded ? '收起' : '展开';
+  const viewAllLabel = langEn ? 'View All Community Matters' : '查看全部重大事项';
 
-  const list = Array.isArray(bullets) ? bullets : langEn ? FALLBACK_EN : FALLBACK_ZH;
-  const { actions, notices } = useMemo(() => splitByKind(list), [list]);
+  const discussionSectionTitle = langEn ? 'In discussion' : '讨论中';
+  const consultationSectionTitle = langEn ? 'Public consultation' : '公开征求意见';
+  const noticeSectionTitle = langEn ? 'Official notices' : '正式通知';
 
-  const previewItem = actions[0] ?? notices[0] ?? null;
-  const ctaUrl = previewItem?.actionUrl ?? DEFAULT_VIEW_URL;
+  const rawList = Array.isArray(bullets) ? bullets : langEn ? FALLBACK_EN : FALLBACK_ZH;
+  const list = useMemo(() => withPhase1DemoRows(rawList, langEn), [rawList, langEn]);
+  const { discussions, consultations, notices } = useMemo(() => partitionBullets(list), [list]);
+
+  const previewRows = useMemo(() => {
+    const rows: ImportantUpdatesBullet[] = [];
+    if (discussions[0]) rows.push(discussions[0]);
+    if (consultations[0]) rows.push(consultations[0]);
+    if (notices[0]) rows.push(notices[0]);
+    return rows.slice(0, 3);
+  }, [discussions, consultations, notices]);
+
   const hasContent = list.length > 0;
+  const primaryCtaUrl = previewRows[0]?.actionUrl ?? discussions[0]?.actionUrl ?? DEFAULT_VIEW_URL;
 
   return (
     <section
       className="mb-4 rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-sm sm:px-5 sm:py-5"
-      aria-labelledby="home-important-updates-heading"
-      data-widget="important-updates"
+      aria-labelledby="home-community-deliberation-heading"
+      data-widget="community-deliberation"
     >
       <div className="flex items-start gap-2 sm:gap-3">
         <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-clearstrata-ui-soft ring-1 ring-clearstrata-ui-softBorder">
-          <Megaphone className="h-4 w-4 text-clearstrata-brand-800" aria-hidden />
+          <MessagesSquare className="h-4 w-4 text-clearstrata-brand-800" aria-hidden />
         </span>
 
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <h2
-                id="home-important-updates-heading"
+                id="home-community-deliberation-heading"
                 className="text-base font-bold leading-tight text-gray-900 sm:text-[17px]"
               >
-                {title}
+                {langEn ? titleEn : titleZh}
+                <span className="mt-0.5 block text-[13px] font-semibold text-clearstrata-brand-800 sm:text-sm">
+                  {langEn ? titleZh : titleEn}
+                </span>
               </h2>
-              <p className="mt-0.5 text-[13px] leading-snug text-gray-600 sm:text-sm">{subtitle}</p>
+              <p className="mt-1 text-[13px] font-medium leading-snug text-gray-800 sm:text-sm">{motto}</p>
+              <p className="mt-0.5 text-[12px] leading-snug text-gray-600 sm:text-[13px]">{subtitle}</p>
             </div>
 
             <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
               <Link
-                to={ctaUrl}
+                to={primaryCtaUrl}
                 className="inline-flex items-center justify-center rounded-lg border border-clearstrata-ui-softBorder bg-white px-2.5 py-1.5 text-xs font-semibold text-clearstrata-brand-900 shadow-sm hover:bg-clearstrata-brand-50 active:bg-clearstrata-brand-100/80 sm:px-3 sm:text-[13px]"
               >
-                {cta}
+                {langEn ? 'View' : '查看'}
               </Link>
               <button
                 type="button"
                 aria-expanded={expanded}
-                aria-controls="home-important-updates-panel"
+                aria-controls="home-community-deliberation-panel"
                 onClick={() => setExpanded((v) => !v)}
                 className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 shadow-sm hover:bg-gray-50 active:bg-gray-100"
                 aria-label={expandLabel}
@@ -201,21 +298,33 @@ export function ImportantUpdatesDashboardCard({ langEn, bullets }: ImportantUpda
             </div>
           </div>
 
-          <div className="mt-3 border-t border-gray-100 pt-3">
+          <div className="mt-3 space-y-2 border-t border-gray-100 pt-3">
             {!hasContent ? (
               <p className="text-[13px] leading-snug text-gray-500 sm:text-sm">{emptyText}</p>
-            ) : previewItem ? (
-              <PreviewLine item={previewItem} actionCount={actions.length} langEn={langEn} />
-            ) : null}
+            ) : expanded ? null : (
+              previewRows.map((row) => <DeliberationRow key={row.id} item={row} langEn={langEn} />)
+            )}
           </div>
 
           {expanded && hasContent ? (
             <div
-              id="home-important-updates-panel"
-              className="mt-3 space-y-4 border-t border-gray-100 pt-3 text-[13px] sm:text-sm"
+              id="home-community-deliberation-panel"
+              className="mt-3 space-y-4 border-t border-gray-100 pt-3"
             >
-              <GroupedList title={actionGroupTitle} items={actions} />
-              <GroupedList title={noticeGroupTitle} items={notices} />
+              <SectionBlock title={discussionSectionTitle} items={discussions} langEn={langEn} />
+              <SectionBlock title={consultationSectionTitle} items={consultations} langEn={langEn} />
+              <SectionBlock title={noticeSectionTitle} items={notices} langEn={langEn} />
+            </div>
+          ) : null}
+
+          {hasContent ? (
+            <div className="mt-3 border-t border-gray-100 pt-3">
+              <Link
+                to={DEFAULT_VIEW_URL}
+                className="text-[13px] font-semibold text-clearstrata-brand-900 hover:underline sm:text-sm"
+              >
+                {viewAllLabel}
+              </Link>
             </div>
           ) : null}
         </div>
@@ -223,3 +332,6 @@ export function ImportantUpdatesDashboardCard({ langEn, bullets }: ImportantUpda
     </section>
   );
 }
+
+/** @deprecated Use CommunityDeliberationDashboardCard — kept for Phase 1 import stability. */
+export const ImportantUpdatesDashboardCard = CommunityDeliberationDashboardCard;

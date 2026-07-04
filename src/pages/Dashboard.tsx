@@ -6,7 +6,7 @@ import { GUEST_PROPERTY_STORAGE_KEY, useProperty } from '../contexts/PropertyCon
 import { DemoPropertyMockHomePanel } from '@/components/demoProperty/DemoPropertyMockHomePanel';
 import { DemoCreatePropertyCtaCard } from '@/components/onboarding/DemoCreatePropertyCta';
 import { TrialUpgradeCard } from '@/components/billing/TrialUpgradeCard';
-import { ImportantUpdatesDashboardCard } from '@/components/dashboard/ImportantUpdatesDashboardCard';
+import { CommunityDeliberationDashboardCard } from '@/components/dashboard/ImportantUpdatesDashboardCard';
 import { DashboardFinancialAlertsCard } from '@/components/DashboardFinancialAlertsCard';
 import { QuickAccessDashboardCard } from '@/components/dashboard/QuickAccessDashboardCard';
 import { HomeServicesDashboardCard } from '@/components/dashboard/HomeServicesDashboardCard';
@@ -215,7 +215,7 @@ export function Dashboard() {
           </div>
         </div>
       </div>
-      <ImportantUpdatesDashboardCard langEn={en} bullets={importantUpdatesBullets} />
+      <CommunityDeliberationDashboardCard langEn={en} bullets={importantUpdatesBullets} />
       <DashboardFinancialAlertsCard />
       <QuickAccessDashboardCard langEn={en} meetingsHref={meetingsNavHref(roleInProperty)} />
       <HomeServicesDashboardCard langEn={en} />
