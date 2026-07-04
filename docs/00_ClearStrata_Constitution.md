@@ -421,6 +421,8 @@ This repository establishes:
     The_Beauty_of_Order.md                    ← GP-001
     Community_Deliberation.md                 ← GP-002
     Governance_Dashboard.md                   ← PR-001
+    projects/
+        PR-002_Community_Deliberation_Phase_1.md  ← PR-002
     Four_Pillars_of_Community_Governance.md   ← GP-003
     FD-001_Founding_Documents.md         ← stable link to Registry FD-001
 ```

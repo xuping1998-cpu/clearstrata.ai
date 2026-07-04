@@ -38,6 +38,7 @@ Not features define the platform. **The charter defines features.**
 | **GP** | [`docs/Community_Deliberation.md`](docs/Community_Deliberation.md) | **GP-002** — Core Governance Module: Community Deliberation / 社区议事厅 |
 | **GP** | [`docs/Four_Pillars_of_Community_Governance.md`](docs/Four_Pillars_of_Community_Governance.md) | **GP-003** — Four Pillars: Listen · Think · Decide · Learn |
 | **PR** | [`docs/Governance_Dashboard.md`](docs/Governance_Dashboard.md) | **PR-001** — Project One: Governance Dashboard constitutional layout |
+| **PR** | [`docs/projects/PR-002_Community_Deliberation_Phase_1.md`](docs/projects/PR-002_Community_Deliberation_Phase_1.md) | **PR-002** — Phase 1 COMPLETED: Community Deliberation landing |
 | — | [`docs/ADR/`](docs/ADR/) | Architecture Decision Records (**AR** prefix per CS-001) |
 | — | [`docs/templates/Constitution_Review_Template.md`](docs/templates/Constitution_Review_Template.md) | Required before new features |
 

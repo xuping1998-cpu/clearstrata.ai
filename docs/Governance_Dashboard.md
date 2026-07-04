@@ -17,7 +17,7 @@
 | **Owner** | Founding Team |
 | **Supersedes** | None |
 | **Superseded By** | None |
-| **Related Documents** | FD-001, GP-002, GP-003, PR-000, CS-001 |
+| **Related Documents** | FD-001, GP-002, GP-003, PR-000, PR-002, CS-001 |
 | **Repository Location** | `docs/Governance_Dashboard.md` |
 
 **Constitutional modules on the Dashboard:** Community Deliberation (GP-002), Community Resolution, Community Voting, Community Memory (Article VII).
@@ -204,6 +204,7 @@ It represents the **Constitution through experience** — not merely through doc
 | [FD-001 — The ClearStrata Constitution](00_ClearStrata_Constitution.md) | Articles II, VI, VII, X |
 | [GP-002 — Community Deliberation](Community_Deliberation.md) | Section ① — Core Governance Module |
 | [GP-003 — The Four Pillars of Community Governance](Four_Pillars_of_Community_Governance.md) | Constitutional framework for all four sections |
+| [PR-002 — Community Deliberation Phase 1](projects/PR-002_Community_Deliberation_Phase_1.md) | Phase 1 delivery (COMPLETED) |
 | [02 — Governance Model](02_Governance_Model.md) | Lifecycle and Constitution Review |
 | [05 — UI Design Principles](05_UI_Design_Principles.md) | Transparency and clarity in UI |
 | [06 — Data Governance](06_Data_Governance.md) | Community Memory and archive |

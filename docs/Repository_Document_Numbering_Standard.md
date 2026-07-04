@@ -163,6 +163,7 @@ Templates (TM)
 | **GP-003** | [The Four Pillars of Community Governance](Four_Pillars_of_Community_Governance.md) |
 | **PR-000** | [Project Zero Chronicle](99_Project_Zero_Chronicle.md) |
 | **PR-001** | [Governance Dashboard](Governance_Dashboard.md) |
+| **PR-002** | [Community Deliberation Phase 1](projects/PR-002_Community_Deliberation_Phase_1.md) |
 | **AR-001** | First ADR in [`ADR/`](ADR/) *(when assigned)* |
 
 ---

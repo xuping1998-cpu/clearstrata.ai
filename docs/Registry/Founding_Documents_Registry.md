@@ -292,6 +292,23 @@ Founding narrative — why the Constitution exists.
 
 **Project One** — constitutional four-section Dashboard layout (Deliberation → Resolution → Voting → Memory). Framework: [GP-003 — Four Pillars](../Four_Pillars_of_Community_Governance.md).
 
+**Phase 1 completed:** [PR-002 — Community Deliberation Phase 1](../projects/PR-002_Community_Deliberation_Phase_1.md).
+
+### PR-002 — Community Deliberation Phase 1
+
+| Field | Value |
+|-------|-------|
+| **Title** | Community Deliberation — Phase 1 |
+| **Status** | COMPLETED |
+| **Version** | 1.0 |
+| **Effective Date** | 2026-06-29 |
+| **Classification** | Project Records |
+| **Authority** | The ClearStrata Constitution (FD-001) |
+
+**File:** [`../projects/PR-002_Community_Deliberation_Phase_1.md`](../projects/PR-002_Community_Deliberation_Phase_1.md)
+
+**Project One Phase 1** — Dashboard top card replaced with Community Deliberation landing (UI evolution; no backend changes).
+
 ### GP-003 — The Four Pillars of Community Governance
 
 | Field | Value |

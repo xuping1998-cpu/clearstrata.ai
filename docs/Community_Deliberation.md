@@ -17,7 +17,7 @@
 | **Owner** | Founding Team |
 | **Supersedes** | None |
 | **Superseded By** | None |
-| **Related Documents** | FD-001, GP-001, PR-000, PR-001, GP-003, CS-001 |
+| **Related Documents** | FD-001, GP-001, PR-000, PR-001, GP-003, PR-002, CS-001 |
 | **Repository Location** | `docs/Community_Deliberation.md` |
 
 ---
@@ -268,6 +268,7 @@ Together, they form the **constitutional lifecycle** of ClearStrata.
 | [PR-000 — Project Zero Chronicle](99_Project_Zero_Chronicle.md) | Founding narrative |
 | [GP-003 — The Four Pillars of Community Governance](Four_Pillars_of_Community_Governance.md) | Pillar I framework |
 | [PR-001 — Governance Dashboard](Governance_Dashboard.md) | Dashboard section ① placement and homepage copy |
+| [PR-002 — Community Deliberation Phase 1](projects/PR-002_Community_Deliberation_Phase_1.md) | Phase 1 implementation record (COMPLETED) |
 | [CS-001 — Repository Document Numbering Standard](Repository_Document_Numbering_Standard.md) | GP-002 permanent identifier |
 
 ---

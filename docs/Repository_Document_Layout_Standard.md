@@ -159,6 +159,7 @@ This establishes **constitutional traceability**.
 | **GP-001** | The Beauty of Order |
 | **GP-003** | [The Four Pillars of Community Governance](Four_Pillars_of_Community_Governance.md) |
 | **PR-001** | [Governance Dashboard](Governance_Dashboard.md) |
+| **PR-002** | [Community Deliberation Phase 1](projects/PR-002_Community_Deliberation_Phase_1.md) |
 | **CA-001** | Amendment I *(when ratified)* |
 
 **Related Documents** should reference only **official permanent documents** (assigned numbers per CS-001).
