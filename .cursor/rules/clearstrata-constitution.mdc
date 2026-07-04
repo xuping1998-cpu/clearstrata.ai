@@ -1,0 +1,76 @@
+---
+description: ClearStrata Constitution — highest governing document; verify before architecture, database, API, workflow, AI, or UI
+alwaysApply: true
+---
+
+# The ClearStrata Constitution (Rule 4)
+
+**Read first:** [`docs/00_ClearStrata_Constitution.md`](docs/00_ClearStrata_Constitution.md)
+
+This rule applies to all AI assistants working in this repository (Cursor, Claude, GPT, Gemini, etc.).
+
+## Constitutional Supremacy (Rule 1)
+
+When any feature, workflow, database schema, API, AI behavior, or product decision conflicts with the Constitution, **the Constitution prevails**. Revise the design — do not weaken the Constitution for efficiency, cost, time, or commercial pressure (Rule 5).
+
+## Before Proposing Code
+
+Before proposing **architecture**, **database**, **API**, **workflow**, **AI**, or **UI**:
+
+1. Verify compliance with [`docs/00_ClearStrata_Constitution.md`](docs/00_ClearStrata_Constitution.md)
+2. Ask **Meta Rule II**: *Does this bring ClearStrata closer to its Mission?* If no, recommend redesign before code.
+3. Cite relevant **Articles** (e.g. "Per Article II, discussion must precede resolution…")
+4. Map the change to the **Governance Lifecycle** (Article VI) when applicable
+5. Verify **legitimacy before intelligence** (Article X) — capability never substitutes constitutional authority
+6. If non-compliant, **recommend revising the design instead of writing code**
+7. For new features, remind the user to complete [`docs/templates/Constitution_Review_Template.md`](docs/templates/Constitution_Review_Template.md) before implementation
+
+**Article X:** Legitimacy governs intelligence. AI may assist; it never holds constitutional authority.
+
+All participants — human, AI, or future systems — are bound by **[Appendix A — The Constitutional Oath](docs/00_ClearStrata_Constitution.md#appendix-a--the-constitutional-oath)**.
+
+## Founding Documents (FD-001)
+
+**Do not modify** Founding Documents except through **Constitutional Amendment** (Rule 6).  
+Official registry: [`docs/Registry/Founding_Documents_Registry.md`](docs/Registry/Founding_Documents_Registry.md).
+
+## Document Hierarchy (Rule 7)
+
+```
+README → Constitution → docs/01–06 → ADR → technical constraints (SAAS_SYSTEM_CONSTRAINTS, DOMAIN_AND_ENTRY_FLOW)
+```
+
+Subordinate docs must not override the Constitution.
+
+## AI Role (Article III)
+
+- AI **assists** — summarizes, drafts, detects, structures evidence
+- AI **never** replaces lawful decision makers or binds a community to a decision
+- Follow [`docs/04_AI_Principles.md`](docs/04_AI_Principles.md)
+
+## Non-Regression
+
+Do not implement patterns that sacrifice:
+
+- Transparency (Article I)
+- Participation
+- Accountability
+- Community Memory (Article VII)
+- Community Civilization
+
+## Spirit Before System (Rule 9)
+
+Per **The Principle of Enduring Governance**: systems, databases, AI, UI, languages, and every line of code may change — ClearStrata's Mission, Constitution, Core Values, Principles of Governance, and Spirit of the Platform shall not.
+
+Technology **serves** the Constitution; it **never redefines** it.  
+Every advancement must **strengthen** principles, **never weaken** them.
+
+**Technology evolves. Principles endure.**
+
+## Coexistence With Other Rules
+
+Domain-specific locks (e.g. [`domain-entry-flow-lock.mdc`](domain-entry-flow-lock.mdc)) remain in force. If conflict arises, **Constitution wins**; then reconcile domain rules via ADR.
+
+## Release Mindset (Rule 8)
+
+Project Zero never ends. Prefer changes that can be listed under **Constitution Compliance** in release notes.
