@@ -17,7 +17,7 @@
 | **Owner** | Founding Team |
 | **Supersedes** | None |
 | **Superseded By** | None |
-| **Related Documents** | CS-001, CS-002, GP-001, FD-001, PR-000 |
+| **Related Documents** | CS-001, CS-002, CS-004, GP-001, FD-001, PR-000 |
 | **Repository Location** | `docs/Repository_Document_Layout_Standard.md` |
 
 ---
@@ -158,6 +158,7 @@ This establishes **constitutional traceability**.
 | **CS-003** | Repository Document Layout Standard |
 | **GP-001** | The Beauty of Order |
 | **GP-003** | [The Four Pillars of Community Governance](Four_Pillars_of_Community_Governance.md) |
+| **CS-004** | [Repository Registry Standard](Repository_Registry_Standard.md) |
 | **PR-001** | [Governance Dashboard](Governance_Dashboard.md) |
 | **PR-002** | [Community Deliberation Phase 1](projects/PR-002_Community_Deliberation_Phase_1.md) |
 | **CA-001** | Amendment I *(when ratified)* |
@@ -200,6 +201,8 @@ This establishes **constitutional traceability**.
 | [CS-002 — Document Identity Block Standard](Document_Identity_Block_Standard.md) | Identity Block fields (section 1) |
 | [GP-001 — The Beauty of Order](The_Beauty_of_Order.md) | Rationale for mandatory Related Documents |
 | [PR-000 — Project Zero Chronicle](99_Project_Zero_Chronicle.md) | Founding narrative |
+| [CS-004 — Repository Registry Standard](Repository_Registry_Standard.md) | Document_Registry.md allocation |
+| [Document Registry](Registry/Document_Registry.md) | Authoritative numbering source |
 | [Founding Documents Registry](Registry/Founding_Documents_Registry.md) | Official FD/CS registry |
 
 ---

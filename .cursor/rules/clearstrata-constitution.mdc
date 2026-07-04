@@ -34,6 +34,16 @@ All participants — human, AI, or future systems — are bound by **[Appendix A
 **Do not modify** Founding Documents except through **Constitutional Amendment** (Rule 6).  
 Official registry: [`docs/Registry/Founding_Documents_Registry.md`](docs/Registry/Founding_Documents_Registry.md).
 
+## Official Documents (CS-001, CS-004)
+
+Before creating **any** official numbered document (FD, CA, CS, GP, PR, AR, etc.):
+
+1. Read [`docs/Registry/Document_Registry.md`](docs/Registry/Document_Registry.md) (**FD-REG-001**) — **sole numbering authority** ([CS-004](docs/Repository_Registry_Standard.md))
+2. Allocate the next identifier and **update Document_Registry.md first**
+3. Follow [CS-001](docs/Repository_Document_Numbering_Standard.md), [CS-002](docs/Document_Identity_Block_Standard.md), [CS-003](docs/Repository_Document_Layout_Standard.md), [RM-001](docs/Repository_Management_Document_Registry.md)
+
+**Never** guess, reuse, skip, or invent permanent document numbers.
+
 ## Document Hierarchy (Rule 7)
 
 ```

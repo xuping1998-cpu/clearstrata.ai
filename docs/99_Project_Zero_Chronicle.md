@@ -9,7 +9,7 @@
 | **Document Number** | PR-000 |
 | **Document Title** | The Project Zero Chronicle |
 | **Document Type** | Project Record (PR) |
-| **Status** | ACTIVE |
+| **Status** | COMPLETED |
 | **Version** | 1.0 |
 | **Authority** | [The ClearStrata Constitution](00_ClearStrata_Constitution.md) (FD-001) |
 | **Effective Date** | 2026-06-29 |
@@ -17,7 +17,7 @@
 | **Owner** | Founding Team |
 | **Supersedes** | None |
 | **Superseded By** | None |
-| **Related Documents** | FD-001, CS-001, CS-002, CS-003, PR-001 |
+| **Related Documents** | FD-001, CS-001, CS-002, CS-003, PR-001, PR-008 |
 | **Repository Location** | `docs/99_Project_Zero_Chronicle.md` |
 
 > **This document is NOT a technical document.**  

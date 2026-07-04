@@ -413,11 +413,20 @@ This repository establishes:
         README.md
         (architecture decision records)
     99_Project_Zero_Chronicle.md
+    The_Final_Institution_of_Project_Zero.md  ← PR-008
     Registry/
         Founding_Documents_Registry.md   ← official FD registry (permanent numbers)
+        Document_Registry.md             ← FD-REG-001 (CS-004 / RM-001)
+        Amendments_Registry.md           ← RM-002 RESERVED
+        Releases_Registry.md             ← RM-003 RESERVED
+        Governance_Index.md              ← RM-004 RESERVED
     Repository_Document_Numbering_Standard.md   ← CS-001
     Document_Identity_Block_Standard.md         ← CS-002
     Repository_Document_Layout_Standard.md    ← CS-003
+    Repository_Registry_Standard.md           ← CS-004
+    Repository_Management_Document_Registry.md  ← RM-001
+    Repository_Governance_Resolution.md       ← RM-005
+    STRUCTURE.md                              ← layout index (RM-005)
     The_Beauty_of_Order.md                    ← GP-001
     Community_Deliberation.md                 ← GP-002
     Governance_Dashboard.md                   ← PR-001

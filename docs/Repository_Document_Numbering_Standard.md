@@ -17,10 +17,10 @@
 | **Owner** | Founding Team |
 | **Supersedes** | None |
 | **Superseded By** | None |
-| **Related Documents** | CS-002, CS-003, FD-001, PR-000 |
+| **Related Documents** | CS-002, CS-003, CS-004, FD-001, PR-000 |
 | **Repository Location** | `docs/Repository_Document_Numbering_Standard.md` |
 
-**Registry:** [Founding Documents Registry](Registry/Founding_Documents_Registry.md)
+**Registry:** [Document Registry](Registry/Document_Registry.md) · [Founding Documents Registry](Registry/Founding_Documents_Registry.md)
 
 ---
 
@@ -158,12 +158,15 @@ Templates (TM)
 | **CS-001** | Repository Document Numbering Standard *(this document)* |
 | **CS-002** | [Document Identity Block Standard](Document_Identity_Block_Standard.md) |
 | **CS-003** | Repository Document Layout Standard *(this document)* |
+| **CS-004** | [Repository Registry Standard](Repository_Registry_Standard.md) |
 | **GP-001** | [The Beauty of Order](The_Beauty_of_Order.md) |
 | **GP-002** | [Community Deliberation (社区议事厅)](Community_Deliberation.md) |
 | **GP-003** | [The Four Pillars of Community Governance](Four_Pillars_of_Community_Governance.md) |
+| **RM-005** | [Repository Governance Resolution](Repository_Governance_Resolution.md) |
 | **PR-000** | [Project Zero Chronicle](99_Project_Zero_Chronicle.md) |
 | **PR-001** | [Governance Dashboard](Governance_Dashboard.md) |
 | **PR-002** | [Community Deliberation Phase 1](projects/PR-002_Community_Deliberation_Phase_1.md) |
+| **PR-008** | [The Final Institution of Project Zero](The_Final_Institution_of_Project_Zero.md) |
 | **AR-001** | First ADR in [`ADR/`](ADR/) *(when assigned)* |
 
 ---
@@ -204,11 +207,12 @@ Templates (TM)
 
 1. Every newly created **official document** shall receive a permanent identifier.
 2. Every permanent identifier shall **conform to CS-001**.
-3. Every official document header shall **conform to [CS-002](Document_Identity_Block_Standard.md)**.
-4. Every official document structure shall **conform to [CS-003](Repository_Document_Layout_Standard.md)**.
-5. Existing permanent document identifiers shall **never be renumbered**.
-6. **Retired** document numbers remain **reserved**.
-7. Historical references must remain valid **indefinitely**.
+3. Every allocation shall be recorded in **[Document_Registry.md](Registry/Document_Registry.md)** per **[CS-004](Repository_Registry_Standard.md)** before the document file is created.
+4. Every official document header shall **conform to [CS-002](Document_Identity_Block_Standard.md)**.
+5. Every official document structure shall **conform to [CS-003](Repository_Document_Layout_Standard.md)**.
+6. Existing permanent document identifiers shall **never be renumbered**.
+7. **Retired** document numbers remain **reserved**.
+8. Historical references must remain valid **indefinitely**.
 
 ---
 

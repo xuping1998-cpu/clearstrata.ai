@@ -17,7 +17,7 @@
 | **Owner** | Founding Team |
 | **Supersedes** | None |
 | **Superseded By** | None |
-| **Related Documents** | CS-001, CS-003, FD-001, PR-000 |
+| **Related Documents** | CS-001, CS-003, CS-004, FD-001, PR-000 |
 | **Repository Location** | `docs/Document_Identity_Block_Standard.md` |
 
 ---

@@ -25,6 +25,7 @@ Not features define the platform. **The charter defines features.**
 | — | *Appendix 0* — [The Founding Declaration](docs/00_ClearStrata_Constitution.md#appendix-0--the-founding-declaration) | Founding belief |
 | — | *Appendix A* — [The Constitutional Oath](docs/00_ClearStrata_Constitution.md#appendix-a--the-constitutional-oath) | Oath of every participant |
 | **99** | [`docs/99_Project_Zero_Chronicle.md`](docs/99_Project_Zero_Chronicle.md) | **PR-000** — Why the Constitution exists |
+| **—** | [`docs/The_Final_Institution_of_Project_Zero.md`](docs/The_Final_Institution_of_Project_Zero.md) | **PR-008** — Three Layers of Governance (Project Zero closing) |
 | 2 | [`docs/01_Product_Vision.md`](docs/01_Product_Vision.md) | Product vision and scope |
 | 3 | [`docs/02_Governance_Model.md`](docs/02_Governance_Model.md) | Governance lifecycle, review, amendment |
 | 4 | [`docs/03_System_Architecture.md`](docs/03_System_Architecture.md) | System architecture principles |
@@ -34,6 +35,11 @@ Not features define the platform. **The charter defines features.**
 | **CS** | [`docs/Repository_Document_Numbering_Standard.md`](docs/Repository_Document_Numbering_Standard.md) | **CS-001** — permanent document numbering |
 | **CS** | [`docs/Document_Identity_Block_Standard.md`](docs/Document_Identity_Block_Standard.md) | **CS-002** — document identity block |
 | **CS** | [`docs/Repository_Document_Layout_Standard.md`](docs/Repository_Document_Layout_Standard.md) | **CS-003** — document layout and section order |
+| **CS** | [`docs/Repository_Registry_Standard.md`](docs/Repository_Registry_Standard.md) | **CS-004** — Document Registry (sole numbering authority) |
+| **RM** | [`docs/Repository_Management_Document_Registry.md`](docs/Repository_Management_Document_Registry.md) | **RM-001** — Document Registry management standard |
+| **RM** | [`docs/Repository_Governance_Resolution.md`](docs/Repository_Governance_Resolution.md) | **RM-005** — Repository Governance Resolution (APPROVED) |
+| **RM** | [`docs/STRUCTURE.md`](docs/STRUCTURE.md) | Target docs layout index |
+| **RM** | [`docs/Registry/Document_Registry.md`](docs/Registry/Document_Registry.md) | **FD-REG-001** — master index (CS-004 / RM-001) |
 | **GP** | [`docs/The_Beauty_of_Order.md`](docs/The_Beauty_of_Order.md) | **GP-001** — mandatory Related Documents (The Beauty of Order) |
 | **GP** | [`docs/Community_Deliberation.md`](docs/Community_Deliberation.md) | **GP-002** — Core Governance Module: Community Deliberation / 社区议事厅 |
 | **GP** | [`docs/Four_Pillars_of_Community_Governance.md`](docs/Four_Pillars_of_Community_Governance.md) | **GP-003** — Four Pillars: Listen · Think · Decide · Learn |

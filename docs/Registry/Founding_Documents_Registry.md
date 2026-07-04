@@ -2,7 +2,9 @@
 
 ## 创始文献登记册
 
-The Founding Documents Registry is the **official record** of all constitutional-level documents within the ClearStrata repository.
+The Founding Documents Registry is the **official record** of constitutional-level **history and narrative** within the ClearStrata repository.
+
+**Permanent document numbering authority:** [`Document_Registry.md`](Document_Registry.md) (**FD-REG-001**) per [CS-004 — Repository Registry Standard](../Repository_Registry_Standard.md). **Read and update Document_Registry.md before allocating any new number.**
 
 It preserves the **identity**, **history**, **constitutional authority**, and **institutional memory** of the platform.
 
@@ -224,6 +226,51 @@ Official implementation standards under FD-001. Full prefix definitions: [`../Re
 
 **Principle:** [GP-001 — The Beauty of Order](../The_Beauty_of_Order.md) — why Related Documents is mandatory.
 
+### CS-004 — Repository Registry Standard
+
+| Field | Value |
+|-------|-------|
+| **Title** | Repository Registry Standard |
+| **Status** | ACTIVE |
+| **Version** | 1.0 |
+| **Effective Date** | 2026-06-29 |
+| **Classification** | Constitutional Standard |
+| **Authority** | The ClearStrata Constitution (FD-001) |
+
+**File:** [`../Repository_Registry_Standard.md`](../Repository_Registry_Standard.md)
+
+**Authoritative registry:** [`Document_Registry.md`](Document_Registry.md) (**FD-REG-001**) — sole source for permanent document numbering allocation. **Management standard:** [RM-001](../Repository_Management_Document_Registry.md).
+
+### RM-001 — Document Registry
+
+| Field | Value |
+|-------|-------|
+| **Title** | Document Registry |
+| **Status** | ACTIVE |
+| **Version** | 1.0 |
+| **Effective Date** | 2026-06-29 |
+| **Classification** | Repository Management |
+| **Authority** | The ClearStrata Constitution (FD-001) |
+
+**File:** [`../Repository_Management_Document_Registry.md`](../Repository_Management_Document_Registry.md)
+
+**Repository management standard** for the master index (FD-REG-001) — workflow, lifecycle, and allocation rules.
+
+### RM-005 — Repository Governance Resolution
+
+| Field | Value |
+|-------|-------|
+| **Title** | Repository Governance Resolution |
+| **Status** | ACTIVE (APPROVED) |
+| **Version** | 1.0 |
+| **Effective Date** | 2026-06-29 |
+| **Classification** | Repository Governance Resolution |
+| **Authority** | The ClearStrata Constitution (FD-001) |
+
+**File:** [`../Repository_Governance_Resolution.md`](../Repository_Governance_Resolution.md)
+
+**APPROVED** — Project One adopts permanent constitutional documentation system; target repository structure and workflow.
+
 ---
 
 ## Governance Principles (GP)
@@ -271,7 +318,7 @@ Official project-level governance and experience records. Numbering per [CS-001]
 | Field | Value |
 |-------|-------|
 | **Title** | The Project Zero Chronicle |
-| **Status** | ACTIVE |
+| **Status** | COMPLETED |
 | **Version** | 1.0 |
 | **File** | [`../99_Project_Zero_Chronicle.md`](../99_Project_Zero_Chronicle.md) |
 
@@ -308,6 +355,21 @@ Founding narrative — why the Constitution exists.
 **File:** [`../projects/PR-002_Community_Deliberation_Phase_1.md`](../projects/PR-002_Community_Deliberation_Phase_1.md)
 
 **Project One Phase 1** — Dashboard top card replaced with Community Deliberation landing (UI evolution; no backend changes).
+
+### PR-008 — The Final Institution of Project Zero
+
+| Field | Value |
+|-------|-------|
+| **Title** | The Final Institution of Project Zero — Three Layers of Governance |
+| **Status** | COMPLETED (FOUNDATIONAL) |
+| **Version** | 1.0 |
+| **Effective Date** | 2026-06-29 |
+| **Classification** | Project Zero Closing Institution |
+| **Authority** | The ClearStrata Constitution (FD-001) |
+
+**File:** [`../The_Final_Institution_of_Project_Zero.md`](../The_Final_Institution_of_Project_Zero.md)
+
+**Three layers:** Principles · Standards · Projects. *The Foundation is complete. The future now begins.*
 
 ### GP-003 — The Four Pillars of Community Governance
 

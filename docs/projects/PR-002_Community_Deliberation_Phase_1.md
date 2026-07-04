@@ -188,6 +188,22 @@ The homepage should answer one question before all others:
 | Version | Date | Summary | Author |
 |---------|------|---------|--------|
 | 1.0 | 2026-06-29 | Phase 1 completed — Community Deliberation Dashboard landing | ClearStrata Project One |
+| 1.1 | 2026-06-29 | **Milestone M-002** COMPLETED — registry, commit, tag | ClearStrata Project One |
+
+---
+
+## Milestone
+
+| Field | Value |
+|-------|-------|
+| **Milestone** | **M-002** |
+| **Project** | Project One |
+| **Title** | Community Deliberation Phase 1 |
+| **Status** | **COMPLETED** |
+| **Project Record** | PR-002 |
+| **Git Tag** | `project-one-m-002` |
+
+**Delivery:** Dashboard top card → Community Deliberation (GP-002); UI-only; no schema/API changes.
 
 ---
 
