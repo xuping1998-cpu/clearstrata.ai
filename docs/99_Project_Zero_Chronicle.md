@@ -532,6 +532,34 @@ ClearStrata 从来不是为了管理建筑而诞生。
 
 ---
 
+## The First Constitutional Intelligence
+
+### 第一位遵循宪章的智能
+
+Project One marked the first time the Constitution guided Artificial Intelligence.
+
+The Constitution was not written to constrain technology.  
+It was written to guide every future intelligence that serves the community.
+
+Artificial Intelligence became a constitutional assistant, never a constitutional authority.
+
+This milestone proved that principles can govern technology, rather than technology redefining principles.
+
+---
+
+Project One 第一次实现了《平台宪章》对人工智能进行治理。
+
+《平台宪章》存在的意义不是限制技术。  
+而是指导未来一切服务于社区的智能。
+
+人工智能第一次成为宪章助手，而不是宪章权威。
+
+这一里程碑证明：原则能够指导技术；而不是技术重新定义原则。
+
+*Milestone M-004 — Constitutional Deliberation Assistant (Phase 3). Record: [PR-007](projects/PR-007_Constitutional_Deliberation_Assistant_Phase_3.md). Tag: `project-one-m-004`.*
+
+---
+
 ### Closing Signature
 
 ```

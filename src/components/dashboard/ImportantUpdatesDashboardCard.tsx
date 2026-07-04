@@ -25,6 +25,10 @@ export type ImportantUpdatesBullet = {
 export type ImportantUpdatesDashboardCardProps = {
   langEn: boolean;
   bullets?: ImportantUpdatesBullet[];
+  /** Phase 2: skip Phase 1 demo rows when real governance matters exist */
+  hasRealGovernanceMatters?: boolean;
+  /** Link for "View all community matters" */
+  mattersListUrl?: string;
 };
 
 const DEFAULT_VIEW_URL = '/owner-info?tab=announcements';
@@ -100,15 +104,23 @@ function partitionBullets(items: ImportantUpdatesBullet[]) {
   return { discussions, consultations, notices };
 }
 
-function withPhase1DemoRows(items: ImportantUpdatesBullet[], langEn: boolean): ImportantUpdatesBullet[] {
-  const { discussions, consultations, notices } = partitionBullets(items);
-  const demos = phase1DemoDiscussions(langEn);
-  const demoDiscussions = demos.filter((d) => d.contentType === 'discussion');
-  const demoConsultations = demos.filter((d) => d.contentType === 'consultation');
+function mergeDeliberationBullets(
+  matterBullets: ImportantUpdatesBullet[],
+  noticeBullets: ImportantUpdatesBullet[],
+  langEn: boolean,
+  hasRealGovernanceMatters: boolean,
+): ImportantUpdatesBullet[] {
+  const { discussions, consultations } = partitionBullets(matterBullets);
+  const notices = partitionBullets(noticeBullets).notices;
 
+  if (hasRealGovernanceMatters) {
+    return [...discussions, ...consultations, ...notices];
+  }
+
+  const demos = phase1DemoDiscussions(langEn);
   return [
-    ...(discussions.length ? discussions : demoDiscussions),
-    ...(consultations.length ? consultations : demoConsultations),
+    ...(discussions.length ? discussions : demos.filter((d) => d.contentType === 'discussion')),
+    ...(consultations.length ? consultations : demos.filter((d) => d.contentType === 'consultation')),
     ...notices,
   ];
 }
@@ -214,7 +226,12 @@ function SectionBlock({ title, items, langEn }: SectionBlockProps) {
  * Project One Phase 1 — Community Deliberation landing (replaces Important Updates top card).
  * Data: reuses Important Updates bullets; no schema or API changes.
  */
-export function CommunityDeliberationDashboardCard({ langEn, bullets }: ImportantUpdatesDashboardCardProps) {
+export function CommunityDeliberationDashboardCard({
+  langEn,
+  bullets,
+  hasRealGovernanceMatters = false,
+  mattersListUrl,
+}: ImportantUpdatesDashboardCardProps) {
   const [expanded, setExpanded] = useState(false);
 
   const titleZh = '社区议事厅';
@@ -234,7 +251,13 @@ export function CommunityDeliberationDashboardCard({ langEn, bullets }: Importan
   const noticeSectionTitle = langEn ? 'Official notices' : '正式通知';
 
   const rawList = Array.isArray(bullets) ? bullets : langEn ? FALLBACK_EN : FALLBACK_ZH;
-  const list = useMemo(() => withPhase1DemoRows(rawList, langEn), [rawList, langEn]);
+  const matterRows = rawList.filter((b) => b.id.startsWith('governance-matter-'));
+  const noticeRows = rawList.filter((b) => !b.id.startsWith('governance-matter-') && inferContentType(b) === 'notice');
+  const list = useMemo(
+    () => mergeDeliberationBullets(matterRows, noticeRows, langEn, hasRealGovernanceMatters),
+    [matterRows, noticeRows, langEn, hasRealGovernanceMatters],
+  );
+  const viewAllUrl = mattersListUrl ?? DEFAULT_VIEW_URL;
   const { discussions, consultations, notices } = useMemo(() => partitionBullets(list), [list]);
 
   const previewRows = useMemo(() => {
@@ -320,7 +343,7 @@ export function CommunityDeliberationDashboardCard({ langEn, bullets }: Importan
           {hasContent ? (
             <div className="mt-3 border-t border-gray-100 pt-3">
               <Link
-                to={DEFAULT_VIEW_URL}
+                to={viewAllUrl}
                 className="text-[13px] font-semibold text-clearstrata-brand-900 hover:underline sm:text-sm"
               >
                 {viewAllLabel}

@@ -64,6 +64,11 @@ import { JoinAccessGate } from './pages/JoinAccessGate';
 import { PostLoginPropertyRedirect } from './components/PostLoginPropertyRedirect';
 import { isMeetingDetailDeepLink, savePendingRedirect } from './lib/pendingRedirect';
 import PasswordRecoveryUrlNormaliser from './components/PasswordRecoveryUrlNormaliser';
+import {
+  GovernanceMatterCreatePage,
+  GovernanceMatterDetailPage,
+  GovernanceMattersHubPage,
+} from './pages/community-deliberation/GovernanceMatterPages';
 import { DemoDashboardRoute } from './components/DemoDashboardRoute';
 import { DemoLandingPage } from './pages/DemoLandingPage';
 import { QrPropertyEntryPage } from './pages/entry/QrPropertyEntryPage';
@@ -366,6 +371,9 @@ function AuthenticatedRoutes() {
   return (
     <Routes>
       <Route path="/" element={<Dashboard />} />
+      <Route path="/community-deliberation" element={<GovernanceMattersHubPage />} />
+      <Route path="/community-deliberation/new" element={<GovernanceMatterCreatePage />} />
+      <Route path="/community-deliberation/:matterId" element={<GovernanceMatterDetailPage />} />
       <Route path="/procurement" element={<Procurement />} />
       <Route path="/procurement/new" element={<Procurement />} />
       <Route path="/voting" element={<Voting />} />

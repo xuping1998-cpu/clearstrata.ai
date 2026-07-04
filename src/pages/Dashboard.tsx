@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -16,6 +16,8 @@ import { realPropertyJoinPath } from '@/lib/propertyEntryRoutes';
 import { samePropertyId } from '@/lib/propertyIdMatch';
 import { meetingsNavHref } from '@/lib/meetingPermissions';
 import { useImportantUpdatesBullets } from '@/hooks/useImportantUpdatesBullets';
+import { useGovernanceMatterDashboard } from '@/hooks/useGovernanceMatterDashboard';
+import { governanceMattersListUrl } from '@/lib/community/governanceMatterModel';
 
 export function Dashboard() {
   const { language } = useLanguage();
@@ -44,6 +46,19 @@ export function Dashboard() {
     langEn: en,
     meetingsHref: meetingsNavHref(roleInProperty),
   });
+
+  const { bullets: governanceMatterBullets, hasRealMatters } = useGovernanceMatterDashboard({
+    propertyId: currentPropertyId,
+    propertyReady,
+    langEn: en,
+  });
+
+  const deliberationBullets = useMemo(() => {
+    const notices = importantUpdatesBullets.filter(
+      (b) => b.kind === 'notice' || b.source === 'announcement',
+    );
+    return [...governanceMatterBullets, ...notices];
+  }, [governanceMatterBullets, importantUpdatesBullets]);
 
   useEffect(() => {
     let cancelled = false;
@@ -215,7 +230,12 @@ export function Dashboard() {
           </div>
         </div>
       </div>
-      <CommunityDeliberationDashboardCard langEn={en} bullets={importantUpdatesBullets} />
+      <CommunityDeliberationDashboardCard
+        langEn={en}
+        bullets={deliberationBullets}
+        hasRealGovernanceMatters={hasRealMatters}
+        mattersListUrl={currentPropertyId ? governanceMattersListUrl(currentPropertyId) : undefined}
+      />
       <DashboardFinancialAlertsCard />
       <QuickAccessDashboardCard langEn={en} meetingsHref={meetingsNavHref(roleInProperty)} />
       <HomeServicesDashboardCard langEn={en} />
