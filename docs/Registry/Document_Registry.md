@@ -73,13 +73,13 @@ This Registry preserves:
 | **FD** | **FD-007** | FD-002 … FD-006 RESERVED |
 | **CA** | **CA-001** | |
 | **CS** | **CS-005** | |
-| **GP** | **GP-004** | |
+| **GP** | **GP-005** | GP-004 registered |
 | **GC** | **GC-001** | |
 | **CR** | **CR-001** | |
 | **AI** | **AI-001** | |
 | **AR** | **AR-001** | |
-| **PR** | **PR-009** | PR-004 … PR-006 RESERVED; PR-003, PR-007, PR-008 registered |
-| **RM** | **RM-006** | RM-002 … RM-005 registered |
+| **PR** | **PR-009** | PR-006 RESERVED; PR-003, PR-004, PR-005, PR-007, PR-008 registered |
+| **RM** | **RM-008** | RM-002 … RM-007 registered |
 | **TM** | **TM-001** | |
 
 ---
@@ -115,6 +115,7 @@ This Registry preserves:
 | **GP-001** | The Beauty of Order | ACTIVE | `docs/The_Beauty_of_Order.md` |
 | **GP-002** | Community Deliberation | ACTIVE | `docs/Community_Deliberation.md` |
 | **GP-003** | The Four Pillars of Community Governance | ACTIVE | `docs/Four_Pillars_of_Community_Governance.md` |
+| **GP-004** | Community Resolution | ACTIVE | `docs/Principles/GP-004_Community_Resolution.md` |
 
 *Constitutional principle **Discussion Before Decision** is established in FD-001 Article II (not a separate GP number).*
 
@@ -140,23 +141,24 @@ Permanent constitutional references within FD-001 — not separately numbered do
 | **PR-001** | Governance Dashboard | ACTIVE | `docs/Governance_Dashboard.md` |
 | **PR-002** | Community Deliberation — Phase 1 | COMPLETED | `docs/projects/PR-002_Community_Deliberation_Phase_1.md` |
 | **PR-003** | Community Deliberation — Phase 2 | ACTIVE | `docs/projects/PR-003_Community_Deliberation_Phase_2.md` |
-| **PR-004** | Community Resolution | RESERVED | — |
-| **PR-005** | Community Voting Integration | RESERVED | — |
+| **PR-004** | Community Resolution — Phase 4 | ACTIVE | `docs/projects/PR-004_Community_Resolution_Phase_4.md` |
+| **PR-005** | Meeting & Voting Integration — Phase 5 | ACTIVE | `docs/projects/PR-005_Meeting_Voting_Integration_Phase_5.md` |
 | **PR-006** | Community Memory Integration | RESERVED | — |
 | **PR-007** | Constitutional Deliberation Assistant — Phase 3 | COMPLETED | `docs/projects/PR-007_Constitutional_Deliberation_Assistant_Phase_3.md` |
 | **PR-008** | The Final Institution of Project Zero — Three Layers of Governance | COMPLETED | `docs/The_Final_Institution_of_Project_Zero.md` |
 
 ---
 
-## Project One Milestones
+## Platform Milestones
 
 | Milestone | Title | Status | Record | Git Tag |
 |-----------|-------|--------|--------|---------|
+| **M-001** | Project Zero Foundation | COMPLETED | PR-000 | — |
 | **M-002** | Community Deliberation Phase 1 | COMPLETED | PR-002 | `project-one-m-002` |
 | **M-003** | Community Deliberation Phase 2 | ACTIVE | PR-003 | *(pending)* |
 | **M-004** | Constitutional Deliberation Assistant (Phase 3) | COMPLETED | PR-007 | `project-one-m-004` |
 
-*Registry detail:* [Releases_Registry.md](Releases_Registry.md) (RM-003)
+*Registry detail:* [Releases_Registry.md](Releases_Registry.md) (RM-003) · [Hall of Milestones](../History/Milestones.md) (RM-006)
 
 ---
 
@@ -169,6 +171,8 @@ Permanent constitutional references within FD-001 — not separately numbered do
 | **RM-003** | Releases Registry | ACTIVE | `docs/Registry/Releases_Registry.md` |
 | **RM-004** | Governance Index | RESERVED | `docs/Registry/Governance_Index.md` |
 | **RM-005** | Repository Governance Resolution | ACTIVE | `docs/Repository_Governance_Resolution.md` |
+| **RM-006** | Repository Hall of Milestones | ACTIVE | `docs/History/Milestones.md` |
+| **RM-007** | Milestone Admission Standard | ACTIVE | `docs/History/Milestone_Admission_Standard.md` |
 
 *Master index governed by RM-001:* [`Document_Registry.md`](Document_Registry.md) (**FD-REG-001**)
 
@@ -213,6 +217,10 @@ Before creating any permanent document, Cursor **SHALL**:
 | 2026-06-29 | **M-002** COMPLETED — Project One Community Deliberation Phase 1; tag `project-one-m-002` | ClearStrata Project One |
 | 2026-07-04 | PR-003 registered — Community Deliberation Phase 2 (Governance Matter engine) | ClearStrata Project One |
 | 2026-07-04 | PR-007 COMPLETED — Constitutional Deliberation Assistant Phase 3; **M-004** COMPLETED; tag `project-one-m-004` | ClearStrata Project One |
+| 2026-07-04 | **RM-006** registered — Repository Hall of Milestones | Founding Team |
+| 2026-07-04 | **RM-007** registered — Milestone Admission Standard | Founding Team |
+| 2026-07-06 | **GP-004** registered — Community Resolution governance principle | Founding Team |
+| 2026-07-06 | **PR-004**, **PR-005** registered — Community Resolution + Meeting/Voting Integration | ClearStrata Project One |
 
 ---
 

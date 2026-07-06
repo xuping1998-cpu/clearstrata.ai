@@ -18,6 +18,15 @@ This index maps **current** repository paths to the **official target structure*
 
 ---
 
+## History (`docs/History/`)
+
+| File | ID | Status |
+|------|-----|--------|
+| [Milestones.md](History/Milestones.md) | RM-006 — Repository Hall of Milestones | ACTIVE |
+| [Milestone_Admission_Standard.md](History/Milestone_Admission_Standard.md) | RM-007 — Milestone Admission Standard | ACTIVE |
+
+---
+
 ## Founding (`docs/Founding/` → target)
 
 | Current path | Document |
@@ -49,6 +58,7 @@ This index maps **current** repository paths to the **official target structure*
 | `docs/The_Beauty_of_Order.md` | GP-001 |
 | `docs/Community_Deliberation.md` | GP-002 |
 | `docs/Four_Pillars_of_Community_Governance.md` | GP-003 |
+| `docs/Principles/GP-004_Community_Resolution.md` | GP-004 |
 
 ---
 

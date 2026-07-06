@@ -12,6 +12,8 @@
 
 Official record of **Project One milestones** and repository releases. Register new entries in [Document_Registry.md](Document_Registry.md) before tagging.
 
+**Institutional history:** [Hall of Milestones](../History/Milestones.md) (RM-006) · [Admission Standard](../History/Milestone_Admission_Standard.md) (RM-007)
+
 ---
 
 ## Project One Milestones

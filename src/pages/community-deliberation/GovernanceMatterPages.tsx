@@ -28,6 +28,11 @@ import {
   fetchLatestCdaReport,
   requestCdaAnalysis,
 } from '@/features/governance-matters/governanceMatterCdaApi';
+import {
+  createCommunityResolutionFromMatter,
+  fetchCommunityResolutionByMatterId,
+} from '@/features/community-resolutions/communityResolutionsApi';
+import { communityResolutionDetailUrl } from '@/lib/community/communityResolutionModel';
 import type { GovernanceMatterCdaReportRow } from '@/lib/community/cdaReportModel';
 
 export function GovernanceMatterDetailPage() {
@@ -51,6 +56,10 @@ export function GovernanceMatterDetailPage() {
   const [cdaReport, setCdaReport] = useState<GovernanceMatterCdaReportRow | null>(null);
   const [cdaLoading, setCdaLoading] = useState(true);
   const [cdaGenerating, setCdaGenerating] = useState(false);
+  const [linkedResolution, setLinkedResolution] = useState<Awaited<
+    ReturnType<typeof fetchCommunityResolutionByMatterId>
+  > | null>(null);
+  const [resolutionSubmitting, setResolutionSubmitting] = useState(false);
 
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
@@ -124,6 +133,26 @@ export function GovernanceMatterDetailPage() {
     };
   }, [matterId, propertyId, propertyReady, matter?.id]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const mid = matterId?.trim();
+    const pid = propertyId.trim();
+    if (!propertyReady || !pid || !mid || !matter) return;
+
+    void (async () => {
+      try {
+        const res = await fetchCommunityResolutionByMatterId(pid, mid);
+        if (!cancelled) setLinkedResolution(res);
+      } catch {
+        if (!cancelled) setLinkedResolution(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [matterId, propertyId, propertyReady, matter?.id]);
+
   const revisionLabels = useMemo(() => {
     return revisions.map((r) => ({
       ...r,
@@ -186,6 +215,28 @@ export function GovernanceMatterDetailPage() {
     }
   }
 
+  async function handleCreateResolution() {
+    if (!matter || !propertyId.trim()) return;
+    setResolutionSubmitting(true);
+    setError(null);
+    try {
+      const row = await createCommunityResolutionFromMatter({
+        propertyId: propertyId.trim(),
+        governanceMatterId: matter.id,
+        title: matter.title,
+        executiveSummary: matter.description,
+        matterCategory: matter.category,
+        cdaReportId: cdaReport?.id ?? null,
+      });
+      setLinkedResolution(row);
+      navigate(communityResolutionDetailUrl(row.id, propertyId.trim()));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : en ? 'Failed to create resolution' : '创建决议失败');
+    } finally {
+      setResolutionSubmitting(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex justify-center py-16">
@@ -235,6 +286,49 @@ export function GovernanceMatterDetailPage() {
         canRequestAnalysis={canCouncil}
         onRequestAnalysis={() => void handleRequestCdaAnalysis()}
       />
+
+      <section className="mt-6 rounded-2xl border border-emerald-200 bg-white p-5 shadow-sm">
+        <h2 className="text-sm font-bold text-gray-900">{en ? 'Community Resolution' : '社区决议'}</h2>
+        {linkedResolution ? (
+          <div className="mt-2">
+            <p className="text-sm text-gray-700">{linkedResolution.title}</p>
+            <Link
+              to={communityResolutionDetailUrl(linkedResolution.id, propertyId)}
+              className="mt-2 inline-block text-sm font-semibold text-clearstrata-brand-900 hover:underline"
+            >
+              {en ? 'View resolution →' : '查看决议 →'}
+            </Link>
+            {linkedResolution.meeting_id ? (
+              <Link
+                to={`/meetings/${encodeURIComponent(linkedResolution.meeting_id)}`}
+                className="mt-1 block text-sm font-semibold text-clearstrata-brand-900 hover:underline"
+              >
+                {en ? 'Linked meeting →' : '关联会议 →'}
+              </Link>
+            ) : null}
+          </div>
+        ) : canCouncil ? (
+          <div className="mt-2">
+            <p className="text-xs text-gray-600">
+              {en
+                ? 'Prepare a Community Resolution from this matter before scheduling a meeting.'
+                : '排会前，请基于本事项准备社区决议。'}
+            </p>
+            <button
+              type="button"
+              disabled={resolutionSubmitting}
+              onClick={() => void handleCreateResolution()}
+              className="mt-3 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60"
+            >
+              {en ? 'Prepare resolution' : '准备决议'}
+            </button>
+          </div>
+        ) : (
+          <p className="mt-2 text-sm text-gray-500">
+            {en ? 'No resolution prepared yet.' : '尚未准备决议。'}
+          </p>
+        )}
+      </section>
 
       {canCouncil ? (
         <section className="mt-6 rounded-2xl border border-amber-200 bg-amber-50/50 p-5">

@@ -48,6 +48,11 @@ import {
 } from '../../features/meetings/ownerVotingCouncil';
 import { supabase } from '../../lib/supabase';
 import { shouldDeferAutoPropertyRedirects } from '../../lib/authRecovery';
+import { CommunityResolutionContextCard } from '@/components/community-resolution/CommunityResolutionContextCard';
+import {
+  fetchMeetingResolutionContexts,
+} from '@/features/community-resolutions/communityResolutionsApi';
+import type { CommunityResolutionContextBundle } from '@/lib/community/communityResolutionModel';
 import { samePropertyId } from '../../lib/propertyIdMatch';
 import { canManagePropertyMeetings } from '@/lib/meetingPermissions';
 import { isPlatformAdmin } from '@/lib/permissions';
@@ -323,6 +328,7 @@ export function MeetingDetail() {
   const [extrasLoading, setExtrasLoading] = useState(false);
   const [actionErr, setActionErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [resolutionContexts, setResolutionContexts] = useState<CommunityResolutionContextBundle[]>([]);
   const [newAgendaZh, setNewAgendaZh] = useState('');
   const [newAgendaEn, setNewAgendaEn] = useState('');
   const [newAgendaKind, setNewAgendaKind] = useState<AgendaKindUi>('normal');
@@ -434,6 +440,35 @@ export function MeetingDetail() {
   }, [load]);
 
   const meeting = bundle.meeting;
+
+  useEffect(() => {
+    let cancelled = false;
+    const pid = currentPropertyId?.trim() || meeting?.property_id?.trim();
+    const mid = meeting?.id?.trim();
+    if (!pid || !mid) {
+      setResolutionContexts([]);
+      return;
+    }
+    void (async () => {
+      try {
+        const rows = await fetchMeetingResolutionContexts(pid, mid, en);
+        if (!cancelled) setResolutionContexts(rows);
+      } catch {
+        if (!cancelled) setResolutionContexts([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [meeting?.id, meeting?.property_id, currentPropertyId, en]);
+
+  const resolutionContextById = useMemo(() => {
+    const map = new Map<string, CommunityResolutionContextBundle>();
+    for (const ctx of resolutionContexts) {
+      map.set(ctx.resolution.id, ctx);
+    }
+    return map;
+  }, [resolutionContexts]);
 
   const [supportingDocumentsArchive, setSupportingDocumentsArchive] = useState<MeetingSupportingDocumentRow[]>([]);
 
@@ -2224,6 +2259,21 @@ export function MeetingDetail() {
                         onOpenVoting={() => void handleOpenOwnerVoteMeeting()}
                         onCloseVoting={() => void handleCloseOwnerVoteMeeting()}
                       />
+                      {resolutionContexts.length > 0 ? (
+                        <div className="mt-4 space-y-3">
+                          <p className="text-xs font-bold uppercase tracking-wide text-emerald-900">
+                            {en ? 'Origin Community Resolution(s)' : '来源社区决议'}
+                          </p>
+                          <p className="text-xs text-gray-600">
+                            {en
+                              ? 'Having understood everything, are we ready to decide?'
+                              : '在充分讨论、充分理解、充分公开之后，依法完成最终决定。'}
+                          </p>
+                          {resolutionContexts.map((ctx) => (
+                            <CommunityResolutionContextCard key={ctx.resolution.id} bundle={ctx} langEn={en} />
+                          ))}
+                        </div>
+                      ) : null}
                       </div>
                     ) : null}
                   </div>
@@ -2541,6 +2591,17 @@ export function MeetingDetail() {
                                   : '本议程用于表决是否罢免现任业委会。决议表决通过后，后续业委会选举结果才具备治理意义。'}
                               </p>
                             </div>
+                          ) : null}
+
+                          {agenda.community_resolution_id &&
+                          resolutionContextById.get(agenda.community_resolution_id) ? (
+                            <CommunityResolutionContextCard
+                              bundle={resolutionContextById.get(agenda.community_resolution_id)!}
+                              langEn={en}
+                              compact
+                            />
+                          ) : resolutionContexts.length === 1 ? (
+                            <CommunityResolutionContextCard bundle={resolutionContexts[0]!} langEn={en} compact />
                           ) : null}
 
                           {agenda.requires_vote &&

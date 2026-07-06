@@ -44,6 +44,7 @@ export type GovernanceMatterRow = {
   resolution_deadline: string | null;
   meeting_id: string | null;
   voting_id: string | null;
+  resolution_id: string | null;
   archived_at: string | null;
 };
 

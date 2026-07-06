@@ -69,6 +69,7 @@ import {
   GovernanceMatterDetailPage,
   GovernanceMattersHubPage,
 } from './pages/community-deliberation/GovernanceMatterPages';
+import { CommunityResolutionDetailPage } from './pages/community-resolution/CommunityResolutionPages';
 import { DemoDashboardRoute } from './components/DemoDashboardRoute';
 import { DemoLandingPage } from './pages/DemoLandingPage';
 import { QrPropertyEntryPage } from './pages/entry/QrPropertyEntryPage';
@@ -374,6 +375,7 @@ function AuthenticatedRoutes() {
       <Route path="/community-deliberation" element={<GovernanceMattersHubPage />} />
       <Route path="/community-deliberation/new" element={<GovernanceMatterCreatePage />} />
       <Route path="/community-deliberation/:matterId" element={<GovernanceMatterDetailPage />} />
+      <Route path="/community-resolutions/:resolutionId" element={<CommunityResolutionDetailPage />} />
       <Route path="/procurement" element={<Procurement />} />
       <Route path="/procurement/new" element={<Procurement />} />
       <Route path="/voting" element={<Voting />} />
