@@ -269,7 +269,6 @@ export function CommunityDeliberationDashboardCard({
   }, [discussions, consultations, notices]);
 
   const hasContent = list.length > 0;
-  const primaryCtaUrl = previewRows[0]?.actionUrl ?? discussions[0]?.actionUrl ?? DEFAULT_VIEW_URL;
 
   return (
     <section
@@ -300,10 +299,10 @@ export function CommunityDeliberationDashboardCard({
 
             <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
               <Link
-                to={primaryCtaUrl}
-                className="inline-flex items-center justify-center rounded-lg border border-clearstrata-ui-softBorder bg-white px-2.5 py-1.5 text-xs font-semibold text-clearstrata-brand-900 shadow-sm hover:bg-clearstrata-brand-50 active:bg-clearstrata-brand-100/80 sm:px-3 sm:text-[13px]"
+                to={viewAllUrl}
+                className="inline-flex items-center justify-center rounded-lg bg-clearstrata-ui-primary px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryHover sm:px-3 sm:text-[13px]"
               >
-                {langEn ? 'View' : '查看'}
+                {viewAllLabel}
               </Link>
               <button
                 type="button"
@@ -337,17 +336,6 @@ export function CommunityDeliberationDashboardCard({
               <SectionBlock title={discussionSectionTitle} items={discussions} langEn={langEn} />
               <SectionBlock title={consultationSectionTitle} items={consultations} langEn={langEn} />
               <SectionBlock title={noticeSectionTitle} items={notices} langEn={langEn} />
-            </div>
-          ) : null}
-
-          {hasContent ? (
-            <div className="mt-3 border-t border-gray-100 pt-3">
-              <Link
-                to={viewAllUrl}
-                className="text-[13px] font-semibold text-clearstrata-brand-900 hover:underline sm:text-sm"
-              >
-                {viewAllLabel}
-              </Link>
             </div>
           ) : null}
         </div>
