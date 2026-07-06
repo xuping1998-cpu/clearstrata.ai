@@ -53,6 +53,42 @@ export async function fetchGovernanceMattersForDashboard(
   }));
 }
 
+export async function fetchGovernanceMattersForCouncilWorkspace(
+  propertyId: string,
+): Promise<GovernanceMatterDashboardRow[]> {
+  const { data, error } = await supabase
+    .from('governance_matters')
+    .select('*')
+    .eq('property_id', propertyId)
+    .order('last_revision_at', { ascending: false })
+    .limit(100);
+
+  if (error) throw new Error(error.message);
+  const matters = (data ?? []) as GovernanceMatterRow[];
+  if (!matters.length) return [];
+
+  const ids = matters.map((m) => m.id);
+  const { data: commentRows, error: cErr } = await supabase
+    .from('governance_matter_comments')
+    .select('matter_id')
+    .eq('property_id', propertyId)
+    .in('matter_id', ids)
+    .eq('visibility', 'visible');
+
+  if (cErr) throw new Error(cErr.message);
+
+  const counts: Record<string, number> = {};
+  for (const row of commentRows ?? []) {
+    const mid = String((row as { matter_id: string }).matter_id);
+    counts[mid] = (counts[mid] ?? 0) + 1;
+  }
+
+  return matters.map((m) => ({
+    ...m,
+    comment_count: counts[m.id] ?? 0,
+  }));
+}
+
 export async function fetchGovernanceMatterById(
   propertyId: string,
   matterId: string,

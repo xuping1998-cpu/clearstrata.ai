@@ -78,7 +78,7 @@ This Registry preserves:
 | **CR** | **CR-001** | |
 | **AI** | **AI-001** | |
 | **AR** | **AR-001** | |
-| **PR** | **PR-009** | PR-006 RESERVED; PR-003, PR-004, PR-005, PR-007, PR-008 registered |
+| **PR** | **PR-010** | PR-006 RESERVED; PR-003 … PR-009 registered |
 | **RM** | **RM-008** | RM-002 … RM-007 registered |
 | **TM** | **TM-001** | |
 
@@ -146,6 +146,7 @@ Permanent constitutional references within FD-001 — not separately numbered do
 | **PR-006** | Community Memory Integration | RESERVED | — |
 | **PR-007** | Constitutional Deliberation Assistant — Phase 3 | COMPLETED | `docs/projects/PR-007_Constitutional_Deliberation_Assistant_Phase_3.md` |
 | **PR-008** | The Final Institution of Project Zero — Three Layers of Governance | COMPLETED | `docs/The_Final_Institution_of_Project_Zero.md` |
+| **PR-009** | Council Workspace — Phase 2.1 | ACTIVE | `docs/projects/PR-009_Council_Workspace_Phase_2_1.md` |
 
 ---
 
@@ -221,6 +222,7 @@ Before creating any permanent document, Cursor **SHALL**:
 | 2026-07-04 | **RM-007** registered — Milestone Admission Standard | Founding Team |
 | 2026-07-06 | **GP-004** registered — Community Resolution governance principle | Founding Team |
 | 2026-07-06 | **PR-004**, **PR-005** registered — Community Resolution + Meeting/Voting Integration | ClearStrata Project One |
+| 2026-07-06 | **PR-009** registered — Council Workspace Phase 2.1 | ClearStrata Project One |
 
 ---
 

@@ -12,7 +12,7 @@ export type MeetingEditorPrefillAgendaRow = {
 
 /** Navigate to `/meetings/new` with `location.state.meetingDraftPrefill`. */
 export type MeetingEditorDraftPrefill = {
-  source: 'procurement_sgm';
+  source: 'procurement_sgm' | 'governance_resolution';
   meeting_type: MeetingType;
   initiation_type: MeetingInitiationType;
   title_en: string;
@@ -20,6 +20,8 @@ export type MeetingEditorDraftPrefill = {
   description_en: string;
   description_zh: string;
   procurement_job_id?: string;
+  governance_matter_id?: string;
+  community_resolution_id?: string;
   agenda_items?: MeetingEditorPrefillAgendaRow[];
 };
 
@@ -30,7 +32,9 @@ export type MeetingEditorLocationState = {
 export function isMeetingEditorDraftPrefill(value: unknown): value is MeetingEditorDraftPrefill {
   if (!value || typeof value !== 'object') return false;
   const o = value as Record<string, unknown>;
-  return o.source === 'procurement_sgm' && typeof o.title_en === 'string' && typeof o.title_zh === 'string';
+  const source = o.source;
+  if (source !== 'procurement_sgm' && source !== 'governance_resolution') return false;
+  return typeof o.title_en === 'string' && typeof o.title_zh === 'string';
 }
 
 export function mapPrefillAgendaRows(
