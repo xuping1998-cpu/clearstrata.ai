@@ -2,6 +2,22 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useProperty } from '@/contexts/PropertyContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { CommunityDiscussionFeed } from '@/components/community-deliberation/CommunityDiscussionFeed';
+import {
+  GovernanceHubPanel,
+  ResolutionStatusSection,
+  computeCouncilActionSummary,
+} from '@/components/community-deliberation/GovernanceHubPanel';
+import { OwnerParticipationPanel } from '@/components/community-deliberation/OwnerParticipationPanel';
+import {
+  mergeDeliberationBullets,
+  partitionBullets,
+} from '@/components/dashboard/ImportantUpdatesDashboardCard';
+import { useImportantUpdatesBullets } from '@/hooks/useImportantUpdatesBullets';
+import { useGovernanceMatterDashboard } from '@/hooks/useGovernanceMatterDashboard';
+import { meetingsNavHref } from '@/lib/meetingPermissions';
+import { supabase } from '@/lib/supabase';
 import { ConstitutionalDeliberationAssistantPanel } from '@/components/community-deliberation/ConstitutionalDeliberationAssistantPanel';
 import {
   GOVERNANCE_MATTER_CATEGORIES,
@@ -21,7 +37,7 @@ import {
   fetchGovernanceMatterById,
   fetchGovernanceMatterComments,
   fetchGovernanceMatterRevisions,
-  fetchGovernanceMattersForDashboard,
+  fetchGovernanceMattersForCouncilWorkspace,
   updateGovernanceMatter,
 } from '@/features/governance-matters/governanceMattersApi';
 import {
@@ -534,34 +550,88 @@ export function GovernanceMattersHubPage() {
   const { language } = useLanguage();
   const en = language === 'en';
   const { currentPropertyId, roleInProperty, ready: propertyReady } = useProperty();
+  const { user } = useAuth();
   const propertyId = currentPropertyId ?? '';
   const canCouncil = isCouncilGovernanceRole(roleInProperty);
 
-  const [matters, setMatters] = useState<GovernanceMatterRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [allMatters, setAllMatters] = useState<GovernanceMatterRow[]>([]);
+  const [ownerCommentCount, setOwnerCommentCount] = useState(0);
+  const [feedLoading, setFeedLoading] = useState(true);
+
+  const { bullets: importantUpdatesBullets } = useImportantUpdatesBullets({
+    propertyId,
+    userId: user?.id,
+    propertyReady,
+    langEn: en,
+    meetingsHref: meetingsNavHref(roleInProperty),
+  });
+
+  const { bullets: governanceMatterBullets, hasRealMatters, loading: mattersLoading } =
+    useGovernanceMatterDashboard({
+      propertyId,
+      propertyReady,
+      langEn: en,
+    });
 
   useEffect(() => {
     if (!propertyReady || !propertyId.trim()) {
-      setLoading(false);
+      setFeedLoading(false);
       return;
     }
+    setFeedLoading(true);
     void (async () => {
       try {
-        const rows = await fetchGovernanceMattersForDashboard(propertyId.trim());
-        setMatters(rows);
+        const rows = await fetchGovernanceMattersForCouncilWorkspace(propertyId.trim());
+        setAllMatters(rows);
       } finally {
-        setLoading(false);
+        setFeedLoading(false);
       }
     })();
   }, [propertyId, propertyReady]);
 
+  useEffect(() => {
+    if (!propertyReady || !propertyId.trim() || !user?.id) return;
+    void (async () => {
+      const { count } = await supabase
+        .from('governance_matter_comments')
+        .select('id', { count: 'exact', head: true })
+        .eq('property_id', propertyId.trim())
+        .eq('author_id', user.id)
+        .eq('visibility', 'visible');
+      setOwnerCommentCount(count ?? 0);
+    })();
+  }, [propertyId, propertyReady, user?.id]);
+
+  const deliberationBullets = useMemo(() => {
+    const notices = importantUpdatesBullets.filter(
+      (b) => b.kind === 'notice' || b.source === 'announcement',
+    );
+    return mergeDeliberationBullets(governanceMatterBullets, notices, en, hasRealMatters);
+  }, [governanceMatterBullets, importantUpdatesBullets, en, hasRealMatters]);
+
+  const { discussions, consultations, notices } = useMemo(
+    () => partitionBullets(deliberationBullets),
+    [deliberationBullets],
+  );
+
+  const councilSummary = useMemo(() => computeCouncilActionSummary(allMatters), [allMatters]);
+
+  const loading = feedLoading || mattersLoading;
+
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="mx-auto max-w-6xl px-4 py-6 sm:py-8">
+      <header className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-200 pb-4">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">{en ? 'Community Deliberation' : '社区议事厅'}</h1>
-          <p className="mt-1 text-sm text-gray-600">
-            {en ? 'Governance matters — structured constitutional discussion.' : '治理事项 — 结构化宪章讨论。'}
+          <h1 className="text-xl font-bold text-gray-900">
+            {en ? 'Governance Hub' : '治理中心'}
+            <span className="mt-0.5 block text-sm font-semibold text-clearstrata-brand-800">
+              {en ? 'Community Deliberation' : '社区议事厅'}
+            </span>
+          </h1>
+          <p className="mt-1 max-w-xl text-sm text-gray-600">
+            {en
+              ? 'One community. One governance space. Different responsibilities — not different worlds.'
+              : '一个社区。一个治理空间。不同职责 — 而非不同世界。'}
           </p>
         </div>
         {canCouncil ? (
@@ -569,32 +639,46 @@ export function GovernanceMattersHubPage() {
             to={`/community-deliberation/new?${new URLSearchParams({ propertyId }).toString()}`}
             className="rounded-lg bg-clearstrata-ui-primary px-4 py-2 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover"
           >
-            {en ? 'New matter' : '新建事项'}
+            {en ? '+ Publish Governance Matter' : '+ 发布治理事项'}
           </Link>
         ) : null}
-      </div>
+      </header>
 
-      {loading ? (
-        <p className="mt-8 text-sm text-gray-500">{en ? 'Loading…' : '加载中…'}</p>
-      ) : matters.length === 0 ? (
-        <p className="mt-8 text-sm text-gray-500">{en ? 'No active governance matters.' : '暂无进行中的治理事项。'}</p>
-      ) : (
-        <ul className="mt-6 space-y-3">
-          {matters.map((m) => (
-            <li key={m.id}>
-              <Link
-                to={governanceMatterDetailUrl(m.id, propertyId)}
-                className="block rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm hover:border-clearstrata-brand-200"
-              >
-                <p className="font-semibold text-gray-900">{m.title}</p>
-                <p className="mt-0.5 text-xs text-gray-600">
-                  {governanceMatterStatusLabel(m.status, en)} · {governanceMatterCategoryLabel(m.category, en)}
-                </p>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
+      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <main>
+          <p className="text-xs font-bold uppercase tracking-wide text-gray-500">
+            {en ? 'Community discussion feed' : '社区议事动态'}
+          </p>
+          <div className="mt-3">
+            <CommunityDiscussionFeed
+              langEn={en}
+              loading={loading}
+              discussions={discussions}
+              consultations={consultations}
+              notices={notices}
+            />
+            <ResolutionStatusSection matters={allMatters} propertyId={propertyId} langEn={en} />
+          </div>
+        </main>
+
+        <div className="lg:sticky lg:top-4 lg:self-start">
+          {canCouncil ? (
+            <GovernanceHubPanel
+              langEn={en}
+              propertyId={propertyId}
+              matters={allMatters}
+              summary={councilSummary}
+            />
+          ) : (
+            <OwnerParticipationPanel
+              langEn={en}
+              propertyId={propertyId}
+              commentCount={ownerCommentCount}
+              roleInProperty={roleInProperty}
+            />
+          )}
+        </div>
+      </div>
     </div>
   );
 }

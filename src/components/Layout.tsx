@@ -33,7 +33,6 @@ import { DemoGeneratedDataProvider } from '../contexts/DemoGeneratedDataContext'
 import { DemoCreatePropertyCtaButton } from './onboarding/DemoCreatePropertyCta';
 import { realPropertyJoinPath } from '@/lib/propertyEntryRoutes';
 import { isPlatformAdmin } from '@/lib/permissions';
-import { isCouncilGovernanceRole } from '@/lib/community/governanceMatterModel';
 import { meetingsNavHref } from '@/lib/meetingPermissions';
 
 interface LayoutProps {
@@ -50,9 +49,6 @@ function isModulePathActive(location: ReturnType<typeof useLocation>, path: stri
       p === '/voting' ||
       p.startsWith('/voting/')
     );
-  }
-  if (path === '/council/workspace') {
-    return location.pathname === '/council/workspace' || location.pathname.startsWith('/council/workspace/');
   }
   if (path === '/procurement') {
     return location.pathname === '/procurement' || location.pathname.startsWith('/procurement/');
@@ -181,19 +177,7 @@ export function Layout({ children }: LayoutProps) {
         { path: '/demo/compliance', icon: FileText, label: t('nav_help_compliance'), iconBg: 'bg-indigo-500' },
       ] as Array<{ path: string; icon: LucideIcon; label: string; iconBg: string }>;
     }
-    const councilWorkspaceNav =
-      isCouncilGovernanceRole(roleInProperty) && !isDemoMode && !isDemoPropertyMock
-        ? [
-            {
-              path: '/council/workspace',
-              icon: FileText,
-              label: language === 'en' ? 'Council Workspace' : '业委会工作台',
-              iconBg: 'bg-emerald-700',
-            },
-          ]
-        : [];
     return [
-      ...councilWorkspaceNav,
       { path: '/owner-info', icon: Users, label: t('nav_owner_info'), iconBg: 'bg-sky-500' },
       { path: '/manager-tasks', icon: Briefcase, label: t('nav_disputes'), iconBg: 'bg-clearstrata-brand-700' },
       { path: '/procurement', icon: ShoppingCart, label: t('nav_procurement'), iconBg: 'bg-blue-500' },

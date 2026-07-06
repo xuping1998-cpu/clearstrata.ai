@@ -15,7 +15,7 @@
 | **Effective Date** | 2026-07-06 |
 | **Classification** | Project Records |
 | **Owner** | ClearStrata Project One |
-| **Related Documents** | GP-002, GP-004, PR-003, PR-004, PR-005, PR-007 |
+| **Related Documents** | GP-002, GP-004, GP-005, PR-003, PR-004, PR-005, PR-007 |
 | **Repository Location** | `docs/projects/PR-009_Council_Workspace_Phase_2_1.md` |
 
 ---
@@ -23,6 +23,8 @@
 ## Purpose
 
 Phase 2.1 introduces **Council Workspace** — the operational center for constitutional governance. Council members perform the complete governance workflow from a single workspace.
+
+Per **GP-005**, Council Workspace is not an independent sidebar module. It is the detailed operating page opened from the **Governance Panel** inside Community Deliberation (`/community-deliberation`).
 
 This is not an administration panel. It is the constitutional workplace of community governance.
 
@@ -36,7 +38,7 @@ This is not an administration panel. It is the constitutional workplace of commu
 | Lifecycle model | `src/lib/community/governanceLifecycleModel.ts` |
 | Council matter fetch | `fetchGovernanceMattersForCouncilWorkspace` |
 | Route | `/council/workspace` |
-| Navigation | Layout sidebar (council roles only) |
+| Navigation | Governance Panel in Community Deliberation (`/community-deliberation`); not a left-sidebar business module |
 | Meeting prefill | `governance_resolution` source in `meetingEditorPrefill.ts` |
 
 ### Layout

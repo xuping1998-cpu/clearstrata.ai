@@ -73,7 +73,7 @@ This Registry preserves:
 | **FD** | **FD-007** | FD-002 … FD-006 RESERVED |
 | **CA** | **CA-001** | |
 | **CS** | **CS-005** | |
-| **GP** | **GP-005** | GP-004 registered |
+| **GP** | **GP-006** | GP-005 registered |
 | **GC** | **GC-001** | |
 | **CR** | **CR-001** | |
 | **AI** | **AI-001** | |
@@ -116,6 +116,7 @@ This Registry preserves:
 | **GP-002** | Community Deliberation | ACTIVE | `docs/Community_Deliberation.md` |
 | **GP-003** | The Four Pillars of Community Governance | ACTIVE | `docs/Four_Pillars_of_Community_Governance.md` |
 | **GP-004** | Community Resolution | ACTIVE | `docs/Principles/GP-004_Community_Resolution.md` |
+| **GP-005** | Shared Governance Space | ACTIVE | `docs/Principles/GP-005_Shared_Governance_Space.md` |
 
 *Constitutional principle **Discussion Before Decision** is established in FD-001 Article II (not a separate GP number).*
 
@@ -223,6 +224,7 @@ Before creating any permanent document, Cursor **SHALL**:
 | 2026-07-06 | **GP-004** registered — Community Resolution governance principle | Founding Team |
 | 2026-07-06 | **PR-004**, **PR-005** registered — Community Resolution + Meeting/Voting Integration | ClearStrata Project One |
 | 2026-07-06 | **PR-009** registered — Council Workspace Phase 2.1 | ClearStrata Project One |
+| 2026-07-06 | **GP-005** registered — Shared Governance Space design addendum | Founding Team |
 
 ---
 

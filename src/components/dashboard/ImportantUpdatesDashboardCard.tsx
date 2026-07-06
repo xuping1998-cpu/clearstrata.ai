@@ -89,7 +89,7 @@ function phase1DemoDiscussions(langEn: boolean): ImportantUpdatesBullet[] {
   ];
 }
 
-function partitionBullets(items: ImportantUpdatesBullet[]) {
+export function partitionBullets(items: ImportantUpdatesBullet[]) {
   const discussions: ImportantUpdatesBullet[] = [];
   const consultations: ImportantUpdatesBullet[] = [];
   const notices: ImportantUpdatesBullet[] = [];
@@ -104,7 +104,7 @@ function partitionBullets(items: ImportantUpdatesBullet[]) {
   return { discussions, consultations, notices };
 }
 
-function mergeDeliberationBullets(
+export function mergeDeliberationBullets(
   matterBullets: ImportantUpdatesBullet[],
   noticeBullets: ImportantUpdatesBullet[],
   langEn: boolean,
@@ -234,17 +234,17 @@ export function CommunityDeliberationDashboardCard({
 }: ImportantUpdatesDashboardCardProps) {
   const [expanded, setExpanded] = useState(false);
 
-  const titleZh = '社区议事厅';
-  const titleEn = 'Community Deliberation';
+  const titleZh = '治理中心';
+  const titleEn = 'Governance Hub';
   const motto = langEn
     ? 'Good governance begins with listening.'
     : '良好的治理，始于认真倾听。';
   const subtitle = langEn
-    ? 'Every important community decision begins with open discussion.'
-    : '每一项重要社区决策，都始于公开讨论。';
+    ? 'Community Deliberation — one public space for every role.'
+    : '社区议事厅 — 同一治理空间，不同职责。';
   const emptyText = langEn ? 'No community matters to show right now' : '目前没有社区议事事项';
   const expandLabel = langEn ? (expanded ? 'Collapse' : 'Expand') : expanded ? '收起' : '展开';
-  const viewAllLabel = langEn ? 'View All Community Matters' : '查看全部重大事项';
+  const viewAllLabel = langEn ? 'Open Governance Hub' : '进入治理中心';
 
   const discussionSectionTitle = langEn ? 'In discussion' : '讨论中';
   const consultationSectionTitle = langEn ? 'Public consultation' : '公开征求意见';

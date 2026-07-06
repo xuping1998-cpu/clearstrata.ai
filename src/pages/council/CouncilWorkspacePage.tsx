@@ -272,11 +272,17 @@ export function CouncilWorkspacePage() {
     <div className="mx-auto flex h-[calc(100vh-4rem)] max-w-[1600px] flex-col px-3 py-4 sm:px-4">
       <header className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-200 pb-4">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">{en ? 'Council Workspace' : '业委会工作台'}</h1>
+          <Link
+            to={governanceMattersListUrl(propertyId)}
+            className="text-sm font-semibold text-clearstrata-brand-900 hover:underline"
+          >
+            ← {en ? 'Governance Hub' : '治理中心'}
+          </Link>
+          <h1 className="mt-2 text-xl font-bold text-gray-900">{en ? 'Council Workspace' : '业委会工作台'}</h1>
           <p className="mt-0.5 text-sm text-gray-600">
             {en
-              ? 'Constitutional workplace for community governance — not an admin panel.'
-              : '社区治理的宪章工作区 — 不是后台管理页面。'}
+              ? 'Detailed constitutional workflow — opened from Community Deliberation.'
+              : '详细宪章流程 — 从社区议事厅治理面板进入。'}
           </p>
         </div>
         <Link
