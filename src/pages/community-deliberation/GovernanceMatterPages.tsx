@@ -18,7 +18,7 @@ import { useImportantUpdatesBullets } from '@/hooks/useImportantUpdatesBullets';
 import { useGovernanceMatterDashboard } from '@/hooks/useGovernanceMatterDashboard';
 import { meetingsNavHref } from '@/lib/meetingPermissions';
 import { supabase } from '@/lib/supabase';
-import { ConstitutionalDeliberationAssistantPanel } from '@/components/community-deliberation/ConstitutionalDeliberationAssistantPanel';
+import { GovernanceMatterDetailTabs } from '@/components/community-deliberation/GovernanceMatterDetailTabs';
 import {
   GOVERNANCE_MATTER_CATEGORIES,
   GOVERNANCE_MATTER_STATUSES,
@@ -169,13 +169,6 @@ export function GovernanceMatterDetailPage() {
     };
   }, [matterId, propertyId, propertyReady, matter?.id]);
 
-  const revisionLabels = useMemo(() => {
-    return revisions.map((r) => ({
-      ...r,
-      label: r.change_kind.replace(/_/g, ' '),
-    }));
-  }, [revisions]);
-
   async function handlePostComment() {
     if (!matter || !propertyId.trim()) return;
     setSubmitting(true);
@@ -266,7 +259,7 @@ export function GovernanceMatterDetailPage() {
       <div className="mx-auto max-w-3xl px-4 py-8">
         <p className="text-sm text-red-700">{error ?? (en ? 'Not found' : '未找到')}</p>
         <Link to={governanceMattersListUrl(propertyId)} className="mt-4 inline-block text-sm font-semibold text-clearstrata-brand-900">
-          {en ? 'Back to Community Deliberation' : '返回社区议事厅'}
+          {en ? 'Back to Governance Hub' : '返回治理中心'}
         </Link>
       </div>
     );
@@ -278,170 +271,44 @@ export function GovernanceMatterDetailPage() {
         to={governanceMattersListUrl(propertyId)}
         className="text-sm font-semibold text-clearstrata-brand-900 hover:underline"
       >
-        ← {en ? 'Community Deliberation' : '社区议事厅'}
+        ← {en ? 'Governance Hub' : '治理中心'}
       </Link>
 
-      <header className="mt-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      <header className="mt-4">
         <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
           {governanceMatterCategoryLabel(matter.category, en)} · {governanceMatterStatusLabel(matter.status, en)}
         </p>
         <h1 className="mt-1 text-xl font-bold text-gray-900 sm:text-2xl">{matter.title}</h1>
-        {matter.description ? (
-          <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-gray-700">{matter.description}</p>
-        ) : null}
       </header>
 
       {error ? <p className="mt-4 text-sm text-red-700">{error}</p> : null}
 
-      <ConstitutionalDeliberationAssistantPanel
+      <GovernanceMatterDetailTabs
         langEn={en}
-        category={matter.category}
-        report={cdaReport}
-        loading={cdaLoading}
-        generating={cdaGenerating}
-        canRequestAnalysis={canCouncil}
-        onRequestAnalysis={() => void handleRequestCdaAnalysis()}
+        matter={matter}
+        propertyId={propertyId}
+        canCouncil={canCouncil}
+        comments={comments}
+        revisions={revisions}
+        cdaReport={cdaReport}
+        cdaLoading={cdaLoading}
+        cdaGenerating={cdaGenerating}
+        linkedResolution={linkedResolution}
+        commentBody={commentBody}
+        onCommentBodyChange={setCommentBody}
+        onPostComment={() => void handlePostComment()}
+        submitting={submitting}
+        editTitle={editTitle}
+        editDescription={editDescription}
+        editStatus={editStatus}
+        onEditTitleChange={setEditTitle}
+        onEditDescriptionChange={setEditDescription}
+        onEditStatusChange={setEditStatus}
+        onCouncilSave={() => void handleCouncilSave()}
+        onRequestCdaAnalysis={() => void handleRequestCdaAnalysis()}
+        onCreateResolution={() => void handleCreateResolution()}
+        resolutionSubmitting={resolutionSubmitting}
       />
-
-      <section className="mt-6 rounded-2xl border border-emerald-200 bg-white p-5 shadow-sm">
-        <h2 className="text-sm font-bold text-gray-900">{en ? 'Community Resolution' : '社区决议'}</h2>
-        {linkedResolution ? (
-          <div className="mt-2">
-            <p className="text-sm text-gray-700">{linkedResolution.title}</p>
-            <Link
-              to={communityResolutionDetailUrl(linkedResolution.id, propertyId)}
-              className="mt-2 inline-block text-sm font-semibold text-clearstrata-brand-900 hover:underline"
-            >
-              {en ? 'View resolution →' : '查看决议 →'}
-            </Link>
-            {linkedResolution.meeting_id ? (
-              <Link
-                to={`/meetings/${encodeURIComponent(linkedResolution.meeting_id)}`}
-                className="mt-1 block text-sm font-semibold text-clearstrata-brand-900 hover:underline"
-              >
-                {en ? 'Linked meeting →' : '关联会议 →'}
-              </Link>
-            ) : null}
-          </div>
-        ) : canCouncil ? (
-          <div className="mt-2">
-            <p className="text-xs text-gray-600">
-              {en
-                ? 'Prepare a Community Resolution from this matter before scheduling a meeting.'
-                : '排会前，请基于本事项准备社区决议。'}
-            </p>
-            <button
-              type="button"
-              disabled={resolutionSubmitting}
-              onClick={() => void handleCreateResolution()}
-              className="mt-3 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60"
-            >
-              {en ? 'Prepare resolution' : '准备决议'}
-            </button>
-          </div>
-        ) : (
-          <p className="mt-2 text-sm text-gray-500">
-            {en ? 'No resolution prepared yet.' : '尚未准备决议。'}
-          </p>
-        )}
-      </section>
-
-      {canCouncil ? (
-        <section className="mt-6 rounded-2xl border border-amber-200 bg-amber-50/50 p-5">
-          <h2 className="text-sm font-bold text-gray-900">{en ? 'Council — revise matter' : '业委会 — 修订事项'}</h2>
-          <div className="mt-3 space-y-3">
-            <input
-              value={editTitle}
-              onChange={(e) => setEditTitle(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            />
-            <textarea
-              value={editDescription}
-              onChange={(e) => setEditDescription(e.target.value)}
-              rows={4}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            />
-            <select
-              value={editStatus}
-              onChange={(e) => setEditStatus(e.target.value as GovernanceMatterRow['status'])}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            >
-              {GOVERNANCE_MATTER_STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {governanceMatterStatusLabel(s, en)}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              disabled={submitting}
-              onClick={() => void handleCouncilSave()}
-              className="rounded-lg bg-clearstrata-ui-primary px-4 py-2 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover disabled:opacity-60"
-            >
-              {en ? 'Save revision' : '保存修订'}
-            </button>
-          </div>
-        </section>
-      ) : null}
-
-      <section className="mt-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-        <h2 className="text-sm font-bold text-gray-900">{en ? 'Owner discussion' : '业主讨论'}</h2>
-        <p className="mt-1 text-xs text-gray-600">
-          {en ? 'Comments are immutable and publicly traceable.' : '评论不可修改，公开可追溯。'}
-        </p>
-        <ul className="mt-4 space-y-3">
-          {comments.length === 0 ? (
-            <li className="text-sm text-gray-500">{en ? 'No comments yet.' : '暂无评论。'}</li>
-          ) : (
-            comments.map((c) => (
-              <li key={c.id} className="rounded-lg bg-gray-50 px-3 py-2.5">
-                <p className="text-sm text-gray-800">{c.body}</p>
-                <p className="mt-1 text-[11px] text-gray-500">{new Date(c.created_at).toLocaleString()}</p>
-              </li>
-            ))
-          )}
-        </ul>
-        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-          <textarea
-            value={commentBody}
-            onChange={(e) => setCommentBody(e.target.value)}
-            rows={3}
-            placeholder={en ? 'Participate in discussion…' : '参与讨论…'}
-            className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          />
-          <button
-            type="button"
-            disabled={submitting || !commentBody.trim()}
-            onClick={() => void handlePostComment()}
-            className="shrink-0 rounded-lg border border-clearstrata-ui-softBorder bg-white px-4 py-2 text-sm font-semibold text-clearstrata-brand-900 hover:bg-clearstrata-brand-50 disabled:opacity-60"
-          >
-            {en ? 'Post comment' : '发表评论'}
-          </button>
-        </div>
-      </section>
-
-      <section className="mt-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-        <h2 className="text-sm font-bold text-gray-900">{en ? 'Revision history' : '修订历史'}</h2>
-        <ol className="mt-3 space-y-2 border-l-2 border-clearstrata-brand-200 pl-4">
-          {revisionLabels.map((r) => (
-            <li key={r.id} className="text-sm">
-              <span className="font-semibold text-gray-900">
-                {en ? 'Revision' : '修订'} {r.revision_no}
-              </span>
-              <span className="text-gray-600"> — {r.label}</span>
-              <span className="block text-[11px] text-gray-500">{new Date(r.created_at).toLocaleString()}</span>
-            </li>
-          ))}
-        </ol>
-      </section>
-
-      <button
-        type="button"
-        className="mt-6 text-sm text-gray-600 hover:text-gray-900"
-        onClick={() => navigate(-1)}
-      >
-        {en ? 'Back' : '返回'}
-      </button>
     </div>
   );
 }

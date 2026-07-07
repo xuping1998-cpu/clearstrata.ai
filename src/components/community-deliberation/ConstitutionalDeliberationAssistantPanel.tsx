@@ -16,6 +16,8 @@ export type ConstitutionalDeliberationAssistantPanelProps = {
   generating: boolean;
   canRequestAnalysis: boolean;
   onRequestAnalysis?: () => void;
+  /** When true, panel is rendered inside a tab (no outer top margin). */
+  embedded?: boolean;
 };
 
 function Section({
@@ -98,6 +100,7 @@ export function ConstitutionalDeliberationAssistantPanel({
   generating,
   canRequestAnalysis,
   onRequestAnalysis,
+  embedded = false,
 }: ConstitutionalDeliberationAssistantPanelProps) {
   const en = langEn;
   const basis = report?.constitutional_basis?.length
@@ -107,7 +110,13 @@ export function ConstitutionalDeliberationAssistantPanel({
   const principlesReviewed = report?.principles_reviewed ?? [];
 
   return (
-    <section className="mt-6 rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50/90 to-white p-5 shadow-sm">
+    <section
+      className={
+        embedded
+          ? 'rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-50/90 to-white p-4'
+          : 'mt-6 rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50/90 to-white p-5 shadow-sm'
+      }
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-2">
           <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-indigo-600" aria-hidden />
