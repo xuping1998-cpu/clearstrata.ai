@@ -6,6 +6,8 @@ export type OwnerParticipationPanelProps = {
   propertyId: string;
   commentCount: number;
   roleInProperty: string | null | undefined;
+  activeMatterCount?: number;
+  votingMatterCount?: number;
 };
 
 export function OwnerParticipationPanel({
@@ -13,6 +15,8 @@ export function OwnerParticipationPanel({
   propertyId,
   commentCount,
   roleInProperty,
+  activeMatterCount = 0,
+  votingMatterCount = 0,
 }: OwnerParticipationPanelProps) {
   const en = langEn;
   const votingHref = meetingsNavHref(roleInProperty);
@@ -50,6 +54,25 @@ export function OwnerParticipationPanel({
           detail={en ? 'Active deliberation' : '进行中的议事'}
         />
       </ul>
+
+      {(activeMatterCount > 0 || votingMatterCount > 0) ? (
+        <div className="mt-3 rounded-lg border border-sky-100 bg-white/80 px-2.5 py-2 text-[11px] text-gray-700">
+          {activeMatterCount > 0 ? (
+            <p>
+              {en
+                ? `${activeMatterCount} matter${activeMatterCount === 1 ? '' : 's'} may need your attention`
+                : `${activeMatterCount} 项事项可能需要您的关注`}
+            </p>
+          ) : null}
+          {votingMatterCount > 0 ? (
+            <p className={activeMatterCount > 0 ? 'mt-1' : ''}>
+              {en
+                ? `${votingMatterCount} vote${votingMatterCount === 1 ? '' : 's'} approaching`
+                : `${votingMatterCount} 项投票即将进行`}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       <p className="mt-4 text-[10px] leading-snug text-gray-600">
         {en

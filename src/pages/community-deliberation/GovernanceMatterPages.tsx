@@ -3,10 +3,10 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useProperty } from '@/contexts/PropertyContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { CommunityDiscussionFeed } from '@/components/community-deliberation/CommunityDiscussionFeed';
+import { GovernanceLifecycleFeed } from '@/components/community-deliberation/GovernanceLifecycleFeed';
+import { GovernanceLifecycleTimeline } from '@/components/community-deliberation/GovernanceLifecycleTimeline';
 import {
   GovernanceHubPanel,
-  ResolutionStatusSection,
   computeCouncilActionSummary,
 } from '@/components/community-deliberation/GovernanceHubPanel';
 import { OwnerParticipationPanel } from '@/components/community-deliberation/OwnerParticipationPanel';
@@ -279,6 +279,9 @@ export function GovernanceMatterDetailPage() {
           {governanceMatterCategoryLabel(matter.category, en)} · {governanceMatterStatusLabel(matter.status, en)}
         </p>
         <h1 className="mt-1 text-xl font-bold text-gray-900 sm:text-2xl">{matter.title}</h1>
+        <div className="mt-3">
+          <GovernanceLifecycleTimeline status={matter.status} langEn={en} />
+        </div>
       </header>
 
       {error ? <p className="mt-4 text-sm text-red-700">{error}</p> : null}
@@ -476,12 +479,24 @@ export function GovernanceMattersHubPage() {
     return mergeDeliberationBullets(governanceMatterBullets, notices, en, hasRealMatters);
   }, [governanceMatterBullets, importantUpdatesBullets, en, hasRealMatters]);
 
-  const { discussions, consultations, notices } = useMemo(
-    () => partitionBullets(deliberationBullets),
+  const notices = useMemo(
+    () => partitionBullets(deliberationBullets).notices,
     [deliberationBullets],
   );
 
   const councilSummary = useMemo(() => computeCouncilActionSummary(allMatters), [allMatters]);
+
+  const ownerAttention = useMemo(() => {
+    const active = allMatters.filter(
+      (m) => m.status !== 'archived' && m.status !== 'draft',
+    );
+    return {
+      activeMatterCount: active.filter((m) =>
+        ['discussion', 'public_consultation'].includes(m.status),
+      ).length,
+      votingMatterCount: active.filter((m) => m.status === 'voting').length,
+    };
+  }, [allMatters]);
 
   const loading = feedLoading || mattersLoading;
 
@@ -511,20 +526,20 @@ export function GovernanceMattersHubPage() {
         ) : null}
       </header>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
         <main>
           <p className="text-xs font-bold uppercase tracking-wide text-gray-500">
             {en ? 'Governance Feed' : '治理动态'}
           </p>
           <div className="mt-3 rounded-xl border border-gray-100 bg-gray-50/40 p-4">
-            <CommunityDiscussionFeed
+            <GovernanceLifecycleFeed
               langEn={en}
               loading={loading}
-              discussions={discussions}
-              consultations={consultations}
+              matters={allMatters}
               notices={notices}
+              propertyId={propertyId}
+              canCouncil={canCouncil}
             />
-            <ResolutionStatusSection matters={allMatters} propertyId={propertyId} langEn={en} />
           </div>
         </main>
 
@@ -542,6 +557,8 @@ export function GovernanceMattersHubPage() {
               propertyId={propertyId}
               commentCount={ownerCommentCount}
               roleInProperty={roleInProperty}
+              activeMatterCount={ownerAttention.activeMatterCount}
+              votingMatterCount={ownerAttention.votingMatterCount}
             />
           )}
         </div>

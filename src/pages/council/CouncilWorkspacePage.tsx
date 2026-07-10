@@ -4,6 +4,8 @@ import { Plus } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useProperty } from '@/contexts/PropertyContext';
 import { ConstitutionalDeliberationAssistantPanel } from '@/components/community-deliberation/ConstitutionalDeliberationAssistantPanel';
+import { CouncilPrioritiesPanel } from '@/components/community-deliberation/CouncilPrioritiesPanel';
+import { GovernanceLifecycleTimeline } from '@/components/community-deliberation/GovernanceLifecycleTimeline';
 import {
   constitutionalBasisForCategory,
   formatConstitutionalPrinciple,
@@ -461,11 +463,22 @@ export function CouncilWorkspacePage() {
         {/* RIGHT — council actions */}
         <aside className="overflow-y-auto rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
           <p className="text-xs font-bold uppercase tracking-wide text-gray-500">
-            {en ? 'Council Actions' : '业委会操作'}
+            {en ? 'Council Priorities' : '业委会优先事项'}
+          </p>
+          <div className="mt-3">
+            <CouncilPrioritiesPanel langEn={en} propertyId={propertyId} matters={matters} />
+          </div>
+
+          <p className="mt-5 text-xs font-bold uppercase tracking-wide text-gray-500">
+            {en ? 'Selected Matter Actions' : '当前事项操作'}
           </p>
 
           {matter && workspaceStage ? (
             <>
+              <div className="mt-3">
+                <GovernanceLifecycleTimeline status={matter.status} langEn={en} compact />
+              </div>
+
               <div className="mt-3 rounded-lg bg-emerald-50/80 p-3">
                 <p className="text-xs font-semibold text-emerald-900">{en ? 'Lifecycle' : '生命周期'}</p>
                 <p className="mt-1 text-sm font-bold text-gray-900">{workspaceStageLabel(workspaceStage, en)}</p>

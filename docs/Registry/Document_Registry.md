@@ -73,7 +73,7 @@ This Registry preserves:
 | **FD** | **FD-007** | FD-002 … FD-006 RESERVED |
 | **CA** | **CA-001** | |
 | **CS** | **CS-005** | |
-| **GP** | **GP-006** | GP-005 registered |
+| **GP** | **GP-007** | GP-006 registered |
 | **GC** | **GC-001** | |
 | **CR** | **CR-001** | |
 | **AI** | **AI-001** | |
@@ -81,6 +81,7 @@ This Registry preserves:
 | **PR** | **PR-010** | PR-006 RESERVED; PR-003 … PR-009 registered |
 | **RM** | **RM-008** | RM-002 … RM-007 registered |
 | **TM** | **TM-001** | |
+| **UIP** | **UIP-011** | UIP-001 … UIP-010 registered |
 
 ---
 
@@ -117,6 +118,7 @@ This Registry preserves:
 | **GP-003** | The Four Pillars of Community Governance | ACTIVE | `docs/Four_Pillars_of_Community_Governance.md` |
 | **GP-004** | Community Resolution | ACTIVE | `docs/Principles/GP-004_Community_Resolution.md` |
 | **GP-005** | Shared Governance Space | ACTIVE | `docs/Principles/GP-005_Shared_Governance_Space.md` |
+| **GP-006** | Governance Experience | ACTIVE | `docs/Principles/GP-006_Governance_Experience.md` |
 
 *Constitutional principle **Discussion Before Decision** is established in FD-001 Article II (not a separate GP number).*
 
@@ -164,6 +166,25 @@ Permanent constitutional references within FD-001 — not separately numbered do
 
 ---
 
+## UI Polish Records (UIP)
+
+| Number | Title | Status | Repository Location |
+|--------|-------|--------|---------------------|
+| **UIP-001** | Governance Hub Layout | ACTIVE | `docs/projects/UIP_Project_One_UI_Polish.md` § UIP-001 |
+| **UIP-002** | Governance Matter Cards | ACTIVE | `docs/projects/UIP_Project_One_UI_Polish.md` § UIP-002 |
+| **UIP-003** | Governance Matter Detail | ACTIVE | `docs/projects/UIP_Project_One_UI_Polish.md` § UIP-003 |
+| **UIP-004** | Council Workspace | ACTIVE | `docs/projects/UIP_Project_One_UI_Polish.md` § UIP-004 |
+| **UIP-005** | Governance Lifecycle Timeline | ACTIVE | `docs/projects/UIP_Project_One_UI_Polish.md` § UIP-005 |
+| **UIP-006** | Meeting Preparation Experience | PLANNED | `docs/projects/UIP_Project_One_UI_Polish.md` § UIP-006 |
+| **UIP-007** | Voting Experience | PLANNED | `docs/projects/UIP_Project_One_UI_Polish.md` § UIP-007 |
+| **UIP-008** | Owner Experience | ACTIVE | `docs/projects/UIP_Project_One_UI_Polish.md` § UIP-008 |
+| **UIP-009** | Mobile Governance Experience | PLANNED | `docs/projects/UIP_Project_One_UI_Polish.md` § UIP-009 |
+| **UIP-010** | Five-Second Experience Validation | PLANNED | `docs/projects/UIP_Project_One_UI_Polish.md` § UIP-010 |
+
+*Master index:* [`UIP_Project_One_UI_Polish.md`](../projects/UIP_Project_One_UI_Polish.md) · Authority: [GP-006](../Principles/GP-006_Governance_Experience.md)
+
+---
+
 ## Repository Management (RM)
 
 | Number | Title | Status | Repository Location |
@@ -189,6 +210,7 @@ Permanent constitutional references within FD-001 — not separately numbered do
 | **CR** | Constitution Reviews | RESERVED |
 | **AI** | Artificial Intelligence Standards | RESERVED |
 | **AR** | Architecture Records | RESERVED |
+| **UIP** | UI Polish Records | ACTIVE |
 | **TM** | Templates | RESERVED |
 
 ---
@@ -225,6 +247,8 @@ Before creating any permanent document, Cursor **SHALL**:
 | 2026-07-06 | **PR-004**, **PR-005** registered — Community Resolution + Meeting/Voting Integration | ClearStrata Project One |
 | 2026-07-06 | **PR-009** registered — Council Workspace Phase 2.1 | ClearStrata Project One |
 | 2026-07-06 | **GP-005** registered — Shared Governance Space design addendum | Founding Team |
+| 2026-07-10 | **GP-006** registered — Governance Experience constitutional design principle | Founding Team |
+| 2026-07-10 | **UIP-001 … UIP-010** registered — Project One Governance UI Polish (GP-006) | ClearStrata Project One |
 
 ---
 

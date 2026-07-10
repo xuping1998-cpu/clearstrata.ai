@@ -44,18 +44,18 @@ export function workspaceStageLabel(stage: WorkspaceLifecycleStage, langEn: bool
     discussion: 'Discussion',
     consultation: 'Consultation',
     resolution: 'Resolution',
-    meeting: 'Meeting',
+    meeting: 'Scheduled Meeting',
     voting: 'Voting',
     execution: 'Execution',
-    archived: 'Archived',
+    archived: 'Archive',
   };
   const zh: Record<WorkspaceLifecycleStage, string> = {
     draft: '草稿',
     discussion: '讨论',
     consultation: '征求意见',
     resolution: '决议',
-    meeting: '会议',
-    voting: '投票',
+    meeting: '已排会议',
+    voting: '投票中',
     execution: '执行',
     archived: '已归档',
   };

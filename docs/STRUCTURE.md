@@ -60,6 +60,7 @@ This index maps **current** repository paths to the **official target structure*
 | `docs/Four_Pillars_of_Community_Governance.md` | GP-003 |
 | `docs/Principles/GP-004_Community_Resolution.md` | GP-004 |
 | `docs/Principles/GP-005_Shared_Governance_Space.md` | GP-005 |
+| `docs/Principles/GP-006_Governance_Experience.md` | GP-006 |
 
 ---
 

@@ -83,7 +83,7 @@ function revisionTimelineLabel(
     changeKind === 'category_updated' ||
     changeKind === 'discussion_deadline_updated'
   ) {
-    return en ? 'Revision Updated' : '修订已更新';
+    return en ? 'Matter Revised' : '事项已修订';
   }
   if (changeKind === 'status_updated') {
     return en ? 'Status Updated' : '状态已更新';
@@ -332,6 +332,22 @@ function DiscussionTab({
         ) : (
           <p className="mt-2 text-sm text-gray-500">{en ? 'No description provided.' : '暂无说明。'}</p>
         )}
+      </section>
+
+      <section className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-4">
+        <p className="text-xs font-bold uppercase tracking-wide text-indigo-900">
+          {en ? 'Constitutional Basis' : '宪章依据'}
+        </p>
+        <ul className="mt-2 space-y-1">
+          {constitutionalBasisForCategory(matter.category).map((ref, i) => (
+            <li key={i} className="text-sm text-gray-800">
+              {formatConstitutionalPrinciple(ref, en)}
+            </li>
+          ))}
+        </ul>
+        <p className="mt-2 text-xs text-indigo-900/80">
+          {en ? 'Why this matter exists in community governance.' : '说明本事项在社区治理中的宪章依据。'}
+        </p>
       </section>
 
       <section>
