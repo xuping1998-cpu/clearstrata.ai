@@ -20,10 +20,12 @@ export function OwnerParticipationPanel({
   return (
     <aside className="rounded-xl border border-sky-200 bg-gradient-to-b from-sky-50/90 to-white p-4 shadow-sm">
       <p className="text-xs font-bold uppercase tracking-wide text-sky-900">
-        {en ? 'My Participation' : '我的参与'}
+        {en ? 'Your Participation' : '我的治理参与'}
       </p>
       <p className="mt-0.5 text-[11px] text-sky-800/90">
-        {en ? 'Your voice in community governance' : '您在社区治理中的参与'}
+        {en
+          ? 'Your participation in community governance.'
+          : '您在社区治理中的参与记录'}
       </p>
 
       <ul className="mt-3 space-y-2">

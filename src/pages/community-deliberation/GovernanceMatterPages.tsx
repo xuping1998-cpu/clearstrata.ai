@@ -514,9 +514,9 @@ export function GovernanceMattersHubPage() {
       <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
         <main>
           <p className="text-xs font-bold uppercase tracking-wide text-gray-500">
-            {en ? 'Community discussion feed' : '社区议事动态'}
+            {en ? 'Governance Feed' : '治理动态'}
           </p>
-          <div className="mt-3">
+          <div className="mt-3 rounded-xl border border-gray-100 bg-gray-50/40 p-4">
             <CommunityDiscussionFeed
               langEn={en}
               loading={loading}

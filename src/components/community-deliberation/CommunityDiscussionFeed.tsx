@@ -72,7 +72,7 @@ export function CommunityDiscussionFeed({
   const en = langEn;
 
   if (loading) {
-    return <p className="text-sm text-gray-500">{en ? 'Loading feed…' : '加载议事动态…'}</p>;
+    return <p className="text-sm text-gray-500">{en ? 'Loading governance feed…' : '加载治理动态…'}</p>;
   }
 
   return (
@@ -81,19 +81,23 @@ export function CommunityDiscussionFeed({
         title={en ? 'Discussion' : '讨论中'}
         items={discussions}
         langEn={en}
-        empty={en ? 'No discussions yet.' : '暂无讨论。'}
+        empty={
+          en
+            ? 'No governance matters are currently under discussion.'
+            : '暂无正在讨论的治理事项。'
+        }
       />
       <FeedSection
-        title={en ? 'Public consultation' : '公开征求意见'}
+        title={en ? 'Public Consultation' : '公开征求意见'}
         items={consultations}
         langEn={en}
-        empty={en ? 'No consultations open.' : '暂无征求意见。'}
+        empty={en ? 'No public consultations at this time.' : '暂无公开征求意见事项。'}
       />
       <FeedSection
-        title={en ? 'Official notices' : '正式通知'}
+        title={en ? 'Official Notice' : '正式通知'}
         items={notices}
         langEn={en}
-        empty={en ? 'No notices.' : '暂无通知。'}
+        empty={en ? 'No official notices at this time.' : '暂无正式通知。'}
       />
     </div>
   );

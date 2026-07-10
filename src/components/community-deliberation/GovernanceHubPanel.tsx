@@ -52,16 +52,18 @@ export function GovernanceHubPanel({ langEn, propertyId, matters, summary }: Gov
         {en ? 'Governance Panel' : '治理面板'}
       </p>
       <p className="mt-0.5 text-[11px] text-emerald-800/90">
-        {en ? 'Council Workspace — constitutional workflow' : '业委会工作台 — 宪章流程'}
+        {en
+          ? 'Council Workspace — Constitutional Governance Workflow'
+          : '业委会工作台 — 宪章治理流程'}
       </p>
 
       <div className="mt-3 space-y-2">
-        <SummaryRow label={en ? "Today's actions" : '今日待办'} value={String(summary.todaysActions)} />
-        <SummaryRow label={en ? 'Active matters' : '进行中事项'} value={String(summary.activeMatters)} />
-        <SummaryRow label={en ? 'CDA ready' : '可生成助手报告'} value={String(summary.cdaReady)} />
-        <SummaryRow label={en ? 'Resolution pending' : '决议待办'} value={String(summary.resolutionPending)} />
-        <SummaryRow label={en ? 'Meeting scheduled' : '已排会议'} value={String(summary.meetingScheduled)} />
-        <SummaryRow label={en ? 'Voting closing' : '投票将截止'} value={String(summary.votingClosing)} />
+        <SummaryRow label={en ? "Today's Actions" : '今日待办'} value={String(summary.todaysActions)} />
+        <SummaryRow label={en ? 'Active Matters' : '进行中事项'} value={String(summary.activeMatters)} />
+        <SummaryRow label={en ? 'CDA Ready' : '可生成助手报告'} value={String(summary.cdaReady)} />
+        <SummaryRow label={en ? 'Resolution Pending' : '决议待办'} value={String(summary.resolutionPending)} />
+        <SummaryRow label={en ? 'Meeting Scheduled' : '已排会议'} value={String(summary.meetingScheduled)} />
+        <SummaryRow label={en ? 'Voting Closing' : '投票将截止'} value={String(summary.votingClosing)} />
       </div>
 
       {topMatter ? (
@@ -131,7 +133,7 @@ export function ResolutionStatusSection({
 
   return (
     <section className="mt-6">
-      <h3 className="text-sm font-bold text-gray-900">{en ? 'Resolution status' : '决议进展'}</h3>
+      <h3 className="text-sm font-bold text-gray-900">{en ? 'Community Resolution' : '社区决议'}</h3>
       <ul className="mt-2 space-y-2">
         {rows.map((m) => (
           <li key={m.id}>

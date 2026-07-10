@@ -246,9 +246,9 @@ export function CommunityDeliberationDashboardCard({
   const expandLabel = langEn ? (expanded ? 'Collapse' : 'Expand') : expanded ? '收起' : '展开';
   const viewAllLabel = langEn ? 'Open Governance Hub' : '进入治理中心';
 
-  const discussionSectionTitle = langEn ? 'In discussion' : '讨论中';
-  const consultationSectionTitle = langEn ? 'Public consultation' : '公开征求意见';
-  const noticeSectionTitle = langEn ? 'Official notices' : '正式通知';
+  const discussionSectionTitle = langEn ? 'Discussion' : '讨论中';
+  const consultationSectionTitle = langEn ? 'Public Consultation' : '公开征求意见';
+  const noticeSectionTitle = langEn ? 'Official Notice' : '正式通知';
 
   const rawList = Array.isArray(bullets) ? bullets : langEn ? FALLBACK_EN : FALLBACK_ZH;
   const matterRows = rawList.filter((b) => b.id.startsWith('governance-matter-'));
