@@ -63,6 +63,8 @@ export type GovernanceMatterDetailTabsProps = {
   /** Council workspace shows an extra Details tab. */
   includeDetailsTab?: boolean;
   defaultTab?: MatterDetailTab;
+  /** Quieter tab chrome for Governance Cockpit center column. */
+  compactLayout?: boolean;
 };
 
 const TAB_DEFS: { id: MatterDetailTab; en: string; zh: string }[] = [
@@ -200,6 +202,7 @@ export function GovernanceMatterDetailTabs(props: GovernanceMatterDetailTabsProp
     onRequestedTabHandled,
     includeDetailsTab = false,
     defaultTab = 'discussion',
+    compactLayout = false,
   } = props;
 
   const [activeTab, setActiveTab] = useState<MatterDetailTab>(defaultTab);
@@ -227,9 +230,9 @@ export function GovernanceMatterDetailTabs(props: GovernanceMatterDetailTabsProp
       : constitutionalBasisForCategory(matter.category);
 
   return (
-    <div className="mt-5">
+    <div className={compactLayout ? 'mt-2' : 'mt-5'}>
       <div
-        className="flex gap-1 overflow-x-auto border-b border-gray-200 pb-px"
+        className={`flex gap-0.5 overflow-x-auto ${compactLayout ? 'border-b border-gray-100' : 'border-b border-gray-200 pb-px'}`}
         role="tablist"
         aria-label={en ? 'Governance matter sections' : '治理事项分区'}
       >
@@ -242,11 +245,19 @@ export function GovernanceMatterDetailTabs(props: GovernanceMatterDetailTabsProp
               role="tab"
               aria-selected={selected}
               onClick={() => setActiveTab(tab.id)}
-              className={`shrink-0 rounded-t-lg px-3 py-2 text-sm font-semibold transition-colors sm:px-4 ${
-                selected
-                  ? 'border border-b-white border-gray-200 bg-white text-clearstrata-brand-900'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-              }`}
+              className={
+                compactLayout
+                  ? `shrink-0 px-3 py-1.5 text-xs font-semibold transition-colors sm:px-3.5 ${
+                      selected
+                        ? 'rounded-t-md bg-emerald-800 text-white'
+                        : 'text-gray-500 hover:text-gray-800'
+                    }`
+                  : `shrink-0 rounded-t-lg px-3 py-2 text-sm font-semibold transition-colors sm:px-4 ${
+                      selected
+                        ? 'border border-b-white border-gray-200 bg-white text-clearstrata-brand-900'
+                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`
+              }
             >
               {en ? tab.en : tab.zh}
             </button>
@@ -254,7 +265,13 @@ export function GovernanceMatterDetailTabs(props: GovernanceMatterDetailTabsProp
         })}
       </div>
 
-      <div className="rounded-b-2xl rounded-tr-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      <div
+        className={
+          compactLayout
+            ? 'pt-3'
+            : 'rounded-b-2xl rounded-tr-2xl border border-gray-200 bg-white p-5 shadow-sm'
+        }
+      >
         {activeTab === 'details' ? (
           <DetailsTab
             en={en}
@@ -268,6 +285,7 @@ export function GovernanceMatterDetailTabs(props: GovernanceMatterDetailTabsProp
             onEditStatusChange={onEditStatusChange}
             onCouncilSave={onCouncilSave}
             submitting={submitting}
+            compactLayout={compactLayout}
           />
         ) : null}
 
@@ -336,6 +354,7 @@ function DetailsTab({
   onEditStatusChange,
   onCouncilSave,
   submitting,
+  compactLayout = false,
 }: {
   en: boolean;
   matter: GovernanceMatterRow;
@@ -348,7 +367,81 @@ function DetailsTab({
   onEditStatusChange: (value: GovernanceMatterRow['status']) => void;
   onCouncilSave: () => void;
   submitting: boolean;
+  compactLayout?: boolean;
 }) {
+  if (compactLayout) {
+    return (
+      <div className="space-y-3">
+        {matter.description ? (
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-600">{matter.description}</p>
+        ) : (
+          <p className="text-sm text-gray-500">{en ? 'No description.' : '暂无说明。'}</p>
+        )}
+
+        <details className="text-sm">
+          <summary className="cursor-pointer font-semibold text-gray-700">
+            {en ? 'Constitutional basis' : '宪章依据'}
+          </summary>
+          <ul className="mt-2 space-y-1 pl-1 text-sm text-gray-600">
+            {constitutionalBasisForCategory(matter.category).map((ref, i) => (
+              <li key={i}>{formatConstitutionalPrinciple(ref, en)}</li>
+            ))}
+          </ul>
+        </details>
+
+        {canCouncil ? (
+          <details className="group border-t border-gray-100 pt-3">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-2 marker:content-none">
+              <div>
+                <p className="text-sm font-bold text-gray-900">{en ? 'Council Revision' : '业委会修订'}</p>
+                <p className="mt-0.5 text-xs text-gray-500">
+                  {en
+                    ? 'Revisions are permanently recorded.'
+                    : '修订会永久记录，不会覆盖历史。'}
+                </p>
+              </div>
+              <span className="shrink-0 text-xs font-semibold text-clearstrata-brand-900">
+                {en ? 'Expand' : '展开'}
+              </span>
+            </summary>
+            <div className="mt-3 space-y-3">
+              <input
+                value={editTitle}
+                onChange={(e) => onEditTitleChange(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              />
+              <textarea
+                value={editDescription}
+                onChange={(e) => onEditDescriptionChange(e.target.value)}
+                rows={5}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              />
+              <select
+                value={editStatus}
+                onChange={(e) => onEditStatusChange(e.target.value as GovernanceMatterRow['status'])}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              >
+                {GOVERNANCE_MATTER_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {governanceMatterStatusLabel(s, en)}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={onCouncilSave}
+                className="rounded-lg border border-clearstrata-ui-softBorder bg-white px-4 py-2 text-sm font-semibold text-clearstrata-brand-900 hover:bg-clearstrata-brand-50 disabled:opacity-60"
+              >
+                {en ? 'Save revision' : '保存修订'}
+              </button>
+            </div>
+          </details>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <section className="rounded-xl border border-gray-100 bg-gray-50/60 p-4">

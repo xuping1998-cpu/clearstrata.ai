@@ -15,7 +15,7 @@
 | **Effective Date** | 2026-07-10 |
 | **Classification** | UI Polish |
 | **Owner** | ClearStrata Project One |
-| **Related Documents** | GP-005, GP-006, PR-009, UIP-001 … UIP-010 |
+| **Related Documents** | GP-005, GP-006, PR-009, UIP-001 … UIP-011 |
 | **Repository Location** | `docs/projects/UIP_Project_One_UI_Polish.md` |
 
 ---
@@ -49,6 +49,44 @@ Transform the existing governance system into a clear, intuitive, role-aware gov
 | **UIP-008** | Owner Experience | ACTIVE | Participation panel + attention hints |
 | **UIP-009** | Mobile Governance Experience | PLANNED | Responsive stacked layout foundation |
 | **UIP-010** | Five-Second Experience Validation | PLANNED | Role/locale validation checklist |
+| **UIP-011** | Governance Cockpit | ACTIVE | Three-column cockpit: Pipeline · Current Matter · Action Queue |
+
+---
+
+## Final Pass — Visual Hierarchy
+
+| Field | Value |
+|-------|-------|
+| **Pass** | Final Pass — Visual Hierarchy |
+| **Status** | COMPLETED |
+| **Authority** | GP-005, GP-006, UIP-011 |
+| **Objective** | Reduce visual noise (~20%), strengthen hierarchy around Current Matter, lifecycle stage, next constitutional step, and today's highest-priority action |
+| **Constraints** | UI only — no database, migrations, API, RLS, permissions, routes, or governance behavior changes |
+
+### Scope
+
+- **Pipeline cards** — title, stage badge, category, one activity indicator, next step, single view CTA; positive badges only
+- **Center column** — larger matter title, progress-style lifecycle timeline, quieter tabs, council revision collapsed by default
+- **Cockpit** — action queue before metrics; action-specific CTAs; zero-value metrics hidden; mobile compact summary
+- **Lifecycle colors** — consistent semantic mapping (discussion green, consultation amber, CDA indigo advisory, etc.)
+
+### Implementation (2026-07-11)
+
+| Component / file | Change |
+|------------------|--------|
+| `WorkspacePipelineMatterCard.tsx` | Simplified card hierarchy; positive badges only |
+| `GovernanceCockpitPanel.tsx` | Queue-first layout; deadline warnings; compact metrics |
+| `CockpitLifecycleTimeline.tsx` | Progress indicator (✓ / ◇ / ○), not button row |
+| `GovernanceMatterDetailTabs.tsx` | `compactLayout` — quiet tabs, collapsed revision |
+| `CouncilWorkspacePage.tsx` | Center header typography; mobile order; stage colors |
+| `governanceLifecycleColors.ts` | Shared stage badge and filter colors |
+| `governanceCockpitPriority.ts` | Action-specific CTA labels; urgent flag |
+
+### Verification
+
+- `npx tsc --noEmit` — pass
+- `npm run build` — pass
+- Route: `/council/workspace`
 
 ---
 
@@ -87,7 +125,7 @@ Transform the existing governance system into a clear, intuitive, role-aware gov
 | `/` | All | Dashboard Governance Hub card + primary CTA |
 | `/community-deliberation` | Owner / Council | Lifecycle feed + role panel |
 | `/community-deliberation/:matterId` | All | Tabs + lifecycle timeline |
-| `/council/workspace` | Council | Priorities + three-column workspace |
+| `/council/workspace` | Council | Governance Cockpit — pipeline, current matter, action queue |
 
 ---
 

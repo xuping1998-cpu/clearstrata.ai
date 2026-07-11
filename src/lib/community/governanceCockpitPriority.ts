@@ -22,6 +22,7 @@ export type GovernanceCockpitAction = {
   titleZh: string;
   reasonEn: string;
   reasonZh: string;
+  isUrgent?: boolean;
 };
 
 export type CockpitMetrics = {
@@ -162,15 +163,22 @@ function inferPendingAction(
     ['discussion', 'public_consultation'].includes(status) &&
     !ctx.hasCdaReport
   ) {
+    const commentReason =
+      matter.comment_count > 0
+        ? {
+            en: `${matter.comment_count} comment${matter.comment_count === 1 ? '' : 's'} — no latest analysis yet`,
+            zh: `已有 ${matter.comment_count} 条评论，尚无最新分析`,
+          }
+        : { en: 'No current CDA report', zh: '尚无议事助手报告' };
     return {
       matterId: matter.id,
       matterTitle: matter.title,
       actionType: 'generate_cda',
       priority: ACTION_PRIORITY.generate_cda,
       titleEn: 'Generate CDA report',
-      titleZh: '生成议事助手报告',
-      reasonEn: 'No current CDA report',
-      reasonZh: '尚无议事助手报告',
+      titleZh: '生成 CDA 报告',
+      reasonEn: commentReason.en,
+      reasonZh: commentReason.zh,
     };
   }
 
@@ -216,6 +224,7 @@ export function buildGovernanceCockpitActions(
     actions.push({
       ...pending,
       priority: pending.priority + boost + deadlineBoost,
+      isUrgent: isDeadlineUrgent(matter),
     });
   }
 
@@ -303,20 +312,20 @@ export function cockpitActionButtonLabel(
   langEn: boolean,
 ): string {
   const en: Record<GovernanceCockpitActionType, string> = {
-    review_discussion: 'Open Matter',
-    generate_cda: 'Generate',
-    prepare_resolution: 'Prepare Resolution',
-    schedule_meeting: 'Schedule Meeting',
-    open_voting: 'Open Voting',
-    archive: 'Archive',
+    review_discussion: 'Continue discussion',
+    generate_cda: 'Generate report',
+    prepare_resolution: 'Prepare resolution',
+    schedule_meeting: 'Schedule meeting',
+    open_voting: 'Open voting',
+    archive: 'Archive matter',
   };
   const zh: Record<GovernanceCockpitActionType, string> = {
-    review_discussion: '打开事项',
+    review_discussion: '继续讨论',
     generate_cda: '生成报告',
     prepare_resolution: '准备决议',
-    schedule_meeting: '排定会议',
-    open_voting: '开放投票',
-    archive: '归档',
+    schedule_meeting: '安排会议',
+    open_voting: '开启投票',
+    archive: '归档事项',
   };
   return langEn ? en[actionType] : zh[actionType];
 }

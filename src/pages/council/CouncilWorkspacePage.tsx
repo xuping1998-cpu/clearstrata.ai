@@ -10,6 +10,7 @@ import {
   type MatterDetailTab,
 } from '@/components/community-deliberation/GovernanceMatterDetailTabs';
 import { WorkspacePipelineMatterCard } from '@/components/community-deliberation/WorkspacePipelineMatterCard';
+import { lifecycleFilterActiveClass, lifecycleStageBadgeClass } from '@/lib/community/governanceLifecycleColors';
 import { nextConstitutionalStep } from '@/lib/community/governanceLifecycleModel';
 import {
   buildGovernanceCockpitActions,
@@ -373,7 +374,7 @@ export function CouncilWorkspacePage() {
               onClick={() => setStageFilter(filter)}
               className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
                 stageFilter === filter
-                  ? 'bg-emerald-800 text-white'
+                  ? lifecycleFilterActiveClass(filter)
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
@@ -439,95 +440,100 @@ export function CouncilWorkspacePage() {
 
       {error ? <p className="mt-2 text-sm text-red-700">{error}</p> : null}
 
-      <details className="mt-3 lg:hidden" open={pipelineOpen}>
-        <summary
-          className="flex cursor-pointer list-none items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold marker:content-none"
-          onClick={() => setPipelineOpen((v) => !v)}
-        >
-          {en ? 'Governance Pipeline' : '治理流程'}
-          <ChevronDown className="h-4 w-4" aria-hidden />
-        </summary>
-        <div className="mt-2 max-h-64 overflow-y-auto">{pipelineSection}</div>
-      </details>
-
       <div className="mt-3 flex min-h-0 flex-1 flex-col gap-3 lg:grid lg:min-h-[calc(100vh-12rem)] lg:grid-cols-[280px_minmax(0,1fr)_300px]">
-        <div className="hidden min-h-0 lg:block">{pipelineSection}</div>
+        <div className="hidden min-h-0 lg:block lg:row-span-2">{pipelineSection}</div>
 
-        <main className="order-1 flex min-h-0 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm lg:order-2">
-          {!matter ? (
-            <p className="p-6 text-sm text-gray-500">
-              {en ? 'Select a governance matter.' : '请选择治理事项。'}
-            </p>
-          ) : (
-            <>
-              <div className="border-b border-gray-100 px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  {en ? 'Current Matter' : '当前事项'}
-                </p>
-                <p className="text-xs text-gray-500">
-                  {governanceMatterCategoryLabel(matter.category, en)} ·{' '}
+        {matter ? (
+          <header className="order-1 flex flex-col rounded-xl border border-gray-200 bg-white shadow-sm lg:order-2 lg:col-start-2 lg:rounded-b-none lg:border-b-0 lg:shadow-md">
+            <div className="border-b border-gray-100 px-4 py-3 lg:border-b-0">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                {en ? 'Current Matter' : '当前事项'}
+              </p>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <span className="text-xs text-gray-500">{governanceMatterCategoryLabel(matter.category, en)}</span>
+                <span className={lifecycleStageBadgeClass(matter.status)}>
                   {governanceMatterStatusLabel(matter.status, en)}
-                </p>
-                <h2 className="text-lg font-bold text-gray-900">{matter.title}</h2>
-                <div className="mt-2">
-                  <CockpitLifecycleTimeline
-                    status={matter.status}
-                    category={matter.category}
-                    hasCdaReport={Boolean(cdaReport)}
-                    langEn={en}
-                    compact
-                  />
-                </div>
-                <p className="mt-2 text-xs text-gray-700">
-                  <span className="font-semibold">{en ? 'Next constitutional step: ' : '下一宪章步骤：'}</span>
-                  {nextStep}
-                </p>
+                </span>
               </div>
-              <div className="flex-1 overflow-y-auto px-2 pb-4">
-                <GovernanceMatterDetailTabs
+              <h2 className="mt-1 text-2xl font-bold leading-tight text-gray-900">{matter.title}</h2>
+              <div className="mt-1.5">
+                <CockpitLifecycleTimeline
+                  status={matter.status}
+                  category={matter.category}
+                  hasCdaReport={Boolean(cdaReport)}
                   langEn={en}
-                  matter={matter}
-                  propertyId={propertyId}
-                  canCouncil
-                  comments={comments}
-                  revisions={revisions}
-                  cdaReport={cdaReport}
-                  cdaLoading={false}
-                  cdaGenerating={busy}
-                  linkedResolution={linkedResolution}
-                  commentBody={commentBody}
-                  onCommentBodyChange={setCommentBody}
-                  onPostComment={() => void handlePostComment()}
-                  submitting={busy}
-                  editTitle={editTitle}
-                  editDescription={editDescription}
-                  editStatus={editStatus}
-                  onEditTitleChange={setEditTitle}
-                  onEditDescriptionChange={setEditDescription}
-                  onEditStatusChange={setEditStatus}
-                  onCouncilSave={() => void handleSaveRevision()}
-                  onRequestCdaAnalysis={() => void handleCdaRefresh()}
-                  onCreateResolution={() => void handleCreateResolution()}
-                  resolutionSubmitting={busy}
-                  includeDetailsTab
-                  defaultTab="details"
-                  requestedTab={requestedTab}
-                  onRequestedTabHandled={() => setRequestedTab(null)}
+                  compact
                 />
               </div>
-            </>
-          )}
-        </main>
+              <p className="mt-2 text-sm text-gray-700">
+                <span className="font-medium">{en ? 'Next: ' : '下一步：'}</span>
+                {nextStep}
+              </p>
+            </div>
+          </header>
+        ) : (
+          <main className="order-1 rounded-xl border border-gray-200 bg-white p-6 shadow-sm lg:order-2 lg:col-start-2">
+            <p className="text-sm text-gray-500">{en ? 'Select a governance matter.' : '请选择治理事项。'}</p>
+          </main>
+        )}
 
-        <div className="order-2 min-h-0 lg:order-3">
+        <div className="order-2 min-h-0 lg:order-3 lg:col-start-3 lg:row-start-1">
           <GovernanceCockpitPanel
             langEn={en}
             metrics={cockpitMetrics}
             actions={cockpitActions}
-            onSelectMatter={selectMatter}
             onQueueAction={handleQueueAction}
           />
         </div>
+
+        {matter ? (
+          <div className="order-3 flex min-h-0 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm lg:order-2 lg:col-start-2 lg:-mt-px lg:rounded-t-none lg:border-t-0 lg:pt-0">
+            <div className="flex-1 overflow-y-auto px-4 pb-4">
+              <GovernanceMatterDetailTabs
+                langEn={en}
+                matter={matter}
+                propertyId={propertyId}
+                canCouncil
+                comments={comments}
+                revisions={revisions}
+                cdaReport={cdaReport}
+                cdaLoading={false}
+                cdaGenerating={busy}
+                linkedResolution={linkedResolution}
+                commentBody={commentBody}
+                onCommentBodyChange={setCommentBody}
+                onPostComment={() => void handlePostComment()}
+                submitting={busy}
+                editTitle={editTitle}
+                editDescription={editDescription}
+                editStatus={editStatus}
+                onEditTitleChange={setEditTitle}
+                onEditDescriptionChange={setEditDescription}
+                onEditStatusChange={setEditStatus}
+                onCouncilSave={() => void handleSaveRevision()}
+                onRequestCdaAnalysis={() => void handleCdaRefresh()}
+                onCreateResolution={() => void handleCreateResolution()}
+                resolutionSubmitting={busy}
+                includeDetailsTab
+                defaultTab="details"
+                requestedTab={requestedTab}
+                onRequestedTabHandled={() => setRequestedTab(null)}
+                compactLayout
+              />
+            </div>
+          </div>
+        ) : null}
+
+        <details className="order-4 lg:hidden" open={pipelineOpen}>
+          <summary
+            className="flex cursor-pointer list-none items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold marker:content-none"
+            onClick={() => setPipelineOpen((v) => !v)}
+          >
+            {en ? 'Governance Pipeline' : '治理流程'}
+            <ChevronDown className="h-4 w-4" aria-hidden />
+          </summary>
+          <div className="mt-2 max-h-64 overflow-y-auto">{pipelineSection}</div>
+        </details>
       </div>
     </div>
   );

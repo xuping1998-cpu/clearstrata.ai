@@ -5,7 +5,6 @@ import {
 } from '@/lib/community/governanceLifecycleModel';
 import type { GovernanceMatterCategory, GovernanceMatterStatus } from '@/lib/community/governanceMatterModel';
 
-/** Cockpit lifecycle includes CDA as advisory checkpoint (UIP-011). */
 export const COCKPIT_TIMELINE_STAGES = [
   'discussion',
   'consultation',
@@ -28,16 +27,11 @@ export type CockpitLifecycleTimelineProps = {
 };
 
 function cockpitStageLabel(stage: CockpitTimelineStage, langEn: boolean): string {
-  if (stage === 'cda') {
-    return langEn ? 'CDA' : '议事助手';
-  }
+  if (stage === 'cda') return langEn ? 'CDA' : '议事助手';
   return workspaceStageLabel(stage as WorkspaceLifecycleStage, langEn);
 }
 
-function resolveCurrentCockpitIndex(
-  status: GovernanceMatterStatus,
-  hasCdaReport: boolean,
-): number {
+function resolveCurrentCockpitIndex(status: GovernanceMatterStatus, hasCdaReport: boolean): number {
   const ws = matterStatusToWorkspaceStage(status);
   if (ws === 'archived') return COCKPIT_TIMELINE_STAGES.indexOf('archived');
   if (ws === 'execution') return COCKPIT_TIMELINE_STAGES.indexOf('execution');
@@ -57,13 +51,17 @@ function resolveCurrentCockpitIndex(
   return 0;
 }
 
-function agmApplicabilityLabel(category: GovernanceMatterCategory, langEn: boolean): string | null {
-  if (category !== 'annual_general_meeting' && category !== 'special_general_meeting') {
-    return null;
-  }
-  return langEn
-    ? 'AGM/SGM — deliberation applicability varies by agenda item'
-    : '大会事项 — 议事适用性因议程而异';
+function stageSymbol(
+  isComplete: boolean,
+  isCurrent: boolean,
+  isCda: boolean,
+  skipped: boolean,
+): string {
+  if (skipped) return '—';
+  if (isComplete) return '✓';
+  if (isCurrent && isCda) return '◇';
+  if (isCurrent) return '●';
+  return '○';
 }
 
 export function CockpitLifecycleTimeline({
@@ -75,55 +73,54 @@ export function CockpitLifecycleTimeline({
 }: CockpitLifecycleTimelineProps) {
   const en = langEn;
   const currentIdx = resolveCurrentCockpitIndex(status, hasCdaReport);
-  const agmNote = agmApplicabilityLabel(category, en);
+  const agmNote =
+    category === 'annual_general_meeting' || category === 'special_general_meeting'
+      ? en
+        ? 'AGM/SGM — applicability may vary by agenda item'
+        : '大会事项 — 适用性因议程而异'
+      : null;
 
   return (
-    <div>
-      {agmNote ? <p className="mb-2 text-[11px] text-amber-800">{agmNote}</p> : null}
-      <nav aria-label={en ? 'Governance lifecycle' : '治理生命周期'} className={compact ? 'overflow-x-auto' : ''}>
-        <ol className={`flex items-center gap-1 ${compact ? 'min-w-max pb-1' : 'flex-wrap gap-y-2'}`}>
-          {COCKPIT_TIMELINE_STAGES.map((stage, index) => {
-            const isCda = stage === 'cda';
-            const isComplete = index < currentIdx;
-            const isCurrent = index === currentIdx;
-            const skipped =
-              isCda &&
-              hasCdaReport &&
-              currentIdx > COCKPIT_TIMELINE_STAGES.indexOf('cda') &&
-              !isComplete &&
-              !isCurrent;
+    <div role="group" aria-label={en ? 'Governance lifecycle progress' : '治理生命周期进展'}>
+      {agmNote ? <p className="mb-1.5 text-[10px] text-amber-700">{agmNote}</p> : null}
+      <ol className={`flex items-center ${compact ? 'min-w-max gap-0.5 overflow-x-auto pb-0.5' : 'flex-wrap gap-1'}`}>
+        {COCKPIT_TIMELINE_STAGES.map((stage, index) => {
+          const isCda = stage === 'cda';
+          const isComplete = index < currentIdx;
+          const isCurrent = index === currentIdx;
+          const skipped =
+            isCda &&
+            hasCdaReport &&
+            currentIdx > COCKPIT_TIMELINE_STAGES.indexOf('cda') &&
+            !isComplete &&
+            !isCurrent;
 
-            return (
-              <li key={stage} className="flex items-center gap-1">
-                <span
-                  className={pillClass({ isCda, isComplete, isCurrent, skipped, compact })}
-                  aria-current={isCurrent ? 'step' : undefined}
-                  title={
-                    isCda
-                      ? en
-                        ? 'Advisory — AI assists, people decide'
-                        : '辅助阶段 — AI 协助，人做决定'
-                      : undefined
-                  }
-                >
-                  {isComplete && !isCurrent ? '✓ ' : ''}
-                  {cockpitStageLabel(stage, en)}
+          return (
+            <li key={stage} className="flex items-center">
+              <span
+                className={stepClass({ isCda, isComplete, isCurrent, skipped, compact })}
+                aria-current={isCurrent ? 'step' : undefined}
+                title={isCda ? (en ? 'Advisory checkpoint' : '辅助检查点') : undefined}
+              >
+                <span className="mr-0.5 font-mono text-[10px]" aria-hidden>
+                  {stageSymbol(isComplete, isCurrent, isCda, skipped)}
                 </span>
-                {index < COCKPIT_TIMELINE_STAGES.length - 1 ? (
-                  <span className={`text-xs ${isComplete ? 'text-emerald-500' : 'text-gray-300'}`} aria-hidden>
-                    →
-                  </span>
-                ) : null}
-              </li>
-            );
-          })}
-        </ol>
-      </nav>
+                {cockpitStageLabel(stage, en)}
+              </span>
+              {index < COCKPIT_TIMELINE_STAGES.length - 1 ? (
+                <span className="mx-0.5 text-[10px] text-gray-300" aria-hidden>
+                  →
+                </span>
+              ) : null}
+            </li>
+          );
+        })}
+      </ol>
     </div>
   );
 }
 
-function pillClass({
+function stepClass({
   isCda,
   isComplete,
   isCurrent,
@@ -136,28 +133,25 @@ function pillClass({
   skipped: boolean;
   compact: boolean;
 }): string {
-  const base = compact ? 'px-2 py-0.5 text-[10px]' : 'px-2.5 py-1 text-xs';
-  let cls = `rounded-full font-semibold border ${base} `;
+  const base = `inline-flex items-center rounded-md px-1.5 py-0.5 ${compact ? 'text-[10px]' : 'text-xs'} `;
 
   if (skipped) {
-    return `${cls}border-dashed border-gray-200 bg-gray-50 text-gray-400 line-through`;
+    return `${base}text-gray-400 line-through`;
   }
-
+  if (isCda && isCurrent) {
+    return `${base}font-semibold text-indigo-900 ring-1 ring-dashed ring-indigo-300 bg-indigo-50/50`;
+  }
+  if (isCda && isComplete) {
+    return `${base}font-medium text-indigo-800`;
+  }
   if (isCda) {
-    if (isCurrent) {
-      return `${cls}border-indigo-400 border-dashed bg-indigo-50 text-indigo-900`;
-    }
-    if (isComplete) {
-      return `${cls}border-indigo-200 bg-indigo-50/80 text-indigo-800`;
-    }
-    return `${cls}border-dashed border-indigo-100 bg-white text-indigo-300`;
+    return `${base}text-indigo-300`;
   }
-
   if (isCurrent) {
-    return `${cls}border-clearstrata-ui-primary bg-clearstrata-ui-primary text-white shadow-sm`;
+    return `${base}font-bold text-emerald-900 ring-2 ring-emerald-500/40 bg-emerald-50`;
   }
   if (isComplete) {
-    return `${cls}border-emerald-300 bg-emerald-50 text-emerald-900`;
+    return `${base}font-medium text-emerald-800`;
   }
-  return `${cls}border-gray-200 bg-gray-50 text-gray-400`;
+  return `${base}text-gray-400`;
 }
