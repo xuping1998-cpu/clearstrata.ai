@@ -1,34 +1,39 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Plus } from 'lucide-react';
+import { ChevronDown, Plus } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useProperty } from '@/contexts/PropertyContext';
-import { ConstitutionalDeliberationAssistantPanel } from '@/components/community-deliberation/ConstitutionalDeliberationAssistantPanel';
-import { CouncilPrioritiesPanel } from '@/components/community-deliberation/CouncilPrioritiesPanel';
-import { GovernanceLifecycleTimeline } from '@/components/community-deliberation/GovernanceLifecycleTimeline';
+import { CockpitLifecycleTimeline } from '@/components/community-deliberation/CockpitLifecycleTimeline';
+import { GovernanceCockpitPanel } from '@/components/community-deliberation/GovernanceCockpitPanel';
 import {
-  constitutionalBasisForCategory,
-  formatConstitutionalPrinciple,
-} from '@/lib/community/constitutionalBasis';
-import { communityResolutionDetailUrl } from '@/lib/community/communityResolutionModel';
+  GovernanceMatterDetailTabs,
+  type MatterDetailTab,
+} from '@/components/community-deliberation/GovernanceMatterDetailTabs';
+import { WorkspacePipelineMatterCard } from '@/components/community-deliberation/WorkspacePipelineMatterCard';
+import { nextConstitutionalStep } from '@/lib/community/governanceLifecycleModel';
 import {
-  matterStatusToWorkspaceStage,
-  nextConstitutionalStep,
-  WORKSPACE_LIFECYCLE_STAGES,
-  workspaceStageLabel,
-  type WorkspaceLifecycleStage,
-} from '@/lib/community/governanceLifecycleModel';
+  buildGovernanceCockpitActions,
+  computeCockpitMetrics,
+  countMattersForPipelineFilter,
+  matterMatchesPipelineFilter,
+  PIPELINE_FILTERS,
+  pipelineFilterLabel,
+  type GovernanceCockpitActionType,
+} from '@/lib/community/governanceCockpitPriority';
 import {
   governanceMatterCategoryLabel,
   governanceMatterStatusLabel,
   governanceMattersListUrl,
   isCouncilGovernanceRole,
   type GovernanceMatterCommentRow,
+  type GovernanceMatterDashboardRow,
   type GovernanceMatterRevisionRow,
   type GovernanceMatterRow,
 } from '@/lib/community/governanceMatterModel';
 import type { GovernanceMatterCdaReportRow } from '@/lib/community/cdaReportModel';
+import type { CommunityResolutionRow } from '@/lib/community/communityResolutionModel';
 import {
+  addGovernanceMatterComment,
   fetchGovernanceMatterById,
   fetchGovernanceMatterComments,
   fetchGovernanceMatterRevisions,
@@ -44,8 +49,8 @@ import {
   fetchCommunityResolutionByMatterId,
 } from '@/features/community-resolutions/communityResolutionsApi';
 import type { MeetingEditorDraftPrefill } from '@/lib/meetings/meetingEditorPrefill';
-
-type CenterTab = 'detail' | 'discussion' | 'revisions';
+import type { WorkspaceLifecycleStage } from '@/lib/community/governanceLifecycleModel';
+import { matterStatusToWorkspaceStage } from '@/lib/community/governanceLifecycleModel';
 
 export function CouncilWorkspacePage() {
   const navigate = useNavigate();
@@ -58,19 +63,24 @@ export function CouncilWorkspacePage() {
   const canCouncil = isCouncilGovernanceRole(roleInProperty);
   const selectedMatterId = searchParams.get('matterId')?.trim() ?? '';
 
-  const [matters, setMatters] = useState<(GovernanceMatterRow & { comment_count?: number })[]>([]);
+  const [matters, setMatters] = useState<GovernanceMatterDashboardRow[]>([]);
   const [matter, setMatter] = useState<GovernanceMatterRow | null>(null);
   const [revisions, setRevisions] = useState<GovernanceMatterRevisionRow[]>([]);
   const [comments, setComments] = useState<GovernanceMatterCommentRow[]>([]);
   const [cdaReport, setCdaReport] = useState<GovernanceMatterCdaReportRow | null>(null);
-  const [linkedResolution, setLinkedResolution] = useState<Awaited<
-    ReturnType<typeof fetchCommunityResolutionByMatterId>
-  > | null>(null);
+  const [linkedResolution, setLinkedResolution] = useState<CommunityResolutionRow | null>(null);
+  const [cdaByMatterId, setCdaByMatterId] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [centerTab, setCenterTab] = useState<CenterTab>('detail');
   const [stageFilter, setStageFilter] = useState<WorkspaceLifecycleStage | 'all'>('all');
+  const [pipelineOpen, setPipelineOpen] = useState(false);
+  const [commentBody, setCommentBody] = useState('');
+  const [requestedTab, setRequestedTab] = useState<MatterDetailTab | null>(null);
+  const [pendingQueueAction, setPendingQueueAction] = useState<{
+    matterId: string;
+    actionType: GovernanceCockpitActionType;
+  } | null>(null);
 
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
@@ -81,9 +91,28 @@ export function CouncilWorkspacePage() {
     const rows = await fetchGovernanceMattersForCouncilWorkspace(propertyId.trim());
     setMatters(rows);
     if (!selectedMatterId && rows.length > 0) {
-      setSearchParams({ matterId: rows[0]!.id }, { replace: true });
+      setSearchParams({ propertyId, matterId: rows[0]!.id }, { replace: true });
     }
   }, [propertyId, selectedMatterId, setSearchParams]);
+
+  const loadCdaFlags = useCallback(async (rows: GovernanceMatterDashboardRow[]) => {
+    const pid = propertyId.trim();
+    if (!pid) return;
+    const candidates = rows.filter((m) =>
+      ['discussion', 'public_consultation'].includes(m.status),
+    );
+    const entries = await Promise.all(
+      candidates.map(async (m) => {
+        try {
+          const report = await fetchLatestCdaReport(pid, m.id);
+          return [m.id, Boolean(report)] as const;
+        } catch {
+          return [m.id, false] as const;
+        }
+      }),
+    );
+    setCdaByMatterId(Object.fromEntries(entries));
+  }, [propertyId]);
 
   const loadMatterDetail = useCallback(async () => {
     const pid = propertyId.trim();
@@ -108,6 +137,7 @@ export function CouncilWorkspacePage() {
       setEditTitle(m.title);
       setEditDescription(m.description ?? '');
       setEditStatus(m.status);
+      setCdaByMatterId((prev) => ({ ...prev, [m.id]: Boolean(cda) }));
     }
   }, [propertyId, selectedMatterId]);
 
@@ -129,20 +159,53 @@ export function CouncilWorkspacePage() {
   }, [propertyReady, propertyId, loadMatters]);
 
   useEffect(() => {
+    if (!matters.length) return;
+    void loadCdaFlags(matters);
+  }, [matters, loadCdaFlags]);
+
+  useEffect(() => {
     if (!propertyReady || !selectedMatterId) return;
     void loadMatterDetail().catch((e) => {
       setError(e instanceof Error ? e.message : 'Failed to load matter');
     });
   }, [propertyReady, selectedMatterId, loadMatterDetail]);
 
-  const workspaceStage = matter ? matterStatusToWorkspaceStage(matter.status) : null;
+  useEffect(() => {
+    if (!pendingQueueAction || matter?.id !== pendingQueueAction.matterId) return;
+    const { actionType } = pendingQueueAction;
+    setPendingQueueAction(null);
 
-  const filteredMatters = useMemo(() => {
-    if (stageFilter === 'all') return matters;
-    return matters.filter((m) => matterStatusToWorkspaceStage(m.status) === stageFilter);
-  }, [matters, stageFilter]);
+    const tabFor: Partial<Record<GovernanceCockpitActionType, MatterDetailTab>> = {
+      review_discussion: 'discussion',
+      generate_cda: 'cda',
+      prepare_resolution: 'resolution',
+      schedule_meeting: 'resolution',
+      open_voting: 'resolution',
+      archive: 'details',
+    };
+    const tab = tabFor[actionType];
+    if (tab) setRequestedTab(tab);
 
-  const constitutionalBasis = matter ? constitutionalBasisForCategory(matter.category) : [];
+    if (actionType === 'generate_cda') void handleCdaRefresh();
+    else if (actionType === 'schedule_meeting') handleScheduleMeeting();
+    else if (actionType === 'open_voting') handleViewVoting();
+    else if (actionType === 'archive') void handleArchive();
+  }, [matter?.id, pendingQueueAction]);
+
+  const filteredMatters = useMemo(
+    () => matters.filter((m) => matterMatchesPipelineFilter(m, stageFilter)),
+    [matters, stageFilter],
+  );
+
+  const cockpitActions = useMemo(
+    () => buildGovernanceCockpitActions(matters, cdaByMatterId),
+    [matters, cdaByMatterId],
+  );
+
+  const cockpitMetrics = useMemo(
+    () => computeCockpitMetrics(matters, cockpitActions, cdaByMatterId),
+    [matters, cockpitActions, cdaByMatterId],
+  );
 
   const nextStep = matter
     ? nextConstitutionalStep({
@@ -153,6 +216,10 @@ export function CouncilWorkspacePage() {
         langEn: en,
       })
     : '';
+
+  function selectMatter(matterId: string) {
+    setSearchParams({ propertyId, matterId });
+  }
 
   async function handleSaveRevision() {
     if (!matter || !propertyId.trim()) return;
@@ -186,6 +253,7 @@ export function CouncilWorkspacePage() {
         language: en ? 'en' : 'zh',
       });
       setCdaReport(report);
+      setCdaByMatterId((prev) => ({ ...prev, [matter.id]: true }));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'CDA failed');
     } finally {
@@ -262,6 +330,25 @@ export function CouncilWorkspacePage() {
     }
   }
 
+  function handleQueueAction(matterId: string, actionType: GovernanceCockpitActionType) {
+    selectMatter(matterId);
+    setPendingQueueAction({ matterId, actionType });
+  }
+
+  async function handlePostComment() {
+    if (!matter || !propertyId.trim() || !commentBody.trim()) return;
+    setBusy(true);
+    try {
+      const row = await addGovernanceMatterComment(propertyId.trim(), matter.id, commentBody);
+      setComments((prev) => [...prev, row]);
+      setCommentBody('');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Comment failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (propertyReady && !canCouncil) {
     return (
       <div className="mx-auto max-w-lg px-4 py-12 text-sm text-gray-700">
@@ -270,8 +357,60 @@ export function CouncilWorkspacePage() {
     );
   }
 
+  const pipelineSection = (
+    <aside className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm lg:order-1">
+      <div className="border-b border-gray-100 px-3 py-2">
+        <p className="text-xs font-bold uppercase tracking-wide text-gray-500">
+          {en ? 'Governance Pipeline' : '治理流程'}
+        </p>
+      </div>
+      <div className="overflow-x-auto border-b border-gray-100 px-2 py-2">
+        <div className="flex min-w-max flex-wrap gap-1">
+          {PIPELINE_FILTERS.map((filter) => (
+            <button
+              key={filter}
+              type="button"
+              onClick={() => setStageFilter(filter)}
+              className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                stageFilter === filter
+                  ? 'bg-emerald-800 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              {pipelineFilterLabel(filter, en)} ({countMattersForPipelineFilter(matters, filter)})
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto p-2">
+        {loading ? (
+          <p className="p-3 text-sm text-gray-500">{en ? 'Loading…' : '加载中…'}</p>
+        ) : filteredMatters.length === 0 ? (
+          <p className="p-3 text-sm text-gray-500">
+            {en ? 'No matters in this stage.' : '该阶段暂无事项。'}
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {filteredMatters.map((m) => (
+              <li key={m.id}>
+                <WorkspacePipelineMatterCard
+                  matter={m}
+                  propertyId={propertyId}
+                  langEn={en}
+                  selected={m.id === selectedMatterId}
+                  hasCdaReport={cdaByMatterId[m.id] ?? false}
+                  onSelect={() => selectMatter(m.id)}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </aside>
+  );
+
   return (
-    <div className="mx-auto flex h-[calc(100vh-4rem)] max-w-[1600px] flex-col px-3 py-4 sm:px-4">
+    <div className="mx-auto flex max-w-[1600px] flex-col px-3 py-4 sm:px-4">
       <header className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-200 pb-4">
         <div>
           <Link
@@ -280,11 +419,13 @@ export function CouncilWorkspacePage() {
           >
             ← {en ? 'Governance Hub' : '治理中心'}
           </Link>
-          <h1 className="mt-2 text-xl font-bold text-gray-900">{en ? 'Council Workspace' : '业委会工作台'}</h1>
+          <h1 className="mt-2 text-xl font-bold text-gray-900">
+            {en ? 'Governance Cockpit' : '治理驾驶舱'}
+          </h1>
           <p className="mt-0.5 text-sm text-gray-600">
             {en
-              ? 'Detailed constitutional workflow — opened from Community Deliberation.'
-              : '详细宪章流程 — 从社区议事厅治理面板进入。'}
+              ? 'Council Workspace — what must be done next.'
+              : '业委会工作台 — 下一步必须完成什么。'}
           </p>
         </div>
         <Link
@@ -296,70 +437,23 @@ export function CouncilWorkspacePage() {
         </Link>
       </header>
 
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        <button
-          type="button"
-          onClick={() => setStageFilter('all')}
-          className={`rounded-full px-3 py-1 text-xs font-semibold ${
-            stageFilter === 'all' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700'
-          }`}
-        >
-          {en ? 'All' : '全部'}
-        </button>
-        {WORKSPACE_LIFECYCLE_STAGES.map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => setStageFilter(s)}
-            className={`rounded-full px-3 py-1 text-xs font-semibold ${
-              stageFilter === s ? 'bg-emerald-800 text-white' : 'bg-emerald-50 text-emerald-900'
-            }`}
-          >
-            {workspaceStageLabel(s, en)}
-          </button>
-        ))}
-      </div>
-
       {error ? <p className="mt-2 text-sm text-red-700">{error}</p> : null}
 
-      <div className="mt-3 grid min-h-0 flex-1 gap-3 lg:grid-cols-[240px_minmax(0,1fr)_280px]">
-        {/* LEFT — matters list */}
-        <aside className="overflow-y-auto rounded-xl border border-gray-200 bg-white p-2 shadow-sm">
-          <p className="px-2 py-1 text-xs font-bold uppercase tracking-wide text-gray-500">
-            {en ? 'My Active Matters' : '进行中的事项'}
-          </p>
-          {loading ? (
-            <p className="p-3 text-sm text-gray-500">{en ? 'Loading…' : '加载中…'}</p>
-          ) : filteredMatters.length === 0 ? (
-            <p className="p-3 text-sm text-gray-500">{en ? 'No matters.' : '暂无事项。'}</p>
-          ) : (
-            <ul className="mt-1 space-y-1">
-              {filteredMatters.map((m) => {
-                const active = m.id === selectedMatterId;
-                const stage = matterStatusToWorkspaceStage(m.status);
-                return (
-                  <li key={m.id}>
-                    <button
-                      type="button"
-                      onClick={() => setSearchParams({ matterId: m.id })}
-                      className={`w-full rounded-lg px-2 py-2 text-left text-sm ${
-                        active ? 'bg-emerald-100 font-semibold text-emerald-950' : 'hover:bg-gray-50'
-                      }`}
-                    >
-                      <span className="line-clamp-2">{m.title}</span>
-                      <span className="mt-0.5 block text-[11px] text-gray-600">
-                        {workspaceStageLabel(stage, en)}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </aside>
+      <details className="mt-3 lg:hidden" open={pipelineOpen}>
+        <summary
+          className="flex cursor-pointer list-none items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold marker:content-none"
+          onClick={() => setPipelineOpen((v) => !v)}
+        >
+          {en ? 'Governance Pipeline' : '治理流程'}
+          <ChevronDown className="h-4 w-4" aria-hidden />
+        </summary>
+        <div className="mt-2 max-h-64 overflow-y-auto">{pipelineSection}</div>
+      </details>
 
-        {/* CENTER — matter detail */}
-        <main className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+      <div className="mt-3 flex min-h-0 flex-1 flex-col gap-3 lg:grid lg:min-h-[calc(100vh-12rem)] lg:grid-cols-[280px_minmax(0,1fr)_300px]">
+        <div className="hidden min-h-0 lg:block">{pipelineSection}</div>
+
+        <main className="order-1 flex min-h-0 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm lg:order-2">
           {!matter ? (
             <p className="p-6 text-sm text-gray-500">
               {en ? 'Select a governance matter.' : '请选择治理事项。'}
@@ -367,210 +461,74 @@ export function CouncilWorkspacePage() {
           ) : (
             <>
               <div className="border-b border-gray-100 px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  {en ? 'Current Matter' : '当前事项'}
+                </p>
                 <p className="text-xs text-gray-500">
                   {governanceMatterCategoryLabel(matter.category, en)} ·{' '}
                   {governanceMatterStatusLabel(matter.status, en)}
                 </p>
                 <h2 className="text-lg font-bold text-gray-900">{matter.title}</h2>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {(['detail', 'discussion', 'revisions'] as const).map((tab) => (
-                    <button
-                      key={tab}
-                      type="button"
-                      onClick={() => setCenterTab(tab)}
-                      className={`rounded-md px-2.5 py-1 text-xs font-semibold ${
-                        centerTab === tab ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700'
-                      }`}
-                    >
-                      {tab === 'detail'
-                        ? en
-                          ? 'Detail'
-                          : '详情'
-                        : tab === 'discussion'
-                          ? en
-                            ? 'Discussion'
-                            : '讨论'
-                          : en
-                            ? 'Revision History'
-                            : '修订历史'}
-                    </button>
-                  ))}
+                <div className="mt-2">
+                  <CockpitLifecycleTimeline
+                    status={matter.status}
+                    category={matter.category}
+                    hasCdaReport={Boolean(cdaReport)}
+                    langEn={en}
+                    compact
+                  />
                 </div>
+                <p className="mt-2 text-xs text-gray-700">
+                  <span className="font-semibold">{en ? 'Next constitutional step: ' : '下一宪章步骤：'}</span>
+                  {nextStep}
+                </p>
               </div>
-
-              <div className="flex-1 overflow-y-auto p-4">
-                {centerTab === 'detail' ? (
-                  <div className="space-y-4">
-                    <textarea
-                      value={editDescription}
-                      onChange={(e) => setEditDescription(e.target.value)}
-                      rows={6}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                    />
-                    <input
-                      value={editTitle}
-                      onChange={(e) => setEditTitle(e.target.value)}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold"
-                    />
-                    <p className="text-xs text-gray-500">
-                      {en ? 'Documents — upload via matter attachments (coming soon).' : '文件 — 附件上传（即将推出）。'}
-                    </p>
-                  </div>
-                ) : null}
-
-                {centerTab === 'discussion' ? (
-                  <ul className="space-y-2">
-                    {comments.length === 0 ? (
-                      <li className="text-sm text-gray-500">{en ? 'No comments yet.' : '暂无评论。'}</li>
-                    ) : (
-                      comments.map((c) => (
-                        <li key={c.id} className="rounded-lg bg-gray-50 px-3 py-2 text-sm">
-                          {c.body}
-                        </li>
-                      ))
-                    )}
-                  </ul>
-                ) : null}
-
-                {centerTab === 'revisions' ? (
-                  <ol className="space-y-2 border-l-2 border-emerald-200 pl-4">
-                    {revisions.map((r) => (
-                      <li key={r.id} className="text-sm">
-                        {en ? 'Revision' : '修订'} {r.revision_no} — {r.change_kind.replace(/_/g, ' ')}
-                      </li>
-                    ))}
-                  </ol>
-                ) : null}
-
-                {centerTab === 'detail' && matter ? (
-                  <div className="mt-4">
-                    <ConstitutionalDeliberationAssistantPanel
-                      langEn={en}
-                      category={matter.category}
-                      report={cdaReport}
-                      loading={false}
-                      generating={busy}
-                      canRequestAnalysis
-                      onRequestAnalysis={() => void handleCdaRefresh()}
-                    />
-                  </div>
-                ) : null}
+              <div className="flex-1 overflow-y-auto px-2 pb-4">
+                <GovernanceMatterDetailTabs
+                  langEn={en}
+                  matter={matter}
+                  propertyId={propertyId}
+                  canCouncil
+                  comments={comments}
+                  revisions={revisions}
+                  cdaReport={cdaReport}
+                  cdaLoading={false}
+                  cdaGenerating={busy}
+                  linkedResolution={linkedResolution}
+                  commentBody={commentBody}
+                  onCommentBodyChange={setCommentBody}
+                  onPostComment={() => void handlePostComment()}
+                  submitting={busy}
+                  editTitle={editTitle}
+                  editDescription={editDescription}
+                  editStatus={editStatus}
+                  onEditTitleChange={setEditTitle}
+                  onEditDescriptionChange={setEditDescription}
+                  onEditStatusChange={setEditStatus}
+                  onCouncilSave={() => void handleSaveRevision()}
+                  onRequestCdaAnalysis={() => void handleCdaRefresh()}
+                  onCreateResolution={() => void handleCreateResolution()}
+                  resolutionSubmitting={busy}
+                  includeDetailsTab
+                  defaultTab="details"
+                  requestedTab={requestedTab}
+                  onRequestedTabHandled={() => setRequestedTab(null)}
+                />
               </div>
             </>
           )}
         </main>
 
-        {/* RIGHT — council actions */}
-        <aside className="overflow-y-auto rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-          <p className="text-xs font-bold uppercase tracking-wide text-gray-500">
-            {en ? 'Council Priorities' : '业委会优先事项'}
-          </p>
-          <div className="mt-3">
-            <CouncilPrioritiesPanel langEn={en} propertyId={propertyId} matters={matters} />
-          </div>
-
-          <p className="mt-5 text-xs font-bold uppercase tracking-wide text-gray-500">
-            {en ? 'Selected Matter Actions' : '当前事项操作'}
-          </p>
-
-          {matter && workspaceStage ? (
-            <>
-              <div className="mt-3">
-                <GovernanceLifecycleTimeline status={matter.status} langEn={en} compact />
-              </div>
-
-              <div className="mt-3 rounded-lg bg-emerald-50/80 p-3">
-                <p className="text-xs font-semibold text-emerald-900">{en ? 'Lifecycle' : '生命周期'}</p>
-                <p className="mt-1 text-sm font-bold text-gray-900">{workspaceStageLabel(workspaceStage, en)}</p>
-                <p className="mt-2 text-xs text-gray-700">{nextStep}</p>
-              </div>
-
-              <div className="mt-3">
-                <p className="text-xs font-semibold text-gray-700">{en ? 'Constitutional Basis' : '宪章依据'}</p>
-                <ul className="mt-1 space-y-0.5">
-                  {constitutionalBasis.map((ref, i) => (
-                    <li key={i} className="text-xs text-gray-800">
-                      {formatConstitutionalPrinciple(ref, en)}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              {cdaReport?.content?.consensus_summary_en || cdaReport?.content?.consensus_summary_zh ? (
-                <div className="mt-3">
-                  <p className="text-xs font-semibold text-gray-700">{en ? 'CDA Summary' : '议事助手摘要'}</p>
-                  <p className="mt-1 text-xs text-gray-600 line-clamp-4">
-                    {en
-                      ? cdaReport.content.consensus_summary_en
-                      : cdaReport.content.consensus_summary_zh || cdaReport.content.consensus_summary_en}
-                  </p>
-                </div>
-              ) : null}
-
-              <div className="mt-4 flex flex-col gap-2">
-                <ActionBtn label={en ? 'New Revision' : '新建修订'} disabled={busy} onClick={() => void handleSaveRevision()} />
-                <ActionBtn label={en ? 'Generate CDA Report' : '生成议事助手报告'} disabled={busy} onClick={() => void handleCdaRefresh()} />
-                {!linkedResolution ? (
-                  <ActionBtn label={en ? 'Create Resolution' : '创建决议'} disabled={busy} onClick={() => void handleCreateResolution()} />
-                ) : (
-                  <Link
-                    to={communityResolutionDetailUrl(linkedResolution.id, propertyId)}
-                    className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-center text-xs font-semibold text-emerald-900 hover:bg-emerald-100"
-                  >
-                    {en ? 'View Resolution' : '查看决议'}
-                  </Link>
-                )}
-                <ActionBtn
-                  label={en ? 'Schedule Meeting' : '排定会议'}
-                  disabled={!linkedResolution || busy}
-                  onClick={handleScheduleMeeting}
-                />
-                <ActionBtn
-                  label={en ? 'Open Voting' : '查看投票'}
-                  disabled={!(linkedResolution?.meeting_id ?? matter.meeting_id)}
-                  onClick={handleViewVoting}
-                />
-                <ActionBtn label={en ? 'Archive Matter' : '归档事项'} disabled={busy} onClick={() => void handleArchive()} />
-              </div>
-            </>
-          ) : (
-            <p className="mt-3 text-sm text-gray-500">{en ? 'Select a matter to act.' : '请选择事项。'}</p>
-          )}
-
-          <footer className="mt-6 border-t border-gray-100 pt-3 text-[10px] text-gray-500">
-            {en
-              ? 'Council governs through transparent workflow, not authority alone.'
-              : '业委会通过透明流程治理，而非仅凭权力。'}
-          </footer>
-        </aside>
+        <div className="order-2 min-h-0 lg:order-3">
+          <GovernanceCockpitPanel
+            langEn={en}
+            metrics={cockpitMetrics}
+            actions={cockpitActions}
+            onSelectMatter={selectMatter}
+            onQueueAction={handleQueueAction}
+          />
+        </div>
       </div>
-
-      <p className="mt-2 text-center text-[11px] text-gray-500">
-        <Link to={governanceMattersListUrl(propertyId)} className="hover:underline">
-          {en ? 'Community Deliberation hub' : '社区议事厅'}
-        </Link>
-      </p>
     </div>
-  );
-}
-
-function ActionBtn({
-  label,
-  disabled,
-  onClick,
-}: {
-  label: string;
-  disabled?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-900 hover:bg-gray-50 disabled:opacity-50"
-    >
-      {label}
-    </button>
   );
 }

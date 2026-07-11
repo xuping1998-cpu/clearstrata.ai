@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronDown } from 'lucide-react';
 import { ConstitutionalDeliberationAssistantPanel } from '@/components/community-deliberation/ConstitutionalDeliberationAssistantPanel';
@@ -21,7 +21,7 @@ import {
 } from '@/lib/community/governanceMatterModel';
 import type { GovernanceMatterCdaReportRow } from '@/lib/community/cdaReportModel';
 
-export type MatterDetailTab = 'discussion' | 'resolution' | 'cda' | 'history';
+export type MatterDetailTab = 'details' | 'discussion' | 'resolution' | 'cda' | 'history';
 
 type TimelineEvent = {
   id: string;
@@ -57,9 +57,16 @@ export type GovernanceMatterDetailTabsProps = {
   onRequestCdaAnalysis: () => void;
   onCreateResolution: () => void;
   resolutionSubmitting: boolean;
+  /** Parent may request a tab switch (e.g. cockpit action queue). */
+  requestedTab?: MatterDetailTab | null;
+  onRequestedTabHandled?: () => void;
+  /** Council workspace shows an extra Details tab. */
+  includeDetailsTab?: boolean;
+  defaultTab?: MatterDetailTab;
 };
 
 const TAB_DEFS: { id: MatterDetailTab; en: string; zh: string }[] = [
+  { id: 'details', en: 'Details', zh: '详情' },
   { id: 'discussion', en: 'Discussion', zh: '讨论' },
   { id: 'resolution', en: 'Resolution', zh: '决议' },
   { id: 'cda', en: 'CDA', zh: '议事助手' },
@@ -164,7 +171,6 @@ const STATUS_TONE_CLASS: Record<string, string> = {
 };
 
 export function GovernanceMatterDetailTabs(props: GovernanceMatterDetailTabsProps) {
-  const [activeTab, setActiveTab] = useState<MatterDetailTab>('discussion');
   const en = props.langEn;
   const {
     matter,
@@ -190,7 +196,24 @@ export function GovernanceMatterDetailTabs(props: GovernanceMatterDetailTabsProp
     onRequestCdaAnalysis,
     onCreateResolution,
     resolutionSubmitting,
+    requestedTab,
+    onRequestedTabHandled,
+    includeDetailsTab = false,
+    defaultTab = 'discussion',
   } = props;
+
+  const [activeTab, setActiveTab] = useState<MatterDetailTab>(defaultTab);
+
+  const visibleTabs = useMemo(
+    () => (includeDetailsTab ? TAB_DEFS : TAB_DEFS.filter((t) => t.id !== 'details')),
+    [includeDetailsTab],
+  );
+  useEffect(() => {
+    if (requestedTab) {
+      setActiveTab(requestedTab);
+      onRequestedTabHandled?.();
+    }
+  }, [requestedTab, onRequestedTabHandled]);
 
   const timelineEvents = useMemo(
     () => buildTimelineEvents(revisions, cdaReport, linkedResolution),
@@ -210,7 +233,7 @@ export function GovernanceMatterDetailTabs(props: GovernanceMatterDetailTabsProp
         role="tablist"
         aria-label={en ? 'Governance matter sections' : '治理事项分区'}
       >
-        {TAB_DEFS.map((tab) => {
+        {visibleTabs.map((tab) => {
           const selected = activeTab === tab.id;
           return (
             <button
@@ -232,16 +255,32 @@ export function GovernanceMatterDetailTabs(props: GovernanceMatterDetailTabsProp
       </div>
 
       <div className="rounded-b-2xl rounded-tr-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        {activeTab === 'details' ? (
+          <DetailsTab
+            en={en}
+            matter={matter}
+            canCouncil={canCouncil}
+            editTitle={editTitle}
+            editDescription={editDescription}
+            editStatus={editStatus}
+            onEditTitleChange={onEditTitleChange}
+            onEditDescriptionChange={onEditDescriptionChange}
+            onEditStatusChange={onEditStatusChange}
+            onCouncilSave={onCouncilSave}
+            submitting={submitting}
+          />
+        ) : null}
+
         {activeTab === 'discussion' ? (
           <DiscussionTab
             en={en}
-            matter={matter}
+            matter={includeDetailsTab ? undefined : matter}
             comments={comments}
             commentBody={commentBody}
             onCommentBodyChange={onCommentBodyChange}
             onPostComment={onPostComment}
             submitting={submitting}
-            canCouncil={canCouncil}
+            showCouncilRevision={!includeDetailsTab && canCouncil}
             editTitle={editTitle}
             editDescription={editDescription}
             editStatus={editStatus}
@@ -285,14 +324,9 @@ export function GovernanceMatterDetailTabs(props: GovernanceMatterDetailTabsProp
   );
 }
 
-function DiscussionTab({
+function DetailsTab({
   en,
   matter,
-  comments,
-  commentBody,
-  onCommentBodyChange,
-  onPostComment,
-  submitting,
   canCouncil,
   editTitle,
   editDescription,
@@ -301,14 +335,10 @@ function DiscussionTab({
   onEditDescriptionChange,
   onEditStatusChange,
   onCouncilSave,
+  submitting,
 }: {
   en: boolean;
   matter: GovernanceMatterRow;
-  comments: GovernanceMatterCommentRow[];
-  commentBody: string;
-  onCommentBodyChange: (value: string) => void;
-  onPostComment: () => void;
-  submitting: boolean;
   canCouncil: boolean;
   editTitle: string;
   editDescription: string;
@@ -317,9 +347,10 @@ function DiscussionTab({
   onEditDescriptionChange: (value: string) => void;
   onEditStatusChange: (value: GovernanceMatterRow['status']) => void;
   onCouncilSave: () => void;
+  submitting: boolean;
 }) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <section className="rounded-xl border border-gray-100 bg-gray-50/60 p-4">
         <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
           {en ? 'Matter summary' : '事项摘要'}
@@ -327,11 +358,6 @@ function DiscussionTab({
         <p className="mt-1 text-sm font-semibold text-gray-900">
           {governanceMatterCategoryLabel(matter.category, en)} · {governanceMatterStatusLabel(matter.status, en)}
         </p>
-        {matter.description ? (
-          <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-gray-700">{matter.description}</p>
-        ) : (
-          <p className="mt-2 text-sm text-gray-500">{en ? 'No description provided.' : '暂无说明。'}</p>
-        )}
       </section>
 
       <section className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-4">
@@ -345,11 +371,123 @@ function DiscussionTab({
             </li>
           ))}
         </ul>
-        <p className="mt-2 text-xs text-indigo-900/80">
-          {en ? 'Why this matter exists in community governance.' : '说明本事项在社区治理中的宪章依据。'}
-        </p>
       </section>
 
+      {canCouncil ? (
+        <details className="group rounded-xl border border-amber-200 bg-amber-50/40">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-3 marker:content-none">
+            <div>
+              <p className="text-sm font-bold text-gray-900">{en ? 'Council Revision' : '业委会修订'}</p>
+              <p className="mt-0.5 text-xs text-amber-900/80">
+                {en
+                  ? 'Revisions are append-only. Nothing is overwritten.'
+                  : '修订会永久记录，不会覆盖历史。'}
+              </p>
+            </div>
+            <ChevronDown className="h-4 w-4 shrink-0 text-amber-900 transition-transform group-open:rotate-180" aria-hidden />
+          </summary>
+          <div className="space-y-3 border-t border-amber-100 px-4 py-4">
+            <input
+              value={editTitle}
+              onChange={(e) => onEditTitleChange(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            />
+            <textarea
+              value={editDescription}
+              onChange={(e) => onEditDescriptionChange(e.target.value)}
+              rows={5}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            />
+            <select
+              value={editStatus}
+              onChange={(e) => onEditStatusChange(e.target.value as GovernanceMatterRow['status'])}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            >
+              {GOVERNANCE_MATTER_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {governanceMatterStatusLabel(s, en)}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={onCouncilSave}
+              className="rounded-lg bg-clearstrata-ui-primary px-4 py-2 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover disabled:opacity-60"
+            >
+              {en ? 'Save revision' : '保存修订'}
+            </button>
+          </div>
+        </details>
+      ) : (
+        <p className="whitespace-pre-wrap text-sm text-gray-700">{matter.description ?? (en ? 'No description.' : '暂无说明。')}</p>
+      )}
+    </div>
+  );
+}
+
+function DiscussionTab({
+  en,
+  matter,
+  comments,
+  commentBody,
+  onCommentBodyChange,
+  onPostComment,
+  submitting,
+  showCouncilRevision = false,
+  editTitle = '',
+  editDescription = '',
+  editStatus = 'discussion',
+  onEditTitleChange,
+  onEditDescriptionChange,
+  onEditStatusChange,
+  onCouncilSave,
+}: {
+  en: boolean;
+  matter?: GovernanceMatterRow;
+  comments: GovernanceMatterCommentRow[];
+  commentBody: string;
+  onCommentBodyChange: (value: string) => void;
+  onPostComment: () => void;
+  submitting: boolean;
+  showCouncilRevision?: boolean;
+  editTitle?: string;
+  editDescription?: string;
+  editStatus?: GovernanceMatterRow['status'];
+  onEditTitleChange?: (value: string) => void;
+  onEditDescriptionChange?: (value: string) => void;
+  onEditStatusChange?: (value: GovernanceMatterRow['status']) => void;
+  onCouncilSave?: () => void;
+}) {
+  return (
+    <div className="space-y-4">
+      {matter ? (
+        <>
+          <section className="rounded-xl border border-gray-100 bg-gray-50/60 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+              {en ? 'Matter summary' : '事项摘要'}
+            </p>
+            <p className="mt-1 text-sm font-semibold text-gray-900">
+              {governanceMatterCategoryLabel(matter.category, en)} · {governanceMatterStatusLabel(matter.status, en)}
+            </p>
+            {matter.description ? (
+              <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-gray-700">{matter.description}</p>
+            ) : null}
+          </section>
+          <section className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-4">
+            <p className="text-xs font-bold uppercase tracking-wide text-indigo-900">
+              {en ? 'Constitutional Basis' : '宪章依据'}
+            </p>
+            <ul className="mt-2 space-y-1">
+              {constitutionalBasisForCategory(matter.category).map((ref, i) => (
+                <li key={i} className="text-sm text-gray-800">
+                  {formatConstitutionalPrinciple(ref, en)}
+                </li>
+              ))}
+            </ul>
+          </section>
+        </>
+      ) : null}
       <section>
         <h2 className="text-sm font-bold text-gray-900">{en ? 'Owner comments' : '业主评论'}</h2>
         <p className="mt-1 text-xs text-gray-600">
@@ -386,7 +524,7 @@ function DiscussionTab({
         </div>
       </section>
 
-      {canCouncil ? (
+      {showCouncilRevision && onEditTitleChange && onCouncilSave ? (
         <details className="group rounded-xl border border-amber-200 bg-amber-50/40">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-3 marker:content-none">
             <div>
@@ -407,13 +545,13 @@ function DiscussionTab({
             />
             <textarea
               value={editDescription}
-              onChange={(e) => onEditDescriptionChange(e.target.value)}
+              onChange={(e) => onEditDescriptionChange?.(e.target.value)}
               rows={4}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
             />
             <select
               value={editStatus}
-              onChange={(e) => onEditStatusChange(e.target.value as GovernanceMatterRow['status'])}
+              onChange={(e) => onEditStatusChange?.(e.target.value as GovernanceMatterRow['status'])}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
             >
               {GOVERNANCE_MATTER_STATUSES.map((s) => (

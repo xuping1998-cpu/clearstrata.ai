@@ -81,7 +81,7 @@ This Registry preserves:
 | **PR** | **PR-010** | PR-006 RESERVED; PR-003 … PR-009 registered |
 | **RM** | **RM-008** | RM-002 … RM-007 registered |
 | **TM** | **TM-001** | |
-| **UIP** | **UIP-011** | UIP-001 … UIP-010 registered |
+| **UIP** | **UIP-012** | UIP-011 registered |
 
 ---
 
@@ -180,6 +180,7 @@ Permanent constitutional references within FD-001 — not separately numbered do
 | **UIP-008** | Owner Experience | ACTIVE | `docs/projects/UIP_Project_One_UI_Polish.md` § UIP-008 |
 | **UIP-009** | Mobile Governance Experience | PLANNED | `docs/projects/UIP_Project_One_UI_Polish.md` § UIP-009 |
 | **UIP-010** | Five-Second Experience Validation | PLANNED | `docs/projects/UIP_Project_One_UI_Polish.md` § UIP-010 |
+| **UIP-011** | Governance Cockpit | ACTIVE | `docs/projects/UIP-011_Governance_Cockpit.md` |
 
 *Master index:* [`UIP_Project_One_UI_Polish.md`](../projects/UIP_Project_One_UI_Polish.md) · Authority: [GP-006](../Principles/GP-006_Governance_Experience.md)
 
@@ -249,6 +250,7 @@ Before creating any permanent document, Cursor **SHALL**:
 | 2026-07-06 | **GP-005** registered — Shared Governance Space design addendum | Founding Team |
 | 2026-07-10 | **GP-006** registered — Governance Experience constitutional design principle | Founding Team |
 | 2026-07-10 | **UIP-001 … UIP-010** registered — Project One Governance UI Polish (GP-006) | ClearStrata Project One |
+| 2026-07-10 | **UIP-011** registered — Governance Cockpit (Council Workspace) | ClearStrata Project One |
 
 ---
 
