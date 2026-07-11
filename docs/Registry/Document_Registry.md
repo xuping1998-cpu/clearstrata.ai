@@ -82,6 +82,7 @@ This Registry preserves:
 | **RM** | **RM-008** | RM-002 … RM-007 registered |
 | **TM** | **TM-001** | |
 | **UIP** | **UIP-012** | UIP-011 registered |
+| **BF** | **BF-002** | BF-001 registered |
 
 ---
 
@@ -186,6 +187,14 @@ Permanent constitutional references within FD-001 — not separately numbered do
 
 ---
 
+## Bug Fix Records (BF)
+
+| Number | Title | Status | Repository Location |
+|--------|-------|--------|---------------------|
+| **BF-001** | SGM Pause Notification Race Condition | COMPLETED | `docs/projects/BF-001_SGM_Pause_Notification_Race_Condition.md` |
+
+---
+
 ## Repository Management (RM)
 
 | Number | Title | Status | Repository Location |
@@ -251,6 +260,7 @@ Before creating any permanent document, Cursor **SHALL**:
 | 2026-07-10 | **GP-006** registered — Governance Experience constitutional design principle | Founding Team |
 | 2026-07-10 | **UIP-001 … UIP-010** registered — Project One Governance UI Polish (GP-006) | ClearStrata Project One |
 | 2026-07-10 | **UIP-011** registered — Governance Cockpit (Council Workspace) | ClearStrata Project One |
+| 2026-07-11 | **BF-001** registered — SGM Pause Notification Race Condition | ClearStrata Project One |
 
 ---
 
