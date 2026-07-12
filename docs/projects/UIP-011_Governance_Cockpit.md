@@ -15,7 +15,7 @@
 | **Effective Date** | 2026-07-10 |
 | **Classification** | UI Polish |
 | **Owner** | ClearStrata Project One |
-| **Related Documents** | UIP-001, UIP-004, UIP-005, PR-009 |
+| **Related Documents** | UIP-001, UIP-004, UIP-005, PR-009, [GPA-001](../Architecture/GPA-001_Governance_Pyramid_Architecture.md), [GPA-002](../Architecture/GPA-002_Single_Source_of_Governance_Truth.md), [GRFC-001](../Architecture/GRFC-001_Governance_Request_for_Change.md) |
 | **Repository Location** | `docs/projects/UIP-011_Governance_Cockpit.md` |
 
 ---

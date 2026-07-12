@@ -11,11 +11,11 @@
 | **Document Type** | UI Polish Record (UIP) |
 | **Status** | ACTIVE |
 | **Version** | 1.0 |
-| **Authority** | [GP-005](../Principles/GP-005_Shared_Governance_Space.md), [GP-006](../Principles/GP-006_Governance_Experience.md), [UIP-011](UIP-011_Governance_Cockpit.md), [UIP-012](UIP-012_Governance_Intelligence.md) |
+| **Authority** | [GP-005](../Principles/GP-005_Shared_Governance_Space.md), [GP-006](../Principles/GP-006_Governance_Experience.md), [GPA-001](../Architecture/GPA-001_Governance_Pyramid_Architecture.md), [GPA-002](../Architecture/GPA-002_Single_Source_of_Governance_Truth.md), [UIP-011](UIP-011_Governance_Cockpit.md), [UIP-012](UIP-012_Governance_Intelligence.md) |
 | **Effective Date** | 2026-07-12 |
 | **Classification** | UI Polish |
 | **Owner** | ClearStrata Project One |
-| **Related Documents** | UIP-011, UIP-012, GP-005, GP-006 |
+| **Related Documents** | UIP-011, UIP-012, GP-005, GP-006, [GPA-001](../Architecture/GPA-001_Governance_Pyramid_Architecture.md), [GPA-002](../Architecture/GPA-002_Single_Source_of_Governance_Truth.md), [GDS-001](../Architecture/GDS-001_Governance_Data_Standard.md), [GRFC-001](../Architecture/GRFC-001_Governance_Request_for_Change.md) |
 | **Repository Location** | `docs/projects/UIP-013_Governance_Timeline_Intelligence.md` |
 
 ---

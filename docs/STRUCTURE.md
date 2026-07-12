@@ -1,8 +1,20 @@
 # ClearStrata Documentation Structure
 
+**Repository Home:** [RM-008 — Repository Constitutional Structure](Repository_Constitutional_Structure.md) (FOUNDATION — five layers)
+
 **Authority:** [RM-005 — Repository Governance Resolution](Repository_Governance_Resolution.md) (APPROVED)
 
 This index maps **current** repository paths to the **official target structure**. Existing paths remain valid until migrated.
+
+### Quick navigation
+
+| Layer | Start here |
+|-------|------------|
+| 🏛 Foundational | [Architecture/README.md](Architecture/README.md) |
+| 🚀 Projects | [Releases Registry](Registry/Releases_Registry.md) · [Milestones](History/Milestones.md) |
+| 📘 Records | [Document Registry](Registry/Document_Registry.md) · [projects/](projects/) |
+| 🛠 Engineering | [BF records](Registry/Document_Registry.md#bug-fix-records-bf) |
+| 🎨 Experience | [UIP records](Registry/Document_Registry.md#ui-polish-records-uip) |
 
 ---
 
@@ -22,8 +34,9 @@ This index maps **current** repository paths to the **official target structure*
 
 | File | ID | Status |
 |------|-----|--------|
-| [Milestones.md](History/Milestones.md) | RM-006 — Repository Hall of Milestones | ACTIVE |
+| [Milestones.md](History/Milestones.md) | RM-006 — Repository Hall of Milestones (incl. Foundational Milestones) | ACTIVE |
 | [Milestone_Admission_Standard.md](History/Milestone_Admission_Standard.md) | RM-007 — Milestone Admission Standard | ACTIVE |
+| [Repository_Constitutional_Structure.md](Repository_Constitutional_Structure.md) | RM-008 — Repository Constitutional Structure | FOUNDATION |
 
 ---
 
@@ -77,6 +90,10 @@ This index maps **current** repository paths to the **official target structure*
 
 | Current path | Document |
 |--------------|----------|
+| `docs/Architecture/GPA-001_Governance_Pyramid_Architecture.md` | GPA-001 |
+| `docs/Architecture/GDS-001_Governance_Data_Standard.md` | GDS-001 |
+| `docs/Architecture/GRFC-001_Governance_Request_for_Change.md` | GRFC-001 |
+| `docs/Architecture/GRFC/` | GRFC-002+ change proposals |
 | `docs/ADR/` | AR prefix (CS-001) |
 | `docs/03_System_Architecture.md` | Subordinate to FD-001 |
 

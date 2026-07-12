@@ -39,6 +39,16 @@ This Registry preserves:
 
 **Narrative FD history:** [Founding_Documents_Registry.md](Founding_Documents_Registry.md) (institutional memory; **numbering authority remains this file**).
 
+**Five-layer structure:** [RM-008 — Repository Constitutional Structure](../Repository_Constitutional_Structure.md) (FOUNDATION)
+
+```
+🏛 Foundational Milestones  →  GP, GPA, GDS, GRFC
+🚀 Project Milestones       →  M-001 …
+📘 Project Records          →  PR-xxx
+🛠 Engineering Records       →  BF, AF, PF, SF
+🎨 Experience Evolution     →  UIP-xxx
+```
+
 ---
 
 ## Repository Rules
@@ -79,10 +89,13 @@ This Registry preserves:
 | **AI** | **AI-001** | |
 | **AR** | **AR-001** | |
 | **PR** | **PR-010** | PR-006 RESERVED; PR-003 … PR-009 registered |
-| **RM** | **RM-008** | RM-002 … RM-007 registered |
+| **RM** | **RM-009** | RM-008 registered |
 | **TM** | **TM-001** | |
 | **UIP** | **UIP-013** | UIP-012 registered |
 | **BF** | **BF-002** | BF-001 registered |
+| **GPA** | **GPA-003** | GPA-002 registered |
+| **GDS** | **GDS-002** | GDS-001 registered |
+| **GRFC** | **GRFC-002** | GRFC-001 registered |
 
 ---
 
@@ -154,6 +167,23 @@ Permanent constitutional references within FD-001 — not separately numbered do
 
 ---
 
+## Foundational Milestones (PERMANENT)
+
+**Highest permanent classification** — Architecture Constitution. Not project milestones. Inherited by all future projects.
+
+| Number | Title | Status | Repository Location |
+|--------|-------|--------|---------------------|
+| **GPA-001** | Governance Pyramid Architecture | FOUNDATION | `docs/Architecture/GPA-001_Governance_Pyramid_Architecture.md` |
+| **GPA-002** | Single Source of Governance Truth | FOUNDATION | `docs/Architecture/GPA-002_Single_Source_of_Governance_Truth.md` |
+| **GDS-001** | Governance Data Standard | FOUNDATION | `docs/Architecture/GDS-001_Governance_Data_Standard.md` |
+| **GRFC-001** | Governance Request for Change | FOUNDATION | `docs/Architecture/GRFC-001_Governance_Request_for_Change.md` |
+
+*Hall of record:* [Milestones.md](../History/Milestones.md) (RM-006) · *Index:* [Architecture/README.md](../Architecture/README.md)
+
+**Architecture Constitution:** GPA-001 ↔ GPA-002 ↔ GDS-001 ↔ GRFC-001 — all future governance modules, projects, AI capabilities, and architectural decisions must remain consistent with these standards.
+
+---
+
 ## Platform Milestones
 
 | Milestone | Title | Status | Record | Git Tag |
@@ -191,6 +221,8 @@ Permanent constitutional references within FD-001 — not separately numbered do
 
 ## Bug Fix Records (BF)
 
+*Layer 4 — Engineering Records.* See also reserved: **AF**, **PF**, **SF**.
+
 | Number | Title | Status | Repository Location |
 |--------|-------|--------|---------------------|
 | **BF-002** | Independent Governance Hub Data Loading | COMPLETED | `docs/projects/BF-002_Independent_Governance_Hub_Data_Loading.md` |
@@ -209,8 +241,28 @@ Permanent constitutional references within FD-001 — not separately numbered do
 | **RM-005** | Repository Governance Resolution | ACTIVE | `docs/Repository_Governance_Resolution.md` |
 | **RM-006** | Repository Hall of Milestones | ACTIVE | `docs/History/Milestones.md` |
 | **RM-007** | Milestone Admission Standard | ACTIVE | `docs/History/Milestone_Admission_Standard.md` |
+| **RM-008** | Repository Constitutional Structure | FOUNDATION | `docs/Repository_Constitutional_Structure.md` |
 
 *Master index governed by RM-001:* [`Document_Registry.md`](Document_Registry.md) (**FD-REG-001**)
+
+---
+
+## Architecture Standards Index
+
+**Foundational Milestones (PERMANENT)** — see [Foundational Milestones](#foundational-milestones-permanent) above.
+
+### Architecture Constitution (GPA · GDS · GRFC)
+
+| Number | Title | Status | Repository Location |
+|--------|-------|--------|---------------------|
+| **GPA-001** | Governance Pyramid Architecture | FOUNDATION | `docs/Architecture/GPA-001_Governance_Pyramid_Architecture.md` |
+| **GPA-002** | Single Source of Governance Truth | FOUNDATION | `docs/Architecture/GPA-002_Single_Source_of_Governance_Truth.md` |
+| **GDS-001** | Governance Data Standard | FOUNDATION | `docs/Architecture/GDS-001_Governance_Data_Standard.md` |
+| **GRFC-001** | Governance Request for Change | FOUNDATION | `docs/Architecture/GRFC-001_Governance_Request_for_Change.md` |
+
+*Governance information pyramid — matter → workflow → timeline → evidence → knowledge → AI. Single source of truth. Canonical data model. Change governed by GRFC. Authority: GP-005, GP-006.*
+
+*Change proposals (GRFC-002+):* `docs/Architecture/GRFC/`
 
 ---
 
@@ -223,6 +275,12 @@ Permanent constitutional references within FD-001 — not separately numbered do
 | **CR** | Constitution Reviews | RESERVED |
 | **AI** | Artificial Intelligence Standards | RESERVED |
 | **AR** | Architecture Records | RESERVED |
+| **GPA** | Governance Pyramid Architecture Standards | ACTIVE |
+| **GDS** | Governance Data Standards | ACTIVE |
+| **GRFC** | Governance Request for Change | ACTIVE |
+| **AF** | Architecture Fix Records | RESERVED |
+| **PF** | Performance Fix Records | RESERVED |
+| **SF** | Security Fix Records | RESERVED |
 | **UIP** | UI Polish Records | ACTIVE |
 | **TM** | Templates | RESERVED |
 
@@ -265,6 +323,12 @@ Before creating any permanent document, Cursor **SHALL**:
 | 2026-07-10 | **UIP-011** registered — Governance Cockpit (Council Workspace) | ClearStrata Project One |
 | 2026-07-12 | **UIP-012** registered — Governance Intelligence (Council Cockpit) | ClearStrata Project One |
 | 2026-07-12 | **UIP-013** registered — Governance Timeline Intelligence (Matter Detail) | ClearStrata Project One |
+| 2026-07-12 | **GPA-001** registered — Governance Pyramid Architecture (FOUNDATION) | ClearStrata Project One |
+| 2026-07-12 | **GPA-002** registered — Single Source of Governance Truth (FOUNDATION) | ClearStrata Project One |
+| 2026-07-12 | **GDS-001** registered — Governance Data Standard (FOUNDATION) | ClearStrata Project One |
+| 2026-07-12 | **GRFC-001** registered — Governance Request for Change (FOUNDATION) | ClearStrata Project One |
+| 2026-07-12 | **RM-006** enhanced — Foundational Milestones (Architecture Constitution) in Repository Hall | ClearStrata Project One |
+| 2026-07-12 | **RM-008** registered — Repository Constitutional Structure (five layers, FOUNDATION) | ClearStrata Project One |
 | 2026-07-11 | **BF-002** registered — Independent Governance Hub Data Loading | ClearStrata Project One |
 | 2026-07-11 | **BF-001** registered — SGM Pause Notification Race Condition | ClearStrata Project One |
 
