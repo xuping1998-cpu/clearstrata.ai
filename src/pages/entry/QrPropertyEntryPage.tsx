@@ -62,6 +62,29 @@ function clearDraft() {
   } catch { /* ignore */ }
 }
 
+type RunJoinOptions = {
+  /** Authoritative user id from post-verify Supabase session (not React closure). */
+  authenticatedUserId?: string | null;
+  /** Post-verify join must never send another OTP. */
+  suppressOtpSend?: boolean;
+};
+
+async function resolveAuthenticatedUserId(
+  reactUserId: string | null | undefined,
+  options?: RunJoinOptions,
+): Promise<string | null> {
+  const fromOptions = options?.authenticatedUserId?.trim();
+  if (fromOptions) return fromOptions;
+
+  const fromReact = reactUserId?.trim();
+  if (fromReact) return fromReact;
+
+  if (options?.suppressOtpSend) return null;
+
+  const { data: { session: fresh } } = await supabase.auth.getSession();
+  return fresh?.user?.id?.trim() ?? null;
+}
+
 /** Public QR entry page: /entry?propertyId=...&inviteCode=...
  *  Unified OTP flow:
  *  1. No session → fill form → signInWithOtp → "check email" screen
@@ -217,7 +240,12 @@ export function QrPropertyEntryPage() {
   const entryUrl = `${window.location.origin}${location.pathname}${location.search}`;
 
   /** Core join logic — calls entry-auto-join and handles all outcomes. */
-  const runJoin = async (name: string, email: string, unit: string) => {
+  const runJoin = async (
+    name: string,
+    email: string,
+    unit: string,
+    options?: RunJoinOptions,
+  ) => {
     if (!effectivePropertyId) {
       setSubmitErr('缺少物业信息。');
       return;
@@ -294,6 +322,7 @@ export function QrPropertyEntryPage() {
 
       // ── ok:true 分支 ───────────────────────────────────────────────────────
       const kind = data.kind ?? '';
+      const authenticatedUserId = await resolveAuthenticatedUserId(session?.user?.id, options);
 
       if (kind === 'pending_submitted') {
         navigate('/join/pending', {
@@ -311,17 +340,29 @@ export function QrPropertyEntryPage() {
       }
 
       if (kind === 'already_member') {
-        if (session?.user && !isReapply) {
+        if (authenticatedUserId && !isReapply) {
           console.log('[ENTRY FLOW] already_member with session redirect home', effectivePropertyId);
+          if (options?.suppressOtpSend) {
+            console.log('[ENTRY FLOW] OTP suppressed after successful verification');
+          }
           navigate('/?propertyId=' + effectivePropertyId, { replace: true });
           return;
         }
-        if (session?.user && isReapply) {
+        if (authenticatedUserId && isReapply) {
           setAlreadyMemberMsg(
             data.message?.trim() ||
               (en
                 ? 'You are already a member of this property. Update your unit below if needed, or contact council.'
                 : '您已是本物业成员。如需更改房号请在下方重新提交，或联系业委会。'),
+          );
+          return;
+        }
+        if (options?.suppressOtpSend) {
+          console.log('[ENTRY FLOW] OTP suppressed after successful verification');
+          setSubmitErr(
+            en
+              ? 'Login could not be confirmed. Please refresh and try again.'
+              : '无法确认登录状态，请刷新页面后重试。',
           );
           return;
         }
@@ -331,11 +372,23 @@ export function QrPropertyEntryPage() {
       }
 
       if (kind === 'auto_approved') {
-        if (session?.user) {
+        if (authenticatedUserId) {
+          if (options?.suppressOtpSend) {
+            console.log('[ENTRY FLOW] OTP suppressed after successful verification');
+          }
           navigate('/?propertyId=' + effectivePropertyId, { replace: true });
-        } else {
-          await doSendOtp(name, email, unit);
+          return;
         }
+        if (options?.suppressOtpSend) {
+          console.log('[ENTRY FLOW] OTP suppressed after successful verification');
+          setSubmitErr(
+            en
+              ? 'Login could not be confirmed. Please refresh and try again.'
+              : '无法确认登录状态，请刷新页面后重试。',
+          );
+          return;
+        }
+        await doSendOtp(name, email, unit);
         return;
       }
 
@@ -401,7 +454,7 @@ export function QrPropertyEntryPage() {
     setSubmitErr(null);
     try {
       console.log('[ENTRY FLOW] verifyOtp', { email });
-      const { error: verifyErr } = await supabase.auth.verifyOtp({
+      const { data: verifyData, error: verifyErr } = await supabase.auth.verifyOtp({
         email,
         token: code,
         type: 'magiclink',
@@ -411,9 +464,44 @@ export function QrPropertyEntryPage() {
         setSubmitErr('验证码无效或已过期，请重新输入。');
         return;
       }
-      console.log('[ENTRY FLOW] verifyOtp ok, running join');
+
+      console.log('[ENTRY FLOW] verifyOtp success');
+
+      let freshUserId = verifyData?.session?.user?.id?.trim() ?? null;
+      if (!freshUserId) {
+        const {
+          data: { session: freshSession },
+          error: freshSessionError,
+        } = await supabase.auth.getSession();
+        if (freshSessionError) {
+          console.error('[ENTRY FLOW] fresh session error', freshSessionError.message);
+          setSubmitErr(
+            en
+              ? 'Login could not be confirmed. Please try again.'
+              : '无法确认登录状态，请重试。',
+          );
+          return;
+        }
+        freshUserId = freshSession?.user?.id?.trim() ?? null;
+      }
+
+      if (freshUserId) {
+        console.log('[ENTRY FLOW] fresh session acquired');
+        console.log('[ENTRY FLOW] post-verify join with authenticated user', freshUserId);
+      } else {
+        setSubmitErr(
+          en
+            ? 'Login could not be confirmed. Please try again.'
+            : '无法确认登录状态，请重试。',
+        );
+        return;
+      }
+
       setOtpSent(false);
-      await runJoin(fullName.trim(), email, unitNo.trim());
+      await runJoin(fullName.trim(), email, unitNo.trim(), {
+        authenticatedUserId: freshUserId,
+        suppressOtpSend: true,
+      });
     } catch (e) {
       const msg = e instanceof Error ? e.message : '验证失败，请重试。';
       setSubmitErr(msg);
