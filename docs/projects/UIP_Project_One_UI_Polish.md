@@ -116,6 +116,51 @@ Transform the existing governance system into a clear, intuitive, role-aware gov
 
 - `GovernanceLifecycleTimeline` — current / complete / future stages
 
+### UIP-008 — Owner Experience
+
+| Field | Value |
+|-------|-------|
+| **Status** | ACTIVE (subscriptions phase) |
+| **Authority** | GP-005, GP-006 |
+| **Migration** | `20261707120000_governance_matter_subscriptions.sql` |
+
+#### Previous misleading route
+
+`OwnerParticipationPanel` linked **我的订阅 / My Subscriptions** to `/owner-info?tab=announcements` (property announcements). That label promised governance-matter subscriptions but opened Owner Information.
+
+#### Subscription model (2026-07-11)
+
+- Table: `public.governance_matter_subscriptions` — one row per `(property_id, matter_id, user_id)`
+- RLS: users read/insert/delete **own** subscriptions only; active property membership required
+- API: `subscribeToGovernanceMatter`, `unsubscribeFromGovernanceMatter`, `fetchSubscribedGovernanceMatterIds`, `isGovernanceMatterSubscribed`, `fetchGovernanceMatterIdsWithUserComments`
+- Matter detail: `GovernanceMatterFollowButton` — **关注事项 / Follow Matter** · **已关注 / Following**
+
+#### Terminology
+
+| Concept | 中文 | English |
+|---------|------|---------|
+| Personal follow state | 关注事项 | Following |
+| Toggle (not following) | 关注事项 | Follow Matter |
+| Toggle (following) | 已关注 | Following |
+| Property announcements | 通知 | Notices — remains `/owner-info?tab=announcements` |
+
+**Subscribed Matter = Followed Matter** — one model; no separate subscription vs follow tables.
+
+Removed duplicate panel rows (**My Subscriptions**, **Followed Matters**). Panel now: **我的评论**, **我的投票**, **关注事项**.
+
+#### Filtered Governance Hub views
+
+| Query | Behavior |
+|-------|----------|
+| `?propertyId=…&view=subscribed` | Matters the user follows |
+| `?propertyId=…&view=comments` | Matters where user authored ≥1 visible comment |
+
+Reuses `GovernanceLifecycleFeed` with filtered matter list; custom empty states per view.
+
+#### Out of scope (this phase)
+
+Email/push notification preferences, digest frequency, per-event settings, follower counts, popularity, likes/reactions, recommendation algorithms.
+
 ---
 
 ## Verification Routes
@@ -124,6 +169,8 @@ Transform the existing governance system into a clear, intuitive, role-aware gov
 |-------|------|-----------|
 | `/` | All | Dashboard Governance Hub card + primary CTA |
 | `/community-deliberation` | Owner / Council | Lifecycle feed + role panel |
+| `/community-deliberation?propertyId=…&view=subscribed` | Owner | Following filter |
+| `/community-deliberation?propertyId=…&view=comments` | Owner | My comments filter |
 | `/community-deliberation/:matterId` | All | Tabs + lifecycle timeline |
 | `/council/workspace` | Council | Governance Cockpit — pipeline, current matter, action queue |
 

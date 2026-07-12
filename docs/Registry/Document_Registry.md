@@ -178,7 +178,7 @@ Permanent constitutional references within FD-001 — not separately numbered do
 | **UIP-005** | Governance Lifecycle Timeline | ACTIVE | `docs/projects/UIP_Project_One_UI_Polish.md` § UIP-005 |
 | **UIP-006** | Meeting Preparation Experience | PLANNED | `docs/projects/UIP_Project_One_UI_Polish.md` § UIP-006 |
 | **UIP-007** | Voting Experience | PLANNED | `docs/projects/UIP_Project_One_UI_Polish.md` § UIP-007 |
-| **UIP-008** | Owner Experience | ACTIVE | `docs/projects/UIP_Project_One_UI_Polish.md` § UIP-008 |
+| **UIP-008** | Owner Experience | ACTIVE | `docs/projects/UIP_Project_One_UI_Polish.md` § UIP-008 — participation panel, matter follow, filtered hub views |
 | **UIP-009** | Mobile Governance Experience | PLANNED | `docs/projects/UIP_Project_One_UI_Polish.md` § UIP-009 |
 | **UIP-010** | Five-Second Experience Validation | PLANNED | `docs/projects/UIP_Project_One_UI_Polish.md` § UIP-010 |
 | **UIP-011** | Governance Cockpit | ACTIVE | `docs/projects/UIP-011_Governance_Cockpit.md` |

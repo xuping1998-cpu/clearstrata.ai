@@ -1,10 +1,12 @@
 import { Link } from 'react-router-dom';
 import { meetingsNavHref } from '@/lib/meetingPermissions';
+import { governanceMattersHubViewUrl } from '@/lib/community/governanceMatterModel';
 
 export type OwnerParticipationPanelProps = {
   langEn: boolean;
   propertyId: string;
-  commentCount: number;
+  commentedMatterCount: number;
+  followingCount: number;
   roleInProperty: string | null | undefined;
   activeMatterCount?: number;
   votingMatterCount?: number;
@@ -13,13 +15,16 @@ export type OwnerParticipationPanelProps = {
 export function OwnerParticipationPanel({
   langEn,
   propertyId,
-  commentCount,
+  commentedMatterCount,
+  followingCount,
   roleInProperty,
   activeMatterCount = 0,
   votingMatterCount = 0,
 }: OwnerParticipationPanelProps) {
   const en = langEn;
   const votingHref = meetingsNavHref(roleInProperty);
+  const commentsHref = governanceMattersHubViewUrl(propertyId, 'comments');
+  const followingHref = governanceMattersHubViewUrl(propertyId, 'subscribed');
 
   return (
     <aside className="rounded-xl border border-sky-200 bg-gradient-to-b from-sky-50/90 to-white p-4 shadow-sm">
@@ -34,9 +39,9 @@ export function OwnerParticipationPanel({
 
       <ul className="mt-3 space-y-2">
         <ParticipationLink
-          href={`/community-deliberation?${new URLSearchParams({ propertyId }).toString()}`}
+          href={commentsHref}
           label={en ? 'My Comments' : '我的评论'}
-          detail={commentCount > 0 ? `${commentCount}` : en ? '—' : '—'}
+          detail={commentedMatterCount > 0 ? `${commentedMatterCount}` : en ? '—' : '—'}
         />
         <ParticipationLink
           href={votingHref}
@@ -44,14 +49,9 @@ export function OwnerParticipationPanel({
           detail={en ? 'Meetings & voting' : '会议与投票'}
         />
         <ParticipationLink
-          href="/owner-info?tab=announcements"
-          label={en ? 'My Subscriptions' : '我的订阅'}
-          detail={en ? 'Notices' : '通知'}
-        />
-        <ParticipationLink
-          href={`/community-deliberation?${new URLSearchParams({ propertyId }).toString()}`}
-          label={en ? 'Followed Matters' : '关注的事项'}
-          detail={en ? 'Active deliberation' : '进行中的议事'}
+          href={followingHref}
+          label={en ? 'Following' : '关注事项'}
+          detail={followingCount > 0 ? `${followingCount}` : en ? '—' : '—'}
         />
       </ul>
 

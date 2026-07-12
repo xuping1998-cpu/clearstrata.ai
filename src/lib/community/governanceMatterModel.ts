@@ -159,6 +159,12 @@ export function governanceMattersListUrl(propertyId: string): string {
   return `/community-deliberation?${new URLSearchParams({ propertyId }).toString()}`;
 }
 
+export type GovernanceHubView = 'subscribed' | 'comments';
+
+export function governanceMattersHubViewUrl(propertyId: string, view: GovernanceHubView): string {
+  return `/community-deliberation?${new URLSearchParams({ propertyId, view }).toString()}`;
+}
+
 export function daysUntilIso(iso: string | null | undefined, now = Date.now()): number | null {
   if (!iso?.trim()) return null;
   const t = Date.parse(iso);

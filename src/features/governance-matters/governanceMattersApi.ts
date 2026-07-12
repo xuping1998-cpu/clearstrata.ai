@@ -240,3 +240,94 @@ export async function moderateGovernanceMatterComment(
   });
   if (error) throw new Error(error.message);
 }
+
+export async function subscribeToGovernanceMatter(input: {
+  propertyId: string;
+  matterId: string;
+}): Promise<void> {
+  const { data: userData } = await supabase.auth.getUser();
+  const uid = userData.user?.id;
+  if (!uid) throw new Error('Not authenticated');
+
+  const { error } = await supabase.from('governance_matter_subscriptions').insert({
+    property_id: input.propertyId,
+    matter_id: input.matterId,
+    user_id: uid,
+  });
+
+  if (error) throw new Error(error.message);
+}
+
+export async function unsubscribeFromGovernanceMatter(input: {
+  propertyId: string;
+  matterId: string;
+}): Promise<void> {
+  const { data: userData } = await supabase.auth.getUser();
+  const uid = userData.user?.id;
+  if (!uid) throw new Error('Not authenticated');
+
+  const { error } = await supabase
+    .from('governance_matter_subscriptions')
+    .delete()
+    .eq('property_id', input.propertyId)
+    .eq('matter_id', input.matterId)
+    .eq('user_id', uid);
+
+  if (error) throw new Error(error.message);
+}
+
+export async function fetchSubscribedGovernanceMatterIds(propertyId: string): Promise<string[]> {
+  const { data: userData } = await supabase.auth.getUser();
+  const uid = userData.user?.id;
+  if (!uid) return [];
+
+  const { data, error } = await supabase
+    .from('governance_matter_subscriptions')
+    .select('matter_id')
+    .eq('property_id', propertyId)
+    .eq('user_id', uid);
+
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => String((row as { matter_id: string }).matter_id));
+}
+
+export async function isGovernanceMatterSubscribed(
+  propertyId: string,
+  matterId: string,
+): Promise<boolean> {
+  const { data: userData } = await supabase.auth.getUser();
+  const uid = userData.user?.id;
+  if (!uid) return false;
+
+  const { data, error } = await supabase
+    .from('governance_matter_subscriptions')
+    .select('id')
+    .eq('property_id', propertyId)
+    .eq('matter_id', matterId)
+    .eq('user_id', uid)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return Boolean(data?.id);
+}
+
+export async function fetchGovernanceMatterIdsWithUserComments(propertyId: string): Promise<string[]> {
+  const { data: userData } = await supabase.auth.getUser();
+  const uid = userData.user?.id;
+  if (!uid) return [];
+
+  const { data, error } = await supabase
+    .from('governance_matter_comments')
+    .select('matter_id')
+    .eq('property_id', propertyId)
+    .eq('author_id', uid)
+    .eq('visibility', 'visible');
+
+  if (error) throw new Error(error.message);
+
+  const ids = new Set<string>();
+  for (const row of data ?? []) {
+    ids.add(String((row as { matter_id: string }).matter_id));
+  }
+  return [...ids];
+}

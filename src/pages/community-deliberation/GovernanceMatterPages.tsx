@@ -17,14 +17,15 @@ import {
 import { useImportantUpdatesBullets } from '@/hooks/useImportantUpdatesBullets';
 import { useGovernanceMatterDashboard } from '@/hooks/useGovernanceMatterDashboard';
 import { meetingsNavHref } from '@/lib/meetingPermissions';
-import { supabase } from '@/lib/supabase';
 import { GovernanceMatterDetailTabs } from '@/components/community-deliberation/GovernanceMatterDetailTabs';
+import { GovernanceMatterFollowButton } from '@/components/community-deliberation/GovernanceMatterFollowButton';
 import {
   GOVERNANCE_MATTER_CATEGORIES,
   GOVERNANCE_MATTER_STATUSES,
   governanceMatterCategoryLabel,
   governanceMatterDetailUrl,
   governanceMattersListUrl,
+  type GovernanceHubView,
   governanceMatterStatusLabel,
   isCouncilGovernanceRole,
   type GovernanceMatterCommentRow,
@@ -36,8 +37,10 @@ import {
   createGovernanceMatter,
   fetchGovernanceMatterById,
   fetchGovernanceMatterComments,
+  fetchGovernanceMatterIdsWithUserComments,
   fetchGovernanceMatterRevisions,
   fetchGovernanceMattersForCouncilWorkspace,
+  fetchSubscribedGovernanceMatterIds,
   updateGovernanceMatter,
 } from '@/features/governance-matters/governanceMattersApi';
 import {
@@ -279,6 +282,11 @@ export function GovernanceMatterDetailPage() {
           {governanceMatterCategoryLabel(matter.category, en)} · {governanceMatterStatusLabel(matter.status, en)}
         </p>
         <h1 className="mt-1 text-xl font-bold text-gray-900 sm:text-2xl">{matter.title}</h1>
+        <GovernanceMatterFollowButton
+          propertyId={propertyId}
+          matterId={matter.id}
+          langEn={en}
+        />
         <div className="mt-3">
           <GovernanceLifecycleTimeline status={matter.status} langEn={en} />
         </div>
@@ -421,11 +429,19 @@ export function GovernanceMattersHubPage() {
   const en = language === 'en';
   const { currentPropertyId, roleInProperty, ready: propertyReady } = useProperty();
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   const propertyId = currentPropertyId ?? '';
   const canCouncil = isCouncilGovernanceRole(roleInProperty);
 
+  const viewParam = searchParams.get('view')?.trim() ?? '';
+  const hubView: GovernanceHubView | null =
+    viewParam === 'subscribed' || viewParam === 'comments' ? viewParam : null;
+
   const [allMatters, setAllMatters] = useState<GovernanceMatterRow[]>([]);
-  const [ownerCommentCount, setOwnerCommentCount] = useState(0);
+  const [commentedMatterCount, setCommentedMatterCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
+  const [subscribedMatterIds, setSubscribedMatterIds] = useState<string[]>([]);
+  const [commentedMatterIds, setCommentedMatterIds] = useState<string[]>([]);
   const [feedLoading, setFeedLoading] = useState(true);
 
   const { bullets: importantUpdatesBullets } = useImportantUpdatesBullets({
@@ -460,17 +476,58 @@ export function GovernanceMattersHubPage() {
   }, [propertyId, propertyReady]);
 
   useEffect(() => {
-    if (!propertyReady || !propertyId.trim() || !user?.id) return;
+    if (!propertyReady || !propertyId.trim() || !user?.id) {
+      setCommentedMatterCount(0);
+      setFollowingCount(0);
+      setSubscribedMatterIds([]);
+      setCommentedMatterIds([]);
+      return;
+    }
     void (async () => {
-      const { count } = await supabase
-        .from('governance_matter_comments')
-        .select('id', { count: 'exact', head: true })
-        .eq('property_id', propertyId.trim())
-        .eq('author_id', user.id)
-        .eq('visibility', 'visible');
-      setOwnerCommentCount(count ?? 0);
+      try {
+        const [subscribedIds, commentedIds] = await Promise.all([
+          fetchSubscribedGovernanceMatterIds(propertyId.trim()),
+          fetchGovernanceMatterIdsWithUserComments(propertyId.trim()),
+        ]);
+        setSubscribedMatterIds(subscribedIds);
+        setCommentedMatterIds(commentedIds);
+        setFollowingCount(subscribedIds.length);
+        setCommentedMatterCount(commentedIds.length);
+      } catch {
+        setSubscribedMatterIds([]);
+        setCommentedMatterIds([]);
+        setFollowingCount(0);
+        setCommentedMatterCount(0);
+      }
     })();
   }, [propertyId, propertyReady, user?.id]);
+
+  const filteredMatters = useMemo(() => {
+    if (!hubView) return allMatters;
+    const idSet =
+      hubView === 'subscribed'
+        ? new Set(subscribedMatterIds)
+        : new Set(commentedMatterIds);
+    return allMatters.filter((m) => idSet.has(m.id));
+  }, [allMatters, hubView, subscribedMatterIds, commentedMatterIds]);
+
+  const filterEmptyMessage = useMemo(() => {
+    if (!hubView || filteredMatters.length > 0) return null;
+    if (hubView === 'subscribed') {
+      return en
+        ? 'You are not following any governance matters yet. Open a matter and select “Follow Matter” to see it here.'
+        : '您尚未关注任何治理事项。打开一个事项并点击【关注事项】后，它将显示在这里。';
+    }
+    return en
+      ? 'You have not participated in any governance discussions yet.'
+      : '您尚未参与任何事项讨论。';
+  }, [hubView, filteredMatters.length, en]);
+
+  const filterTitle = useMemo(() => {
+    if (!hubView) return null;
+    if (hubView === 'subscribed') return en ? 'Following' : '关注事项';
+    return en ? 'My Comments' : '我的评论';
+  }, [hubView, en]);
 
   const deliberationBullets = useMemo(() => {
     const notices = importantUpdatesBullets.filter(
@@ -529,17 +586,32 @@ export function GovernanceMattersHubPage() {
       <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
         <main>
           <p className="text-xs font-bold uppercase tracking-wide text-gray-500">
-            {en ? 'Governance Feed' : '治理动态'}
+            {hubView ? filterTitle : en ? 'Governance Feed' : '治理动态'}
           </p>
+          {hubView ? (
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-600">
+              <span>{en ? 'Filtered view' : '筛选视图'}</span>
+              <Link
+                to={governanceMattersListUrl(propertyId)}
+                className="font-semibold text-clearstrata-brand-900 hover:underline"
+              >
+                {en ? 'Show all matters' : '显示全部事项'}
+              </Link>
+            </div>
+          ) : null}
           <div className="mt-3 rounded-xl border border-gray-100 bg-gray-50/40 p-4">
-            <GovernanceLifecycleFeed
-              langEn={en}
-              loading={loading}
-              matters={allMatters}
-              notices={notices}
-              propertyId={propertyId}
-              canCouncil={canCouncil}
-            />
+            {filterEmptyMessage ? (
+              <p className="text-sm text-gray-600">{filterEmptyMessage}</p>
+            ) : (
+              <GovernanceLifecycleFeed
+                langEn={en}
+                loading={loading}
+                matters={filteredMatters}
+                notices={hubView ? [] : notices}
+                propertyId={propertyId}
+                canCouncil={canCouncil}
+              />
+            )}
           </div>
         </main>
 
@@ -555,7 +627,8 @@ export function GovernanceMattersHubPage() {
             <OwnerParticipationPanel
               langEn={en}
               propertyId={propertyId}
-              commentCount={ownerCommentCount}
+              commentedMatterCount={commentedMatterCount}
+              followingCount={followingCount}
               roleInProperty={roleInProperty}
               activeMatterCount={ownerAttention.activeMatterCount}
               votingMatterCount={ownerAttention.votingMatterCount}
