@@ -13,8 +13,7 @@ import { WorkspacePipelineMatterCard } from '@/components/community-deliberation
 import { lifecycleFilterActiveClass, lifecycleStageBadgeClass } from '@/lib/community/governanceLifecycleColors';
 import { nextConstitutionalStep } from '@/lib/community/governanceLifecycleModel';
 import {
-  buildGovernanceCockpitActions,
-  computeCockpitMetrics,
+  buildGovernanceIntelligenceBundle,
   countMattersForPipelineFilter,
   matterMatchesPipelineFilter,
   PIPELINE_FILTERS,
@@ -198,15 +197,24 @@ export function CouncilWorkspacePage() {
     [matters, stageFilter],
   );
 
-  const cockpitActions = useMemo(
-    () => buildGovernanceCockpitActions(matters, cdaByMatterId),
+  const intelligenceBundle = useMemo(
+    () => buildGovernanceIntelligenceBundle(matters, cdaByMatterId),
     [matters, cdaByMatterId],
   );
 
-  const cockpitMetrics = useMemo(
-    () => computeCockpitMetrics(matters, cockpitActions, cdaByMatterId),
-    [matters, cockpitActions, cdaByMatterId],
-  );
+  const cockpitActions = intelligenceBundle.actions;
+  const cockpitMetrics = intelligenceBundle.metrics;
+  const cockpitHealth = intelligenceBundle.health;
+  const cockpitBrief = intelligenceBundle.brief;
+  const matterIntelById = intelligenceBundle.matterById;
+
+  const actionByMatterId = useMemo(() => {
+    const map: Record<string, (typeof cockpitActions)[number]> = {};
+    for (const a of cockpitActions) {
+      if (!map[a.matterId]) map[a.matterId] = a;
+    }
+    return map;
+  }, [cockpitActions]);
 
   const nextStep = matter
     ? nextConstitutionalStep({
@@ -396,10 +404,11 @@ export function CouncilWorkspacePage() {
               <li key={m.id}>
                 <WorkspacePipelineMatterCard
                   matter={m}
-                  propertyId={propertyId}
                   langEn={en}
                   selected={m.id === selectedMatterId}
                   hasCdaReport={cdaByMatterId[m.id] ?? false}
+                  intelligence={matterIntelById[m.id]}
+                  nextAction={actionByMatterId[m.id] ?? null}
                   onSelect={() => selectMatter(m.id)}
                 />
               </li>
@@ -482,6 +491,8 @@ export function CouncilWorkspacePage() {
             langEn={en}
             metrics={cockpitMetrics}
             actions={cockpitActions}
+            health={cockpitHealth}
+            brief={cockpitBrief}
             onQueueAction={handleQueueAction}
           />
         </div>

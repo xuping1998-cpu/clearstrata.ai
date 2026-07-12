@@ -19,18 +19,10 @@ import {
   type GovernanceMatterRevisionRow,
   type GovernanceMatterRow,
 } from '@/lib/community/governanceMatterModel';
+import { GovernanceMatterTimelineTab } from '@/components/community-deliberation/GovernanceMatterTimelineTab';
 import type { GovernanceMatterCdaReportRow } from '@/lib/community/cdaReportModel';
 
-export type MatterDetailTab = 'details' | 'discussion' | 'resolution' | 'cda' | 'history';
-
-type TimelineEvent = {
-  id: string;
-  at: string;
-  labelEn: string;
-  labelZh: string;
-  detailEn?: string;
-  detailZh?: string;
-};
+export type MatterDetailTab = 'details' | 'discussion' | 'resolution' | 'cda' | 'timeline';
 
 export type GovernanceMatterDetailTabsProps = {
   langEn: boolean;
@@ -72,80 +64,8 @@ const TAB_DEFS: { id: MatterDetailTab; en: string; zh: string }[] = [
   { id: 'discussion', en: 'Discussion', zh: '讨论' },
   { id: 'resolution', en: 'Resolution', zh: '决议' },
   { id: 'cda', en: 'CDA', zh: '议事助手' },
-  { id: 'history', en: 'History', zh: '历史' },
+  { id: 'timeline', en: 'Timeline', zh: '时间线' },
 ];
-
-function revisionTimelineLabel(
-  changeKind: string,
-  status: GovernanceMatterRow['status'] | null,
-  langEn: boolean,
-): string {
-  const en = langEn;
-  if (changeKind === 'matter_created') return en ? 'Matter Created' : '事项已创建';
-  if (changeKind === 'status_updated' && status === 'meeting') return en ? 'Meeting Scheduled' : '会议已安排';
-  if (changeKind === 'status_updated' && status === 'voting') return en ? 'Voting Opened' : '投票已开启';
-  if (changeKind === 'status_updated' && status === 'archived') return en ? 'Archived' : '已归档';
-  if (
-    changeKind === 'title_updated' ||
-    changeKind === 'description_updated' ||
-    changeKind === 'matter_updated' ||
-    changeKind === 'category_updated' ||
-    changeKind === 'discussion_deadline_updated'
-  ) {
-    return en ? 'Matter Revised' : '事项已修订';
-  }
-  if (changeKind === 'status_updated') {
-    return en ? 'Status Updated' : '状态已更新';
-  }
-  return changeKind.replace(/_/g, ' ');
-}
-
-function buildTimelineEvents(
-  revisions: GovernanceMatterRevisionRow[],
-  cdaReport: GovernanceMatterCdaReportRow | null,
-  linkedResolution: CommunityResolutionRow | null,
-): TimelineEvent[] {
-  const events: TimelineEvent[] = [];
-
-  for (const r of revisions) {
-    events.push({
-      id: `rev-${r.id}`,
-      at: r.created_at,
-      labelEn: revisionTimelineLabel(r.change_kind, r.status, true),
-      labelZh: revisionTimelineLabel(r.change_kind, r.status, false),
-      detailEn: r.status ? governanceMatterStatusLabel(r.status, true) : undefined,
-      detailZh: r.status ? governanceMatterStatusLabel(r.status, false) : undefined,
-    });
-  }
-
-  if (cdaReport?.created_at) {
-    events.push({
-      id: `cda-${cdaReport.id}`,
-      at: cdaReport.created_at,
-      labelEn: 'CDA Generated',
-      labelZh: '议事助手报告已生成',
-    });
-  }
-
-  if (linkedResolution?.created_at) {
-    events.push({
-      id: `res-${linkedResolution.id}`,
-      at: linkedResolution.created_at,
-      labelEn: 'Resolution Created',
-      labelZh: '社区决议已创建',
-    });
-  }
-
-  const seen = new Set<string>();
-  return events
-    .filter((e) => {
-      const key = `${e.at}-${e.labelEn}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
-}
 
 function resolutionWorkflowStatus(
   linkedResolution: CommunityResolutionRow | null,
@@ -217,11 +137,6 @@ export function GovernanceMatterDetailTabs(props: GovernanceMatterDetailTabsProp
       onRequestedTabHandled?.();
     }
   }, [requestedTab, onRequestedTabHandled]);
-
-  const timelineEvents = useMemo(
-    () => buildTimelineEvents(revisions, cdaReport, linkedResolution),
-    [revisions, cdaReport, linkedResolution],
-  );
 
   const resolutionStatus = resolutionWorkflowStatus(linkedResolution, en);
   const constitutionalBasis =
@@ -336,7 +251,18 @@ export function GovernanceMatterDetailTabs(props: GovernanceMatterDetailTabsProp
           />
         ) : null}
 
-        {activeTab === 'history' ? <HistoryTab en={en} events={timelineEvents} /> : null}
+        {activeTab === 'timeline' ? (
+          <GovernanceMatterTimelineTab
+            en={en}
+            matter={matter}
+            propertyId={propertyId}
+            canCouncil={canCouncil}
+            revisions={revisions}
+            comments={comments}
+            cdaReport={cdaReport}
+            linkedResolution={linkedResolution}
+          />
+        ) : null}
       </div>
     </div>
   );
@@ -777,38 +703,6 @@ function ResolutionTab({
           </div>
         </dl>
       </div>
-    </div>
-  );
-}
-
-function HistoryTab({ en, events }: { en: boolean; events: TimelineEvent[] }) {
-  if (!events.length) {
-    return (
-      <p className="text-sm text-gray-500">{en ? 'No lifecycle events recorded yet.' : '尚无生命周期记录。'}</p>
-    );
-  }
-
-  return (
-    <div>
-      <h2 className="text-sm font-bold text-gray-900">{en ? 'Lifecycle timeline' : '生命周期时间线'}</h2>
-      <p className="mt-1 text-xs text-gray-600">
-        {en ? 'Append-only governance history for this matter.' : '本事项的追加式治理历史。'}
-      </p>
-      <ol className="relative mt-5 space-y-0 border-l-2 border-clearstrata-brand-200 pl-6">
-        {events.map((event) => (
-          <li key={event.id} className="relative pb-6 last:pb-0">
-            <span
-              className="absolute -left-[1.9375rem] top-1 flex h-3 w-3 rounded-full border-2 border-white bg-clearstrata-ui-primary ring-2 ring-clearstrata-brand-100"
-              aria-hidden
-            />
-            <p className="text-sm font-semibold text-gray-900">{en ? event.labelEn : event.labelZh}</p>
-            {(en ? event.detailEn : event.detailZh) ? (
-              <p className="mt-0.5 text-xs text-gray-600">{en ? event.detailEn : event.detailZh}</p>
-            ) : null}
-            <p className="mt-1 text-[11px] text-gray-500">{new Date(event.at).toLocaleString()}</p>
-          </li>
-        ))}
-      </ol>
     </div>
   );
 }

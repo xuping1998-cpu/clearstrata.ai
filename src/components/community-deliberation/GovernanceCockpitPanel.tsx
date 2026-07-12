@@ -1,17 +1,56 @@
-import type { CockpitMetrics, GovernanceCockpitAction, GovernanceCockpitActionType } from '@/lib/community/governanceCockpitPriority';
-import { cockpitActionButtonLabel } from '@/lib/community/governanceCockpitPriority';
+import type {
+  CockpitMetrics,
+  GovernanceBriefLine,
+  GovernanceCockpitAction,
+  GovernanceCockpitActionType,
+  GovernanceHealth,
+} from '@/lib/community/governanceIntelligence';
+
+function cockpitActionButtonLabel(
+  actionType: GovernanceCockpitActionType,
+  langEn: boolean,
+): string {
+  const en: Record<GovernanceCockpitActionType, string> = {
+    review_discussion: 'Continue discussion',
+    generate_cda: 'Generate report',
+    prepare_resolution: 'Prepare resolution',
+    schedule_meeting: 'Schedule meeting',
+    open_voting: 'Open voting',
+    archive: 'Publish result',
+  };
+  const zh: Record<GovernanceCockpitActionType, string> = {
+    review_discussion: '继续讨论',
+    generate_cda: '生成报告',
+    prepare_resolution: '准备决议',
+    schedule_meeting: '安排会议',
+    open_voting: '开启投票',
+    archive: '公布结果',
+  };
+  return langEn ? en[actionType] : zh[actionType];
+}
 
 export type GovernanceCockpitPanelProps = {
   langEn: boolean;
   metrics: CockpitMetrics;
   actions: GovernanceCockpitAction[];
+  health: GovernanceHealth;
+  brief: GovernanceBriefLine[];
   onQueueAction: (matterId: string, actionType: GovernanceCockpitActionType) => void;
+};
+
+const HEALTH_CLASS: Record<GovernanceHealth['level'], string> = {
+  excellent: 'bg-emerald-50 text-emerald-900 border-emerald-200',
+  good: 'bg-sky-50 text-sky-900 border-sky-200',
+  needs_attention: 'bg-amber-50 text-amber-900 border-amber-200',
+  at_risk: 'bg-red-50 text-red-900 border-red-200',
 };
 
 export function GovernanceCockpitPanel({
   langEn,
   metrics,
   actions,
+  health,
+  brief,
   onQueueAction,
 }: GovernanceCockpitPanelProps) {
   const en = langEn;
@@ -39,6 +78,20 @@ export function GovernanceCockpitPanel({
           {en ? "Today's actions and next steps" : '今日行动与下一步'}
         </p>
       </header>
+
+      <section className="mt-3 rounded-lg border border-gray-100 bg-gray-50/80 px-3 py-2.5">
+        <p className="text-[10px] font-bold uppercase tracking-wide text-gray-600">
+          {en ? "Today's Governance Brief" : '今日治理简报'}
+        </p>
+        <ul className="mt-1.5 space-y-0.5 text-xs text-gray-800">
+          {brief.map((line) => (
+            <li key={line.en}>{en ? line.en : line.zh}</li>
+          ))}
+        </ul>
+        <div className={`mt-2 inline-flex rounded-md border px-2 py-0.5 text-[10px] font-semibold ${HEALTH_CLASS[health.level]}`}>
+          {en ? 'Governance Health' : '治理健康度'}: {en ? health.labelEn : health.labelZh}
+        </div>
+      </section>
 
       <p className="mt-3 text-xs font-bold text-gray-900 lg:hidden">
         {en
@@ -69,13 +122,21 @@ export function GovernanceCockpitPanel({
           {actions.map((action, index) => (
             <li
               key={`${action.matterId}-${action.actionType}`}
-              className="rounded-lg border border-gray-100 px-3 py-2"
+              className={`rounded-lg border px-3 py-2 ${
+                action.isUrgent ? 'border-amber-200 bg-amber-50/40' : 'border-gray-100'
+              }`}
             >
               <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
                 {index + 1}. {en ? action.titleEn : action.titleZh}
               </p>
               <p className="mt-0.5 line-clamp-2 text-sm font-bold text-gray-900">{action.matterTitle}</p>
               <p className="mt-1 text-xs text-gray-500">{en ? action.reasonEn : action.reasonZh}</p>
+              {action.constitutionReasonEn ? (
+                <p className="mt-1 text-[10px] leading-snug text-gray-500">
+                  <span className="font-semibold text-gray-600">{en ? 'Why? ' : '原因：'}</span>
+                  {en ? action.constitutionReasonEn : action.constitutionReasonZh}
+                </p>
+              ) : null}
               <button
                 type="button"
                 onClick={() => onQueueAction(action.matterId, action.actionType)}

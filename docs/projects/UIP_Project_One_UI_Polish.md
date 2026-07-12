@@ -50,6 +50,7 @@ Transform the existing governance system into a clear, intuitive, role-aware gov
 | **UIP-009** | Mobile Governance Experience | PLANNED | Responsive stacked layout foundation |
 | **UIP-010** | Five-Second Experience Validation | PLANNED | Role/locale validation checklist |
 | **UIP-011** | Governance Cockpit | ACTIVE | Three-column cockpit: Pipeline · Current Matter · Action Queue |
+| **UIP-012** | Governance Intelligence | ACTIVE | Deterministic council assistant — brief, priority, readiness, health |
 
 ---
 

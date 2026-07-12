@@ -1,4 +1,7 @@
 import { buildMatterCardMeta } from '@/lib/community/governanceHubLifecycle';
+import type { MatterIntelligence } from '@/lib/community/governanceIntelligence';
+import { nextBestActionLabel } from '@/lib/community/governanceIntelligence';
+import type { GovernanceCockpitAction } from '@/lib/community/governanceIntelligence';
 import {
   ADVISORY_BADGE_CLASS,
   lifecycleStageBadgeClass,
@@ -14,6 +17,8 @@ export type WorkspacePipelineMatterCardProps = {
   langEn: boolean;
   selected: boolean;
   hasCdaReport: boolean;
+  intelligence?: MatterIntelligence;
+  nextAction?: GovernanceCockpitAction | null;
   onSelect: () => void;
 };
 
@@ -46,12 +51,17 @@ export function WorkspacePipelineMatterCard({
   langEn,
   selected,
   hasCdaReport,
+  intelligence,
+  nextAction,
   onSelect,
 }: WorkspacePipelineMatterCardProps) {
   const en = langEn;
   const meta = buildMatterCardMeta(matter, en);
   const activity = activityLine(matter, en);
   const badges = positiveBadges(matter, hasCdaReport, en);
+  const attention = intelligence?.attentionSignals ?? [];
+  const readiness = intelligence?.readiness;
+  const actionLabel = nextBestActionLabel(nextAction ?? null, en);
 
   return (
     <button
@@ -67,12 +77,29 @@ export function WorkspacePipelineMatterCard({
       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
         <span className={lifecycleStageBadgeClass(matter.status)}>{meta.stageLabel}</span>
         <span className="text-[10px] text-gray-500">{governanceMatterCategoryLabel(matter.category, en)}</span>
+        {readiness ? (
+          <span className="text-[10px] font-medium text-gray-600">
+            {en ? 'Readiness' : '就绪度'}: {en ? readiness.displayEn : readiness.displayZh}
+          </span>
+        ) : null}
       </div>
       {activity ? <p className="mt-1.5 text-xs text-gray-500">{activity}</p> : null}
       <p className="mt-1.5 text-xs font-medium text-gray-800">
         {en ? 'Next: ' : '下一步：'}
-        <span className="font-normal text-gray-700">{meta.nextStep}</span>
+        <span className="font-normal text-gray-700">{actionLabel ?? meta.nextStep}</span>
       </p>
+      {attention.length > 0 ? (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {attention.slice(0, 2).map((s) => (
+            <span
+              key={s.key}
+              className="rounded border border-amber-200 bg-amber-50/80 px-1.5 py-0.5 text-[9px] font-medium text-amber-900"
+            >
+              {en ? s.labelEn : s.labelZh}
+            </span>
+          ))}
+        </div>
+      ) : null}
       {badges.length > 0 ? (
         <div className="mt-1.5 flex flex-wrap gap-1">
           {badges.map((b) => (
