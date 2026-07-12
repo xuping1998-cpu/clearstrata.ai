@@ -2,11 +2,15 @@ import { Link } from 'react-router-dom';
 import { meetingsNavHref } from '@/lib/meetingPermissions';
 import { governanceMattersHubViewUrl } from '@/lib/community/governanceMatterModel';
 
+export type ParticipationCountState = 'idle' | 'loading' | 'ok' | 'error';
+
 export type OwnerParticipationPanelProps = {
   langEn: boolean;
   propertyId: string;
   commentedMatterCount: number;
+  commentsCountState: ParticipationCountState;
   followingCount: number;
+  followingCountState: ParticipationCountState;
   roleInProperty: string | null | undefined;
   activeMatterCount?: number;
   votingMatterCount?: number;
@@ -16,7 +20,9 @@ export function OwnerParticipationPanel({
   langEn,
   propertyId,
   commentedMatterCount,
+  commentsCountState,
   followingCount,
+  followingCountState,
   roleInProperty,
   activeMatterCount = 0,
   votingMatterCount = 0,
@@ -41,7 +47,7 @@ export function OwnerParticipationPanel({
         <ParticipationLink
           href={commentsHref}
           label={en ? 'My Comments' : '我的评论'}
-          detail={commentedMatterCount > 0 ? `${commentedMatterCount}` : en ? '—' : '—'}
+          detail={countDetail(commentsCountState, commentedMatterCount, en, 'comments')}
         />
         <ParticipationLink
           href={votingHref}
@@ -51,7 +57,7 @@ export function OwnerParticipationPanel({
         <ParticipationLink
           href={followingHref}
           label={en ? 'Following' : '关注事项'}
-          detail={followingCount > 0 ? `${followingCount}` : en ? '—' : '—'}
+          detail={countDetail(followingCountState, followingCount, en, 'following')}
         />
       </ul>
 
@@ -83,7 +89,43 @@ export function OwnerParticipationPanel({
   );
 }
 
-function ParticipationLink({ href, label, detail }: { href: string; label: string; detail: string }) {
+function countDetail(
+  state: ParticipationCountState,
+  count: number,
+  en: boolean,
+  kind: 'comments' | 'following',
+): { text: string; title?: string } {
+  if (state === 'loading') {
+    return { text: '…', title: en ? 'Loading…' : '加载中…' };
+  }
+  if (state === 'error') {
+    return {
+      text: '!',
+      title:
+        kind === 'comments'
+          ? en
+            ? 'Could not load comment count'
+            : '无法加载评论数量'
+          : en
+            ? 'Could not load following count'
+            : '无法加载关注数量',
+    };
+  }
+  if (state === 'idle') {
+    return { text: en ? '—' : '—' };
+  }
+  return { text: `${count}` };
+}
+
+function ParticipationLink({
+  href,
+  label,
+  detail,
+}: {
+  href: string;
+  label: string;
+  detail: { text: string; title?: string };
+}) {
   return (
     <li>
       <Link
@@ -91,7 +133,13 @@ function ParticipationLink({ href, label, detail }: { href: string; label: strin
         className="flex items-center justify-between rounded-md border border-sky-100 bg-white/80 px-2.5 py-2 text-xs hover:bg-sky-50/80"
       >
         <span className="font-semibold text-gray-900">{label}</span>
-        <span className="text-gray-600">{detail}</span>
+        <span
+          className={`text-gray-600 ${detail.text === '!' ? 'font-bold text-amber-700' : ''}`}
+          title={detail.title}
+          aria-busy={detail.text === '…' ? true : undefined}
+        >
+          {detail.text}
+        </span>
       </Link>
     </li>
   );

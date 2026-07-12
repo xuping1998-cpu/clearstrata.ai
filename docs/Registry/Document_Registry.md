@@ -191,6 +191,7 @@ Permanent constitutional references within FD-001 — not separately numbered do
 
 | Number | Title | Status | Repository Location |
 |--------|-------|--------|---------------------|
+| **BF-002** | Independent Governance Hub Data Loading | COMPLETED | `docs/projects/BF-002_Independent_Governance_Hub_Data_Loading.md` |
 | **BF-001** | SGM Pause Notification Race Condition | COMPLETED | `docs/projects/BF-001_SGM_Pause_Notification_Race_Condition.md` |
 
 ---
@@ -260,6 +261,7 @@ Before creating any permanent document, Cursor **SHALL**:
 | 2026-07-10 | **GP-006** registered — Governance Experience constitutional design principle | Founding Team |
 | 2026-07-10 | **UIP-001 … UIP-010** registered — Project One Governance UI Polish (GP-006) | ClearStrata Project One |
 | 2026-07-10 | **UIP-011** registered — Governance Cockpit (Council Workspace) | ClearStrata Project One |
+| 2026-07-11 | **BF-002** registered — Independent Governance Hub Data Loading | ClearStrata Project One |
 | 2026-07-11 | **BF-001** registered — SGM Pause Notification Race Condition | ClearStrata Project One |
 
 ---

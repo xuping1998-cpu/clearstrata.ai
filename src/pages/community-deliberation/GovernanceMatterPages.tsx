@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Loader2 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useProperty } from '@/contexts/PropertyContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -9,7 +10,7 @@ import {
   GovernanceHubPanel,
   computeCouncilActionSummary,
 } from '@/components/community-deliberation/GovernanceHubPanel';
-import { OwnerParticipationPanel } from '@/components/community-deliberation/OwnerParticipationPanel';
+import { OwnerParticipationPanel, type ParticipationCountState } from '@/components/community-deliberation/OwnerParticipationPanel';
 import {
   mergeDeliberationBullets,
   partitionBullets,
@@ -29,6 +30,7 @@ import {
   governanceMatterStatusLabel,
   isCouncilGovernanceRole,
   type GovernanceMatterCommentRow,
+  type GovernanceMatterDashboardRow,
   type GovernanceMatterRevisionRow,
   type GovernanceMatterRow,
 } from '@/lib/community/governanceMatterModel';
@@ -39,6 +41,7 @@ import {
   fetchGovernanceMatterComments,
   fetchGovernanceMatterIdsWithUserComments,
   fetchGovernanceMatterRevisions,
+  fetchGovernanceMattersByIds,
   fetchGovernanceMattersForCouncilWorkspace,
   fetchSubscribedGovernanceMatterIds,
   updateGovernanceMatter,
@@ -442,7 +445,24 @@ export function GovernanceMattersHubPage() {
   const [followingCount, setFollowingCount] = useState(0);
   const [subscribedMatterIds, setSubscribedMatterIds] = useState<string[]>([]);
   const [commentedMatterIds, setCommentedMatterIds] = useState<string[]>([]);
+  const [personalFilterMatters, setPersonalFilterMatters] = useState<GovernanceMatterDashboardRow[]>([]);
+
   const [feedLoading, setFeedLoading] = useState(true);
+  const [subscriptionsLoading, setSubscriptionsLoading] = useState(false);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [personalFilterLoading, setPersonalFilterLoading] = useState(false);
+  const [subscriptionsError, setSubscriptionsError] = useState<string | null>(null);
+  const [commentsError, setCommentsError] = useState<string | null>(null);
+  const [personalFilterError, setPersonalFilterError] = useState<string | null>(null);
+
+  const [commentsCountState, setCommentsCountState] = useState<ParticipationCountState>('idle');
+  const [followingCountState, setFollowingCountState] = useState<ParticipationCountState>('idle');
+  const [participationRetryToken, setParticipationRetryToken] = useState(0);
+  const lastParticipationPropertyRef = useRef<string | null>(null);
+
+  const retryParticipationLoads = useCallback(() => {
+    setParticipationRetryToken((t) => t + 1);
+  }, []);
 
   const { bullets: importantUpdatesBullets } = useImportantUpdatesBullets({
     propertyId,
@@ -464,55 +484,209 @@ export function GovernanceMattersHubPage() {
       setFeedLoading(false);
       return;
     }
+    const requestedPropertyId = propertyId.trim();
+    let cancelled = false;
     setFeedLoading(true);
     void (async () => {
       try {
-        const rows = await fetchGovernanceMattersForCouncilWorkspace(propertyId.trim());
+        const rows = await fetchGovernanceMattersForCouncilWorkspace(requestedPropertyId);
+        if (cancelled || requestedPropertyId !== propertyId.trim()) return;
         setAllMatters(rows);
       } finally {
-        setFeedLoading(false);
+        if (!cancelled) setFeedLoading(false);
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [propertyId, propertyReady]);
 
   useEffect(() => {
     if (!propertyReady || !propertyId.trim() || !user?.id) {
-      setCommentedMatterCount(0);
-      setFollowingCount(0);
+      setSubscriptionsLoading(false);
+      setCommentsLoading(false);
+      setCommentsCountState('idle');
+      setFollowingCountState('idle');
+      setSubscriptionsError(null);
+      setCommentsError(null);
       setSubscribedMatterIds([]);
       setCommentedMatterIds([]);
+      setFollowingCount(0);
+      setCommentedMatterCount(0);
       return;
     }
+
+    const requestedPropertyId = propertyId.trim();
+    if (lastParticipationPropertyRef.current !== requestedPropertyId) {
+      lastParticipationPropertyRef.current = requestedPropertyId;
+      setSubscribedMatterIds([]);
+      setCommentedMatterIds([]);
+      setFollowingCount(0);
+      setCommentedMatterCount(0);
+    }
+    let cancelled = false;
+
+    const loadSubscriptions = async () => {
+      setSubscriptionsLoading(true);
+      setSubscriptionsError(null);
+      setFollowingCountState('loading');
+      try {
+        const ids = await fetchSubscribedGovernanceMatterIds(requestedPropertyId);
+        if (cancelled || requestedPropertyId !== propertyId.trim()) return;
+        setSubscribedMatterIds(ids);
+        setFollowingCount(ids.length);
+        setFollowingCountState('ok');
+      } catch (e) {
+        if (cancelled || requestedPropertyId !== propertyId.trim()) return;
+        const msg = e instanceof Error ? e.message : 'Subscription load failed';
+        console.error('[GOVERNANCE HUB] subscriptions load failed', {
+          propertyId: requestedPropertyId,
+          error: msg,
+        });
+        setSubscriptionsError(msg);
+        setFollowingCountState('error');
+      } finally {
+        if (!cancelled) setSubscriptionsLoading(false);
+      }
+    };
+
+    const loadComments = async () => {
+      setCommentsLoading(true);
+      setCommentsError(null);
+      setCommentsCountState('loading');
+      try {
+        const ids = await fetchGovernanceMatterIdsWithUserComments(requestedPropertyId);
+        if (cancelled || requestedPropertyId !== propertyId.trim()) return;
+        setCommentedMatterIds(ids);
+        setCommentedMatterCount(ids.length);
+        setCommentsCountState('ok');
+      } catch (e) {
+        if (cancelled || requestedPropertyId !== propertyId.trim()) return;
+        const msg = e instanceof Error ? e.message : 'Commented matters load failed';
+        console.error('[GOVERNANCE HUB] commented matters load failed', {
+          propertyId: requestedPropertyId,
+          error: msg,
+        });
+        setCommentsError(msg);
+        setCommentsCountState('error');
+      } finally {
+        if (!cancelled) setCommentsLoading(false);
+      }
+    };
+
+    void loadSubscriptions();
+    void loadComments();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [propertyId, propertyReady, user?.id, participationRetryToken]);
+
+  useEffect(() => {
+    if (!hubView || !propertyReady || !propertyId.trim()) {
+      setPersonalFilterMatters([]);
+      setPersonalFilterLoading(false);
+      setPersonalFilterError(null);
+      return;
+    }
+
+    const matterIds = hubView === 'subscribed' ? subscribedMatterIds : commentedMatterIds;
+    const idsLoading = hubView === 'subscribed' ? subscriptionsLoading : commentsLoading;
+    const idsError = hubView === 'subscribed' ? subscriptionsError : commentsError;
+
+    if (idsLoading) return;
+
+    if (idsError) {
+      setPersonalFilterMatters([]);
+      setPersonalFilterLoading(false);
+      setPersonalFilterError(null);
+      return;
+    }
+
+    if (matterIds.length === 0) {
+      setPersonalFilterMatters([]);
+      setPersonalFilterLoading(false);
+      setPersonalFilterError(null);
+      return;
+    }
+
+    const requestedPropertyId = propertyId.trim();
+    let cancelled = false;
+    setPersonalFilterLoading(true);
+    setPersonalFilterError(null);
+
     void (async () => {
       try {
-        const [subscribedIds, commentedIds] = await Promise.all([
-          fetchSubscribedGovernanceMatterIds(propertyId.trim()),
-          fetchGovernanceMatterIdsWithUserComments(propertyId.trim()),
-        ]);
-        setSubscribedMatterIds(subscribedIds);
-        setCommentedMatterIds(commentedIds);
-        setFollowingCount(subscribedIds.length);
-        setCommentedMatterCount(commentedIds.length);
-      } catch {
-        setSubscribedMatterIds([]);
-        setCommentedMatterIds([]);
-        setFollowingCount(0);
-        setCommentedMatterCount(0);
+        const rows = await fetchGovernanceMattersByIds(requestedPropertyId, matterIds);
+        if (cancelled || requestedPropertyId !== propertyId.trim()) return;
+        setPersonalFilterMatters(rows);
+      } catch (e) {
+        if (cancelled || requestedPropertyId !== propertyId.trim()) return;
+        const msg = e instanceof Error ? e.message : 'Personal filter matters load failed';
+        console.error('[GOVERNANCE HUB] personal filter matters load failed', {
+          propertyId: requestedPropertyId,
+          view: hubView,
+          error: msg,
+        });
+        setPersonalFilterError(msg);
+        setPersonalFilterMatters([]);
+      } finally {
+        if (!cancelled) setPersonalFilterLoading(false);
       }
     })();
-  }, [propertyId, propertyReady, user?.id]);
 
-  const filteredMatters = useMemo(() => {
-    if (!hubView) return allMatters;
-    const idSet =
-      hubView === 'subscribed'
-        ? new Set(subscribedMatterIds)
-        : new Set(commentedMatterIds);
-    return allMatters.filter((m) => idSet.has(m.id));
-  }, [allMatters, hubView, subscribedMatterIds, commentedMatterIds]);
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    hubView,
+    propertyId,
+    propertyReady,
+    subscribedMatterIds,
+    commentedMatterIds,
+    subscriptionsLoading,
+    commentsLoading,
+    subscriptionsError,
+    commentsError,
+  ]);
+
+  const filteredMatters = hubView ? personalFilterMatters : allMatters;
+
+  const filterViewLoading = useMemo(() => {
+    if (!hubView) return false;
+    if (hubView === 'subscribed') {
+      if (subscriptionsLoading) return true;
+      if (subscriptionsError) return false;
+      if (subscribedMatterIds.length > 0 && personalFilterLoading) return true;
+      return false;
+    }
+    if (commentsLoading) return true;
+    if (commentsError) return false;
+    if (commentedMatterIds.length > 0 && personalFilterLoading) return true;
+    return false;
+  }, [
+    hubView,
+    subscriptionsLoading,
+    subscriptionsError,
+    subscribedMatterIds.length,
+    commentsLoading,
+    commentsError,
+    commentedMatterIds.length,
+    personalFilterLoading,
+  ]);
+
+  const filterViewError = useMemo(() => {
+    if (!hubView) return null;
+    if (hubView === 'subscribed') {
+      return subscriptionsError ?? personalFilterError;
+    }
+    return commentsError ?? personalFilterError;
+  }, [hubView, subscriptionsError, commentsError, personalFilterError]);
 
   const filterEmptyMessage = useMemo(() => {
-    if (!hubView || filteredMatters.length > 0) return null;
+    if (!hubView || filterViewLoading || filterViewError || filteredMatters.length > 0) {
+      return null;
+    }
     if (hubView === 'subscribed') {
       return en
         ? 'You are not following any governance matters yet. Open a matter and select “Follow Matter” to see it here.'
@@ -521,7 +695,7 @@ export function GovernanceMattersHubPage() {
     return en
       ? 'You have not participated in any governance discussions yet.'
       : '您尚未参与任何事项讨论。';
-  }, [hubView, filteredMatters.length, en]);
+  }, [hubView, filterViewLoading, filterViewError, filteredMatters.length, en]);
 
   const filterTitle = useMemo(() => {
     if (!hubView) return null;
@@ -556,6 +730,15 @@ export function GovernanceMattersHubPage() {
   }, [allMatters]);
 
   const loading = feedLoading || mattersLoading;
+
+  const filterErrorUserMessage =
+    hubView === 'subscribed'
+      ? en
+        ? 'We could not load your followed matters. Please try again.'
+        : '暂时无法加载您关注的事项，请稍后重试。'
+      : en
+        ? 'We could not load your commented matters. Please try again.'
+        : '暂时无法加载您的评论事项，请稍后重试。';
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 sm:py-8">
@@ -600,7 +783,23 @@ export function GovernanceMattersHubPage() {
             </div>
           ) : null}
           <div className="mt-3 rounded-xl border border-gray-100 bg-gray-50/40 p-4">
-            {filterEmptyMessage ? (
+            {filterViewLoading ? (
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                {en ? 'Loading your matters…' : '正在加载您的事项…'}
+              </div>
+            ) : filterViewError ? (
+              <div className="space-y-2 text-sm text-red-800" role="alert">
+                <p>{filterErrorUserMessage}</p>
+                <button
+                  type="button"
+                  onClick={retryParticipationLoads}
+                  className="rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-900 hover:bg-red-50"
+                >
+                  {en ? 'Retry' : '重试'}
+                </button>
+              </div>
+            ) : filterEmptyMessage ? (
               <p className="text-sm text-gray-600">{filterEmptyMessage}</p>
             ) : (
               <GovernanceLifecycleFeed
@@ -610,6 +809,7 @@ export function GovernanceMattersHubPage() {
                 notices={hubView ? [] : notices}
                 propertyId={propertyId}
                 canCouncil={canCouncil}
+                personalFilterView={Boolean(hubView)}
               />
             )}
           </div>
@@ -628,7 +828,9 @@ export function GovernanceMattersHubPage() {
               langEn={en}
               propertyId={propertyId}
               commentedMatterCount={commentedMatterCount}
+              commentsCountState={commentsCountState}
               followingCount={followingCount}
+              followingCountState={followingCountState}
               roleInProperty={roleInProperty}
               activeMatterCount={ownerAttention.activeMatterCount}
               votingMatterCount={ownerAttention.votingMatterCount}

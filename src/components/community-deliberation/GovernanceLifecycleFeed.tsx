@@ -7,6 +7,7 @@ import {
   partitionMattersByHubStage,
   type HubLifecycleStage,
 } from '@/lib/community/governanceHubLifecycle';
+import type { ImportantUpdatesBullet } from '@/components/dashboard/ImportantUpdatesDashboardCard';
 import type { GovernanceMatterDashboardRow } from '@/lib/community/governanceMatterModel';
 
 export type GovernanceLifecycleFeedProps = {
@@ -16,6 +17,8 @@ export type GovernanceLifecycleFeedProps = {
   notices: ImportantUpdatesBullet[];
   propertyId: string;
   canCouncil?: boolean;
+  /** Personal filtered views (comments/following) — show draft matters in their own section. */
+  personalFilterView?: boolean;
 };
 
 function NoticeRow({ item, langEn }: { item: ImportantUpdatesBullet; langEn: boolean }) {
@@ -81,6 +84,7 @@ export function GovernanceLifecycleFeed({
   notices,
   propertyId,
   canCouncil = false,
+  personalFilterView = false,
 }: GovernanceLifecycleFeedProps) {
   const en = langEn;
 
@@ -88,10 +92,31 @@ export function GovernanceLifecycleFeed({
     return <p className="text-sm text-gray-500">{en ? 'Loading governance feed…' : '加载治理动态…'}</p>;
   }
 
+  const draftMatters = personalFilterView ? matters.filter((m) => m.status === 'draft') : [];
   const buckets = partitionMattersByHubStage(matters);
 
   return (
     <div className="space-y-6">
+      {personalFilterView && draftMatters.length > 0 ? (
+        <section>
+          <h3 className="text-sm font-bold text-gray-900">
+            {en ? 'Draft' : '草稿'} ({draftMatters.length})
+          </h3>
+          <ul className="mt-2 space-y-2">
+            {draftMatters.map((matter) => (
+              <li key={matter.id}>
+                <GovernanceMatterCard
+                  matter={matter}
+                  propertyId={propertyId}
+                  langEn={en}
+                  canCouncil={canCouncil}
+                />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       {HUB_LIFECYCLE_STAGES.map((stage) => (
         <LifecycleSection
           key={stage}
@@ -103,6 +128,7 @@ export function GovernanceLifecycleFeed({
         />
       ))}
 
+      {!personalFilterView ? (
       <section>
         <h3 className="text-sm font-bold text-gray-900">
           {en ? 'Official Notice' : '正式通知'} ({notices.length})
@@ -121,6 +147,7 @@ export function GovernanceLifecycleFeed({
           </ul>
         )}
       </section>
+      ) : null}
     </div>
   );
 }

@@ -89,6 +89,53 @@ export async function fetchGovernanceMattersForCouncilWorkspace(
   }));
 }
 
+async function attachCommentCounts(
+  propertyId: string,
+  matters: GovernanceMatterRow[],
+): Promise<GovernanceMatterDashboardRow[]> {
+  if (!matters.length) return [];
+
+  const ids = matters.map((m) => m.id);
+  const { data: commentRows, error: cErr } = await supabase
+    .from('governance_matter_comments')
+    .select('matter_id')
+    .eq('property_id', propertyId)
+    .in('matter_id', ids)
+    .eq('visibility', 'visible');
+
+  if (cErr) throw new Error(cErr.message);
+
+  const counts: Record<string, number> = {};
+  for (const row of commentRows ?? []) {
+    const mid = String((row as { matter_id: string }).matter_id);
+    counts[mid] = (counts[mid] ?? 0) + 1;
+  }
+
+  return matters.map((m) => ({
+    ...m,
+    comment_count: counts[m.id] ?? 0,
+  }));
+}
+
+/** Fetch specific matters by ID (for personal filtered hub views; avoids top-100 cap). */
+export async function fetchGovernanceMattersByIds(
+  propertyId: string,
+  matterIds: string[],
+): Promise<GovernanceMatterDashboardRow[]> {
+  const uniqueIds = [...new Set(matterIds.map((id) => id.trim()).filter(Boolean))];
+  if (!uniqueIds.length) return [];
+
+  const { data, error } = await supabase
+    .from('governance_matters')
+    .select('*')
+    .eq('property_id', propertyId)
+    .in('id', uniqueIds)
+    .order('last_revision_at', { ascending: false });
+
+  if (error) throw new Error(error.message);
+  return attachCommentCounts(propertyId, (data ?? []) as GovernanceMatterRow[]);
+}
+
 export async function fetchGovernanceMatterById(
   propertyId: string,
   matterId: string,

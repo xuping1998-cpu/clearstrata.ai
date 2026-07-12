@@ -161,6 +161,8 @@ Reuses `GovernanceLifecycleFeed` with filtered matter list; custom empty states 
 
 Email/push notification preferences, digest frequency, per-event settings, follower counts, popularity, likes/reactions, recommendation algorithms.
 
+**BF-002 (2026-07-11):** Independent participation loading — subscription failures no longer clear comment data. See `docs/projects/BF-002_Independent_Governance_Hub_Data_Loading.md`.
+
 ---
 
 ## Verification Routes
