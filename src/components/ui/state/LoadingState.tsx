@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { MOTION_SPINNER } from '@/lib/ui/motionClasses';
 import {
   DashboardGovernanceHubCardSkeleton,
   FeedListSkeleton,
@@ -134,7 +135,7 @@ export function LoadingState({
       aria-live="polite"
       aria-busy="true"
     >
-      <Loader2 className="h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden />
+      <Loader2 className={cn('h-4 w-4 shrink-0', MOTION_SPINNER)} aria-hidden />
       <span>{text}</span>
     </div>
   );

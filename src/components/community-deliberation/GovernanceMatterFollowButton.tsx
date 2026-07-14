@@ -5,6 +5,7 @@ import {
   subscribeToGovernanceMatter,
   unsubscribeFromGovernanceMatter,
 } from '@/features/governance-matters/governanceMattersApi';
+import { MOTION_INTERACTIVE, MOTION_SPINNER } from '@/lib/ui/motionClasses';
 
 export type GovernanceMatterFollowButtonProps = {
   propertyId: string;
@@ -73,12 +74,14 @@ export function GovernanceMatterFollowButton({
 
   if (loading) {
     return (
-      <div className="mt-3 flex items-center gap-2 text-xs text-gray-500">
-        <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-        {en ? 'Loading…' : '加载中…'}
+      <div className="mt-3 flex items-center gap-2 text-xs text-gray-500" role="status" aria-live="polite" aria-busy="true">
+        <Loader2 className={`h-3.5 w-3.5 ${MOTION_SPINNER}`} aria-hidden />
+        {en ? 'Loading follow state…' : '正在加载关注状态…'}
       </div>
     );
   }
+
+  const errorId = `follow-error-${matterId}`;
 
   return (
     <div className="mt-3">
@@ -86,7 +89,9 @@ export function GovernanceMatterFollowButton({
         type="button"
         onClick={() => void handleToggle()}
         disabled={busy}
-        className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-60 ${
+        aria-busy={busy || undefined}
+        aria-describedby={error ? errorId : undefined}
+        className={`inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clearstrata-ui-primary/40 focus-visible:ring-offset-2 ${MOTION_INTERACTIVE} ${
           following
             ? 'border-sky-300 bg-sky-50 text-sky-900 hover:bg-sky-100'
             : 'border-gray-300 bg-white text-gray-800 hover:border-sky-200 hover:bg-sky-50/60'
@@ -94,7 +99,7 @@ export function GovernanceMatterFollowButton({
         aria-pressed={following}
       >
         {busy ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+          <Loader2 className={`h-3.5 w-3.5 ${MOTION_SPINNER}`} aria-hidden />
         ) : (
           <Bell className={`h-3.5 w-3.5 ${following ? 'fill-sky-600 text-sky-600' : ''}`} aria-hidden />
         )}
@@ -106,7 +111,11 @@ export function GovernanceMatterFollowButton({
             ? 'Follow Matter'
             : '关注事项'}
       </button>
-      {error ? <p className="mt-1 text-xs text-red-700">{error}</p> : null}
+      {error ? (
+        <p id={errorId} className="mt-1 text-xs text-red-700" role="alert">
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }

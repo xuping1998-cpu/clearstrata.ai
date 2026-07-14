@@ -29,6 +29,8 @@ import {
   type GovernanceTimelinePhase,
 } from '@/lib/community/governanceTimelineModel';
 import { ButtonLink } from '@/components/ui/Button';
+import { MOTION_PROGRESS } from '@/lib/ui/motionClasses';
+import { INTERACTION_SELECTABLE } from '@/lib/ui/interactionClasses';
 
 const FILTER_CHIPS: { id: GovernanceTimelineFilter; en: string; zh: string }[] = [
   { id: 'all', en: 'All', zh: '全部' },
@@ -108,18 +110,23 @@ export function GovernanceMatterTimelineTab({
       <StageDurationPanel en={en} durations={stageDurations} />
 
       <div>
-        <p className="text-xs font-bold uppercase tracking-wide text-gray-500">
+        <p id="timeline-filter-label" className="text-xs font-bold uppercase tracking-wide text-gray-500">
           {en ? 'Filter timeline' : '筛选时间线'}
         </p>
-        <div className="mt-2 flex flex-wrap gap-2">
+        <div
+          role="group"
+          aria-labelledby="timeline-filter-label"
+          className="mt-2 flex flex-wrap gap-2"
+        >
           {FILTER_CHIPS.map((chip) => {
             const selected = filter === chip.id;
             return (
               <button
                 key={chip.id}
                 type="button"
+                aria-pressed={selected}
                 onClick={() => setFilter(chip.id)}
-                className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                className={`min-h-9 rounded-full px-3 py-1.5 text-xs font-semibold ${INTERACTION_SELECTABLE} ${
                   selected
                     ? 'bg-clearstrata-ui-primary text-white'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -133,11 +140,14 @@ export function GovernanceMatterTimelineTab({
       </div>
 
       {events.length === 0 ? (
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-gray-500" role="status">
           {en ? 'No timeline events match this filter.' : '没有符合筛选条件的时间线事件。'}
         </p>
       ) : (
-        <ol className="relative space-y-0 border-l-2 border-clearstrata-brand-200 pl-6 md:pl-8">
+        <ol
+          className="relative space-y-0 border-l-2 border-clearstrata-brand-200 pl-6 md:pl-8"
+          aria-label={en ? 'Governance timeline events' : '治理时间线事件'}
+        >
           {events.map((event) => (
             <TimelineEventCard key={event.id} en={en} event={event} />
           ))}
@@ -166,12 +176,15 @@ function CurrentStageIndicator({
       <p className={`text-xs font-bold uppercase tracking-wide ${p.textClass}`}>
         {en ? 'Current stage' : '当前阶段'}
       </p>
-      <p className="mt-1 text-base font-bold text-gray-900">{phaseLabel(currentPhase, en)}</p>
+      <p className={`mt-1 text-base font-bold text-gray-900`}>{phaseLabel(currentPhase, en)}</p>
+      <p className="sr-only">
+        {en ? `Progress: ${filled} of ${total} stages complete` : `进度：${filled} / ${total} 个阶段已完成`}
+      </p>
       <div className="mt-3 flex gap-1" aria-hidden>
         {segments.map((on, i) => (
           <span
             key={i}
-            className={`h-2 flex-1 rounded-sm ${on ? p.progressClass : 'bg-white/60'}`}
+            className={`h-2 flex-1 rounded-sm ${MOTION_PROGRESS} ${on ? p.progressClass : 'bg-white/60'}`}
           />
         ))}
       </div>
@@ -313,7 +326,7 @@ function TimelineEventCard({ en, event }: { en: boolean; event: GovernanceTimeli
           </ul>
         ) : null}
 
-        <p className="mt-2 text-[10px] text-gray-400">
+        <p className="mt-2 text-[10px] text-gray-400" aria-hidden>
           {en ? 'Event' : '事件'}: {event.eventType} · ID: {event.entityId.slice(0, 8)}
         </p>
       </article>

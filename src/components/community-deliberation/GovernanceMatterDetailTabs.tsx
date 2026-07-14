@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
@@ -23,6 +23,7 @@ import {
 import { GovernanceMatterTimelineTab } from '@/components/community-deliberation/GovernanceMatterTimelineTab';
 import { getEmptyStateContent, stateText, TabEmptyState } from '@/components/ui/state';
 import { INTERACTION_LINK, INTERACTION_TAB } from '@/lib/ui/interactionClasses';
+import { MOTION_ACCORDION_ICON, MOTION_TAB_PANEL } from '@/lib/ui/motionClasses';
 import type { GovernanceMatterCdaReportRow } from '@/lib/community/cdaReportModel';
 
 export type MatterDetailTab = 'details' | 'discussion' | 'resolution' | 'cda' | 'timeline';
@@ -96,6 +97,14 @@ const STATUS_TONE_CLASS: Record<string, string> = {
   ready: 'bg-emerald-100 text-emerald-900',
 };
 
+function matterTabId(prefix: string, tab: MatterDetailTab): string {
+  return `${prefix}-tab-${tab}`;
+}
+
+function matterPanelId(prefix: string, tab: MatterDetailTab): string {
+  return `${prefix}-panel-${tab}`;
+}
+
 export function GovernanceMatterDetailTabs(props: GovernanceMatterDetailTabsProps) {
   const en = props.langEn;
   const {
@@ -131,11 +140,34 @@ export function GovernanceMatterDetailTabs(props: GovernanceMatterDetailTabsProp
   } = props;
 
   const [activeTab, setActiveTab] = useState<MatterDetailTab>(defaultTab);
+  const tabsPrefix = useId();
+  const tabRefs = useRef<Partial<Record<MatterDetailTab, HTMLButtonElement | null>>>({});
 
   const visibleTabs = useMemo(
     () => (includeDetailsTab ? TAB_DEFS : TAB_DEFS.filter((t) => t.id !== 'details')),
     [includeDetailsTab],
   );
+
+  function focusTab(tabId: MatterDetailTab) {
+    tabRefs.current[tabId]?.focus();
+  }
+
+  function handleTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, tabId: MatterDetailTab) {
+    const index = visibleTabs.findIndex((t) => t.id === tabId);
+    if (index < 0) return;
+
+    let nextIndex: number | null = null;
+    if (event.key === 'ArrowRight') nextIndex = (index + 1) % visibleTabs.length;
+    else if (event.key === 'ArrowLeft') nextIndex = (index - 1 + visibleTabs.length) % visibleTabs.length;
+    else if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = visibleTabs.length - 1;
+    else return;
+
+    event.preventDefault();
+    const nextTab = visibleTabs[nextIndex]!.id;
+    setActiveTab(nextTab);
+    focusTab(nextTab);
+  }
   useEffect(() => {
     if (requestedTab) {
       setActiveTab(requestedTab);
@@ -161,15 +193,22 @@ export function GovernanceMatterDetailTabs(props: GovernanceMatterDetailTabsProp
           return (
             <button
               key={tab.id}
+              ref={(el) => {
+                tabRefs.current[tab.id] = el;
+              }}
+              id={matterTabId(tabsPrefix, tab.id)}
               type="button"
               role="tab"
               aria-selected={selected}
+              aria-controls={matterPanelId(tabsPrefix, tab.id)}
+              tabIndex={selected ? 0 : -1}
               onClick={() => setActiveTab(tab.id)}
+              onKeyDown={(event) => handleTabKeyDown(event, tab.id)}
               className={
                 compactLayout
                   ? `shrink-0 px-3 py-1.5 text-xs font-semibold sm:px-3.5 ${INTERACTION_TAB} ${
                       selected
-                        ? 'rounded-t-md bg-emerald-800 text-white'
+                        ? 'rounded-t-md bg-emerald-800 text-white focus-visible:ring-white/70 focus-visible:ring-offset-emerald-900'
                         : 'text-gray-500 hover:text-gray-800'
                     }`
                   : `shrink-0 rounded-t-lg px-3 py-2 text-sm font-semibold sm:px-4 ${INTERACTION_TAB} ${
@@ -186,10 +225,14 @@ export function GovernanceMatterDetailTabs(props: GovernanceMatterDetailTabsProp
       </div>
 
       <div
+        role="tabpanel"
+        id={matterPanelId(tabsPrefix, activeTab)}
+        aria-labelledby={matterTabId(tabsPrefix, activeTab)}
+        tabIndex={0}
         className={
           compactLayout
-            ? 'pt-3'
-            : 'rounded-b-2xl rounded-tr-2xl border border-gray-200 bg-white p-5 shadow-sm'
+            ? `pt-3 ${MOTION_TAB_PANEL}`
+            : `rounded-b-2xl rounded-tr-2xl border border-gray-200 bg-white p-5 shadow-sm ${MOTION_TAB_PANEL}`
         }
       >
         {activeTab === 'details' ? (
@@ -337,21 +380,33 @@ function DetailsTab({
               </span>
             </summary>
             <div className="mt-3 space-y-3">
+              <label htmlFor="council-revision-title-compact" className="block text-xs font-semibold text-gray-700">
+                {en ? 'Title' : '标题'}
+              </label>
               <input
+                id="council-revision-title-compact"
                 value={editTitle}
                 onChange={(e) => onEditTitleChange(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clearstrata-ui-primary/40"
               />
+              <label htmlFor="council-revision-description-compact" className="block text-xs font-semibold text-gray-700">
+                {en ? 'Description' : '说明'}
+              </label>
               <textarea
+                id="council-revision-description-compact"
                 value={editDescription}
                 onChange={(e) => onEditDescriptionChange(e.target.value)}
                 rows={5}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clearstrata-ui-primary/40"
               />
+              <label htmlFor="council-revision-status-compact" className="block text-xs font-semibold text-gray-700">
+                {en ? 'Status' : '状态'}
+              </label>
               <select
+                id="council-revision-status-compact"
                 value={editStatus}
                 onChange={(e) => onEditStatusChange(e.target.value as GovernanceMatterRow['status'])}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clearstrata-ui-primary/40"
               >
                 {GOVERNANCE_MATTER_STATUSES.map((s) => (
                   <option key={s} value={s}>
@@ -410,24 +465,36 @@ function DetailsTab({
                   : '修订会永久记录，不会覆盖历史。'}
               </p>
             </div>
-            <ChevronDown className="h-4 w-4 shrink-0 text-amber-900 transition-transform group-open:rotate-180" aria-hidden />
+            <ChevronDown className={`h-4 w-4 shrink-0 text-amber-900 ${MOTION_ACCORDION_ICON}`} aria-hidden />
           </summary>
           <div className="space-y-3 border-t border-amber-100 px-4 py-4">
+            <label htmlFor="council-revision-title" className="block text-xs font-semibold text-gray-700">
+              {en ? 'Title' : '标题'}
+            </label>
             <input
+              id="council-revision-title"
               value={editTitle}
               onChange={(e) => onEditTitleChange(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clearstrata-ui-primary/40"
             />
+            <label htmlFor="council-revision-description" className="block text-xs font-semibold text-gray-700">
+              {en ? 'Description' : '说明'}
+            </label>
             <textarea
+              id="council-revision-description"
               value={editDescription}
               onChange={(e) => onEditDescriptionChange(e.target.value)}
               rows={5}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clearstrata-ui-primary/40"
             />
+            <label htmlFor="council-revision-status" className="block text-xs font-semibold text-gray-700">
+              {en ? 'Status' : '状态'}
+            </label>
             <select
+              id="council-revision-status"
               value={editStatus}
               onChange={(e) => onEditStatusChange(e.target.value as GovernanceMatterRow['status'])}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clearstrata-ui-primary/40"
             >
               {GOVERNANCE_MATTER_STATUSES.map((s) => (
                 <option key={s} value={s}>
@@ -547,12 +614,16 @@ function DiscussionTab({
           )}
         </ul>
         <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+          <label htmlFor="governance-comment-body" className="sr-only">
+            {en ? 'Your comment' : '您的评论'}
+          </label>
           <textarea
+            id="governance-comment-body"
             value={commentBody}
             onChange={(e) => onCommentBodyChange(e.target.value)}
             rows={3}
             placeholder={en ? 'Participate in discussion…' : '参与讨论…'}
-            className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clearstrata-ui-primary/40"
           />
           <Button
             type="button"
@@ -579,24 +650,36 @@ function DiscussionTab({
                   : '修订会永久记录，不会覆盖历史。'}
               </p>
             </div>
-            <ChevronDown className="h-4 w-4 shrink-0 text-amber-900 transition-transform group-open:rotate-180" aria-hidden />
+            <ChevronDown className={`h-4 w-4 shrink-0 text-amber-900 ${MOTION_ACCORDION_ICON}`} aria-hidden />
           </summary>
           <div className="space-y-3 border-t border-amber-100 px-4 py-4">
+            <label htmlFor="council-revision-title-discussion" className="block text-xs font-semibold text-gray-700">
+              {en ? 'Title' : '标题'}
+            </label>
             <input
+              id="council-revision-title-discussion"
               value={editTitle}
               onChange={(e) => onEditTitleChange(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clearstrata-ui-primary/40"
             />
+            <label htmlFor="council-revision-description-discussion" className="block text-xs font-semibold text-gray-700">
+              {en ? 'Description' : '说明'}
+            </label>
             <textarea
+              id="council-revision-description-discussion"
               value={editDescription}
               onChange={(e) => onEditDescriptionChange?.(e.target.value)}
               rows={4}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clearstrata-ui-primary/40"
             />
+            <label htmlFor="council-revision-status-discussion" className="block text-xs font-semibold text-gray-700">
+              {en ? 'Status' : '状态'}
+            </label>
             <select
+              id="council-revision-status-discussion"
               value={editStatus}
               onChange={(e) => onEditStatusChange?.(e.target.value as GovernanceMatterRow['status'])}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clearstrata-ui-primary/40"
             >
               {GOVERNANCE_MATTER_STATUSES.map((s) => (
                 <option key={s} value={s}>

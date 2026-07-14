@@ -17,7 +17,7 @@
 | **Owner** | ClearStrata Platform |
 | **Supersedes** | None |
 | **Superseded By** | None |
-| **Related Documents** | FD-001, GP-005, GP-006, GPA-001, GPA-002, GDS-001, GRFC-001, RM-008, RC-001, RC-002, RC-003, RC-004, RC-005, RC-006, UIP-001 … UIP-013, BF-001, BF-002 |
+| **Related Documents** | FD-001, GP-005, GP-006, GPA-001, GPA-002, GDS-001, GRFC-001, RM-008, RC-001, RC-002, RC-003, RC-004, RC-005, RC-006, RC-007, RC-008, RC-009, UIP-001 … UIP-013, BF-001, BF-002 |
 | **Repository Location** | `docs/design-system/CDS-001_ClearStrata_Design_System.md` |
 
 ---
@@ -382,15 +382,29 @@ Include **retry** where practical.
 
 ## 18. Motion System
 
-| Token | Duration |
-|-------|----------|
-| **Fast** | 150ms |
-| **Standard** | 180–220ms |
-| **Panel** | 220–260ms |
-| **Timeline / Progress** | 280–320ms |
-| **Success feedback** | 300–400ms |
+| Token | Duration | Tailwind | Use |
+|-------|----------|----------|-----|
+| **Instant** | 75ms | `duration-motion-instant` | Near-immediate (reserved) |
+| **Fast** | 150ms | `duration-motion-fast` | Buttons, links, tabs, chevrons |
+| **Standard** | 200ms | `duration-motion-standard` | Tab panel opacity |
+| **Panel** | 240ms | `duration-motion-panel` | Dialogs, refreshing overlay |
+| **Progress** | 280–320ms | `duration-motion-progress` | Lifecycle pills, progress segments |
+| **Feedback** | 300–400ms | `duration-motion-feedback` | Toasts |
 
-**Rules:** Motion communicates state; no decorative delay; respect `prefers-reduced-motion`; queue reordering remains understandable.
+**Easing:** `ease-motion-enter` (respond/in) · `ease-motion-exit` (out) · `ease-motion-move` (spatial).
+
+**Rules:** Motion communicates state; no decorative delay; no spring/bounce; respect `prefers-reduced-motion`; queue reordering remains understandable; no route-wide transitions.
+
+**Project One adoption ([RC-008](../projects/RC-008_Motion_System.md)):**
+
+| Concern | Implementation |
+|---------|----------------|
+| Canonical tokens | `tailwind.config.js` + CSS variables in `src/index.css` |
+| Class utility | `src/lib/ui/motionClasses.ts` |
+| Interaction surfaces | `interactionClasses.ts` delegates to motion tokens |
+| Reduced motion | `motion-reduce:transition-none` / `motion-reduce:animate-none` on pilot classes; global `animate-slide-up` disabled |
+
+**Checklist:** See RC-008 § Pilot components migrated.
 
 ---
 
@@ -399,6 +413,36 @@ Include **retry** where practical.
 Require: keyboard navigation · visible focus · semantic HTML · ARIA only where needed · screen-reader labels · color contrast · reduced motion · accessible errors · touch targets · bilingual clarity.
 
 **Rules:** Color never sole status carrier; icon-only buttons need labels; tab order follows visual order; mobile touch-friendly; major UI work includes a11y verification.
+
+**Project One adoption ([RC-007](../projects/RC-007_Accessibility_Audit.md)):**
+
+| Concern | Implementation |
+|---------|----------------|
+| Landmarks / headings | `<main>`, `<nav>`, `<aside>`, h1–h2 hierarchy on pilot pages |
+| Tabs | WAI-ARIA tablist + tabpanel + arrow-key navigation |
+| Filters / selection | `aria-pressed`, `aria-current`, contextual card labels |
+| Queue actions | `governanceA11y.ts` bilingual `aria-label` with matter title |
+| Forms | Visible labels, `<form>` submit, validation ARIA |
+| Destructive confirm | `DestructiveConfirmDialog` (native `<dialog>`) |
+| Toasts | Item-level `aria-live`; errors assertive |
+| Timeline | Semantic lists, filter pressed state, decorative nodes hidden |
+
+**Checklist:** See RC-007 § Accessibility checklist.
+
+---
+
+## 19.1 Project One Release QA
+
+**Authority:** [RC-009](../projects/RC-009_Governance_Journey_QA.md) — Governance Journey QA (final gate before v1.0).
+
+| Gate | Status (2026-07-14) |
+|------|---------------------|
+| End-to-end Council + Owner journey | **FAIL** — live QA not completed; meeting/voting integration gaps |
+| P0 / P1 defects | **FAIL** — P1-001 meeting link-back, P1-002 voting link-back |
+| RC-004–008 regression | Partial pass (code audit) |
+| TypeScript + production build | Pass |
+
+**Rule:** RC-010 (Project One v1.0 Release) may not begin with open P0 or P1 issues.
 
 ---
 

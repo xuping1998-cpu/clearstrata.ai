@@ -51,6 +51,9 @@ Transform the existing governance system into a clear, intuitive, role-aware gov
 | **UIP-010** | Five-Second Experience Validation | PLANNED | Role/locale validation checklist |
 | **UIP-011** | Governance Cockpit | ACTIVE | Three-column cockpit: Pipeline · Current Matter · Action Queue |
 | **UIP-012** | Governance Intelligence | ACTIVE | Deterministic council assistant — brief, priority, readiness, health |
+| **UIP-013** | Governance Timeline Intelligence | ACTIVE | Matter Detail timeline tab |
+
+**RC-009 QA (2026-07-14):** Release gate **FAIL** — see [RC-009](RC-009_Governance_Journey_QA.md). UIP-006/UIP-007 integration (meeting save link-back, voting link-back) must be fixed before RC-010.
 
 ---
 

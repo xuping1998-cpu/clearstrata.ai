@@ -65,11 +65,20 @@ export function WorkspacePipelineMatterCard({
   const readiness = intelligence?.readiness;
   const actionLabel = nextBestActionLabel(nextAction ?? null, en);
 
+  const cardLabel = selected
+    ? en
+      ? `Current matter: ${matter.title}`
+      : `当前事项：${matter.title}`
+    : en
+      ? `Select matter: ${matter.title}`
+      : `选择事项：${matter.title}`;
+
   return (
     <button
       type="button"
       onClick={onSelect}
       aria-current={selected ? 'true' : undefined}
+      aria-label={cardLabel}
       className={cn(
         'w-full rounded-lg border px-3 py-2 text-left',
         INTERACTION_SELECTABLE,

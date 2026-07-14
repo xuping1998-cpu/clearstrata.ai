@@ -128,6 +128,19 @@ export default {
         'clearstrata-hero':
           'linear-gradient(135deg, #15593e 0%, #176f4c 52%, #1b8a5c 100%)',
       },
+      transitionDuration: {
+        'motion-instant': '75ms',
+        'motion-fast': '150ms',
+        'motion-standard': '200ms',
+        'motion-panel': '240ms',
+        'motion-progress': '300ms',
+        'motion-feedback': '360ms',
+      },
+      transitionTimingFunction: {
+        'motion-enter': 'cubic-bezier(0, 0, 0.2, 1)',
+        'motion-exit': 'cubic-bezier(0.4, 0, 1, 1)',
+        'motion-move': 'cubic-bezier(0.4, 0, 0.2, 1)',
+      },
     },
   },
   plugins: [],

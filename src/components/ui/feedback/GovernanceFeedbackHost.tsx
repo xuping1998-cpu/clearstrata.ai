@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { X } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/cn';
+import { MOTION_FEEDBACK } from '@/lib/ui/motionClasses';
 import type { StateMessage } from '@/lib/ui/pageStateModel';
 import { stateText } from '@/lib/ui/pageStateModel';
 
@@ -50,15 +51,17 @@ export function GovernanceFeedbackHost({ langEn, items, onDismiss }: GovernanceF
   return (
     <div
       className="pointer-events-none fixed bottom-4 right-4 z-50 flex w-[min(100vw-2rem,22rem)] flex-col gap-2"
-      aria-live="polite"
-      aria-relevant="additions"
+      aria-label={langEn ? 'Notifications' : '通知'}
     >
       {items.map((item) => (
         <div
           key={item.id}
           role={item.kind === 'error' ? 'alert' : 'status'}
+          aria-live={item.kind === 'error' ? 'assertive' : 'polite'}
+          aria-atomic="true"
           className={cn(
-            'pointer-events-auto rounded-xl border px-3 py-2.5 shadow-lg transition-opacity duration-[250ms] motion-reduce:transition-none',
+            'pointer-events-auto rounded-xl border px-3 py-2.5 shadow-lg',
+            MOTION_FEEDBACK,
             KIND_CLASS[item.kind],
           )}
         >
@@ -67,8 +70,8 @@ export function GovernanceFeedbackHost({ langEn, items, onDismiss }: GovernanceF
             <button
               type="button"
               onClick={() => onDismiss(item.id)}
-              className="shrink-0 rounded-md p-0.5 opacity-70 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clearstrata-ui-primary/40"
-              aria-label={langEn ? 'Dismiss' : '关闭'}
+              className="shrink-0 min-h-9 min-w-9 rounded-md p-1 opacity-70 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clearstrata-ui-primary/40"
+              aria-label={langEn ? 'Dismiss notification' : '关闭通知'}
             >
               <X className="h-4 w-4" aria-hidden />
             </button>

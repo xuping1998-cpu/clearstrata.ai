@@ -1,6 +1,7 @@
 import { cn } from '@/lib/cn';
+import { MOTION_SKELETON_PULSE } from '@/lib/ui/motionClasses';
 
-const PULSE = 'animate-pulse motion-reduce:animate-none';
+const PULSE = MOTION_SKELETON_PULSE;
 
 export function SkeletonLine({ className }: { className?: string }) {
   return <div className={cn(PULSE, 'rounded-md bg-gray-200/80', className)} aria-hidden />;

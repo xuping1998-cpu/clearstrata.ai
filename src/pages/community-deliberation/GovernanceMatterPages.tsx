@@ -328,14 +328,16 @@ export function GovernanceMatterDetailPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-6 sm:py-8">
+    <main className="mx-auto max-w-3xl px-4 py-6 sm:py-8">
       <GovernanceFeedbackHost langEn={en} items={feedback.items} onDismiss={feedback.dismiss} />
-      <Link
-        to={governanceMattersListUrl(propertyId)}
-        className={`text-sm font-semibold text-clearstrata-brand-900 ${INTERACTION_LINK}`}
-      >
-        ← {en ? 'Governance Hub' : '治理中心'}
-      </Link>
+      <nav aria-label={en ? 'Breadcrumb' : '导航'}>
+        <Link
+          to={governanceMattersListUrl(propertyId)}
+          className={`text-sm font-semibold text-clearstrata-brand-900 ${INTERACTION_LINK}`}
+        >
+          ← {en ? 'Governance Hub' : '治理中心'}
+        </Link>
+      </nav>
 
       <header className="mt-4">
         <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -393,7 +395,7 @@ export function GovernanceMatterDetailPage() {
         onCreateResolution={() => void handleCreateResolution()}
         resolutionSubmitting={resolutionSubmitting}
       />
-    </div>
+    </main>
   );
 }
 
@@ -467,16 +469,32 @@ export function GovernanceMatterCreatePage() {
   }
 
   return (
-    <div className="mx-auto max-w-xl px-4 py-8">
+    <main className="mx-auto max-w-xl px-4 py-8">
       <GovernanceFeedbackHost langEn={en} items={feedback.items} onDismiss={feedback.dismiss} />
       <h1 className="text-xl font-bold text-gray-900">{en ? 'New governance matter' : '新建治理事项'}</h1>
       <p className="mt-1 text-sm text-gray-600">
         {en ? 'Community Deliberation — every discussion belongs to one matter.' : '社区议事厅 — 每项讨论必须属于一个治理事项。'}
       </p>
-      <div className="mt-6 space-y-3">
+      <form
+        className="mt-6 space-y-3"
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault();
+          void handleCreate();
+        }}
+      >
         <div>
+          <label htmlFor="matter-create-title" className="block text-sm font-semibold text-gray-800">
+            {en ? 'Title' : '标题'}
+            <span className="text-red-600" aria-hidden>
+              {' '}
+              *
+            </span>
+          </label>
           <input
+            id="matter-create-title"
             ref={titleRef}
+            required
             value={title}
             onChange={(e) => {
               setTitle(e.target.value);
@@ -485,7 +503,7 @@ export function GovernanceMatterCreatePage() {
             placeholder={en ? 'Title' : '标题'}
             aria-invalid={titleError ? true : undefined}
             aria-describedby={titleError ? 'matter-title-error' : undefined}
-            className={`w-full rounded-lg border px-3 py-2 text-sm ${
+            className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm ${
               titleError ? 'border-red-400 focus-visible:ring-red-300' : 'border-gray-300'
             } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clearstrata-ui-primary/40`}
           />
@@ -495,48 +513,63 @@ export function GovernanceMatterCreatePage() {
             </p>
           ) : null}
         </div>
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          rows={5}
-          placeholder={en ? 'Description' : '说明'}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-        />
-        <select
-          value={category}
-          onChange={(e) => setCategory(e.target.value as typeof category)}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-        >
+        <div>
+          <label htmlFor="matter-create-description" className="block text-sm font-semibold text-gray-800">
+            {en ? 'Description' : '说明'}
+          </label>
+          <textarea
+            id="matter-create-description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={5}
+            placeholder={en ? 'Description' : '说明'}
+            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clearstrata-ui-primary/40"
+          />
+        </div>
+        <div>
+          <label htmlFor="matter-create-category" className="block text-sm font-semibold text-gray-800">
+            {en ? 'Category' : '类别'}
+          </label>
+          <select
+            id="matter-create-category"
+            value={category}
+            onChange={(e) => setCategory(e.target.value as typeof category)}
+            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clearstrata-ui-primary/40"
+          >
           {GOVERNANCE_MATTER_CATEGORIES.map((c) => (
             <option key={c} value={c}>
               {governanceMatterCategoryLabel(c, en)}
             </option>
           ))}
         </select>
-        <select
-          value={status}
-          onChange={(e) => setStatus(e.target.value as typeof status)}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-        >
+        </div>
+        <div>
+          <label htmlFor="matter-create-status" className="block text-sm font-semibold text-gray-800">
+            {en ? 'Initial status' : '初始状态'}
+          </label>
+          <select
+            id="matter-create-status"
+            value={status}
+            onChange={(e) => setStatus(e.target.value as typeof status)}
+            className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clearstrata-ui-primary/40"
+          >
           {GOVERNANCE_MATTER_STATUSES.map((s) => (
             <option key={s} value={s}>
               {governanceMatterStatusLabel(s, en)}
             </option>
           ))}
         </select>
-        {error ? <p className="text-sm text-red-700" role="alert">{error}</p> : null}
-        <Button
-          type="button"
-          variant="primary"
-          size="md"
-          loading={submitting}
-          disabled={!title.trim()}
-          onClick={() => void handleCreate()}
-        >
+        </div>
+        {error ? (
+          <p className="text-sm text-red-700" role="alert">
+            {error}
+          </p>
+        ) : null}
+        <Button type="submit" variant="primary" size="md" loading={submitting} disabled={!title.trim()}>
           {en ? 'Create matter' : '创建事项'}
         </Button>
-      </div>
-    </div>
+      </form>
+    </main>
   );
 }
 
@@ -867,10 +900,10 @@ export function GovernanceMattersHubPage() {
       </header>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <main>
-          <p className="text-xs font-bold uppercase tracking-wide text-gray-500">
-            {hubView ? filterTitle : en ? 'Governance Feed' : '治理动态'}
-          </p>
+        <main aria-labelledby="governance-feed-heading">
+          <h2 id="governance-feed-heading" className="text-xs font-bold uppercase tracking-wide text-gray-500">
+            {hubView ? filterTitle : en ? 'Governance Activity' : '治理动态'}
+          </h2>
           {hubView ? (
             <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-600">
               <span>{en ? 'Filtered view' : '筛选视图'}</span>
@@ -946,7 +979,16 @@ export function GovernanceMattersHubPage() {
           </div>
         </main>
 
-        <div className="lg:sticky lg:top-4 lg:self-start">
+        <aside className="lg:sticky lg:top-4 lg:self-start" aria-labelledby="governance-participation-heading">
+          <h2 id="governance-participation-heading" className="sr-only">
+            {canCouncil
+              ? en
+                ? 'Council governance panel'
+                : '业委会治理面板'
+              : en
+                ? 'My governance participation'
+                : '我的治理参与'}
+          </h2>
           {!canCouncil && (subscriptionsError || commentsError) ? (
             <PartialStateBanner
               langEn={en}
@@ -993,7 +1035,7 @@ export function GovernanceMattersHubPage() {
               votingMatterCount={ownerAttention.votingMatterCount}
             />
           )}
-        </div>
+        </aside>
       </div>
     </div>
   );

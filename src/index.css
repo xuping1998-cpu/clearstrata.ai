@@ -2,6 +2,23 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  :root {
+    --motion-instant: 75ms;
+    --motion-fast: 150ms;
+    --motion-standard: 200ms;
+    --motion-panel: 240ms;
+    --motion-progress: 300ms;
+    --motion-feedback: 360ms;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-slide-up {
+    animation: none;
+  }
+}
+
 @layer components {
   .btn-primary {
     @apply inline-flex items-center justify-center rounded-xl bg-[#1D9E75] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#178a66] disabled:pointer-events-none disabled:opacity-50;

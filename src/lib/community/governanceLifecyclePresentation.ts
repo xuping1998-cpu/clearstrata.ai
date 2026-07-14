@@ -1,5 +1,6 @@
 import type { WorkspaceLifecycleStage } from '@/lib/community/governanceLifecycleModel';
 import type { GovernanceTimelinePhase } from '@/lib/community/governanceTimelineModel';
+import { MOTION_PROGRESS } from '@/lib/ui/motionClasses';
 
 export type GovernanceLifecycleToken =
   | 'draft'
@@ -170,7 +171,7 @@ export function lifecyclePillClassName(
   extra?: string,
 ): string {
   const p = lifecyclePresentation(token);
-  const base = 'rounded-full border font-semibold';
+  const base = `rounded-full border font-semibold ${MOTION_PROGRESS}`;
 
   if (state === 'skipped') {
     return [base, 'border-gray-200 text-gray-400 line-through', extra].filter(Boolean).join(' ');

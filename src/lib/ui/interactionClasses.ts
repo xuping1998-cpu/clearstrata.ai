@@ -1,7 +1,12 @@
-/** RC-006 — shared interaction surfaces (hover / focus / press timing). */
+/** RC-006 interaction surfaces — motion timing from RC-008 motionClasses. */
 
-export const INTERACTION_TRANSITION =
-  'transition-[color,background-color,border-color,box-shadow,opacity] duration-150 motion-reduce:transition-none';
+import {
+  MOTION_INTERACTIVE,
+  MOTION_SELECTABLE,
+  MOTION_TAB,
+} from '@/lib/ui/motionClasses';
+
+export const INTERACTION_TRANSITION = MOTION_INTERACTIVE;
 
 export const INTERACTION_FOCUS_RING =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clearstrata-ui-primary/40 focus-visible:ring-offset-2';
@@ -9,11 +14,10 @@ export const INTERACTION_FOCUS_RING =
 export const INTERACTION_LINK =
   `${INTERACTION_TRANSITION} ${INTERACTION_FOCUS_RING} hover:underline underline-offset-2`;
 
-export const INTERACTION_CARD =
-  `${INTERACTION_TRANSITION} hover:border-clearstrata-brand-200 hover:shadow-sm`;
+export const INTERACTION_CARD = INTERACTION_TRANSITION;
 
 export const INTERACTION_SELECTABLE =
-  `${INTERACTION_TRANSITION} ${INTERACTION_FOCUS_RING} active:opacity-95`;
+  `${MOTION_SELECTABLE} ${INTERACTION_FOCUS_RING}`;
 
 export const INTERACTION_TAB =
-  `${INTERACTION_TRANSITION} ${INTERACTION_FOCUS_RING}`;
+  `${MOTION_TAB} ${INTERACTION_FOCUS_RING}`;

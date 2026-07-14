@@ -2,10 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ChevronDown, Plus } from 'lucide-react';
 import { ButtonLink } from '@/components/ui/Button';
+import { DestructiveConfirmDialog } from '@/components/ui/feedback/DestructiveConfirmDialog';
 import { GovernanceFeedbackHost } from '@/components/ui/feedback/GovernanceFeedbackHost';
 import { useGovernanceFeedback } from '@/hooks/useGovernanceFeedback';
 import { ARCHIVE_CONFIRM } from '@/lib/ui/governanceFeedbackMessages';
-import { confirmDestructiveAction } from '@/lib/ui/confirmDestructiveAction';
 import { INTERACTION_SELECTABLE } from '@/lib/ui/interactionClasses';
 import {
   ContextualEmptyState,
@@ -92,6 +92,7 @@ export function CouncilWorkspacePage() {
   const [resolutionSubmitting, setResolutionSubmitting] = useState(false);
   const [archiveSubmitting, setArchiveSubmitting] = useState(false);
   const [queueLoadingKey, setQueueLoadingKey] = useState<string | null>(null);
+  const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stageFilter, setStageFilter] = useState<WorkspaceLifecycleStage | 'all'>('all');
   const [pipelineOpen, setPipelineOpen] = useState(false);
@@ -373,12 +374,14 @@ export function CouncilWorkspacePage() {
     if (meetingId) navigate(`/meetings/${encodeURIComponent(meetingId)}#owner-voting`);
   }
 
-  async function handleArchive() {
+  function handleArchive() {
     if (!matter || !propertyId.trim() || archiveSubmitting) return;
-    if (!confirmDestructiveAction(en, ARCHIVE_CONFIRM)) {
-      setQueueLoadingKey(null);
-      return;
-    }
+    setArchiveConfirmOpen(true);
+  }
+
+  async function handleArchiveConfirmed() {
+    if (!matter || !propertyId.trim() || archiveSubmitting) return;
+    setArchiveConfirmOpen(false);
     setArchiveSubmitting(true);
     try {
       await updateGovernanceMatter({
@@ -396,6 +399,11 @@ export function CouncilWorkspacePage() {
       setArchiveSubmitting(false);
       setQueueLoadingKey(null);
     }
+  }
+
+  function handleArchiveCancel() {
+    setArchiveConfirmOpen(false);
+    setQueueLoadingKey(null);
   }
 
   function handleQueueAction(matterId: string, actionType: GovernanceCockpitActionType) {
@@ -491,21 +499,33 @@ export function CouncilWorkspacePage() {
     );
   }
 
+  const pipelineHeadingId = 'governance-pipeline-heading';
+  const pipelineFiltersId = 'governance-pipeline-filters';
+
   const pipelineSection = (
-    <aside className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm lg:order-1">
+    <aside
+      className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm lg:order-1"
+      aria-labelledby={pipelineHeadingId}
+    >
       <div className="border-b border-gray-100 px-3 py-2">
-        <p className="text-xs font-bold uppercase tracking-wide text-gray-500">
+        <h2 id={pipelineHeadingId} className="text-xs font-bold uppercase tracking-wide text-gray-500">
           {en ? 'Governance Pipeline' : '治理流程'}
-        </p>
+        </h2>
       </div>
       <div className="overflow-x-auto border-b border-gray-100 px-2 py-2">
-        <div className="flex min-w-max flex-wrap gap-1">
+        <div
+          id={pipelineFiltersId}
+          role="group"
+          aria-label={en ? 'Pipeline stage filters' : '流程阶段筛选'}
+          className="flex min-w-max flex-wrap gap-1"
+        >
           {PIPELINE_FILTERS.map((filter) => (
             <button
               key={filter}
               type="button"
+              aria-pressed={stageFilter === filter}
               onClick={() => setStageFilter(filter)}
-              className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${INTERACTION_SELECTABLE} ${
+              className={`min-h-9 rounded-full px-2.5 py-1.5 text-[11px] font-semibold ${INTERACTION_SELECTABLE} ${
                 stageFilter === filter
                   ? lifecycleFilterActiveClass(filter)
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -534,7 +554,7 @@ export function CouncilWorkspacePage() {
             />
           </div>
         ) : (
-          <ul className="space-y-2">
+          <ul className="space-y-2" aria-label={en ? 'Governance matters in pipeline' : '流程中的治理事项'}>
             {filteredMatters.map((m) => (
               <li key={m.id}>
                 <WorkspacePipelineMatterCard
@@ -596,12 +616,15 @@ export function CouncilWorkspacePage() {
         />
       ) : null}
 
-      <div className="relative mt-3 flex min-h-0 flex-1 flex-col gap-3 lg:grid lg:min-h-[calc(100vh-12rem)] lg:grid-cols-[280px_minmax(0,1fr)_300px]">
+      <main className="relative mt-3 flex min-h-0 flex-1 flex-col gap-3 lg:grid lg:min-h-[calc(100vh-12rem)] lg:grid-cols-[280px_minmax(0,1fr)_300px]">
         {detailRefreshing ? <RefreshingOverlay langEn={en} className="z-20" /> : null}
         <div className="hidden min-h-0 lg:block lg:row-span-2">{pipelineSection}</div>
 
         {matter ? (
-          <header className="order-1 flex flex-col rounded-xl border border-gray-200 bg-white shadow-sm lg:order-2 lg:col-start-2 lg:rounded-b-none lg:border-b-0 lg:shadow-md">
+          <header
+            className="order-1 flex flex-col rounded-xl border border-gray-200 bg-white shadow-sm lg:order-2 lg:col-start-2 lg:rounded-b-none lg:border-b-0 lg:shadow-md"
+            aria-labelledby="cockpit-current-matter-heading"
+          >
             <div className="border-b border-gray-100 px-4 py-3 lg:border-b-0">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
                 {en ? 'Current Matter' : '当前事项'}
@@ -612,7 +635,9 @@ export function CouncilWorkspacePage() {
                   {governanceMatterStatusLabel(matter.status, en)}
                 </span>
               </div>
-              <h2 className="mt-1 text-2xl font-bold leading-tight text-gray-900">{matter.title}</h2>
+              <h2 id="cockpit-current-matter-heading" className="mt-1 text-2xl font-bold leading-tight text-gray-900">
+                {matter.title}
+              </h2>
               <div className="mt-1.5">
                 <CockpitLifecycleTimeline
                   status={matter.status}
@@ -701,7 +726,17 @@ export function CouncilWorkspacePage() {
           </summary>
           <div className="mt-2 max-h-64 overflow-y-auto">{pipelineSection}</div>
         </details>
-      </div>
+      </main>
+      <DestructiveConfirmDialog
+        open={archiveConfirmOpen}
+        langEn={en}
+        title={{ en: 'Archive governance matter?', zh: '归档治理事项？' }}
+        message={ARCHIVE_CONFIRM}
+        confirmLabel={{ en: 'Archive', zh: '归档' }}
+        cancelLabel={{ en: 'Cancel', zh: '取消' }}
+        onConfirm={() => void handleArchiveConfirmed()}
+        onCancel={handleArchiveCancel}
+      />
     </div>
   );
 }

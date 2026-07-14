@@ -2,6 +2,7 @@ import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { Link, type LinkProps } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { MOTION_INTERACTIVE, MOTION_SPINNER } from '@/lib/ui/motionClasses';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'link';
 export type ButtonSize = 'sm' | 'md' | 'lg' | 'icon';
@@ -55,7 +56,7 @@ function buttonInner(loading: boolean, leftIcon: ReactNode, children: ReactNode,
   return (
     <>
       {loading ? (
-        <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+        <Loader2 className={cn('h-4 w-4 shrink-0', MOTION_SPINNER)} aria-hidden />
       ) : leftIcon ? (
         <span className="inline-flex shrink-0">{leftIcon}</span>
       ) : null}
@@ -72,7 +73,8 @@ function composeButtonClass(
   className?: string,
 ): string {
   return cn(
-    'inline-flex items-center justify-center font-semibold transition-[color,background-color,border-color,opacity] duration-150 motion-reduce:transition-none',
+    'inline-flex items-center justify-center font-semibold',
+    MOTION_INTERACTIVE,
     variant !== 'link' && 'active:opacity-95',
     variant !== 'link' && 'disabled:pointer-events-none disabled:opacity-50',
     VARIANT_CLASS[variant],

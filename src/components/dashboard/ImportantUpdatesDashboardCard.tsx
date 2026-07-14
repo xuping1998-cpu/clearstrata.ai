@@ -10,6 +10,7 @@ import {
   stateText,
 } from '@/components/ui/state';
 import { getEmptyStateContent } from '@/lib/ui/emptyStateContent';
+import { MOTION_ACCORDION_ICON } from '@/lib/ui/motionClasses';
 
 export type ImportantUpdateKind = 'action' | 'notice';
 
@@ -337,7 +338,7 @@ export function CommunityDeliberationDashboardCard({
                 onClick={() => setExpanded((v) => !v)}
               >
                 <ChevronDown
-                  className={`h-4 w-4 transition-transform duration-150 motion-reduce:transition-none ${expanded ? 'rotate-180' : ''}`}
+                  className={`h-4 w-4 ${MOTION_ACCORDION_ICON} ${expanded ? 'rotate-180' : ''}`}
                   aria-hidden
                 />
               </Button>

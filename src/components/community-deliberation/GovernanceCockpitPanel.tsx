@@ -6,7 +6,9 @@ import type {
   GovernanceHealth,
 } from '@/lib/community/governanceIntelligence';
 import { Button, lifecycleOutlineButtonClass, type ButtonVariant } from '@/components/ui/Button';
-import { getEmptyStateContent, stateText, TabEmptyState } from '@/components/ui/state';
+import { TabEmptyState, stateText } from '@/components/ui/state';
+import { cockpitQueueActionAriaLabel } from '@/lib/ui/governanceA11y';
+import { getEmptyStateContent } from '@/lib/ui/emptyStateContent';
 
 function cockpitActionButtonLabel(
   actionType: GovernanceCockpitActionType,
@@ -94,21 +96,26 @@ export function GovernanceCockpitPanel({
     { label: en ? 'Awaiting Voting' : '等待投票', value: metrics.awaitingVoting },
   ].filter((m) => m.value > 0);
 
+  const queueHeadingId = 'governance-cockpit-queue-heading';
+
   return (
-    <aside className="flex flex-col rounded-xl border border-gray-200 bg-white p-3 shadow-sm lg:p-4">
+    <aside
+      className="flex flex-col rounded-xl border border-gray-200 bg-white p-3 shadow-sm lg:p-4"
+      aria-labelledby="governance-cockpit-aside-heading"
+    >
       <header className="border-b border-gray-100 pb-2">
-        <p className="text-xs font-bold uppercase tracking-wide text-gray-800">
-          {en ? 'Governance Cockpit' : '治理驾驶舱'}
-        </p>
+        <h2 id="governance-cockpit-aside-heading" className="text-xs font-bold uppercase tracking-wide text-gray-800">
+          {en ? "Today's Action Queue" : '今日行动队列'}
+        </h2>
         <p className="text-[11px] text-gray-500">
           {en ? "Today's actions and next steps" : '今日行动与下一步'}
         </p>
       </header>
 
-      <section className="mt-3 rounded-lg border border-gray-100 bg-gray-50/80 px-3 py-2.5">
-        <p className="text-[10px] font-bold uppercase tracking-wide text-gray-600">
+      <section className="mt-3 rounded-lg border border-gray-100 bg-gray-50/80 px-3 py-2.5" aria-labelledby="governance-cockpit-brief-heading">
+        <h3 id="governance-cockpit-brief-heading" className="text-[10px] font-bold uppercase tracking-wide text-gray-600">
           {en ? "Today's Governance Brief" : '今日治理简报'}
-        </p>
+        </h3>
         <ul className="mt-1.5 space-y-0.5 text-xs text-gray-800">
           {brief.map((line) => (
             <li key={line.en}>{en ? line.en : line.zh}</li>
@@ -130,9 +137,9 @@ export function GovernanceCockpitPanel({
           : ''}
       </p>
 
-      <p className="mt-3 text-xs font-bold text-gray-900">
-        {en ? "Today's Action Queue" : '今日行动队列'}
-      </p>
+      <h3 id={queueHeadingId} className="mt-3 text-xs font-bold text-gray-900">
+        {en ? 'Queued actions' : '队列行动'}
+      </h3>
 
       {actions.length === 0 ? (
         <div className="mt-2">
@@ -148,7 +155,7 @@ export function GovernanceCockpitPanel({
           })()}
         </div>
       ) : (
-        <ol className="mt-2 space-y-2">
+        <ol className="mt-2 space-y-2" aria-labelledby={queueHeadingId}>
           {actions.map((action, index) => (
             <li
               key={`${action.matterId}-${action.actionType}`}
@@ -156,6 +163,9 @@ export function GovernanceCockpitPanel({
                 action.isUrgent ? 'border-amber-200 bg-amber-50/40' : 'border-gray-100'
               }`}
             >
+              {action.isUrgent ? (
+                <p className="sr-only">{en ? 'Urgent deadline' : '临近截止'}</p>
+              ) : null}
               <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
                 {index + 1}. {en ? action.titleEn : action.titleZh}
               </p>
@@ -170,9 +180,10 @@ export function GovernanceCockpitPanel({
               <Button
                 type="button"
                 size="sm"
-                className="mt-2"
+                className="mt-2 min-h-9"
                 loading={busyQueueKey === `${action.matterId}:${action.actionType}`}
                 disabled={actionsDisabled && busyQueueKey !== `${action.matterId}:${action.actionType}`}
+                aria-label={cockpitQueueActionAriaLabel(action.actionType, action.matterTitle, en)}
                 {...cockpitActionButtonProps(action.actionType)}
                 onClick={() => onQueueAction(action.matterId, action.actionType)}
               >
