@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Loader2 } from 'lucide-react';
+import { cn } from '@/lib/cn';
 import {
   DashboardGovernanceHubCardSkeleton,
   FeedListSkeleton,
@@ -9,7 +10,6 @@ import {
   MatterDetailPageSkeleton,
   PipelineListSkeleton,
   SidePanelSkeleton,
-  SkeletonLine,
 } from '@/components/ui/state/SkeletonBlocks';
 
 export type LoadingVariant =

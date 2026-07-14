@@ -87,6 +87,10 @@ Finance, Procurement, standalone Meetings/Voting, Owner Information, Authenticat
 
 每一次交互，系统都应立即告诉用户：我已理解你的操作；我正在处理；这是处理结果。
 
+## Post-implementation regression (2026-07-14)
+
+**Council Workspace white screen:** `LoadingState.tsx` called shared `cn()` without a runtime import (`import { cn } from '@/lib/cn'`). Council Workspace initial load uses `LoadingState variant="cockpit"`, triggering `ReferenceError: cn is not defined`. Import added; production-verified after deploy.
+
 ---
 
 **END OF RC-006**
