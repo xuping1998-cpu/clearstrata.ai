@@ -5,6 +5,7 @@ import type {
   GovernanceCockpitActionType,
   GovernanceHealth,
 } from '@/lib/community/governanceIntelligence';
+import { Button, lifecycleOutlineButtonClass, type ButtonVariant } from '@/components/ui/Button';
 
 function cockpitActionButtonLabel(
   actionType: GovernanceCockpitActionType,
@@ -12,21 +13,39 @@ function cockpitActionButtonLabel(
 ): string {
   const en: Record<GovernanceCockpitActionType, string> = {
     review_discussion: 'Continue discussion',
-    generate_cda: 'Generate report',
-    prepare_resolution: 'Prepare resolution',
-    schedule_meeting: 'Schedule meeting',
-    open_voting: 'Open voting',
+    generate_cda: 'Generate CDA Report',
+    prepare_resolution: 'Prepare Community Resolution',
+    schedule_meeting: 'Schedule Meeting',
+    open_voting: 'Open Voting',
     archive: 'Publish result',
   };
   const zh: Record<GovernanceCockpitActionType, string> = {
     review_discussion: '继续讨论',
-    generate_cda: '生成报告',
-    prepare_resolution: '准备决议',
+    generate_cda: '生成 CDA 报告',
+    prepare_resolution: '准备社区决议',
     schedule_meeting: '安排会议',
     open_voting: '开启投票',
     archive: '公布结果',
   };
   return langEn ? en[actionType] : zh[actionType];
+}
+
+function cockpitActionButtonProps(actionType: GovernanceCockpitActionType): {
+  variant: ButtonVariant;
+  className?: string;
+} {
+  switch (actionType) {
+    case 'generate_cda':
+      return { variant: 'outline', className: lifecycleOutlineButtonClass('cda') };
+    case 'prepare_resolution':
+      return { variant: 'outline', className: lifecycleOutlineButtonClass('resolution') };
+    case 'schedule_meeting':
+      return { variant: 'outline', className: lifecycleOutlineButtonClass('meeting') };
+    case 'open_voting':
+      return { variant: 'outline', className: lifecycleOutlineButtonClass('voting') };
+    default:
+      return { variant: 'primary' };
+  }
 }
 
 export type GovernanceCockpitPanelProps = {
@@ -137,13 +156,15 @@ export function GovernanceCockpitPanel({
                   {en ? action.constitutionReasonEn : action.constitutionReasonZh}
                 </p>
               ) : null}
-              <button
+              <Button
                 type="button"
+                size="sm"
+                className="mt-2"
+                {...cockpitActionButtonProps(action.actionType)}
                 onClick={() => onQueueAction(action.matterId, action.actionType)}
-                className="mt-2 rounded-lg bg-clearstrata-ui-primary px-3 py-1.5 text-xs font-semibold text-white hover:bg-clearstrata-ui-primaryHover"
               >
                 {cockpitActionButtonLabel(action.actionType, en)}
-              </button>
+              </Button>
             </li>
           ))}
         </ol>

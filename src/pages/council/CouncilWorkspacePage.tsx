@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ChevronDown, Plus } from 'lucide-react';
+import { ButtonLink } from '@/components/ui/Button';
+import {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  PermissionState,
+  RefreshingOverlay,
+  sanitizeUserErrorMessage,
+} from '@/components/ui/state';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useProperty } from '@/contexts/PropertyContext';
 import { CockpitLifecycleTimeline } from '@/components/community-deliberation/CockpitLifecycleTimeline';
@@ -71,6 +80,7 @@ export function CouncilWorkspacePage() {
   const [linkedResolution, setLinkedResolution] = useState<CommunityResolutionRow | null>(null);
   const [cdaByMatterId, setCdaByMatterId] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
+  const [detailRefreshing, setDetailRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stageFilter, setStageFilter] = useState<WorkspaceLifecycleStage | 'all'>('all');
@@ -165,9 +175,14 @@ export function CouncilWorkspacePage() {
 
   useEffect(() => {
     if (!propertyReady || !selectedMatterId) return;
-    void loadMatterDetail().catch((e) => {
-      setError(e instanceof Error ? e.message : 'Failed to load matter');
-    });
+    if (matter) setDetailRefreshing(true);
+    void loadMatterDetail()
+      .catch((e) => {
+        setError(e instanceof Error ? e.message : 'Failed to load matter');
+      })
+      .finally(() => {
+        setDetailRefreshing(false);
+      });
   }, [propertyReady, selectedMatterId, loadMatterDetail]);
 
   useEffect(() => {
@@ -360,8 +375,39 @@ export function CouncilWorkspacePage() {
 
   if (propertyReady && !canCouncil) {
     return (
-      <div className="mx-auto max-w-lg px-4 py-12 text-sm text-gray-700">
-        {en ? 'Council Workspace is for council members only.' : '业委会工作台仅业委会成员可用。'}
+      <PermissionState
+        langEn={en}
+        title={{
+          en: 'Council Workspace is for council members only.',
+          zh: '业委会工作台仅业委会成员可用。',
+        }}
+        description={{
+          en: 'Open Governance Hub to follow community matters as an owner.',
+          zh: '业主可在治理中心关注社区事项。',
+        }}
+      />
+    );
+  }
+
+  if (loading && matters.length === 0) {
+    return (
+      <div className="mx-auto max-w-[1600px] px-3 py-4 sm:px-4">
+        <LoadingState langEn={en} variant="pipeline" label={en ? 'Loading workspace…' : '正在加载工作台…'} />
+      </div>
+    );
+  }
+
+  if (error && matters.length === 0) {
+    return (
+      <div className="mx-auto max-w-lg px-4 py-12">
+        <ErrorState
+          langEn={en}
+          title={sanitizeUserErrorMessage(error, {
+            en: 'Unable to load the governance workspace.',
+            zh: '无法加载治理工作台。',
+          })}
+          onRetry={() => window.location.reload()}
+        />
       </div>
     );
   }
@@ -393,11 +439,24 @@ export function CouncilWorkspacePage() {
       </div>
       <div className="flex-1 overflow-y-auto p-2">
         {loading ? (
-          <p className="p-3 text-sm text-gray-500">{en ? 'Loading…' : '加载中…'}</p>
+          <LoadingState langEn={en} variant="pipeline" />
         ) : filteredMatters.length === 0 ? (
-          <p className="p-3 text-sm text-gray-500">
-            {en ? 'No matters in this stage.' : '该阶段暂无事项。'}
-          </p>
+          <div className="p-2">
+            <EmptyState
+              langEn={en}
+              title={en ? 'No matters in this stage' : '该阶段暂无事项'}
+              description={
+                en
+                  ? 'Publish a governance matter or choose another pipeline filter.'
+                  : '发布治理事项，或选择其他流程筛选。'
+              }
+              action={{
+                label: { en: 'Publish Governance Matter', zh: '发布治理事项' },
+                to: `/community-deliberation/new?${new URLSearchParams({ propertyId }).toString()}`,
+              }}
+              compact
+            />
+          </div>
         ) : (
           <ul className="space-y-2">
             {filteredMatters.map((m) => (
@@ -438,18 +497,30 @@ export function CouncilWorkspacePage() {
               : '业委会工作台 — 下一步必须完成什么。'}
           </p>
         </div>
-        <Link
+        <ButtonLink
           to={`/community-deliberation/new?${new URLSearchParams({ propertyId }).toString()}`}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-clearstrata-ui-primary px-4 py-2 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover"
+          variant="primary"
+          size="md"
+          leftIcon={<Plus className="h-4 w-4" aria-hidden />}
         >
-          <Plus className="h-4 w-4" aria-hidden />
           {en ? 'Publish Governance Matter' : '发布治理事项'}
-        </Link>
+        </ButtonLink>
       </header>
 
-      {error ? <p className="mt-2 text-sm text-red-700">{error}</p> : null}
+      {error && matters.length > 0 ? (
+        <ErrorState
+          langEn={en}
+          title={sanitizeUserErrorMessage(error, {
+            en: 'Something went wrong in the workspace.',
+            zh: '工作台出现问题。',
+          })}
+          compact
+          className="mt-2"
+        />
+      ) : null}
 
-      <div className="mt-3 flex min-h-0 flex-1 flex-col gap-3 lg:grid lg:min-h-[calc(100vh-12rem)] lg:grid-cols-[280px_minmax(0,1fr)_300px]">
+      <div className="relative mt-3 flex min-h-0 flex-1 flex-col gap-3 lg:grid lg:min-h-[calc(100vh-12rem)] lg:grid-cols-[280px_minmax(0,1fr)_300px]">
+        {detailRefreshing ? <RefreshingOverlay langEn={en} className="z-20" /> : null}
         <div className="hidden min-h-0 lg:block lg:row-span-2">{pipelineSection}</div>
 
         {matter ? (

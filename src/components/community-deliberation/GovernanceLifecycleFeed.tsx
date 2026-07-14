@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { GovernanceMatterCard } from '@/components/community-deliberation/GovernanceMatterCard';
+import { LoadingState } from '@/components/ui/state';
 import {
   HUB_LIFECYCLE_STAGES,
   hubLifecycleEmptyLabel,
@@ -89,7 +90,13 @@ export function GovernanceLifecycleFeed({
   const en = langEn;
 
   if (loading) {
-    return <p className="text-sm text-gray-500">{en ? 'Loading governance feed…' : '加载治理动态…'}</p>;
+    return (
+      <LoadingState
+        langEn={en}
+        variant="feed"
+        label={en ? 'Loading governance feed…' : '加载治理动态…'}
+      />
+    );
   }
 
   const draftMatters = personalFilterView ? matters.filter((m) => m.status === 'draft') : [];

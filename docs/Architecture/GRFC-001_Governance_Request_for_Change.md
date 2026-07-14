@@ -17,7 +17,7 @@
 | **Owner** | ClearStrata Project One |
 | **Supersedes** | None |
 | **Superseded By** | None |
-| **Related Documents** | GP-005, GP-006, GPA-001, GPA-002, GDS-001, UIP-011, UIP-012, UIP-013 |
+| **Related Documents** | GP-005, GP-006, GPA-001, GPA-002, GDS-001, UIP-011, UIP-012, UIP-013, [CDS-001](../design-system/CDS-001_ClearStrata_Design_System.md) |
 | **Repository Location** | `docs/Architecture/GRFC-001_Governance_Request_for_Change.md` |
 
 ---
@@ -227,6 +227,7 @@ Architecture Constitution — cross-reference:
 | **GPA-001** | [Governance Pyramid Architecture](GPA-001_Governance_Pyramid_Architecture.md) | Pyramid layers and hierarchy |
 | **GPA-002** | [Single Source of Governance Truth](GPA-002_Single_Source_of_Governance_Truth.md) | Store facts; compute views |
 | **GDS-001** | [Governance Data Standard](GDS-001_Governance_Data_Standard.md) | Canonical data model |
+| **CDS-001** | [ClearStrata Design System](../design-system/CDS-001_ClearStrata_Design_System.md) | Experience and UI standards |
 
 *Foundational Milestone:* [Repository Hall of Milestones](../History/Milestones.md#foundational-milestones) (RM-006)
 

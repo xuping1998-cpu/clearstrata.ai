@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
   Archive,
   Calendar,
@@ -10,6 +9,11 @@ import {
   Vote,
 } from 'lucide-react';
 import { HUB_LIFECYCLE_STAGES } from '@/lib/community/governanceHubLifecycle';
+import {
+  lifecyclePillClassName,
+  lifecyclePresentation,
+  timelinePhaseToLifecycleToken,
+} from '@/lib/community/governanceLifecyclePresentation';
 import type { GovernanceMatterCommentRow, GovernanceMatterRevisionRow, GovernanceMatterRow } from '@/lib/community/governanceMatterModel';
 import type { GovernanceMatterCdaReportRow } from '@/lib/community/cdaReportModel';
 import type { CommunityResolutionRow } from '@/lib/community/communityResolutionModel';
@@ -24,6 +28,7 @@ import {
   type GovernanceTimelineFilter,
   type GovernanceTimelinePhase,
 } from '@/lib/community/governanceTimelineModel';
+import { ButtonLink } from '@/components/ui/Button';
 
 const FILTER_CHIPS: { id: GovernanceTimelineFilter; en: string; zh: string }[] = [
   { id: 'all', en: 'All', zh: '全部' },
@@ -153,10 +158,12 @@ function CurrentStageIndicator({
   filled: number;
   total: number;
 }) {
+  const token = timelinePhaseToLifecycleToken(currentPhase);
+  const p = lifecyclePresentation(token);
   const segments = Array.from({ length: total }, (_, i) => i < filled);
   return (
-    <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-4">
-      <p className="text-xs font-bold uppercase tracking-wide text-emerald-800">
+    <div className={`rounded-xl border p-4 ${p.borderClass} ${p.backgroundClass}`}>
+      <p className={`text-xs font-bold uppercase tracking-wide ${p.textClass}`}>
         {en ? 'Current stage' : '当前阶段'}
       </p>
       <p className="mt-1 text-base font-bold text-gray-900">{phaseLabel(currentPhase, en)}</p>
@@ -164,7 +171,7 @@ function CurrentStageIndicator({
         {segments.map((on, i) => (
           <span
             key={i}
-            className={`h-2 flex-1 rounded-sm ${on ? 'bg-emerald-600' : 'bg-emerald-200'}`}
+            className={`h-2 flex-1 rounded-sm ${on ? p.progressClass : 'bg-white/60'}`}
           />
         ))}
       </div>
@@ -181,14 +188,16 @@ function ConstitutionPhaseStrip({ en, currentPhase }: { en: boolean; currentPhas
       <ol className="mt-3 flex flex-wrap items-center gap-1 text-xs font-semibold">
         {HUB_LIFECYCLE_STAGES.map((phase, index) => {
           const isCurrent = phase === currentPhase;
+          const token = timelinePhaseToLifecycleToken(phase);
           return (
             <li key={phase} className="flex items-center gap-1">
               <span
-                className={`rounded-full px-2.5 py-1 ${
-                  isCurrent
-                    ? 'bg-clearstrata-ui-primary text-white'
-                    : 'bg-white text-gray-600 ring-1 ring-gray-200'
-                }`}
+                className={lifecyclePillClassName(
+                  token,
+                  isCurrent ? 'current' : 'future',
+                  'px-2.5 py-1',
+                )}
+                aria-current={isCurrent ? 'step' : undefined}
               >
                 {phaseLabel(phase, en)}
               </span>
@@ -221,9 +230,12 @@ function StageDurationPanel({
         {en ? 'Stage durations' : '阶段时长'}
       </p>
       <ul className="mt-3 space-y-2">
-        {withActivity.map((d) => (
+        {withActivity.map((d) => {
+          const token = timelinePhaseToLifecycleToken(d.phase);
+          const p = lifecyclePresentation(token);
+          return (
           <li key={d.phase} className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
-            <span className={`font-semibold ${d.isCurrent ? 'text-clearstrata-brand-900' : 'text-gray-800'}`}>
+            <span className={`font-semibold ${d.isCurrent ? p.textClass : 'text-gray-800'}`}>
               {en ? d.labelEn : d.labelZh}
               {d.isCurrent ? (en ? ' (current)' : '（当前）') : ''}
             </span>
@@ -237,7 +249,8 @@ function StageDurationPanel({
                   : '进行中'}
             </span>
           </li>
-        ))}
+          );
+        })}
       </ul>
     </div>
   );
@@ -251,11 +264,13 @@ function TimelineEventCard({ en, event }: { en: boolean; event: GovernanceTimeli
   const actor = en ? event.actorLabelEn : event.actorLabelZh;
   const status = en ? event.statusEn : event.statusZh;
   const phase = phaseLabel(event.phase, en);
+  const phaseToken = timelinePhaseToLifecycleToken(event.phase);
+  const phasePresentation = lifecyclePresentation(phaseToken);
 
   return (
     <li className="relative pb-5 last:pb-0 md:pb-6">
       <span
-        className="absolute -left-[1.9375rem] top-1 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-clearstrata-ui-primary text-white ring-2 ring-clearstrata-brand-100 md:-left-[2.125rem]"
+        className={`absolute -left-[1.9375rem] top-1 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white text-white ring-2 ring-gray-100 md:-left-[2.125rem] ${phasePresentation.solidBackgroundClass}`}
         aria-hidden
       >
         <Icon className="h-3 w-3" strokeWidth={2.5} />
@@ -274,7 +289,7 @@ function TimelineEventCard({ en, event }: { en: boolean; event: GovernanceTimeli
           </span>
         </div>
 
-        <p className="mt-2 text-xs font-semibold text-clearstrata-brand-800">{phase}</p>
+        <p className={`mt-2 text-xs font-semibold ${phasePresentation.textClass}`}>{phase}</p>
         <p className="mt-1 text-sm text-gray-700">{description}</p>
 
         {reason ? (
@@ -290,13 +305,9 @@ function TimelineEventCard({ en, event }: { en: boolean; event: GovernanceTimeli
           <ul className="mt-3 flex flex-wrap gap-2">
             {event.documents.map((doc) => (
               <li key={doc.id}>
-                <Link
-                  to={doc.url}
-                  className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-semibold text-clearstrata-brand-900 hover:bg-gray-50"
-                >
-                  <FileText className="h-3 w-3" aria-hidden />
+                <ButtonLink to={doc.url} variant="outline" size="sm" leftIcon={<FileText className="h-3 w-3" aria-hidden />}>
                   {en ? doc.labelEn : doc.labelZh}
-                </Link>
+                </ButtonLink>
               </li>
             ))}
           </ul>

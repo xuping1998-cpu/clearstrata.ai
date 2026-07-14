@@ -10,7 +10,7 @@ This index maps **current** repository paths to the **official target structure*
 
 | Layer | Start here |
 |-------|------------|
-| 🏛 Foundational | [Architecture/README.md](Architecture/README.md) |
+| 🏛 Foundational | [Architecture/README.md](Architecture/README.md) · [design-system/README.md](design-system/README.md) |
 | 🚀 Projects | [Releases Registry](Registry/Releases_Registry.md) · [Milestones](History/Milestones.md) |
 | 📘 Records | [Document Registry](Registry/Document_Registry.md) · [projects/](projects/) |
 | 🛠 Engineering | [BF records](Registry/Document_Registry.md#bug-fix-records-bf) |
@@ -96,6 +96,15 @@ This index maps **current** repository paths to the **official target structure*
 | `docs/Architecture/GRFC/` | GRFC-002+ change proposals |
 | `docs/ADR/` | AR prefix (CS-001) |
 | `docs/03_System_Architecture.md` | Subordinate to FD-001 |
+
+---
+
+## Design System (`docs/design-system/`)
+
+| Current path | Document |
+|--------------|----------|
+| [design-system/README.md](design-system/README.md) | CDS index |
+| [design-system/CDS-001_ClearStrata_Design_System.md](design-system/CDS-001_ClearStrata_Design_System.md) | CDS-001 |
 
 ---
 

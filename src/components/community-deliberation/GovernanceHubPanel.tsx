@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { Button, ButtonLink } from '@/components/ui/Button';
 import type { GovernanceMatterRow } from '@/lib/community/governanceMatterModel';
 import {
   governanceMatterDetailUrl,
@@ -77,21 +78,25 @@ export function GovernanceHubPanel({ langEn, propertyId, matters, summary }: Gov
       ) : null}
 
       <div className="mt-4 flex flex-col gap-2">
-        <Link
+        <ButtonLink
           to={`/community-deliberation/new?${new URLSearchParams({ propertyId }).toString()}`}
-          className="rounded-lg bg-clearstrata-ui-primary px-3 py-2 text-center text-xs font-semibold text-white hover:bg-clearstrata-ui-primaryHover"
+          variant="primary"
+          size="sm"
+          className="w-full"
         >
           {en ? '+ Publish Governance Matter' : '+ 发布治理事项'}
-        </Link>
-        <Link
+        </ButtonLink>
+        <ButtonLink
           to={`/council/workspace?${new URLSearchParams({
             propertyId,
             ...(topMatter ? { matterId: topMatter.id } : {}),
           }).toString()}`}
-          className="rounded-lg border border-emerald-400 bg-white px-3 py-2 text-center text-xs font-semibold text-emerald-900 hover:bg-emerald-50"
+          variant="secondary"
+          size="sm"
+          className="w-full"
         >
           {en ? 'Open Workspace' : '打开工作台'}
-        </Link>
+        </ButtonLink>
       </div>
 
       <p className="mt-4 text-[10px] leading-snug text-gray-600">

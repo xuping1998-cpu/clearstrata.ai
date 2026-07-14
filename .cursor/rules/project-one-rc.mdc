@@ -1,0 +1,44 @@
+---
+description: Project One RC — design freeze scope for governance UI foundation work
+globs:
+  - src/components/ui/**
+  - src/lib/community/governanceLifecyclePresentation.ts
+  - src/components/community-deliberation/**
+  - src/components/dashboard/ImportantUpdatesDashboardCard.tsx
+  - src/pages/community-deliberation/**
+  - src/pages/council/**
+---
+
+# Project One RC — Design Freeze
+
+Authority: RC-001, RC-002, RC-003, CDS-001.
+
+## Scope
+
+RC work must improve **consistency and stability** without redefining approved governance architecture (GPA-001, GPA-002, GDS-001, GRFC-001).
+
+## Allowed
+
+- Shared primitives (`Button`), lifecycle tokens, focus/disabled/loading states
+- Pilot migration on Governance Hub, Cockpit, Matter cards, lifecycle timelines
+- Replacing duplicated inline button/badge styles on those surfaces
+
+## Not allowed without GRFC
+
+- New major pages, navigation models, governance workflows, lifecycle stages
+- Database migrations, API/RLS/permission changes
+- Global rewrites outside the pilot surfaces listed in RC-001
+
+## Button rules
+
+- One primary action per compact UI area
+- Use `src/components/ui/Button.tsx` — do not add a third-party UI library
+- Lifecycle stage actions use `lifecycleOutlineButtonClass` or `lifecyclePillClassName`
+- CDA styling must remain advisory (indigo/violet, not primary green authority)
+- Page states must use `src/lib/ui/pageStateModel.ts` + `src/components/ui/state/` (RC-004)
+- Loading uses skeleton for pages/feeds; spinners only for inline actions
+
+## Lifecycle colors
+
+- Single source: `governanceLifecyclePresentation.ts` + `tailwind.config.js` lifecycle tokens
+- Do not scatter hard-coded stage colors in pilot components

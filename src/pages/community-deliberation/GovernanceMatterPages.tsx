@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
+import { ButtonLink } from '@/components/ui/Button';
+import {
+  ArchivedState,
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  PageStateSurface,
+  PartialStateBanner,
+  PermissionState,
+  sanitizeUserErrorMessage,
+} from '@/components/ui/state';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useProperty } from '@/contexts/PropertyContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -253,18 +263,44 @@ export function GovernanceMatterDetailPage() {
   }
 
   if (loading) {
-    return (
-      <div className="flex justify-center py-16">
-        <div className="h-10 w-10 animate-spin rounded-full border-4 border-clearstrata-ui-primary border-t-transparent" />
-      </div>
-    );
+    return <LoadingState langEn={en} variant="page" label={en ? 'Loading matter…' : '正在加载事项…'} />;
   }
 
   if (!matter) {
+    const notFound = error?.includes('not found') || error?.includes('未找到');
+    if (notFound) {
+      return (
+        <div className="mx-auto max-w-3xl px-4 py-8">
+          <EmptyState
+            langEn={en}
+            title={en ? 'Governance matter not found' : '未找到治理事项'}
+            description={
+              en
+                ? 'This matter may have been removed or you may not have access.'
+                : '该事项可能已被删除，或您暂无访问权限。'
+            }
+            action={{
+              label: { en: 'Back to Governance Hub', zh: '返回治理中心' },
+              to: governanceMattersListUrl(propertyId),
+            }}
+          />
+        </div>
+      );
+    }
     return (
       <div className="mx-auto max-w-3xl px-4 py-8">
-        <p className="text-sm text-red-700">{error ?? (en ? 'Not found' : '未找到')}</p>
-        <Link to={governanceMattersListUrl(propertyId)} className="mt-4 inline-block text-sm font-semibold text-clearstrata-brand-900">
+        <ErrorState
+          langEn={en}
+          title={sanitizeUserErrorMessage(error, {
+            en: 'Unable to load this governance matter.',
+            zh: '无法加载此治理事项。',
+          })}
+          onRetry={() => window.location.reload()}
+        />
+        <Link
+          to={governanceMattersListUrl(propertyId)}
+          className="mt-4 inline-block text-sm font-semibold text-clearstrata-brand-900"
+        >
           {en ? 'Back to Governance Hub' : '返回治理中心'}
         </Link>
       </div>
@@ -295,7 +331,19 @@ export function GovernanceMatterDetailPage() {
         </div>
       </header>
 
-      {error ? <p className="mt-4 text-sm text-red-700">{error}</p> : null}
+      {matter.status === 'archived' ? <ArchivedState langEn={en} className="mt-4" /> : null}
+
+      {error ? (
+        <ErrorState
+          langEn={en}
+          title={sanitizeUserErrorMessage(error, {
+            en: 'This action could not be completed.',
+            zh: '无法完成此操作。',
+          })}
+          compact
+          className="mt-4"
+        />
+      ) : null}
 
       <GovernanceMatterDetailTabs
         langEn={en}
@@ -346,9 +394,17 @@ export function GovernanceMatterCreatePage() {
 
   if (propertyReady && !canCouncil) {
     return (
-      <div className="mx-auto max-w-xl px-4 py-8 text-sm text-gray-700">
-        {en ? 'Only council may create governance matters.' : '仅业委会可创建治理事项。'}
-      </div>
+      <PermissionState
+        langEn={en}
+        title={{
+          en: 'Only council may create governance matters.',
+          zh: '仅业委会可创建治理事项。',
+        }}
+        description={{
+          en: 'Contact your strata council if you believe you should have access.',
+          zh: '如您认为应有权限，请联系业委会。',
+        }}
+      />
     );
   }
 
@@ -683,20 +739,6 @@ export function GovernanceMattersHubPage() {
     return commentsError ?? personalFilterError;
   }, [hubView, subscriptionsError, commentsError, personalFilterError]);
 
-  const filterEmptyMessage = useMemo(() => {
-    if (!hubView || filterViewLoading || filterViewError || filteredMatters.length > 0) {
-      return null;
-    }
-    if (hubView === 'subscribed') {
-      return en
-        ? 'You are not following any governance matters yet. Open a matter and select “Follow Matter” to see it here.'
-        : '您尚未关注任何治理事项。打开一个事项并点击【关注事项】后，它将显示在这里。';
-    }
-    return en
-      ? 'You have not participated in any governance discussions yet.'
-      : '您尚未参与任何事项讨论。';
-  }, [hubView, filterViewLoading, filterViewError, filteredMatters.length, en]);
-
   const filterTitle = useMemo(() => {
     if (!hubView) return null;
     if (hubView === 'subscribed') return en ? 'Following' : '关注事项';
@@ -731,15 +773,6 @@ export function GovernanceMattersHubPage() {
 
   const loading = feedLoading || mattersLoading;
 
-  const filterErrorUserMessage =
-    hubView === 'subscribed'
-      ? en
-        ? 'We could not load your followed matters. Please try again.'
-        : '暂时无法加载您关注的事项，请稍后重试。'
-      : en
-        ? 'We could not load your commented matters. Please try again.'
-        : '暂时无法加载您的评论事项，请稍后重试。';
-
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 sm:py-8">
       <header className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-200 pb-4">
@@ -757,12 +790,13 @@ export function GovernanceMattersHubPage() {
           </p>
         </div>
         {canCouncil ? (
-          <Link
+          <ButtonLink
             to={`/community-deliberation/new?${new URLSearchParams({ propertyId }).toString()}`}
-            className="rounded-lg bg-clearstrata-ui-primary px-4 py-2 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover"
+            variant="primary"
+            size="md"
           >
             {en ? '+ Publish Governance Matter' : '+ 发布治理事项'}
-          </Link>
+          </ButtonLink>
         ) : null}
       </header>
 
@@ -783,39 +817,87 @@ export function GovernanceMattersHubPage() {
             </div>
           ) : null}
           <div className="mt-3 rounded-xl border border-gray-100 bg-gray-50/40 p-4">
-            {filterViewLoading ? (
-              <div className="flex items-center gap-2 text-sm text-gray-500">
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                {en ? 'Loading your matters…' : '正在加载您的事项…'}
-              </div>
-            ) : filterViewError ? (
-              <div className="space-y-2 text-sm text-red-800" role="alert">
-                <p>{filterErrorUserMessage}</p>
-                <button
-                  type="button"
-                  onClick={retryParticipationLoads}
-                  className="rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-900 hover:bg-red-50"
-                >
-                  {en ? 'Retry' : '重试'}
-                </button>
-              </div>
-            ) : filterEmptyMessage ? (
-              <p className="text-sm text-gray-600">{filterEmptyMessage}</p>
+            {hubView ? (
+              <PageStateSurface
+                langEn={en}
+                hasContent={filteredMatters.length > 0}
+                loading={filterViewLoading}
+                error={filterViewError}
+                empty={!filterViewLoading && !filterViewError && filteredMatters.length === 0}
+                loadingVariant="inline"
+                loadingLabel={en ? 'Loading your matters…' : '正在加载您的事项…'}
+                emptyTitle={
+                  hubView === 'subscribed'
+                    ? { en: 'No followed matters yet', zh: '暂无关注事项' }
+                    : { en: 'No commented matters yet', zh: '暂无评论事项' }
+                }
+                emptyDescription={
+                  hubView === 'subscribed'
+                    ? {
+                        en: 'Open a matter and select “Follow Matter” to see it here.',
+                        zh: '打开事项并点击【关注事项】后，它将显示在这里。',
+                      }
+                    : {
+                        en: 'Participate in a governance discussion to see it here.',
+                        zh: '参与事项讨论后，它将显示在这里。',
+                      }
+                }
+                errorFallback={{
+                  en: 'We could not load your matters. Please try again.',
+                  zh: '暂时无法加载您的事项，请稍后重试。',
+                }}
+                onRetry={retryParticipationLoads}
+              >
+                <GovernanceLifecycleFeed
+                  langEn={en}
+                  loading={false}
+                  matters={filteredMatters}
+                  notices={[]}
+                  propertyId={propertyId}
+                  canCouncil={canCouncil}
+                  personalFilterView
+                />
+              </PageStateSurface>
             ) : (
               <GovernanceLifecycleFeed
                 langEn={en}
                 loading={loading}
                 matters={filteredMatters}
-                notices={hubView ? [] : notices}
+                notices={notices}
                 propertyId={propertyId}
                 canCouncil={canCouncil}
-                personalFilterView={Boolean(hubView)}
               />
             )}
           </div>
         </main>
 
         <div className="lg:sticky lg:top-4 lg:self-start">
+          {!canCouncil && (subscriptionsError || commentsError) ? (
+            <PartialStateBanner
+              langEn={en}
+              failures={[
+                subscriptionsError
+                  ? {
+                      id: 'subscriptions',
+                      message: {
+                        en: 'Following list is temporarily unavailable.',
+                        zh: '关注列表暂时不可用。',
+                      },
+                    }
+                  : null,
+                commentsError
+                  ? {
+                      id: 'comments',
+                      message: {
+                        en: 'Comment history is temporarily unavailable.',
+                        zh: '评论记录暂时不可用。',
+                      },
+                    }
+                  : null,
+              ].filter((f): f is NonNullable<typeof f> => Boolean(f))}
+              className="mb-3"
+            />
+          ) : null}
           {canCouncil ? (
             <GovernanceHubPanel
               langEn={en}

@@ -1,9 +1,14 @@
-import { Link } from 'react-router-dom';
 import { buildMatterCardMeta } from '@/lib/community/governanceHubLifecycle';
+import {
+  lifecyclePresentation,
+  workspaceStageToLifecycleToken,
+} from '@/lib/community/governanceLifecyclePresentation';
+import { matterStatusToWorkspaceStage } from '@/lib/community/governanceLifecycleModel';
 import {
   governanceMatterDetailUrl,
   type GovernanceMatterDashboardRow,
 } from '@/lib/community/governanceMatterModel';
+import { Button, ButtonLink, lifecycleOutlineButtonClass } from '@/components/ui/Button';
 
 export type GovernanceMatterCardProps = {
   matter: GovernanceMatterDashboardRow;
@@ -29,23 +34,25 @@ export function GovernanceMatterCard({
   const en = langEn;
   const meta = buildMatterCardMeta(matter, en);
   const detailUrl = governanceMatterDetailUrl(matter.id, propertyId);
+  const stageToken = workspaceStageToLifecycleToken(matterStatusToWorkspaceStage(matter.status));
+  const stagePresentation = lifecyclePresentation(stageToken);
 
   return (
     <article className="rounded-lg border border-gray-200 bg-white px-3 py-2.5 shadow-sm hover:border-clearstrata-brand-200">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-gray-900">{matter.title}</p>
-          <p className="mt-0.5 text-xs font-medium text-clearstrata-brand-800">{meta.stageLabel}</p>
+          <p className={`mt-0.5 text-xs font-medium ${stagePresentation.textClass}`}>{meta.stageLabel}</p>
           {!compact ? (
             <p className="mt-0.5 text-[11px] text-gray-500">{meta.categoryLabel}</p>
           ) : null}
         </div>
         <div className="flex shrink-0 flex-wrap gap-1">
           {meta.hasResolution ? (
-            <Badge label={en ? 'Resolution' : '决议'} tone="emerald" />
+            <LifecycleBadge label={en ? 'Resolution' : '决议'} token="resolution" />
           ) : null}
-          {meta.hasMeeting ? <Badge label={en ? 'Meeting' : '会议'} tone="violet" /> : null}
-          {meta.hasVoting ? <Badge label={en ? 'Voting' : '投票'} tone="amber" /> : null}
+          {meta.hasMeeting ? <LifecycleBadge label={en ? 'Meeting' : '会议'} token="meeting" /> : null}
+          {meta.hasVoting ? <LifecycleBadge label={en ? 'Voting' : '投票'} token="voting" /> : null}
         </div>
       </div>
 
@@ -63,40 +70,37 @@ export function GovernanceMatterCard({
       ) : null}
 
       <div className="mt-2.5 flex flex-wrap gap-2">
-        <Link
-          to={detailUrl}
-          className="inline-flex items-center rounded-lg border border-clearstrata-ui-softBorder bg-white px-2.5 py-1 text-[11px] font-semibold text-clearstrata-brand-900 hover:bg-clearstrata-brand-50 sm:text-xs"
-        >
+        <ButtonLink to={detailUrl} variant="outline" size="sm">
           {en ? 'View matter' : '查看事项'}
-        </Link>
+        </ButtonLink>
         {canCouncil ? (
           <>
             {onCouncilRevise ? (
-              <button
-                type="button"
-                onClick={onCouncilRevise}
-                className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-900 hover:bg-amber-100 sm:text-xs"
-              >
+              <Button type="button" variant="outline" size="sm" onClick={onCouncilRevise}>
                 {en ? 'Revise' : '修订'}
-              </button>
+              </Button>
             ) : null}
             {onGenerateCda ? (
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
+                className={lifecycleOutlineButtonClass('cda')}
                 onClick={onGenerateCda}
-                className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-900 hover:bg-indigo-100 sm:text-xs"
               >
-                {en ? 'Generate CDA' : '生成 CDA'}
-              </button>
+                {en ? 'Generate CDA Report' : '生成 CDA 报告'}
+              </Button>
             ) : null}
             {onPrepareResolution && !meta.hasResolution ? (
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
+                className={lifecycleOutlineButtonClass('resolution')}
                 onClick={onPrepareResolution}
-                className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-900 hover:bg-emerald-100 sm:text-xs"
               >
-                {en ? 'Prepare Resolution' : '准备决议'}
-              </button>
+                {en ? 'Prepare Community Resolution' : '准备社区决议'}
+              </Button>
             ) : null}
           </>
         ) : null}
@@ -105,12 +109,13 @@ export function GovernanceMatterCard({
   );
 }
 
-function Badge({ label, tone }: { label: string; tone: 'emerald' | 'violet' | 'amber' }) {
-  const cls =
-    tone === 'emerald'
-      ? 'bg-emerald-100 text-emerald-800'
-      : tone === 'violet'
-        ? 'bg-violet-100 text-violet-800'
-        : 'bg-amber-100 text-amber-800';
-  return <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${cls}`}>{label}</span>;
+function LifecycleBadge({ label, token }: { label: string; token: 'resolution' | 'meeting' | 'voting' }) {
+  const p = lifecyclePresentation(token);
+  return (
+    <span
+      className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${p.backgroundClass} ${p.textClass}`}
+    >
+      {label}
+    </span>
+  );
 }

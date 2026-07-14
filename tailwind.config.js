@@ -60,6 +60,68 @@ export default {
               onSolid: '#ffffff',
             },
           },
+          lifecycle: {
+            draft: {
+              text: '#334155',
+              surface: '#f8fafc',
+              border: '#e2e8f0',
+              accent: '#475569',
+            },
+            discussion: {
+              text: '#176f4c',
+              surface: '#eefbf5',
+              border: '#b2e9cf',
+              accent: '#22a06b',
+            },
+            consultation: {
+              text: '#92400e',
+              surface: '#fffbeb',
+              border: '#fcd34d',
+              accent: '#d97706',
+            },
+            cda: {
+              text: '#3730a3',
+              surface: '#eef2ff',
+              border: '#c7d2fe',
+              accent: '#6366f1',
+            },
+            resolution: {
+              text: '#1e40af',
+              surface: '#eff6ff',
+              border: '#bfdbfe',
+              accent: '#2563eb',
+            },
+            meeting: {
+              text: '#5b21b6',
+              surface: '#f5f3ff',
+              border: '#ddd6fe',
+              accent: '#7c3aed',
+            },
+            voting: {
+              text: '#9a3412',
+              surface: '#fff7ed',
+              border: '#fdba74',
+              accent: '#ea580c',
+            },
+            execution: {
+              text: '#115e59',
+              surface: '#f0fdfa',
+              border: '#99f6e4',
+              accent: '#0d9488',
+            },
+            archived: {
+              text: '#475569',
+              surface: '#f1f5f9',
+              border: '#cbd5e1',
+              accent: '#64748b',
+            },
+            danger: {
+              text: '#991b1b',
+              surface: '#fef2f2',
+              border: '#fecaca',
+              accent: '#b91c1c',
+            },
+          },
         },
       },
       backgroundImage: {

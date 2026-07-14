@@ -3,6 +3,10 @@ import {
   workspaceStageLabel,
   type WorkspaceLifecycleStage,
 } from '@/lib/community/governanceLifecycleModel';
+import {
+  cockpitStageToLifecycleToken,
+  lifecyclePillClassName,
+} from '@/lib/community/governanceLifecyclePresentation';
 import type { GovernanceMatterCategory, GovernanceMatterStatus } from '@/lib/community/governanceMatterModel';
 
 export const COCKPIT_TIMELINE_STAGES = [
@@ -94,11 +98,18 @@ export function CockpitLifecycleTimeline({
             currentIdx > COCKPIT_TIMELINE_STAGES.indexOf('cda') &&
             !isComplete &&
             !isCurrent;
+          const token = cockpitStageToLifecycleToken(stage);
+          const sizeClass = compact ? 'rounded-md px-1.5 py-0.5 text-[10px]' : 'rounded-md px-1.5 py-0.5 text-xs';
+          let pillState: Parameters<typeof lifecyclePillClassName>[1] = 'future';
+          if (skipped) pillState = 'skipped';
+          else if (isCurrent && isCda) pillState = 'advisory-current';
+          else if (isCurrent) pillState = 'current';
+          else if (isComplete) pillState = 'complete';
 
           return (
             <li key={stage} className="flex items-center">
               <span
-                className={stepClass({ isCda, isComplete, isCurrent, skipped, compact })}
+                className={lifecyclePillClassName(token, pillState, `inline-flex items-center font-semibold ${sizeClass}`)}
                 aria-current={isCurrent ? 'step' : undefined}
                 title={isCda ? (en ? 'Advisory checkpoint' : '辅助检查点') : undefined}
               >
@@ -118,40 +129,4 @@ export function CockpitLifecycleTimeline({
       </ol>
     </div>
   );
-}
-
-function stepClass({
-  isCda,
-  isComplete,
-  isCurrent,
-  skipped,
-  compact,
-}: {
-  isCda: boolean;
-  isComplete: boolean;
-  isCurrent: boolean;
-  skipped: boolean;
-  compact: boolean;
-}): string {
-  const base = `inline-flex items-center rounded-md px-1.5 py-0.5 ${compact ? 'text-[10px]' : 'text-xs'} `;
-
-  if (skipped) {
-    return `${base}text-gray-400 line-through`;
-  }
-  if (isCda && isCurrent) {
-    return `${base}font-semibold text-indigo-900 ring-1 ring-dashed ring-indigo-300 bg-indigo-50/50`;
-  }
-  if (isCda && isComplete) {
-    return `${base}font-medium text-indigo-800`;
-  }
-  if (isCda) {
-    return `${base}text-indigo-300`;
-  }
-  if (isCurrent) {
-    return `${base}font-bold text-emerald-900 ring-2 ring-emerald-500/40 bg-emerald-50`;
-  }
-  if (isComplete) {
-    return `${base}font-medium text-emerald-800`;
-  }
-  return `${base}text-gray-400`;
 }

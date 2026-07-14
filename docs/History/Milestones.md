@@ -17,7 +17,7 @@
 | **Owner** | Founding Team |
 | **Supersedes** | None |
 | **Superseded By** | None |
-| **Related Documents** | RM-001, RM-003, RM-005, RM-007, RM-008, GPA-001, GPA-002, GDS-001, GRFC-001, GP-005, GP-006, PR-000, PR-001, PR-002, PR-003, PR-007 |
+| **Related Documents** | RM-001, RM-003, RM-005, RM-007, RM-008, GPA-001, GPA-002, GDS-001, GRFC-001, CDS-001, GP-005, GP-006, PR-000, PR-001, PR-002, PR-003, PR-007 |
 | **Repository Location** | `docs/History/Milestones.md` |
 
 *Numbering note:* **RM-005** remains [Repository Governance Resolution](../Repository_Governance_Resolution.md). This Hall is registered as **RM-006** per [Document Registry](Registry/Document_Registry.md) (FD-REG-001).
@@ -41,7 +41,7 @@ It records the moments that changed the direction of the platform — and the **
 The Repository is permanently organized into **five constitutional layers**. See [RM-008](../Repository_Constitutional_Structure.md).
 
 ```
-🏛  Layer 1 — Foundational Milestones     (GP, GPA, GDS, GRFC)
+🏛  Layer 1 — Foundational Milestones     (GP, GPA, GDS, GRFC, CDS)
         ↓
 🚀  Layer 2 — Project Milestones          (M-001 … Project One, Two …)
         ↓
@@ -100,6 +100,7 @@ These are not project milestones. They define the permanent constitutional and a
 | **GPA** | Governance Pyramid Architecture | GPA-001, GPA-002 |
 | **GDS** | Governance Data Standard | GDS-001 |
 | **GRFC** | Governance Request for Change | GRFC-001 |
+| **CDS** | ClearStrata Design System | [CDS-001](../design-system/CDS-001_ClearStrata_Design_System.md) |
 
 ---
 
@@ -179,9 +180,22 @@ Dashboard · Timeline · Reports · AI · Notifications — **never** become aut
 
 **Purpose:** Every major governance change must first become an approved Governance RFC before implementation begins. **Architecture precedes implementation.**
 
-**Cross-reference:** [GPA-001](../Architecture/GPA-001_Governance_Pyramid_Architecture.md) ↔ [GPA-002](../Architecture/GPA-002_Single_Source_of_Governance_Truth.md) ↔ [GDS-001](../Architecture/GDS-001_Governance_Data_Standard.md) ↔ [GRFC-001](../Architecture/GRFC-001_Governance_Request_for_Change.md)
+**Cross-reference:** [GPA-001](../Architecture/GPA-001_Governance_Pyramid_Architecture.md) ↔ [GPA-002](../Architecture/GPA-002_Single_Source_of_Governance_Truth.md) ↔ [GDS-001](../Architecture/GDS-001_Governance_Data_Standard.md) ↔ [GRFC-001](../Architecture/GRFC-001_Governance_Request_for_Change.md) · [CDS-001](../design-system/CDS-001_ClearStrata_Design_System.md)
 
-*Index:* [Architecture Constitution](../Architecture/README.md)
+*Index:* [Architecture Constitution](../Architecture/README.md) · [Design System](../design-system/README.md)
+
+---
+
+#### CDS-001 — ClearStrata Design System
+
+| Field | Value |
+|-------|-------|
+| **Classification** | Long-Term Design Standard |
+| **Status** | FOUNDATION |
+| **Record** | [CDS-001 — ClearStrata Design System](../design-system/CDS-001_ClearStrata_Design_System.md) |
+| **Date** | 2026-07-13 |
+
+**Purpose:** Defines long-term visual, interaction, language, accessibility, and component standards. Every screen should reduce governance complexity.
 
 ---
 

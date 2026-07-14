@@ -11,13 +11,13 @@
 | **Document Type** | Repository Management (RM) |
 | **Status** | FOUNDATION |
 | **Version** | 1.0 |
-| **Authority** | [The ClearStrata Constitution](00_ClearStrata_Constitution.md) (FD-001), [RM-006](History/Milestones.md), GPA-001, GPA-002, GDS-001, GRFC-001 |
+| **Authority** | [The ClearStrata Constitution](00_ClearStrata_Constitution.md) (FD-001), [RM-006](History/Milestones.md), GPA-001, GPA-002, GDS-001, GRFC-001, CDS-001 |
 | **Effective Date** | 2026-07-12 |
 | **Classification** | Repository Management |
 | **Owner** | Founding Team |
 | **Supersedes** | None |
 | **Superseded By** | None |
-| **Related Documents** | RM-001, RM-005, RM-006, RM-007, GP-005, GP-006, GPA-001, GPA-002, GDS-001, GRFC-001 |
+| **Related Documents** | RM-001, RM-005, RM-006, RM-007, GP-005, GP-006, GPA-001, GPA-002, GDS-001, GRFC-001, CDS-001 |
 | **Repository Location** | `docs/Repository_Constitutional_Structure.md` |
 
 ---
@@ -42,6 +42,7 @@ Permanent constitutional standards. These define:
 - Architecture
 - Data
 - Change governance
+- Design standards
 
 Expected to remain stable for **many years**.
 
@@ -53,16 +54,18 @@ Expected to remain stable for **many years**.
 | **GPA** | Governance Pyramid Architecture |
 | **GDS** | Governance Data Standard |
 | **GRFC** | Governance Request for Change |
+| **CDS** | ClearStrata Design System |
+| **CDS** | ClearStrata Design System |
 
 ### Examples
 
-GP-005 · GP-006 · GPA-001 · GPA-002 · GDS-001 · GRFC-001
+GP-005 · GP-006 · GPA-001 · GPA-002 · GDS-001 · GRFC-001 · CDS-001
 
 ### Golden Rule
 
 **Foundation evolves slowly. Implementation evolves continuously.**
 
-**Navigation:** [Architecture Constitution](Architecture/README.md) · [Foundational Milestones](History/Milestones.md#layer-1--foundational-milestones)
+**Navigation:** [Architecture Constitution](Architecture/README.md) · [Design System](design-system/README.md) · [Foundational Milestones](History/Milestones.md#layer-1--foundational-milestones)
 
 ---
 

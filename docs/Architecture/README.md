@@ -10,6 +10,8 @@ These are not project milestones. They define the constitutional architecture in
 
 **Governance Principles (GP):** [GP-005](../Principles/GP-005_Shared_Governance_Space.md) · [GP-006](../Principles/GP-006_Governance_Experience.md)
 
+**Design System (CDS):** [CDS-001](../design-system/CDS-001_ClearStrata_Design_System.md) — visual, interaction, accessibility standards
+
 ---
 
 ### Architecture Constitution
@@ -26,8 +28,9 @@ These are not project milestones. They define the constitutional architecture in
 | [GPA-002_Single_Source_of_Governance_Truth.md](GPA-002_Single_Source_of_Governance_Truth.md) | GPA-002 | One truth; projections only | FOUNDATION |
 | [GDS-001_Governance_Data_Standard.md](GDS-001_Governance_Data_Standard.md) | GDS-001 | Canonical entities and schema rules | FOUNDATION |
 | [GRFC-001_Governance_Request_for_Change.md](GRFC-001_Governance_Request_for_Change.md) | GRFC-001 | Change governance — architecture before code | FOUNDATION |
+| [CDS-001_ClearStrata_Design_System.md](../design-system/CDS-001_ClearStrata_Design_System.md) | CDS-001 | Experience — visual & interaction | FOUNDATION |
 
-**Cross-reference:** GPA-001 ↔ GPA-002 ↔ GDS-001 ↔ GRFC-001
+**Cross-reference:** GPA-001 ↔ GPA-002 ↔ GDS-001 ↔ GRFC-001 ↔ CDS-001
 
 ---
 

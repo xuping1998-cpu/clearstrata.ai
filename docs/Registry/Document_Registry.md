@@ -42,7 +42,7 @@ This Registry preserves:
 **Five-layer structure:** [RM-008 — Repository Constitutional Structure](../Repository_Constitutional_Structure.md) (FOUNDATION)
 
 ```
-🏛 Foundational Milestones  →  GP, GPA, GDS, GRFC
+🏛 Foundational Milestones  →  GP, GPA, GDS, GRFC, CDS
 🚀 Project Milestones       →  M-001 …
 📘 Project Records          →  PR-xxx
 🛠 Engineering Records       →  BF, AF, PF, SF
@@ -96,6 +96,8 @@ This Registry preserves:
 | **GPA** | **GPA-003** | GPA-002 registered |
 | **GDS** | **GDS-002** | GDS-001 registered |
 | **GRFC** | **GRFC-002** | GRFC-001 registered |
+| **CDS** | **CDS-002** | CDS-001 registered |
+| **RC** | **RC-005** | RC-001 … RC-004 registered |
 
 ---
 
@@ -177,10 +179,11 @@ Permanent constitutional references within FD-001 — not separately numbered do
 | **GPA-002** | Single Source of Governance Truth | FOUNDATION | `docs/Architecture/GPA-002_Single_Source_of_Governance_Truth.md` |
 | **GDS-001** | Governance Data Standard | FOUNDATION | `docs/Architecture/GDS-001_Governance_Data_Standard.md` |
 | **GRFC-001** | Governance Request for Change | FOUNDATION | `docs/Architecture/GRFC-001_Governance_Request_for_Change.md` |
+| **CDS-001** | ClearStrata Design System | FOUNDATION | `docs/design-system/CDS-001_ClearStrata_Design_System.md` |
 
-*Hall of record:* [Milestones.md](../History/Milestones.md) (RM-006) · *Index:* [Architecture/README.md](../Architecture/README.md)
+*Hall of record:* [Milestones.md](../History/Milestones.md) (RM-006) · *Architecture index:* [Architecture/README.md](../Architecture/README.md) · *Design index:* [design-system/README.md](../design-system/README.md)
 
-**Architecture Constitution:** GPA-001 ↔ GPA-002 ↔ GDS-001 ↔ GRFC-001 — all future governance modules, projects, AI capabilities, and architectural decisions must remain consistent with these standards.
+**Architecture Constitution:** GPA-001 ↔ GPA-002 ↔ GDS-001 ↔ GRFC-001 · **Experience foundation:** CDS-001
 
 ---
 
@@ -216,6 +219,21 @@ Permanent constitutional references within FD-001 — not separately numbered do
 | **UIP-013** | Governance Timeline Intelligence | ACTIVE | `docs/projects/UIP-013_Governance_Timeline_Intelligence.md` |
 
 *Master index:* [`UIP_Project_One_UI_Polish.md`](../projects/UIP_Project_One_UI_Polish.md) · Authority: [GP-006](../Principles/GP-006_Governance_Experience.md)
+
+---
+
+## Release Candidate Records (RC)
+
+*Project One RC — first code adoption phase of CDS-001.*
+
+| Number | Title | Status | Repository Location |
+|--------|-------|--------|---------------------|
+| **RC-001** | Design Freeze | ACTIVE | `docs/projects/RC-001_Design_Freeze.md` |
+| **RC-002** | Shared Button System | ACTIVE | `docs/projects/RC-002_Shared_Button_System.md` |
+| **RC-003** | Lifecycle Design Tokens | ACTIVE | `docs/projects/RC-003_Lifecycle_Design_Tokens.md` |
+| **RC-004** | Shared State System | ACTIVE | `docs/projects/RC-004_Shared_State_System.md` |
+
+*Authority:* [CDS-001](../design-system/CDS-001_ClearStrata_Design_System.md) · [RC-001](../projects/RC-001_Design_Freeze.md)
 
 ---
 
@@ -264,6 +282,14 @@ Permanent constitutional references within FD-001 — not separately numbered do
 
 *Change proposals (GRFC-002+):* `docs/Architecture/GRFC/`
 
+### Design Standards (CDS)
+
+| Number | Title | Status | Repository Location |
+|--------|-------|--------|---------------------|
+| **CDS-001** | ClearStrata Design System | FOUNDATION | `docs/design-system/CDS-001_ClearStrata_Design_System.md` |
+
+*Long-term visual, interaction, accessibility, and component standards. Authority: FD-001, GP-005, GP-006, GPA-001, GPA-002, GDS-001, GRFC-001.*
+
 ---
 
 ## Reserved Categories
@@ -278,6 +304,7 @@ Permanent constitutional references within FD-001 — not separately numbered do
 | **GPA** | Governance Pyramid Architecture Standards | ACTIVE |
 | **GDS** | Governance Data Standards | ACTIVE |
 | **GRFC** | Governance Request for Change | ACTIVE |
+| **CDS** | ClearStrata Design System | ACTIVE |
 | **AF** | Architecture Fix Records | RESERVED |
 | **PF** | Performance Fix Records | RESERVED |
 | **SF** | Security Fix Records | RESERVED |
@@ -328,7 +355,9 @@ Before creating any permanent document, Cursor **SHALL**:
 | 2026-07-12 | **GDS-001** registered — Governance Data Standard (FOUNDATION) | ClearStrata Project One |
 | 2026-07-12 | **GRFC-001** registered — Governance Request for Change (FOUNDATION) | ClearStrata Project One |
 | 2026-07-12 | **RM-006** enhanced — Foundational Milestones (Architecture Constitution) in Repository Hall | ClearStrata Project One |
-| 2026-07-12 | **RM-008** registered — Repository Constitutional Structure (five layers, FOUNDATION) | ClearStrata Project One |
+| 2026-07-13 | **CDS-001** registered — ClearStrata Design System (FOUNDATION) | ClearStrata Platform |
+| 2026-07-13 | **RC-001 … RC-003** registered — Project One RC foundation (Design Freeze, Button, Lifecycle Tokens) | ClearStrata Project One |
+| 2026-07-13 | **RC-004** registered — Shared State System (CDS canonical page states) | ClearStrata Project One |
 | 2026-07-11 | **BF-002** registered — Independent Governance Hub Data Loading | ClearStrata Project One |
 | 2026-07-11 | **BF-001** registered — SGM Pause Notification Race Condition | ClearStrata Project One |
 

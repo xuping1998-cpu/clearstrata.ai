@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronDown, MessagesSquare } from 'lucide-react';
+import { Button, ButtonLink } from '@/components/ui/Button';
 
 export type ImportantUpdateKind = 'action' | 'notice';
 
@@ -298,25 +299,23 @@ export function CommunityDeliberationDashboardCard({
             </div>
 
             <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-              <Link
-                to={viewAllUrl}
-                className="inline-flex items-center justify-center rounded-lg bg-clearstrata-ui-primary px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-clearstrata-ui-primaryHover active:bg-clearstrata-ui-primaryHover sm:px-3 sm:text-[13px]"
-              >
+              <ButtonLink to={viewAllUrl} variant="primary" size="sm">
                 {viewAllLabel}
-              </Link>
-              <button
+              </ButtonLink>
+              <Button
                 type="button"
+                variant="outline"
+                size="icon"
                 aria-expanded={expanded}
                 aria-controls="home-community-deliberation-panel"
-                onClick={() => setExpanded((v) => !v)}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 shadow-sm hover:bg-gray-50 active:bg-gray-100"
                 aria-label={expandLabel}
+                onClick={() => setExpanded((v) => !v)}
               >
                 <ChevronDown
-                  className={`h-4 w-4 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+                  className={`h-4 w-4 transition-transform duration-150 motion-reduce:transition-none ${expanded ? 'rotate-180' : ''}`}
                   aria-hidden
                 />
-              </button>
+              </Button>
             </div>
           </div>
 
