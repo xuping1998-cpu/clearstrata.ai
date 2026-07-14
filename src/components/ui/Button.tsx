@@ -73,6 +73,7 @@ function composeButtonClass(
 ): string {
   return cn(
     'inline-flex items-center justify-center font-semibold transition-[color,background-color,border-color,opacity] duration-150 motion-reduce:transition-none',
+    variant !== 'link' && 'active:opacity-95',
     variant !== 'link' && 'disabled:pointer-events-none disabled:opacity-50',
     VARIANT_CLASS[variant],
     variant !== 'link' ? SIZE_CLASS[size] : '',

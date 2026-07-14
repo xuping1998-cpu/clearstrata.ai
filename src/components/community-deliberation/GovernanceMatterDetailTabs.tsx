@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronDown } from 'lucide-react';
+import { Button } from '@/components/ui/Button';
 import { ConstitutionalDeliberationAssistantPanel } from '@/components/community-deliberation/ConstitutionalDeliberationAssistantPanel';
 import {
   constitutionalBasisForCategory,
@@ -21,6 +22,7 @@ import {
 } from '@/lib/community/governanceMatterModel';
 import { GovernanceMatterTimelineTab } from '@/components/community-deliberation/GovernanceMatterTimelineTab';
 import { getEmptyStateContent, stateText, TabEmptyState } from '@/components/ui/state';
+import { INTERACTION_LINK, INTERACTION_TAB } from '@/lib/ui/interactionClasses';
 import type { GovernanceMatterCdaReportRow } from '@/lib/community/cdaReportModel';
 
 export type MatterDetailTab = 'details' | 'discussion' | 'resolution' | 'cda' | 'timeline';
@@ -39,7 +41,8 @@ export type GovernanceMatterDetailTabsProps = {
   commentBody: string;
   onCommentBodyChange: (value: string) => void;
   onPostComment: () => void;
-  submitting: boolean;
+  commentSubmitting: boolean;
+  revisionSubmitting: boolean;
   editTitle: string;
   editDescription: string;
   editStatus: GovernanceMatterRow['status'];
@@ -108,7 +111,8 @@ export function GovernanceMatterDetailTabs(props: GovernanceMatterDetailTabsProp
     commentBody,
     onCommentBodyChange,
     onPostComment,
-    submitting,
+    commentSubmitting,
+    revisionSubmitting,
     editTitle,
     editDescription,
     editStatus,
@@ -163,12 +167,12 @@ export function GovernanceMatterDetailTabs(props: GovernanceMatterDetailTabsProp
               onClick={() => setActiveTab(tab.id)}
               className={
                 compactLayout
-                  ? `shrink-0 px-3 py-1.5 text-xs font-semibold transition-colors sm:px-3.5 ${
+                  ? `shrink-0 px-3 py-1.5 text-xs font-semibold sm:px-3.5 ${INTERACTION_TAB} ${
                       selected
                         ? 'rounded-t-md bg-emerald-800 text-white'
                         : 'text-gray-500 hover:text-gray-800'
                     }`
-                  : `shrink-0 rounded-t-lg px-3 py-2 text-sm font-semibold transition-colors sm:px-4 ${
+                  : `shrink-0 rounded-t-lg px-3 py-2 text-sm font-semibold sm:px-4 ${INTERACTION_TAB} ${
                       selected
                         ? 'border border-b-white border-gray-200 bg-white text-clearstrata-brand-900'
                         : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
@@ -200,7 +204,7 @@ export function GovernanceMatterDetailTabs(props: GovernanceMatterDetailTabsProp
             onEditDescriptionChange={onEditDescriptionChange}
             onEditStatusChange={onEditStatusChange}
             onCouncilSave={onCouncilSave}
-            submitting={submitting}
+            revisionSubmitting={revisionSubmitting}
             compactLayout={compactLayout}
           />
         ) : null}
@@ -213,7 +217,8 @@ export function GovernanceMatterDetailTabs(props: GovernanceMatterDetailTabsProp
             commentBody={commentBody}
             onCommentBodyChange={onCommentBodyChange}
             onPostComment={onPostComment}
-            submitting={submitting}
+            commentSubmitting={commentSubmitting}
+            revisionSubmitting={revisionSubmitting}
             showCouncilRevision={!includeDetailsTab && canCouncil}
             editTitle={editTitle}
             editDescription={editDescription}
@@ -280,7 +285,7 @@ function DetailsTab({
   onEditDescriptionChange,
   onEditStatusChange,
   onCouncilSave,
-  submitting,
+  revisionSubmitting,
   compactLayout = false,
 }: {
   en: boolean;
@@ -293,7 +298,7 @@ function DetailsTab({
   onEditDescriptionChange: (value: string) => void;
   onEditStatusChange: (value: GovernanceMatterRow['status']) => void;
   onCouncilSave: () => void;
-  submitting: boolean;
+  revisionSubmitting: boolean;
   compactLayout?: boolean;
 }) {
   if (compactLayout) {
@@ -354,14 +359,15 @@ function DetailsTab({
                   </option>
                 ))}
               </select>
-              <button
+              <Button
                 type="button"
-                disabled={submitting}
+                variant="secondary"
+                size="md"
+                loading={revisionSubmitting}
                 onClick={onCouncilSave}
-                className="rounded-lg border border-clearstrata-ui-softBorder bg-white px-4 py-2 text-sm font-semibold text-clearstrata-brand-900 hover:bg-clearstrata-brand-50 disabled:opacity-60"
               >
                 {en ? 'Save revision' : '保存修订'}
-              </button>
+              </Button>
             </div>
           </details>
         ) : null}
@@ -429,14 +435,15 @@ function DetailsTab({
                 </option>
               ))}
             </select>
-            <button
+            <Button
               type="button"
-              disabled={submitting}
+              variant="primary"
+              size="md"
+              loading={revisionSubmitting}
               onClick={onCouncilSave}
-              className="rounded-lg bg-clearstrata-ui-primary px-4 py-2 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover disabled:opacity-60"
             >
               {en ? 'Save revision' : '保存修订'}
-            </button>
+            </Button>
           </div>
         </details>
       ) : (
@@ -453,7 +460,8 @@ function DiscussionTab({
   commentBody,
   onCommentBodyChange,
   onPostComment,
-  submitting,
+  commentSubmitting,
+  revisionSubmitting,
   showCouncilRevision = false,
   editTitle = '',
   editDescription = '',
@@ -469,7 +477,8 @@ function DiscussionTab({
   commentBody: string;
   onCommentBodyChange: (value: string) => void;
   onPostComment: () => void;
-  submitting: boolean;
+  commentSubmitting: boolean;
+  revisionSubmitting: boolean;
   showCouncilRevision?: boolean;
   editTitle?: string;
   editDescription?: string;
@@ -545,14 +554,17 @@ function DiscussionTab({
             placeholder={en ? 'Participate in discussion…' : '参与讨论…'}
             className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"
           />
-          <button
+          <Button
             type="button"
-            disabled={submitting || !commentBody.trim()}
+            variant="secondary"
+            size="md"
+            className="shrink-0 sm:self-end"
+            loading={commentSubmitting}
+            disabled={!commentBody.trim()}
             onClick={onPostComment}
-            className="shrink-0 rounded-lg border border-clearstrata-ui-softBorder bg-white px-4 py-2 text-sm font-semibold text-clearstrata-brand-900 hover:bg-clearstrata-brand-50 disabled:opacity-60"
           >
             {en ? 'Post comment' : '发表评论'}
-          </button>
+          </Button>
         </div>
       </section>
 
@@ -592,14 +604,15 @@ function DiscussionTab({
                 </option>
               ))}
             </select>
-            <button
+            <Button
               type="button"
-              disabled={submitting}
+              variant="primary"
+              size="md"
+              loading={revisionSubmitting}
               onClick={onCouncilSave}
-              className="rounded-lg bg-clearstrata-ui-primary px-4 py-2 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover disabled:opacity-60"
             >
               {en ? 'Save revision' : '保存修订'}
-            </button>
+            </Button>
           </div>
         </details>
       ) : null}
@@ -659,7 +672,7 @@ function ResolutionTab({
             </p>
             <Link
               to={communityResolutionDetailUrl(linkedResolution.id, propertyId)}
-              className="inline-block text-sm font-semibold text-clearstrata-brand-900 hover:underline"
+              className={`inline-block text-sm font-semibold text-clearstrata-brand-900 ${INTERACTION_LINK}`}
             >
               {en ? 'View resolution →' : '查看决议 →'}
             </Link>
@@ -679,14 +692,16 @@ function ResolutionTab({
                 ? 'Prepare a Community Resolution from this matter before scheduling a meeting.'
                 : '排会前，请基于本事项准备社区决议。'}
             </p>
-            <button
+            <Button
               type="button"
-              disabled={resolutionSubmitting}
+              variant="primary"
+              size="md"
+              className="mt-3"
+              loading={resolutionSubmitting}
               onClick={onCreateResolution}
-              className="mt-3 rounded-lg bg-clearstrata-ui-primary px-4 py-2 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover disabled:opacity-60"
             >
               {en ? 'Prepare Resolution' : '准备决议'}
-            </button>
+            </Button>
           </div>
         ) : (
           <TabEmptyState

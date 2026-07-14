@@ -2,6 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ChevronDown, Plus } from 'lucide-react';
 import { ButtonLink } from '@/components/ui/Button';
+import { GovernanceFeedbackHost } from '@/components/ui/feedback/GovernanceFeedbackHost';
+import { useGovernanceFeedback } from '@/hooks/useGovernanceFeedback';
+import { ARCHIVE_CONFIRM } from '@/lib/ui/governanceFeedbackMessages';
+import { confirmDestructiveAction } from '@/lib/ui/confirmDestructiveAction';
+import { INTERACTION_SELECTABLE } from '@/lib/ui/interactionClasses';
 import {
   ContextualEmptyState,
   ErrorState,
@@ -81,7 +86,12 @@ export function CouncilWorkspacePage() {
   const [cdaByMatterId, setCdaByMatterId] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [detailRefreshing, setDetailRefreshing] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
+  const [revisionSubmitting, setRevisionSubmitting] = useState(false);
+  const [cdaGenerating, setCdaGenerating] = useState(false);
+  const [resolutionSubmitting, setResolutionSubmitting] = useState(false);
+  const [archiveSubmitting, setArchiveSubmitting] = useState(false);
+  const [queueLoadingKey, setQueueLoadingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [stageFilter, setStageFilter] = useState<WorkspaceLifecycleStage | 'all'>('all');
   const [pipelineOpen, setPipelineOpen] = useState(false);
@@ -95,6 +105,15 @@ export function CouncilWorkspacePage() {
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editStatus, setEditStatus] = useState<GovernanceMatterRow['status']>('discussion');
+
+  const feedback = useGovernanceFeedback();
+  const actionBusy =
+    commentSubmitting ||
+    revisionSubmitting ||
+    cdaGenerating ||
+    resolutionSubmitting ||
+    archiveSubmitting ||
+    Boolean(queueLoadingKey);
 
   const loadMatters = useCallback(async () => {
     if (!propertyId.trim()) return;
@@ -202,9 +221,14 @@ export function CouncilWorkspacePage() {
     if (tab) setRequestedTab(tab);
 
     if (actionType === 'generate_cda') void handleCdaRefresh();
-    else if (actionType === 'schedule_meeting') handleScheduleMeeting();
-    else if (actionType === 'open_voting') handleViewVoting();
-    else if (actionType === 'archive') void handleArchive();
+    else if (actionType === 'schedule_meeting') {
+      setQueueLoadingKey(null);
+      handleScheduleMeeting();
+    } else if (actionType === 'open_voting') {
+      setQueueLoadingKey(null);
+      handleViewVoting();
+    } else if (actionType === 'archive') void handleArchive();
+    else setQueueLoadingKey(null);
   }, [matter?.id, pendingQueueAction]);
 
   const filteredMatters = useMemo(
@@ -246,8 +270,8 @@ export function CouncilWorkspacePage() {
   }
 
   async function handleSaveRevision() {
-    if (!matter || !propertyId.trim()) return;
-    setBusy(true);
+    if (!matter || !propertyId.trim() || revisionSubmitting) return;
+    setRevisionSubmitting(true);
     setError(null);
     try {
       const updated = await updateGovernanceMatter({
@@ -259,16 +283,20 @@ export function CouncilWorkspacePage() {
       });
       setMatter(updated);
       await Promise.all([loadMatterDetail(), loadMatters()]);
+      feedback.notifySuccess('revisionSaved');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Save failed');
+      const msg = e instanceof Error ? e.message : 'Save failed';
+      setError(msg);
+      feedback.notifyError(msg);
     } finally {
-      setBusy(false);
+      setRevisionSubmitting(false);
+      setQueueLoadingKey(null);
     }
   }
 
   async function handleCdaRefresh() {
-    if (!matter || !propertyId.trim()) return;
-    setBusy(true);
+    if (!matter || !propertyId.trim() || cdaGenerating) return;
+    setCdaGenerating(true);
     setError(null);
     try {
       const report = await requestCdaAnalysis({
@@ -278,16 +306,20 @@ export function CouncilWorkspacePage() {
       });
       setCdaReport(report);
       setCdaByMatterId((prev) => ({ ...prev, [matter.id]: true }));
+      feedback.notifySuccess('cdaGenerated');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'CDA failed');
+      const msg = e instanceof Error ? e.message : 'CDA failed';
+      setError(msg);
+      feedback.notifyError(msg);
     } finally {
-      setBusy(false);
+      setCdaGenerating(false);
+      setQueueLoadingKey(null);
     }
   }
 
   async function handleCreateResolution() {
-    if (!matter || !propertyId.trim()) return;
-    setBusy(true);
+    if (!matter || !propertyId.trim() || resolutionSubmitting) return;
+    setResolutionSubmitting(true);
     try {
       const row = await createCommunityResolutionFromMatter({
         propertyId: propertyId.trim(),
@@ -299,10 +331,14 @@ export function CouncilWorkspacePage() {
       });
       setLinkedResolution(row);
       await loadMatters();
+      feedback.notifySuccess('resolutionCreated');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Resolution failed');
+      const msg = e instanceof Error ? e.message : 'Resolution failed';
+      setError(msg);
+      feedback.notifyError(msg);
     } finally {
-      setBusy(false);
+      setResolutionSubmitting(false);
+      setQueueLoadingKey(null);
     }
   }
 
@@ -338,8 +374,12 @@ export function CouncilWorkspacePage() {
   }
 
   async function handleArchive() {
-    if (!matter || !propertyId.trim()) return;
-    setBusy(true);
+    if (!matter || !propertyId.trim() || archiveSubmitting) return;
+    if (!confirmDestructiveAction(en, ARCHIVE_CONFIRM)) {
+      setQueueLoadingKey(null);
+      return;
+    }
+    setArchiveSubmitting(true);
     try {
       await updateGovernanceMatter({
         propertyId: propertyId.trim(),
@@ -347,29 +387,38 @@ export function CouncilWorkspacePage() {
         status: 'archived',
       });
       await Promise.all([loadMatterDetail(), loadMatters()]);
+      feedback.notifySuccess('matterArchived');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Archive failed');
+      const msg = e instanceof Error ? e.message : 'Archive failed';
+      setError(msg);
+      feedback.notifyError(msg);
     } finally {
-      setBusy(false);
+      setArchiveSubmitting(false);
+      setQueueLoadingKey(null);
     }
   }
 
   function handleQueueAction(matterId: string, actionType: GovernanceCockpitActionType) {
+    if (queueLoadingKey || actionBusy) return;
+    setQueueLoadingKey(`${matterId}:${actionType}`);
     selectMatter(matterId);
     setPendingQueueAction({ matterId, actionType });
   }
 
   async function handlePostComment() {
-    if (!matter || !propertyId.trim() || !commentBody.trim()) return;
-    setBusy(true);
+    if (!matter || !propertyId.trim() || !commentBody.trim() || commentSubmitting) return;
+    setCommentSubmitting(true);
     try {
       const row = await addGovernanceMatterComment(propertyId.trim(), matter.id, commentBody);
       setComments((prev) => [...prev, row]);
       setCommentBody('');
+      feedback.notifySuccess('commentPosted');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Comment failed');
+      const msg = e instanceof Error ? e.message : 'Comment failed';
+      setError(msg);
+      feedback.notifyError(msg);
     } finally {
-      setBusy(false);
+      setCommentSubmitting(false);
     }
   }
 
@@ -456,7 +505,7 @@ export function CouncilWorkspacePage() {
               key={filter}
               type="button"
               onClick={() => setStageFilter(filter)}
-              className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+              className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${INTERACTION_SELECTABLE} ${
                 stageFilter === filter
                   ? lifecycleFilterActiveClass(filter)
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -507,6 +556,7 @@ export function CouncilWorkspacePage() {
 
   return (
     <div className="mx-auto flex max-w-[1600px] flex-col px-3 py-4 sm:px-4">
+      <GovernanceFeedbackHost langEn={en} items={feedback.items} onDismiss={feedback.dismiss} />
       <header className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-200 pb-4">
         <div>
           <Link
@@ -597,6 +647,8 @@ export function CouncilWorkspacePage() {
             health={cockpitHealth}
             brief={cockpitBrief}
             onQueueAction={handleQueueAction}
+            busyQueueKey={queueLoadingKey}
+            actionsDisabled={actionBusy}
           />
         </div>
 
@@ -612,12 +664,13 @@ export function CouncilWorkspacePage() {
                 revisions={revisions}
                 cdaReport={cdaReport}
                 cdaLoading={false}
-                cdaGenerating={busy}
+                cdaGenerating={cdaGenerating}
                 linkedResolution={linkedResolution}
                 commentBody={commentBody}
                 onCommentBodyChange={setCommentBody}
                 onPostComment={() => void handlePostComment()}
-                submitting={busy}
+                commentSubmitting={commentSubmitting}
+                revisionSubmitting={revisionSubmitting}
                 editTitle={editTitle}
                 editDescription={editDescription}
                 editStatus={editStatus}
@@ -627,7 +680,7 @@ export function CouncilWorkspacePage() {
                 onCouncilSave={() => void handleSaveRevision()}
                 onRequestCdaAnalysis={() => void handleCdaRefresh()}
                 onCreateResolution={() => void handleCreateResolution()}
-                resolutionSubmitting={busy}
+                resolutionSubmitting={resolutionSubmitting}
                 includeDetailsTab
                 defaultTab="details"
                 requestedTab={requestedTab}

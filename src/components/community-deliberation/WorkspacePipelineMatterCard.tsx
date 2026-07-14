@@ -11,6 +11,8 @@ import {
   governanceMatterCategoryLabel,
   type GovernanceMatterDashboardRow,
 } from '@/lib/community/governanceMatterModel';
+import { cn } from '@/lib/cn';
+import { INTERACTION_SELECTABLE } from '@/lib/ui/interactionClasses';
 
 export type WorkspacePipelineMatterCardProps = {
   matter: GovernanceMatterDashboardRow;
@@ -67,11 +69,14 @@ export function WorkspacePipelineMatterCard({
     <button
       type="button"
       onClick={onSelect}
-      className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
+      aria-current={selected ? 'true' : undefined}
+      className={cn(
+        'w-full rounded-lg border px-3 py-2 text-left',
+        INTERACTION_SELECTABLE,
         selected
           ? 'border-emerald-400 bg-emerald-50/80 ring-1 ring-emerald-200'
-          : 'border-gray-200/90 bg-white hover:border-gray-300'
-      }`}
+          : 'border-gray-200/90 bg-white hover:border-gray-300',
+      )}
     >
       <p className="line-clamp-2 text-sm font-bold leading-snug text-gray-900">{matter.title}</p>
       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">

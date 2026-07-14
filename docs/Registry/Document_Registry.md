@@ -97,7 +97,7 @@ This Registry preserves:
 | **GDS** | **GDS-002** | GDS-001 registered |
 | **GRFC** | **GRFC-002** | GRFC-001 registered |
 | **CDS** | **CDS-002** | CDS-001 registered |
-| **RC** | **RC-006** | RC-001 … RC-005 registered |
+| **RC** | **RC-007** | RC-001 … RC-006 registered |
 
 ---
 
@@ -233,6 +233,7 @@ Permanent constitutional references within FD-001 — not separately numbered do
 | **RC-003** | Lifecycle Design Tokens | ACTIVE | `docs/projects/RC-003_Lifecycle_Design_Tokens.md` |
 | **RC-004** | Shared State System | ACTIVE | `docs/projects/RC-004_Shared_State_System.md` |
 | **RC-005** | Skeleton & Empty State System | ACTIVE | `docs/projects/RC-005_Skeleton_Empty_State_System.md` |
+| **RC-006** | Interaction Audit | ACTIVE | `docs/projects/RC-006_Interaction_Audit.md` |
 
 *Authority:* [CDS-001](../design-system/CDS-001_ClearStrata_Design_System.md) · [RC-001](../projects/RC-001_Design_Freeze.md)
 
@@ -359,6 +360,7 @@ Before creating any permanent document, Cursor **SHALL**:
 | 2026-07-13 | **CDS-001** registered — ClearStrata Design System (FOUNDATION) | ClearStrata Platform |
 | 2026-07-13 | **RC-001 … RC-003** registered — Project One RC foundation (Design Freeze, Button, Lifecycle Tokens) | ClearStrata Project One |
 | 2026-07-13 | **RC-004** registered — Shared State System (CDS canonical page states) | ClearStrata Project One |
+| 2026-07-14 | **RC-006** registered — Interaction Audit (Project One pilot) | ClearStrata Project One |
 | 2026-07-14 | **RC-005** registered — Skeleton & Empty State System (Project One pilot) | ClearStrata Project One |
 | 2026-07-11 | **BF-002** registered — Independent Governance Hub Data Loading | ClearStrata Project One |
 | 2026-07-11 | **BF-001** registered — SGM Pause Notification Race Condition | ClearStrata Project One |

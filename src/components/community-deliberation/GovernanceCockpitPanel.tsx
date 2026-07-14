@@ -56,6 +56,10 @@ export type GovernanceCockpitPanelProps = {
   health: GovernanceHealth;
   brief: GovernanceBriefLine[];
   onQueueAction: (matterId: string, actionType: GovernanceCockpitActionType) => void;
+  /** `${matterId}:${actionType}` while a queue action is in flight */
+  busyQueueKey?: string | null;
+  /** Disable all queue buttons while any conservative action runs */
+  actionsDisabled?: boolean;
 };
 
 const HEALTH_CLASS: Record<GovernanceHealth['level'], string> = {
@@ -72,6 +76,8 @@ export function GovernanceCockpitPanel({
   health,
   brief,
   onQueueAction,
+  busyQueueKey = null,
+  actionsDisabled = false,
 }: GovernanceCockpitPanelProps) {
   const en = langEn;
 
@@ -165,6 +171,8 @@ export function GovernanceCockpitPanel({
                 type="button"
                 size="sm"
                 className="mt-2"
+                loading={busyQueueKey === `${action.matterId}:${action.actionType}`}
+                disabled={actionsDisabled && busyQueueKey !== `${action.matterId}:${action.actionType}`}
                 {...cockpitActionButtonProps(action.actionType)}
                 onClick={() => onQueueAction(action.matterId, action.actionType)}
               >

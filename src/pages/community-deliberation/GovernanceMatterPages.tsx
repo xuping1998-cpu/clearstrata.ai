@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ButtonLink } from '@/components/ui/Button';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Button, ButtonLink } from '@/components/ui/Button';
+import { GovernanceFeedbackHost } from '@/components/ui/feedback/GovernanceFeedbackHost';
+import { useGovernanceFeedback } from '@/hooks/useGovernanceFeedback';
+import type { GovernanceFeedbackKey } from '@/lib/ui/governanceFeedbackMessages';
+import { INTERACTION_LINK } from '@/lib/ui/interactionClasses';
 import {
   ArchivedState,
   ContextualEmptyState,
@@ -70,9 +74,11 @@ export function GovernanceMatterDetailPage() {
   const { matterId } = useParams<{ matterId: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { language } = useLanguage();
   const en = language === 'en';
   const { currentPropertyId, roleInProperty, ready: propertyReady } = useProperty();
+  const feedback = useGovernanceFeedback();
 
   const propertyId = searchParams.get('propertyId')?.trim() || currentPropertyId || '';
   const canCouncil = isCouncilGovernanceRole(roleInProperty);
@@ -83,7 +89,8 @@ export function GovernanceMatterDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [commentBody, setCommentBody] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
+  const [revisionSubmitting, setRevisionSubmitting] = useState(false);
   const [cdaReport, setCdaReport] = useState<GovernanceMatterCdaReportRow | null>(null);
   const [cdaLoading, setCdaLoading] = useState(true);
   const [cdaGenerating, setCdaGenerating] = useState(false);
@@ -95,6 +102,16 @@ export function GovernanceMatterDetailPage() {
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editStatus, setEditStatus] = useState<GovernanceMatterRow['status']>('discussion');
+
+  const feedbackKey = (location.state as { governanceFeedbackKey?: GovernanceFeedbackKey } | null)
+    ?.governanceFeedbackKey;
+
+  useEffect(() => {
+    if (!feedbackKey) return;
+    feedback.notifySuccess(feedbackKey);
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- consume navigation state once
+  }, [feedbackKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -185,23 +202,26 @@ export function GovernanceMatterDetailPage() {
   }, [matterId, propertyId, propertyReady, matter?.id]);
 
   async function handlePostComment() {
-    if (!matter || !propertyId.trim()) return;
-    setSubmitting(true);
+    if (!matter || !propertyId.trim() || commentSubmitting || !commentBody.trim()) return;
+    setCommentSubmitting(true);
     setError(null);
     try {
       const row = await addGovernanceMatterComment(propertyId.trim(), matter.id, commentBody);
       setComments((prev) => [...prev, row]);
       setCommentBody('');
+      feedback.notifySuccess('commentPosted');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to post comment');
+      const msg = e instanceof Error ? e.message : 'Failed to post comment';
+      setError(msg);
+      feedback.notifyError(msg);
     } finally {
-      setSubmitting(false);
+      setCommentSubmitting(false);
     }
   }
 
   async function handleCouncilSave() {
-    if (!matter || !propertyId.trim()) return;
-    setSubmitting(true);
+    if (!matter || !propertyId.trim() || revisionSubmitting) return;
+    setRevisionSubmitting(true);
     setError(null);
     try {
       const updated = await updateGovernanceMatter({
@@ -214,15 +234,18 @@ export function GovernanceMatterDetailPage() {
       setMatter(updated);
       const rev = await fetchGovernanceMatterRevisions(propertyId.trim(), matter.id);
       setRevisions(rev);
+      feedback.notifySuccess('revisionSaved');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to update matter');
+      const msg = e instanceof Error ? e.message : 'Failed to update matter';
+      setError(msg);
+      feedback.notifyError(msg);
     } finally {
-      setSubmitting(false);
+      setRevisionSubmitting(false);
     }
   }
 
   async function handleRequestCdaAnalysis() {
-    if (!matter || !propertyId.trim()) return;
+    if (!matter || !propertyId.trim() || cdaGenerating) return;
     setCdaGenerating(true);
     setError(null);
     try {
@@ -232,15 +255,18 @@ export function GovernanceMatterDetailPage() {
         language: en ? 'en' : 'zh',
       });
       setCdaReport(report);
+      feedback.notifySuccess('cdaGenerated');
     } catch (e) {
-      setError(e instanceof Error ? e.message : en ? 'CDA analysis failed' : '议事助手分析失败');
+      const msg = e instanceof Error ? e.message : en ? 'CDA analysis failed' : '议事助手分析失败';
+      setError(msg);
+      feedback.notifyError(msg);
     } finally {
       setCdaGenerating(false);
     }
   }
 
   async function handleCreateResolution() {
-    if (!matter || !propertyId.trim()) return;
+    if (!matter || !propertyId.trim() || resolutionSubmitting) return;
     setResolutionSubmitting(true);
     setError(null);
     try {
@@ -253,9 +279,12 @@ export function GovernanceMatterDetailPage() {
         cdaReportId: cdaReport?.id ?? null,
       });
       setLinkedResolution(row);
+      feedback.notifySuccess('resolutionCreated');
       navigate(communityResolutionDetailUrl(row.id, propertyId.trim()));
     } catch (e) {
-      setError(e instanceof Error ? e.message : en ? 'Failed to create resolution' : '创建决议失败');
+      const msg = e instanceof Error ? e.message : en ? 'Failed to create resolution' : '创建决议失败';
+      setError(msg);
+      feedback.notifyError(msg);
     } finally {
       setResolutionSubmitting(false);
     }
@@ -290,7 +319,7 @@ export function GovernanceMatterDetailPage() {
         />
         <Link
           to={governanceMattersListUrl(propertyId)}
-          className="mt-4 inline-block text-sm font-semibold text-clearstrata-brand-900"
+          className={`mt-4 inline-block text-sm font-semibold text-clearstrata-brand-900 ${INTERACTION_LINK}`}
         >
           {en ? 'Back to Governance Hub' : '返回治理中心'}
         </Link>
@@ -300,9 +329,10 @@ export function GovernanceMatterDetailPage() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-6 sm:py-8">
+      <GovernanceFeedbackHost langEn={en} items={feedback.items} onDismiss={feedback.dismiss} />
       <Link
         to={governanceMattersListUrl(propertyId)}
-        className="text-sm font-semibold text-clearstrata-brand-900 hover:underline"
+        className={`text-sm font-semibold text-clearstrata-brand-900 ${INTERACTION_LINK}`}
       >
         ← {en ? 'Governance Hub' : '治理中心'}
       </Link>
@@ -350,7 +380,8 @@ export function GovernanceMatterDetailPage() {
         commentBody={commentBody}
         onCommentBodyChange={setCommentBody}
         onPostComment={() => void handlePostComment()}
-        submitting={submitting}
+        commentSubmitting={commentSubmitting}
+        revisionSubmitting={revisionSubmitting}
         editTitle={editTitle}
         editDescription={editDescription}
         editStatus={editStatus}
@@ -372,6 +403,8 @@ export function GovernanceMatterCreatePage() {
   const { language } = useLanguage();
   const en = language === 'en';
   const { currentPropertyId, roleInProperty, ready: propertyReady } = useProperty();
+  const feedback = useGovernanceFeedback();
+  const titleRef = useRef<HTMLInputElement>(null);
 
   const propertyId = searchParams.get('propertyId')?.trim() || currentPropertyId || '';
   const canCouncil = isCouncilGovernanceRole(roleInProperty);
@@ -381,6 +414,7 @@ export function GovernanceMatterCreatePage() {
   const [category, setCategory] = useState<(typeof GOVERNANCE_MATTER_CATEGORIES)[number]>('other');
   const [status, setStatus] = useState<(typeof GOVERNANCE_MATTER_STATUSES)[number]>('discussion');
   const [error, setError] = useState<string | null>(null);
+  const [titleError, setTitleError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   if (propertyReady && !canCouncil) {
@@ -400,37 +434,67 @@ export function GovernanceMatterCreatePage() {
   }
 
   async function handleCreate() {
-    if (!propertyId.trim()) return;
+    if (!propertyId.trim() || submitting) return;
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) {
+      const msg = en ? 'Title is required.' : '请填写标题。';
+      setTitleError(msg);
+      titleRef.current?.focus();
+      return;
+    }
+    setTitleError(null);
     setSubmitting(true);
     setError(null);
     try {
       const row = await createGovernanceMatter({
         propertyId: propertyId.trim(),
-        title,
+        title: trimmedTitle,
         description,
         category,
         status,
       });
-      navigate(governanceMatterDetailUrl(row.id, propertyId.trim()));
+      const feedbackKey: GovernanceFeedbackKey =
+        status === 'public_consultation' ? 'matterPublished' : 'matterCreated';
+      navigate(governanceMatterDetailUrl(row.id, propertyId.trim()), {
+        state: { governanceFeedbackKey: feedbackKey },
+      });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to create matter');
+      const msg = e instanceof Error ? e.message : 'Failed to create matter';
+      setError(msg);
+      feedback.notifyError(msg);
       setSubmitting(false);
     }
   }
 
   return (
     <div className="mx-auto max-w-xl px-4 py-8">
+      <GovernanceFeedbackHost langEn={en} items={feedback.items} onDismiss={feedback.dismiss} />
       <h1 className="text-xl font-bold text-gray-900">{en ? 'New governance matter' : '新建治理事项'}</h1>
       <p className="mt-1 text-sm text-gray-600">
         {en ? 'Community Deliberation — every discussion belongs to one matter.' : '社区议事厅 — 每项讨论必须属于一个治理事项。'}
       </p>
       <div className="mt-6 space-y-3">
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder={en ? 'Title' : '标题'}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-        />
+        <div>
+          <input
+            ref={titleRef}
+            value={title}
+            onChange={(e) => {
+              setTitle(e.target.value);
+              if (titleError && e.target.value.trim()) setTitleError(null);
+            }}
+            placeholder={en ? 'Title' : '标题'}
+            aria-invalid={titleError ? true : undefined}
+            aria-describedby={titleError ? 'matter-title-error' : undefined}
+            className={`w-full rounded-lg border px-3 py-2 text-sm ${
+              titleError ? 'border-red-400 focus-visible:ring-red-300' : 'border-gray-300'
+            } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-clearstrata-ui-primary/40`}
+          />
+          {titleError ? (
+            <p id="matter-title-error" className="mt-1 text-sm text-red-700" role="alert">
+              {titleError}
+            </p>
+          ) : null}
+        </div>
         <textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
@@ -460,15 +524,17 @@ export function GovernanceMatterCreatePage() {
             </option>
           ))}
         </select>
-        {error ? <p className="text-sm text-red-700">{error}</p> : null}
-        <button
+        {error ? <p className="text-sm text-red-700" role="alert">{error}</p> : null}
+        <Button
           type="button"
-          disabled={submitting || !title.trim()}
+          variant="primary"
+          size="md"
+          loading={submitting}
+          disabled={!title.trim()}
           onClick={() => void handleCreate()}
-          className="rounded-lg bg-clearstrata-ui-primary px-4 py-2 text-sm font-semibold text-white hover:bg-clearstrata-ui-primaryHover disabled:opacity-60"
         >
           {en ? 'Create matter' : '创建事项'}
-        </button>
+        </Button>
       </div>
     </div>
   );

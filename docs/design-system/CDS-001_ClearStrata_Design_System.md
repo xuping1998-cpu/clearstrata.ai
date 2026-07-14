@@ -17,7 +17,7 @@
 | **Owner** | ClearStrata Platform |
 | **Supersedes** | None |
 | **Superseded By** | None |
-| **Related Documents** | FD-001, GP-005, GP-006, GPA-001, GPA-002, GDS-001, GRFC-001, RM-008, RC-001, RC-002, RC-003, RC-004, RC-005, UIP-001 … UIP-013, BF-001, BF-002 |
+| **Related Documents** | FD-001, GP-005, GP-006, GPA-001, GPA-002, GDS-001, GRFC-001, RM-008, RC-001, RC-002, RC-003, RC-004, RC-005, RC-006, UIP-001 … UIP-013, BF-001, BF-002 |
 | **Repository Location** | `docs/design-system/CDS-001_ClearStrata_Design_System.md` |
 
 ---
@@ -336,9 +336,21 @@ Each must define: purpose · visible roles · authoritative source · primary ac
 
 ## 15. Interaction Standards
 
-States: Default · Hover · Focus · Pressed · Selected · Disabled · Loading · Success · Warning · Error
+States: Default · Hover · Focus · Pressed · Selected · Disabled · Loading · Success · Warning · Error · Recovered
 
 **Rules:** Visible keyboard focus; links ≠ buttons; no critical actions hover-only; prevent duplicate submission; preserve form content on recoverable errors; success confirms what changed; legal/financial actions show consequences.
+
+**Project One adoption ([RC-006](../projects/RC-006_Interaction_Audit.md)):**
+
+| Concern | Implementation |
+|---------|----------------|
+| Feedback | `GovernanceFeedbackHost` + `governanceFeedbackMessages.ts` |
+| Loading actions | RC-002 `Button` `loading` + `aria-busy` |
+| Hover/focus timing | `interactionClasses.ts` (150ms; reduced motion) |
+| Destructive confirm | Archive only — `confirmDestructiveAction` |
+| Duplicate submit | Per-action flags + cockpit `busyQueueKey` |
+
+**Interaction checklist:** See RC-006 § Interaction checklist.
 
 ---
 
@@ -550,7 +562,7 @@ No large visual rewrite solely for CDS compliance.
 | **INC-003** | Lifecycle semantic colors incomplete in Tailwind | **ADDRESSED** | [RC-003](../projects/RC-003_Lifecycle_Design_Tokens.md) |
 | **INC-004** | Loading uses spinners more than skeletons | **ADDRESSED** | [RC-004](../projects/RC-004_Shared_State_System.md), [RC-005](../projects/RC-005_Skeleton_Empty_State_System.md) |
 | **INC-005** | Mixed `rounded-lg` / `rounded-xl` / `rounded-2xl` | OPEN | Map to radius tokens in CDS-002 |
-| **INC-006** | Some generic action labels remain | **PARTIAL** | RC-002 cockpit/hub CTAs; RC-005 tab/dashboard empty copy |
+| **INC-006** | Some generic action labels remain | **PARTIAL** | RC-002 cockpit/hub CTAs; RC-005 empty copy; RC-006 governance toasts |
 
 ---
 

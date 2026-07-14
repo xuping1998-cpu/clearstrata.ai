@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Sparkles } from 'lucide-react';
+import { Button, lifecycleOutlineButtonClass } from '@/components/ui/Button';
 import { SkeletonLine } from '@/components/ui/state/SkeletonBlocks';
 import { ContextualEmptyState } from '@/components/ui/state';
 import type { GovernanceMatterCategory } from '@/lib/community/governanceMatterModel';
@@ -134,20 +135,26 @@ export function ConstitutionalDeliberationAssistantPanel({
           </div>
         </div>
         {canRequestAnalysis ? (
-          <button
+          <Button
             type="button"
-            disabled={generating}
+            variant="outline"
+            size="sm"
+            className={lifecycleOutlineButtonClass('cda')}
+            loading={generating}
             onClick={onRequestAnalysis}
-            className="shrink-0 rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-900 hover:bg-indigo-50 disabled:opacity-60"
           >
             {generating
               ? en
                 ? 'Analyzing…'
                 : '分析中…'
-              : en
-                ? 'Refresh analysis'
-                : '刷新分析'}
-          </button>
+              : report
+                ? en
+                  ? 'Refresh analysis'
+                  : '刷新分析'
+                : en
+                  ? 'Generate CDA Report'
+                  : '生成 CDA 报告'}
+          </Button>
         ) : null}
       </div>
 

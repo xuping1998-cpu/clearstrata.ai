@@ -11,7 +11,7 @@ globs:
 
 # Project One RC — Design Freeze
 
-Authority: RC-001, RC-002, RC-003, CDS-001.
+Authority: RC-001, RC-002, RC-003, RC-004, RC-005, RC-006, CDS-001.
 
 ## Scope
 
@@ -37,6 +37,10 @@ RC work must improve **consistency and stability** without redefining approved g
 - CDA styling must remain advisory (indigo/violet, not primary green authority)
 - Page states must use `src/lib/ui/pageStateModel.ts` + `src/components/ui/state/` (RC-004)
 - Empty copy must use `src/lib/ui/emptyStateContent.ts` on pilot surfaces (RC-005)
+- Interaction feedback must use `useGovernanceFeedback` + `GovernanceFeedbackHost` on pilot surfaces (RC-006)
+- Conservative actions use per-action loading flags; no double submit
+- Archive requires `confirmDestructiveAction` + `ARCHIVE_CONFIRM`
+- Hover/focus on tabs, cards, links uses `src/lib/ui/interactionClasses.ts`
 - Loading uses layout skeletons on pilot pages; spinners only for inline actions
 
 ## Lifecycle colors
