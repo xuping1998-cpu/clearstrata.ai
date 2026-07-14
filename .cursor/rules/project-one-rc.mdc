@@ -36,7 +36,8 @@ RC work must improve **consistency and stability** without redefining approved g
 - Lifecycle stage actions use `lifecycleOutlineButtonClass` or `lifecyclePillClassName`
 - CDA styling must remain advisory (indigo/violet, not primary green authority)
 - Page states must use `src/lib/ui/pageStateModel.ts` + `src/components/ui/state/` (RC-004)
-- Loading uses skeleton for pages/feeds; spinners only for inline actions
+- Empty copy must use `src/lib/ui/emptyStateContent.ts` on pilot surfaces (RC-005)
+- Loading uses layout skeletons on pilot pages; spinners only for inline actions
 
 ## Lifecycle colors
 

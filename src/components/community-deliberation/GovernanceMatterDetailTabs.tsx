@@ -20,6 +20,7 @@ import {
   type GovernanceMatterRow,
 } from '@/lib/community/governanceMatterModel';
 import { GovernanceMatterTimelineTab } from '@/components/community-deliberation/GovernanceMatterTimelineTab';
+import { getEmptyStateContent, stateText, TabEmptyState } from '@/components/ui/state';
 import type { GovernanceMatterCdaReportRow } from '@/lib/community/cdaReportModel';
 
 export type MatterDetailTab = 'details' | 'discussion' | 'resolution' | 'cda' | 'timeline';
@@ -514,7 +515,19 @@ function DiscussionTab({
         </p>
         <ul className="mt-4 space-y-3">
           {comments.length === 0 ? (
-            <li className="text-sm text-gray-500">{en ? 'No comments yet.' : '暂无评论。'}</li>
+            <li>
+              <TabEmptyState
+                langEn={en}
+                title={stateText(getEmptyStateContent('governance.matterDiscussionEmpty').title, en)}
+                description={stateText(
+                  getEmptyStateContent('governance.matterDiscussionEmpty').description ?? {
+                    en: '',
+                    zh: '',
+                  },
+                  en,
+                )}
+              />
+            </li>
           ) : (
             comments.map((c) => (
               <li key={c.id} className="rounded-lg bg-gray-50 px-3 py-2.5">
@@ -676,7 +689,15 @@ function ResolutionTab({
             </button>
           </div>
         ) : (
-          <p className="mt-4 text-sm text-gray-500">{en ? 'No resolution prepared yet.' : '尚未准备决议。'}</p>
+          <TabEmptyState
+            langEn={en}
+            title={stateText(getEmptyStateContent('governance.noResolutionOwner').title, en)}
+            description={stateText(
+              getEmptyStateContent('governance.noResolutionOwner').description ?? { en: '', zh: '' },
+              en,
+            )}
+            className="mt-4"
+          />
         )}
       </div>
 

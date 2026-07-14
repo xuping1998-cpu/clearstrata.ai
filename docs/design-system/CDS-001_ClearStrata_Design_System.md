@@ -17,7 +17,7 @@
 | **Owner** | ClearStrata Platform |
 | **Supersedes** | None |
 | **Superseded By** | None |
-| **Related Documents** | FD-001, GP-005, GP-006, GPA-001, GPA-002, GDS-001, GRFC-001, RM-008, RC-001, RC-002, RC-003, RC-004, UIP-001 … UIP-013, BF-001, BF-002 |
+| **Related Documents** | FD-001, GP-005, GP-006, GPA-001, GPA-002, GDS-001, GRFC-001, RM-008, RC-001, RC-002, RC-003, RC-004, RC-005, UIP-001 … UIP-013, BF-001, BF-002 |
 | **Repository Location** | `docs/design-system/CDS-001_ClearStrata_Design_System.md` |
 
 ---
@@ -548,9 +548,9 @@ No large visual rewrite solely for CDS compliance.
 | **INC-001** | UI primary green vs email lake blue | OPEN | Documented as dual-brand; optional token alias `brand.email` |
 | **INC-002** | No shared `Button` component | **ADDRESSED** | [RC-002](../projects/RC-002_Shared_Button_System.md) — `src/components/ui/Button.tsx` |
 | **INC-003** | Lifecycle semantic colors incomplete in Tailwind | **ADDRESSED** | [RC-003](../projects/RC-003_Lifecycle_Design_Tokens.md) |
-| **INC-004** | Loading uses spinners more than skeletons | **PARTIAL** | [RC-004](../projects/RC-004_Shared_State_System.md) — skeleton on hub feed, matter detail, cockpit pipeline |
+| **INC-004** | Loading uses spinners more than skeletons | **ADDRESSED** | [RC-004](../projects/RC-004_Shared_State_System.md), [RC-005](../projects/RC-005_Skeleton_Empty_State_System.md) |
 | **INC-005** | Mixed `rounded-lg` / `rounded-xl` / `rounded-2xl` | OPEN | Map to radius tokens in CDS-002 |
-| **INC-006** | Some generic action labels remain | **PARTIAL** | Cockpit/hub CTAs updated in RC-002 pilot; global audit deferred |
+| **INC-006** | Some generic action labels remain | **PARTIAL** | RC-002 cockpit/hub CTAs; RC-005 tab/dashboard empty copy |
 
 ---
 

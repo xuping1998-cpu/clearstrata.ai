@@ -3,10 +3,9 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ButtonLink } from '@/components/ui/Button';
 import {
   ArchivedState,
-  EmptyState,
+  ContextualEmptyState,
   ErrorState,
   LoadingState,
-  PageStateSurface,
   PartialStateBanner,
   PermissionState,
   sanitizeUserErrorMessage,
@@ -271,18 +270,10 @@ export function GovernanceMatterDetailPage() {
     if (notFound) {
       return (
         <div className="mx-auto max-w-3xl px-4 py-8">
-          <EmptyState
+          <ContextualEmptyState
             langEn={en}
-            title={en ? 'Governance matter not found' : '未找到治理事项'}
-            description={
-              en
-                ? 'This matter may have been removed or you may not have access.'
-                : '该事项可能已被删除，或您暂无访问权限。'
-            }
-            action={{
-              label: { en: 'Back to Governance Hub', zh: '返回治理中心' },
-              to: governanceMattersListUrl(propertyId),
-            }}
+            contentKey="governance.matterNotFound"
+            propertyId={propertyId}
           />
         </div>
       );
@@ -773,6 +764,15 @@ export function GovernanceMattersHubPage() {
 
   const loading = feedLoading || mattersLoading;
 
+  const nonDraftMatters = useMemo(
+    () => allMatters.filter((m) => m.status !== 'draft'),
+    [allMatters],
+  );
+
+  const hubInitialLoading = !hubView && loading;
+  const hubFirstTimeEmpty =
+    !hubView && !hubInitialLoading && nonDraftMatters.length === 0 && notices.length === 0;
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 sm:py-8">
       <header className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-200 pb-4">
@@ -817,37 +817,46 @@ export function GovernanceMattersHubPage() {
             </div>
           ) : null}
           <div className="mt-3 rounded-xl border border-gray-100 bg-gray-50/40 p-4">
-            {hubView ? (
-              <PageStateSurface
+            {hubInitialLoading ? (
+              <LoadingState
                 langEn={en}
-                hasContent={filteredMatters.length > 0}
-                loading={filterViewLoading}
-                error={filterViewError}
-                empty={!filterViewLoading && !filterViewError && filteredMatters.length === 0}
-                loadingVariant="inline"
-                loadingLabel={en ? 'Loading your matters…' : '正在加载您的事项…'}
-                emptyTitle={
-                  hubView === 'subscribed'
-                    ? { en: 'No followed matters yet', zh: '暂无关注事项' }
-                    : { en: 'No commented matters yet', zh: '暂无评论事项' }
+                variant="hub"
+                label={en ? 'Loading governance hub…' : '正在加载治理中心…'}
+              />
+            ) : hubFirstTimeEmpty ? (
+              <ContextualEmptyState
+                langEn={en}
+                contentKey={
+                  canCouncil ? 'governance.firstTimeEmptyCouncil' : 'governance.firstTimeEmptyOwner'
                 }
-                emptyDescription={
-                  hubView === 'subscribed'
-                    ? {
-                        en: 'Open a matter and select “Follow Matter” to see it here.',
-                        zh: '打开事项并点击【关注事项】后，它将显示在这里。',
-                      }
-                    : {
-                        en: 'Participate in a governance discussion to see it here.',
-                        zh: '参与事项讨论后，它将显示在这里。',
-                      }
-                }
-                errorFallback={{
-                  en: 'We could not load your matters. Please try again.',
-                  zh: '暂时无法加载您的事项，请稍后重试。',
-                }}
-                onRetry={retryParticipationLoads}
-              >
+                canCouncil={canCouncil}
+                propertyId={propertyId}
+              />
+            ) : hubView ? (
+              filterViewLoading ? (
+                <LoadingState
+                  langEn={en}
+                  variant="filteredFeed"
+                  label={en ? 'Loading your matters…' : '正在加载您的事项…'}
+                />
+              ) : filterViewError ? (
+                <ErrorState
+                  langEn={en}
+                  title={sanitizeUserErrorMessage(filterViewError, {
+                    en: 'We could not load your matters. Please try again.',
+                    zh: '暂时无法加载您的事项，请稍后重试。',
+                  })}
+                  onRetry={retryParticipationLoads}
+                />
+              ) : filteredMatters.length === 0 ? (
+                <ContextualEmptyState
+                  langEn={en}
+                  contentKey={
+                    hubView === 'subscribed' ? 'governance.noFollowing' : 'governance.noComments'
+                  }
+                  propertyId={propertyId}
+                />
+              ) : (
                 <GovernanceLifecycleFeed
                   langEn={en}
                   loading={false}
@@ -857,11 +866,11 @@ export function GovernanceMattersHubPage() {
                   canCouncil={canCouncil}
                   personalFilterView
                 />
-              </PageStateSurface>
+              )
             ) : (
               <GovernanceLifecycleFeed
                 langEn={en}
-                loading={loading}
+                loading={false}
                 matters={filteredMatters}
                 notices={notices}
                 propertyId={propertyId}

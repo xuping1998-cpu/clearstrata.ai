@@ -17,7 +17,7 @@ import { samePropertyId } from '@/lib/propertyIdMatch';
 import { meetingsNavHref } from '@/lib/meetingPermissions';
 import { useImportantUpdatesBullets } from '@/hooks/useImportantUpdatesBullets';
 import { useGovernanceMatterDashboard } from '@/hooks/useGovernanceMatterDashboard';
-import { governanceMattersListUrl } from '@/lib/community/governanceMatterModel';
+import { governanceMattersListUrl, isCouncilGovernanceRole } from '@/lib/community/governanceMatterModel';
 
 export function Dashboard() {
   const { language } = useLanguage();
@@ -47,11 +47,14 @@ export function Dashboard() {
     meetingsHref: meetingsNavHref(roleInProperty),
   });
 
-  const { bullets: governanceMatterBullets, hasRealMatters } = useGovernanceMatterDashboard({
-    propertyId: currentPropertyId,
-    propertyReady,
-    langEn: en,
-  });
+  const { bullets: governanceMatterBullets, hasRealMatters, loading: governanceMattersLoading, error: governanceLoadError, reload: reloadGovernanceMatters } =
+    useGovernanceMatterDashboard({
+      propertyId: currentPropertyId,
+      propertyReady,
+      langEn: en,
+    });
+
+  const canCouncil = isCouncilGovernanceRole(roleInProperty);
 
   const deliberationBullets = useMemo(() => {
     const notices = importantUpdatesBullets.filter(
@@ -235,6 +238,11 @@ export function Dashboard() {
         bullets={deliberationBullets}
         hasRealGovernanceMatters={hasRealMatters}
         mattersListUrl={currentPropertyId ? governanceMattersListUrl(currentPropertyId) : undefined}
+        canCouncil={canCouncil}
+        propertyId={currentPropertyId ?? undefined}
+        mattersLoading={governanceMattersLoading}
+        governanceLoadError={governanceLoadError}
+        onRetryGovernance={() => void reloadGovernanceMatters()}
       />
       <DashboardFinancialAlertsCard />
       <QuickAccessDashboardCard langEn={en} meetingsHref={meetingsNavHref(roleInProperty)} />

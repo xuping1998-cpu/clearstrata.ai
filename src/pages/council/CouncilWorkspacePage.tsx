@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ChevronDown, Plus } from 'lucide-react';
 import { ButtonLink } from '@/components/ui/Button';
 import {
-  EmptyState,
+  ContextualEmptyState,
   ErrorState,
   LoadingState,
   PermissionState,
@@ -392,7 +392,37 @@ export function CouncilWorkspacePage() {
   if (loading && matters.length === 0) {
     return (
       <div className="mx-auto max-w-[1600px] px-3 py-4 sm:px-4">
-        <LoadingState langEn={en} variant="pipeline" label={en ? 'Loading workspace…' : '正在加载工作台…'} />
+        <LoadingState
+          langEn={en}
+          variant="cockpit"
+          label={en ? 'Loading workspace…' : '正在加载工作台…'}
+        />
+      </div>
+    );
+  }
+
+  if (!loading && matters.length === 0) {
+    return (
+      <div className="mx-auto max-w-[1600px] px-3 py-4 sm:px-4">
+        <header className="border-b border-gray-200 pb-4">
+          <Link
+            to={governanceMattersListUrl(propertyId)}
+            className="text-sm font-semibold text-clearstrata-brand-900 hover:underline"
+          >
+            ← {en ? 'Governance Hub' : '治理中心'}
+          </Link>
+          <h1 className="mt-2 text-xl font-bold text-gray-900">
+            {en ? 'Governance Cockpit' : '治理驾驶舱'}
+          </h1>
+        </header>
+        <div className="mt-6 max-w-lg">
+          <ContextualEmptyState
+            langEn={en}
+            contentKey="governance.cockpitNoMatters"
+            canCouncil
+            propertyId={propertyId}
+          />
+        </div>
       </div>
     );
   }
@@ -442,19 +472,16 @@ export function CouncilWorkspacePage() {
           <LoadingState langEn={en} variant="pipeline" />
         ) : filteredMatters.length === 0 ? (
           <div className="p-2">
-            <EmptyState
+            <ContextualEmptyState
               langEn={en}
-              title={en ? 'No matters in this stage' : '该阶段暂无事项'}
-              description={
-                en
-                  ? 'Publish a governance matter or choose another pipeline filter.'
-                  : '发布治理事项，或选择其他流程筛选。'
-              }
-              action={{
-                label: { en: 'Publish Governance Matter', zh: '发布治理事项' },
-                to: `/community-deliberation/new?${new URLSearchParams({ propertyId }).toString()}`,
-              }}
+              contentKey="governance.cockpitStageEmpty"
+              canCouncil
+              propertyId={propertyId}
               compact
+              actionOverride={{
+                label: { en: 'View all matters', zh: '查看全部事项' },
+                onClick: () => setStageFilter('all'),
+              }}
             />
           </div>
         ) : (
@@ -553,7 +580,12 @@ export function CouncilWorkspacePage() {
           </header>
         ) : (
           <main className="order-1 rounded-xl border border-gray-200 bg-white p-6 shadow-sm lg:order-2 lg:col-start-2">
-            <p className="text-sm text-gray-500">{en ? 'Select a governance matter.' : '请选择治理事项。'}</p>
+            <ContextualEmptyState
+              langEn={en}
+              contentKey="governance.cockpitSelectMatter"
+              compact
+              hideIcon
+            />
           </main>
         )}
 

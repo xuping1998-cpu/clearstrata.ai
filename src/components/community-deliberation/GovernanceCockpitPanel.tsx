@@ -6,6 +6,7 @@ import type {
   GovernanceHealth,
 } from '@/lib/community/governanceIntelligence';
 import { Button, lifecycleOutlineButtonClass, type ButtonVariant } from '@/components/ui/Button';
+import { getEmptyStateContent, stateText, TabEmptyState } from '@/components/ui/state';
 
 function cockpitActionButtonLabel(
   actionType: GovernanceCockpitActionType,
@@ -128,14 +129,18 @@ export function GovernanceCockpitPanel({
       </p>
 
       {actions.length === 0 ? (
-        <p className="mt-2 text-xs leading-relaxed text-gray-500">
-          {en ? 'No governance actions are pending today.' : '今日暂无待办治理事项。'}
-          <span className="mt-1 block">
-            {en
-              ? 'All active matters have been advanced to their appropriate current stage.'
-              : '所有进行中的事项均已推进至当前应有阶段。'}
-          </span>
-        </p>
+        <div className="mt-2">
+          {(() => {
+            const copy = getEmptyStateContent('governance.cockpitNoActions');
+            return (
+              <TabEmptyState
+                langEn={en}
+                title={stateText(copy.title, en)}
+                description={copy.description ? stateText(copy.description, en) : undefined}
+              />
+            );
+          })()}
+        </div>
       ) : (
         <ol className="mt-2 space-y-2">
           {actions.map((action, index) => (

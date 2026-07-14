@@ -14,6 +14,8 @@ export type StateFrameProps = {
   compact?: boolean;
   className?: string;
   role?: 'alert' | 'status';
+  /** Use semantic heading for empty states (default h3). */
+  titleAsHeading?: boolean;
 };
 
 const TONE_CLASS: Record<NonNullable<StateFrameProps['tone']>, string> = {
@@ -36,7 +38,11 @@ export function StateFrame({
   compact = false,
   className,
   role,
+  titleAsHeading = false,
 }: StateFrameProps) {
+  const titleText = stateText(title, langEn);
+  const TitleTag = titleAsHeading ? 'h3' : 'p';
+
   return (
     <div
       role={role}
@@ -50,9 +56,9 @@ export function StateFrame({
       <div className="flex items-start gap-3">
         {icon ? <div className="mt-0.5 shrink-0">{icon}</div> : null}
         <div className="min-w-0 flex-1">
-          <p className={cn('font-semibold', compact ? 'text-sm' : 'text-base')}>
-            {stateText(title, langEn)}
-          </p>
+          <TitleTag className={cn('font-semibold', compact ? 'text-sm' : 'text-base')}>
+            {titleText}
+          </TitleTag>
           {description ? (
             <p className={cn('mt-1 text-gray-700', compact ? 'text-xs' : 'text-sm')}>
               {stateText(description, langEn)}

@@ -2,6 +2,14 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronDown, MessagesSquare } from 'lucide-react';
 import { Button, ButtonLink } from '@/components/ui/Button';
+import {
+  ContextualEmptyState,
+  ErrorState,
+  LoadingState,
+  sanitizeUserErrorMessage,
+  stateText,
+} from '@/components/ui/state';
+import { getEmptyStateContent } from '@/lib/ui/emptyStateContent';
 
 export type ImportantUpdateKind = 'action' | 'notice';
 
@@ -30,6 +38,11 @@ export type ImportantUpdatesDashboardCardProps = {
   hasRealGovernanceMatters?: boolean;
   /** Link for "View all community matters" */
   mattersListUrl?: string;
+  canCouncil?: boolean;
+  propertyId?: string;
+  mattersLoading?: boolean;
+  governanceLoadError?: string | null;
+  onRetryGovernance?: () => void;
 };
 
 const DEFAULT_VIEW_URL = '/owner-info?tab=announcements';
@@ -232,6 +245,11 @@ export function CommunityDeliberationDashboardCard({
   bullets,
   hasRealGovernanceMatters = false,
   mattersListUrl,
+  canCouncil = false,
+  propertyId,
+  mattersLoading = false,
+  governanceLoadError = null,
+  onRetryGovernance,
 }: ImportantUpdatesDashboardCardProps) {
   const [expanded, setExpanded] = useState(false);
 
@@ -251,15 +269,18 @@ export function CommunityDeliberationDashboardCard({
   const consultationSectionTitle = langEn ? 'Public Consultation' : '公开征求意见';
   const noticeSectionTitle = langEn ? 'Official Notice' : '正式通知';
 
-  const rawList = Array.isArray(bullets) ? bullets : langEn ? FALLBACK_EN : FALLBACK_ZH;
+  const rawList = Array.isArray(bullets) ? bullets : [];
   const matterRows = rawList.filter((b) => b.id.startsWith('governance-matter-'));
   const noticeRows = rawList.filter((b) => !b.id.startsWith('governance-matter-') && inferContentType(b) === 'notice');
   const list = useMemo(
-    () => mergeDeliberationBullets(matterRows, noticeRows, langEn, hasRealGovernanceMatters),
-    [matterRows, noticeRows, langEn, hasRealGovernanceMatters],
+    () => mergeDeliberationBullets(matterRows, noticeRows, langEn, true),
+    [matterRows, noticeRows, langEn],
   );
   const viewAllUrl = mattersListUrl ?? DEFAULT_VIEW_URL;
   const { discussions, consultations, notices } = useMemo(() => partitionBullets(list), [list]);
+
+  const hasGovernanceMatters = hasRealGovernanceMatters || matterRows.length > 0;
+  const mattersNoUpdateCopy = getEmptyStateContent('governance.hubMattersNoUpdate');
 
   const previewRows = useMemo(() => {
     const rows: ImportantUpdatesBullet[] = [];
@@ -270,6 +291,10 @@ export function CommunityDeliberationDashboardCard({
   }, [discussions, consultations, notices]);
 
   const hasContent = list.length > 0;
+  const showGovernanceEmpty =
+    !mattersLoading && !governanceLoadError && !hasGovernanceMatters && noticeRows.length === 0;
+  const showNoticesOnly =
+    !mattersLoading && !governanceLoadError && !hasGovernanceMatters && noticeRows.length > 0;
 
   return (
     <section
@@ -320,18 +345,51 @@ export function CommunityDeliberationDashboardCard({
           </div>
 
           <div className="mt-3 space-y-2 border-t border-gray-100 pt-3">
-            {!hasContent ? (
+            {mattersLoading ? (
+              <LoadingState langEn={langEn} variant="dashboardCard" />
+            ) : governanceLoadError ? (
+              <ErrorState
+                langEn={langEn}
+                title={sanitizeUserErrorMessage(governanceLoadError, {
+                  en: 'Unable to load governance updates.',
+                  zh: '无法加载治理动态。',
+                })}
+                onRetry={onRetryGovernance}
+                compact
+              />
+            ) : showGovernanceEmpty ? (
+              <ContextualEmptyState
+                langEn={langEn}
+                contentKey={
+                  canCouncil ? 'governance.dashboardNoMattersCouncil' : 'governance.dashboardNoMattersOwner'
+                }
+                canCouncil={canCouncil}
+                propertyId={propertyId}
+                compact
+                hideIcon
+              />
+            ) : showNoticesOnly ? (
+              <div className="space-y-3">
+                <p className="text-[13px] leading-snug text-gray-600 sm:text-sm">
+                  {stateText(mattersNoUpdateCopy.title, langEn)}
+                </p>
+                {notices[0] ? <DeliberationRow key={notices[0].id} item={notices[0]} langEn={langEn} /> : null}
+              </div>
+            ) : !hasContent ? (
               <p className="text-[13px] leading-snug text-gray-500 sm:text-sm">{emptyText}</p>
             ) : expanded ? null : (
               previewRows.map((row) => <DeliberationRow key={row.id} item={row} langEn={langEn} />)
             )}
           </div>
 
-          {expanded && hasContent ? (
+          {expanded && (hasContent || showNoticesOnly) && !mattersLoading && !governanceLoadError ? (
             <div
               id="home-community-deliberation-panel"
               className="mt-3 space-y-4 border-t border-gray-100 pt-3"
             >
+              {showNoticesOnly ? (
+                <p className="text-sm text-gray-600">{stateText(mattersNoUpdateCopy.description ?? mattersNoUpdateCopy.title, langEn)}</p>
+              ) : null}
               <SectionBlock title={discussionSectionTitle} items={discussions} langEn={langEn} />
               <SectionBlock title={consultationSectionTitle} items={consultations} langEn={langEn} />
               <SectionBlock title={noticeSectionTitle} items={notices} langEn={langEn} />

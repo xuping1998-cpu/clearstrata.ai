@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
 import { Sparkles } from 'lucide-react';
+import { SkeletonLine } from '@/components/ui/state/SkeletonBlocks';
+import { ContextualEmptyState } from '@/components/ui/state';
 import type { GovernanceMatterCategory } from '@/lib/community/governanceMatterModel';
 import {
   constitutionalBasisForCategory,
@@ -155,7 +157,11 @@ export function ConstitutionalDeliberationAssistantPanel({
         </Section>
 
         {loading ? (
-          <p className="text-sm text-gray-500">{en ? 'Loading analysis…' : '加载分析中…'}</p>
+          <div className="space-y-2" aria-hidden>
+            <SkeletonLine className="h-4 w-3/4" />
+            <SkeletonLine className="h-4 w-1/2" />
+            <SkeletonLine className="h-20 w-full" />
+          </div>
         ) : content ? (
           <>
             {content.consensus_percent != null ? (
@@ -233,11 +239,21 @@ export function ConstitutionalDeliberationAssistantPanel({
             ) : null}
           </>
         ) : (
-          <p className="text-sm text-gray-600">
-            {en
-              ? 'No AI analysis yet. Council may request a deliberation summary when discussion begins.'
-              : '尚无 AI 分析。讨论开始后，业委会可请求议事摘要。'}
-          </p>
+          <ContextualEmptyState
+            langEn={en}
+            contentKey={canRequestAnalysis ? 'governance.noCda' : 'governance.noCdaOwner'}
+            canCouncil={canRequestAnalysis}
+            compact
+            hideIcon
+            actionOverride={
+              canRequestAnalysis && onRequestAnalysis
+                ? {
+                    label: { en: 'Generate CDA Report', zh: '生成 CDA 报告' },
+                    onClick: onRequestAnalysis,
+                  }
+                : undefined
+            }
+          />
         )}
       </div>
 

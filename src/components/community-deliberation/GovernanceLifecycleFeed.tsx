@@ -1,9 +1,9 @@
 import { Link } from 'react-router-dom';
 import { GovernanceMatterCard } from '@/components/community-deliberation/GovernanceMatterCard';
-import { LoadingState } from '@/components/ui/state';
+import { LoadingState, stateText } from '@/components/ui/state';
+import { getEmptyStateContent, hubLifecycleStageEmptyLine } from '@/lib/ui/emptyStateContent';
 import {
   HUB_LIFECYCLE_STAGES,
-  hubLifecycleEmptyLabel,
   hubLifecycleStageLabel,
   partitionMattersByHubStage,
   type HubLifecycleStage,
@@ -59,7 +59,7 @@ function LifecycleSection({
         {title} ({count})
       </h3>
       {count === 0 ? (
-        <p className="mt-2 text-sm text-gray-500">{hubLifecycleEmptyLabel(stage, en)}</p>
+        <p className="mt-2 text-sm text-gray-500">{hubLifecycleStageEmptyLine(title, en)}</p>
       ) : (
         <ul className="mt-2 space-y-2">
           {matters.map((matter) => (
@@ -93,14 +93,42 @@ export function GovernanceLifecycleFeed({
     return (
       <LoadingState
         langEn={en}
-        variant="feed"
+        variant={personalFilterView ? 'filteredFeed' : 'feed'}
         label={en ? 'Loading governance feed…' : '加载治理动态…'}
       />
     );
   }
 
   const draftMatters = personalFilterView ? matters.filter((m) => m.status === 'draft') : [];
+  const activeMatters = matters.filter((m) => m.status !== 'draft');
   const buckets = partitionMattersByHubStage(matters);
+
+  if (!personalFilterView && activeMatters.length === 0) {
+    const noticesOnly = getEmptyStateContent('governance.hubMattersNoUpdate');
+    if (notices.length > 0) {
+      return (
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">{stateText(noticesOnly.title, en)}</p>
+          {noticesOnly.description ? (
+            <p className="text-sm text-gray-500">{stateText(noticesOnly.description, en)}</p>
+          ) : null}
+          <section>
+            <h3 className="text-sm font-bold text-gray-900">
+              {en ? 'Official Notice' : '正式通知'} ({notices.length})
+            </h3>
+            <ul className="mt-2 space-y-2">
+              {notices.map((item) => (
+                <li key={item.id}>
+                  <NoticeRow item={item} langEn={en} />
+                </li>
+              ))}
+            </ul>
+          </section>
+        </div>
+      );
+    }
+    return null;
+  }
 
   return (
     <div className="space-y-6">
@@ -136,24 +164,24 @@ export function GovernanceLifecycleFeed({
       ))}
 
       {!personalFilterView ? (
-      <section>
-        <h3 className="text-sm font-bold text-gray-900">
-          {en ? 'Official Notice' : '正式通知'} ({notices.length})
-        </h3>
-        {notices.length === 0 ? (
-          <p className="mt-2 text-sm text-gray-500">
-            {en ? 'No official notices at this time.' : '暂无正式通知。'}
-          </p>
-        ) : (
-          <ul className="mt-2 space-y-2">
-            {notices.map((item) => (
-              <li key={item.id}>
-                <NoticeRow item={item} langEn={en} />
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+        <section>
+          <h3 className="text-sm font-bold text-gray-900">
+            {en ? 'Official Notice' : '正式通知'} ({notices.length})
+          </h3>
+          {notices.length === 0 ? (
+            <p className="mt-2 text-sm text-gray-500">
+              {en ? 'No official notices at this time.' : '暂无正式通知。'}
+            </p>
+          ) : (
+            <ul className="mt-2 space-y-2">
+              {notices.map((item) => (
+                <li key={item.id}>
+                  <NoticeRow item={item} langEn={en} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       ) : null}
     </div>
   );

@@ -42,16 +42,19 @@ export function useGovernanceMatterDashboard({
   const [bullets, setBullets] = useState<ImportantUpdatesBullet[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasRealMatters, setHasRealMatters] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!propertyReady || !propertyId?.trim()) {
       setBullets([]);
       setHasRealMatters(false);
+      setError(null);
       setLoading(false);
       return;
     }
 
     setLoading(true);
+    setError(null);
     try {
       const rows = await fetchGovernanceMattersForDashboard(propertyId.trim());
       setHasRealMatters(rows.length > 0);
@@ -60,6 +63,7 @@ export function useGovernanceMatterDashboard({
       console.error('[useGovernanceMatterDashboard]', e);
       setBullets([]);
       setHasRealMatters(false);
+      setError(e instanceof Error ? e.message : 'Failed to load governance matters');
     } finally {
       setLoading(false);
     }
@@ -69,5 +73,5 @@ export function useGovernanceMatterDashboard({
     void load();
   }, [load]);
 
-  return { bullets, loading, hasRealMatters, reload: load };
+  return { bullets, loading, hasRealMatters, error, reload: load };
 }

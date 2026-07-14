@@ -1,13 +1,27 @@
+import type { ReactNode } from 'react';
 import { Loader2 } from 'lucide-react';
-import { cn } from '@/lib/cn';
 import {
+  DashboardGovernanceHubCardSkeleton,
   FeedListSkeleton,
+  FilteredFeedSkeleton,
+  GovernanceCockpitPageSkeleton,
+  GovernanceHubPageSkeleton,
   MatterDetailPageSkeleton,
   PipelineListSkeleton,
+  SidePanelSkeleton,
   SkeletonLine,
 } from '@/components/ui/state/SkeletonBlocks';
 
-export type LoadingVariant = 'page' | 'feed' | 'pipeline' | 'inline' | 'panel';
+export type LoadingVariant =
+  | 'page'
+  | 'feed'
+  | 'pipeline'
+  | 'inline'
+  | 'panel'
+  | 'hub'
+  | 'cockpit'
+  | 'dashboardCard'
+  | 'filteredFeed';
 
 export type LoadingStateProps = {
   langEn: boolean;
@@ -21,6 +35,23 @@ const DEFAULT_LABEL = {
   zh: '加载中…',
 };
 
+function LoadingShell({
+  text,
+  className,
+  children,
+}: {
+  text: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className={className} role="status" aria-live="polite" aria-busy="true">
+      <span className="sr-only">{text}</span>
+      {children}
+    </div>
+  );
+}
+
 export function LoadingState({
   langEn,
   variant = 'inline',
@@ -31,48 +62,68 @@ export function LoadingState({
 
   if (variant === 'page') {
     return (
-      <div
+      <LoadingShell
+        text={text}
         className={cn('mx-auto max-w-3xl px-4 py-6 sm:py-8', className)}
-        role="status"
-        aria-live="polite"
-        aria-busy="true"
       >
-        <span className="sr-only">{text}</span>
         <MatterDetailPageSkeleton />
-      </div>
+      </LoadingShell>
+    );
+  }
+
+  if (variant === 'hub') {
+    return (
+      <LoadingShell text={text} className={cn(className)}>
+        <GovernanceHubPageSkeleton />
+      </LoadingShell>
+    );
+  }
+
+  if (variant === 'cockpit') {
+    return (
+      <LoadingShell text={text} className={cn('mx-auto max-w-[1600px]', className)}>
+        <GovernanceCockpitPageSkeleton />
+      </LoadingShell>
+    );
+  }
+
+  if (variant === 'dashboardCard') {
+    return (
+      <LoadingShell text={text} className={cn(className)}>
+        <DashboardGovernanceHubCardSkeleton />
+      </LoadingShell>
+    );
+  }
+
+  if (variant === 'filteredFeed') {
+    return (
+      <LoadingShell text={text} className={cn('space-y-2', className)}>
+        <FilteredFeedSkeleton />
+      </LoadingShell>
     );
   }
 
   if (variant === 'feed') {
     return (
-      <div className={cn('space-y-2', className)} role="status" aria-live="polite" aria-busy="true">
-        <p className="text-sm text-gray-500">{text}</p>
+      <LoadingShell text={text} className={cn('space-y-2', className)}>
         <FeedListSkeleton />
-      </div>
+      </LoadingShell>
     );
   }
 
   if (variant === 'pipeline') {
     return (
-      <div className={cn(className)} role="status" aria-live="polite" aria-busy="true">
-        <p className="px-3 pb-2 text-sm text-gray-500">{text}</p>
+      <LoadingShell text={text} className={cn(className)}>
         <PipelineListSkeleton />
-      </div>
+      </LoadingShell>
     );
   }
 
   if (variant === 'panel') {
     return (
-      <div
-        className={cn('space-y-2 rounded-xl border border-gray-100 bg-white p-4', className)}
-        role="status"
-        aria-live="polite"
-        aria-busy="true"
-      >
-        <SkeletonLine className="h-3 w-24" />
-        <SkeletonLine className="h-4 w-40" />
-        <SkeletonLine className="h-4 w-32" />
-      </div>
+      <LoadingShell text={text} className={cn(className)}>
+        <SidePanelSkeleton />
+      </LoadingShell>
     );
   }
 
@@ -83,7 +134,7 @@ export function LoadingState({
       aria-live="polite"
       aria-busy="true"
     >
-      <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+      <Loader2 className="h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden />
       <span>{text}</span>
     </div>
   );
