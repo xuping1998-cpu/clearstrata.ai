@@ -504,7 +504,7 @@ export function CouncilWorkspacePage() {
 
   const pipelineSection = (
     <aside
-      className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm lg:order-1"
+      className="flex max-h-[calc(100vh-4rem)] min-h-0 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm lg:sticky lg:top-16"
       aria-labelledby={pipelineHeadingId}
     >
       <div className="border-b border-gray-100 px-3 py-2">
@@ -616,16 +616,16 @@ export function CouncilWorkspacePage() {
         />
       ) : null}
 
-      <main className="relative mt-3 flex min-h-0 flex-1 flex-col gap-3 lg:grid lg:min-h-[calc(100vh-12rem)] lg:grid-cols-[280px_minmax(0,1fr)_300px]">
+      <main className="relative mt-3 flex flex-col gap-3 lg:grid lg:grid-cols-[280px_minmax(0,1fr)_300px] lg:items-start">
         {detailRefreshing ? <RefreshingOverlay langEn={en} className="z-20" /> : null}
-        <div className="hidden min-h-0 lg:block lg:row-span-2">{pipelineSection}</div>
+        <div className="hidden lg:col-start-1 lg:row-start-1 lg:block">{pipelineSection}</div>
 
         {matter ? (
-          <header
-            className="order-1 flex flex-col rounded-xl border border-gray-200 bg-white shadow-sm lg:order-2 lg:col-start-2 lg:rounded-b-none lg:border-b-0 lg:shadow-md"
+          <section
+            className="order-1 flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm lg:order-2 lg:col-start-2 lg:row-start-1"
             aria-labelledby="cockpit-current-matter-heading"
           >
-            <div className="border-b border-gray-100 px-4 py-3 lg:border-b-0">
+            <div className="border-b border-gray-100 px-4 py-3">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
                 {en ? 'Current Matter' : '当前事项'}
               </p>
@@ -652,34 +652,7 @@ export function CouncilWorkspacePage() {
                 {nextStep}
               </p>
             </div>
-          </header>
-        ) : (
-          <main className="order-1 rounded-xl border border-gray-200 bg-white p-6 shadow-sm lg:order-2 lg:col-start-2">
-            <ContextualEmptyState
-              langEn={en}
-              contentKey="governance.cockpitSelectMatter"
-              compact
-              hideIcon
-            />
-          </main>
-        )}
-
-        <div className="order-2 min-h-0 lg:order-3 lg:col-start-3 lg:row-start-1">
-          <GovernanceCockpitPanel
-            langEn={en}
-            metrics={cockpitMetrics}
-            actions={cockpitActions}
-            health={cockpitHealth}
-            brief={cockpitBrief}
-            onQueueAction={handleQueueAction}
-            busyQueueKey={queueLoadingKey}
-            actionsDisabled={actionBusy}
-          />
-        </div>
-
-        {matter ? (
-          <div className="order-3 flex min-h-0 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm lg:order-2 lg:col-start-2 lg:-mt-px lg:rounded-t-none lg:border-t-0 lg:pt-0">
-            <div className="flex-1 overflow-y-auto px-4 pb-4">
+            <div className="px-4 pb-4">
               <GovernanceMatterDetailTabs
                 langEn={en}
                 matter={matter}
@@ -713,10 +686,32 @@ export function CouncilWorkspacePage() {
                 compactLayout
               />
             </div>
-          </div>
-        ) : null}
+          </section>
+        ) : (
+          <section className="order-1 rounded-xl border border-gray-200 bg-white p-6 shadow-sm lg:order-2 lg:col-start-2 lg:row-start-1">
+            <ContextualEmptyState
+              langEn={en}
+              contentKey="governance.cockpitSelectMatter"
+              compact
+              hideIcon
+            />
+          </section>
+        )}
 
-        <details className="order-4 lg:hidden" open={pipelineOpen}>
+        <div className="order-2 lg:order-3 lg:col-start-3 lg:row-start-1">
+          <GovernanceCockpitPanel
+            langEn={en}
+            metrics={cockpitMetrics}
+            actions={cockpitActions}
+            health={cockpitHealth}
+            brief={cockpitBrief}
+            onQueueAction={handleQueueAction}
+            busyQueueKey={queueLoadingKey}
+            actionsDisabled={actionBusy}
+          />
+        </div>
+
+        <details className="order-3 lg:hidden" open={pipelineOpen}>
           <summary
             className="flex cursor-pointer list-none items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold marker:content-none"
             onClick={() => setPipelineOpen((v) => !v)}

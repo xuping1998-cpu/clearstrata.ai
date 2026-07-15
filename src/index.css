@@ -11,6 +11,10 @@
     --motion-progress: 300ms;
     --motion-feedback: 360ms;
   }
+
+  html {
+    scroll-padding-top: 4rem;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
