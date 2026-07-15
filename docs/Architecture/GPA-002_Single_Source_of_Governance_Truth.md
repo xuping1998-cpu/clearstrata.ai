@@ -277,6 +277,7 @@ Architecture Constitution — cross-reference:
 | **GDS-001** | [Governance Data Standard](GDS-001_Governance_Data_Standard.md) | Canonical entities and schema |
 | **GRFC-001** | [Governance Request for Change](GRFC-001_Governance_Request_for_Change.md) | Mandatory design review before major changes |
 | **CDS-001** | [ClearStrata Design System](../design-system/CDS-001_ClearStrata_Design_System.md) | Experience and UI standards |
+| **RC-010** | [Governance UX Architecture (GUXA)](../projects/RC-010_Governance_UX_Architecture.md) | UI space projections must not become parallel truth |
 
 *Foundational Milestone:* [Repository Hall of Milestones](../History/Milestones.md#foundational-milestones) (RM-006)
 

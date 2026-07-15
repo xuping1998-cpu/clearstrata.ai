@@ -1,14 +1,10 @@
 import { Link } from 'react-router-dom';
-import { Button, ButtonLink } from '@/components/ui/Button';
+import { ButtonLink } from '@/components/ui/Button';
 import type { GovernanceMatterRow } from '@/lib/community/governanceMatterModel';
 import {
   governanceMatterDetailUrl,
   governanceMatterStatusLabel,
 } from '@/lib/community/governanceMatterModel';
-import {
-  matterStatusToWorkspaceStage,
-  workspaceStageLabel,
-} from '@/lib/community/governanceLifecycleModel';
 
 export type CouncilActionSummary = {
   todaysActions: number;
@@ -19,6 +15,7 @@ export type CouncilActionSummary = {
   votingClosing: number;
 };
 
+/** @deprecated Hub no longer displays council metrics — use Governance Cockpit intelligence. */
 export function computeCouncilActionSummary(matters: GovernanceMatterRow[]): CouncilActionSummary {
   const active = matters.filter((m) => m.status !== 'archived');
   const cdaReady = active.filter((m) => m.status === 'discussion' || m.status === 'public_consultation').length;
@@ -39,43 +36,30 @@ export function computeCouncilActionSummary(matters: GovernanceMatterRow[]): Cou
 export type GovernanceHubPanelProps = {
   langEn: boolean;
   propertyId: string;
-  matters: GovernanceMatterRow[];
-  summary: CouncilActionSummary;
+  /** Optional — preselect Current Matter when opening the Cockpit */
+  cockpitMatterId?: string | null;
 };
 
-export function GovernanceHubPanel({ langEn, propertyId, matters, summary }: GovernanceHubPanelProps) {
+/**
+ * Council handoff on Governance Hub (RC-010 GUXA).
+ * Does not surface internal metrics or action queue — those belong in Governance Cockpit.
+ */
+export function GovernanceHubPanel({ langEn, propertyId, cockpitMatterId = null }: GovernanceHubPanelProps) {
   const en = langEn;
-  const topMatter = matters.find((m) => m.status !== 'archived');
+
+  const cockpitParams = new URLSearchParams({ propertyId });
+  if (cockpitMatterId) cockpitParams.set('matterId', cockpitMatterId);
 
   return (
     <aside className="rounded-xl border border-emerald-200 bg-gradient-to-b from-emerald-50/90 to-white p-4 shadow-sm">
       <p className="text-xs font-bold uppercase tracking-wide text-emerald-900">
-        {en ? 'Governance Panel' : '治理面板'}
+        {en ? 'Council workflow' : '业委会工作'}
       </p>
       <p className="mt-0.5 text-[11px] text-emerald-800/90">
         {en
-          ? 'Council Workspace — Constitutional Governance Workflow'
-          : '业委会工作台 — 宪章治理流程'}
+          ? 'Advance matters in the Governance Cockpit — not on the public Hub feed.'
+          : '在治理驾驶舱推进事项 — 不在公共治理中心动态中操作。'}
       </p>
-
-      <div className="mt-3 space-y-2">
-        <SummaryRow label={en ? "Today's Actions" : '今日待办'} value={String(summary.todaysActions)} />
-        <SummaryRow label={en ? 'Active Matters' : '进行中事项'} value={String(summary.activeMatters)} />
-        <SummaryRow label={en ? 'CDA Ready' : '可生成助手报告'} value={String(summary.cdaReady)} />
-        <SummaryRow label={en ? 'Resolution Pending' : '决议待办'} value={String(summary.resolutionPending)} />
-        <SummaryRow label={en ? 'Meeting Scheduled' : '已排会议'} value={String(summary.meetingScheduled)} />
-        <SummaryRow label={en ? 'Voting Closing' : '投票将截止'} value={String(summary.votingClosing)} />
-      </div>
-
-      {topMatter ? (
-        <div className="mt-3 rounded-lg border border-emerald-100 bg-white/80 px-3 py-2">
-          <p className="text-[11px] font-semibold text-gray-600">{en ? 'Lifecycle progress' : '生命周期'}</p>
-          <p className="text-sm font-bold text-gray-900">
-            {workspaceStageLabel(matterStatusToWorkspaceStage(topMatter.status), en)}
-          </p>
-          <p className="mt-0.5 line-clamp-2 text-xs text-gray-700">{topMatter.title}</p>
-        </div>
-      ) : null}
 
       <div className="mt-4 flex flex-col gap-2">
         <ButtonLink
@@ -87,15 +71,12 @@ export function GovernanceHubPanel({ langEn, propertyId, matters, summary }: Gov
           {en ? '+ Publish Governance Matter' : '+ 发布治理事项'}
         </ButtonLink>
         <ButtonLink
-          to={`/council/workspace?${new URLSearchParams({
-            propertyId,
-            ...(topMatter ? { matterId: topMatter.id } : {}),
-          }).toString()}`}
+          to={`/council/workspace?${cockpitParams.toString()}`}
           variant="secondary"
           size="sm"
           className="w-full"
         >
-          {en ? 'Open Workspace' : '打开工作台'}
+          {en ? 'Open Governance Cockpit' : '打开治理驾驶舱'}
         </ButtonLink>
       </div>
 
@@ -105,15 +86,6 @@ export function GovernanceHubPanel({ langEn, propertyId, matters, summary }: Gov
           : '一个社区。一个治理空间。不同职责。'}
       </p>
     </aside>
-  );
-}
-
-function SummaryRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between rounded-md bg-white/70 px-2.5 py-1.5 text-xs">
-      <span className="font-medium text-gray-700">{label}</span>
-      <span className="font-bold text-emerald-900">{value}</span>
-    </div>
   );
 }
 

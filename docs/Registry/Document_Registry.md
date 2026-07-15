@@ -97,7 +97,7 @@ This Registry preserves:
 | **GDS** | **GDS-002** | GDS-001 registered |
 | **GRFC** | **GRFC-002** | GRFC-001 registered |
 | **CDS** | **CDS-002** | CDS-001 registered |
-| **RC** | **RC-010** | RC-001 … RC-009 registered |
+| **RC** | **RC-011** | RC-001 … RC-010 registered |
 
 ---
 
@@ -237,6 +237,7 @@ Permanent constitutional references within FD-001 — not separately numbered do
 | **RC-007** | Accessibility Audit | ACTIVE | `docs/projects/RC-007_Accessibility_Audit.md` |
 | **RC-008** | Motion System | ACTIVE | `docs/projects/RC-008_Motion_System.md` |
 | **RC-009** | Governance Journey QA | ACTIVE (GATE: FAIL) | `docs/projects/RC-009_Governance_Journey_QA.md` |
+| **RC-010** | Governance UX Architecture (GUXA) | ACTIVE | `docs/projects/RC-010_Governance_UX_Architecture.md` |
 
 *Authority:* [CDS-001](../design-system/CDS-001_ClearStrata_Design_System.md) · [RC-001](../projects/RC-001_Design_Freeze.md)
 
@@ -363,6 +364,7 @@ Before creating any permanent document, Cursor **SHALL**:
 | 2026-07-13 | **CDS-001** registered — ClearStrata Design System (FOUNDATION) | ClearStrata Platform |
 | 2026-07-13 | **RC-001 … RC-003** registered — Project One RC foundation (Design Freeze, Button, Lifecycle Tokens) | ClearStrata Project One |
 | 2026-07-13 | **RC-004** registered — Shared State System (CDS canonical page states) | ClearStrata Project One |
+| 2026-07-14 | **RC-010** registered — Governance UX Architecture (GUXA) | ClearStrata Project One |
 | 2026-07-14 | **RC-009** registered — Governance Journey QA (release gate FAIL — P1 integration gaps) | ClearStrata Project One |
 | 2026-07-14 | **RC-008** registered — Motion System (Project One pilot) | ClearStrata Project One |
 | 2026-07-14 | **RC-007** registered — Accessibility Audit (Project One pilot) | ClearStrata Project One |

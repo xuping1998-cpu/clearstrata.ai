@@ -53,7 +53,9 @@ Transform the existing governance system into a clear, intuitive, role-aware gov
 | **UIP-012** | Governance Intelligence | ACTIVE | Deterministic council assistant — brief, priority, readiness, health |
 | **UIP-013** | Governance Timeline Intelligence | ACTIVE | Matter Detail timeline tab |
 
-**RC-009 QA (2026-07-14):** Release gate **FAIL** — see [RC-009](RC-009_Governance_Journey_QA.md). UIP-006/UIP-007 integration (meeting save link-back, voting link-back) must be fixed before RC-010.
+**RC-010 GUXA (2026-07-14):** Hub/Cockpit/Execution architecture — see [RC-010](RC-010_Governance_UX_Architecture.md).
+
+**RC-009 QA (2026-07-14):** Release gate **FAIL** — see [RC-009](RC-009_Governance_Journey_QA.md). Meeting/voting link-back must be fixed before Project One v1.0.
 
 ---
 

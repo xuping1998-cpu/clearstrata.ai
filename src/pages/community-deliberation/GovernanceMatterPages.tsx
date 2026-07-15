@@ -21,7 +21,6 @@ import { GovernanceLifecycleFeed } from '@/components/community-deliberation/Gov
 import { GovernanceLifecycleTimeline } from '@/components/community-deliberation/GovernanceLifecycleTimeline';
 import {
   GovernanceHubPanel,
-  computeCouncilActionSummary,
 } from '@/components/community-deliberation/GovernanceHubPanel';
 import { OwnerParticipationPanel, type ParticipationCountState } from '@/components/community-deliberation/OwnerParticipationPanel';
 import {
@@ -847,7 +846,10 @@ export function GovernanceMattersHubPage() {
     [deliberationBullets],
   );
 
-  const councilSummary = useMemo(() => computeCouncilActionSummary(allMatters), [allMatters]);
+  const cockpitHandoffMatterId = useMemo(
+    () => allMatters.find((m) => m.status !== 'archived')?.id ?? null,
+    [allMatters],
+  );
 
   const ownerAttention = useMemo(() => {
     const active = allMatters.filter(
@@ -1019,8 +1021,7 @@ export function GovernanceMattersHubPage() {
             <GovernanceHubPanel
               langEn={en}
               propertyId={propertyId}
-              matters={allMatters}
-              summary={councilSummary}
+              cockpitMatterId={cockpitHandoffMatterId}
             />
           ) : (
             <OwnerParticipationPanel

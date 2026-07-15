@@ -17,7 +17,7 @@
 | **Owner** | ClearStrata Platform |
 | **Supersedes** | None |
 | **Superseded By** | None |
-| **Related Documents** | FD-001, GP-005, GP-006, GPA-001, GPA-002, GDS-001, GRFC-001, RM-008, RC-001, RC-002, RC-003, RC-004, RC-005, RC-006, RC-007, RC-008, RC-009, UIP-001 … UIP-013, BF-001, BF-002 |
+| **Related Documents** | FD-001, GP-005, GP-006, GPA-001, GPA-002, GDS-001, GRFC-001, RM-008, RC-001 … RC-010, UIP-001 … UIP-013, BF-001, BF-002 |
 | **Repository Location** | `docs/design-system/CDS-001_ClearStrata_Design_System.md` |
 
 ---
@@ -443,6 +443,22 @@ Require: keyboard navigation · visible focus · semantic HTML · ARIA only wher
 | TypeScript + production build | Pass |
 
 **Rule:** RC-010 (Project One v1.0 Release) may not begin with open P0 or P1 issues.
+
+---
+
+## 19.2 Governance UX Architecture (GUXA)
+
+**Authority:** [RC-010](../projects/RC-010_Governance_UX_Architecture.md) — three distinct spaces: Hub, Cockpit, Execution.
+
+| Space | Route | Tone |
+|-------|-------|------|
+| **Governance Hub** | `/community-deliberation` | Participatory, community-facing |
+| **Governance Cockpit** | `/council/workspace` | Council workflow, action-first |
+| **Governance Execution** | Operational modules | Accountability, completion-oriented |
+
+**Rules:** Hub must not host action queue or internal council metrics; Cockpit must not become a public feed; Execution must not rewrite governance authority. Shared data projects from SSGT (GPA-002).
+
+**Labels:** 治理中心 / Governance Hub · 社区议事厅 / Community Deliberation · 治理驾驶舱 / Governance Cockpit · 打开治理驾驶舱 / Open Governance Cockpit.
 
 ---
 

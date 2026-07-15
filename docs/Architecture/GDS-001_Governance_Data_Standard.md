@@ -17,7 +17,7 @@
 | **Owner** | ClearStrata Project One |
 | **Supersedes** | None |
 | **Superseded By** | None |
-| **Related Documents** | GP-005, GP-006, GPA-001, GPA-002, [GRFC-001](GRFC-001_Governance_Request_for_Change.md), [CDS-001](../design-system/CDS-001_ClearStrata_Design_System.md) |
+| **Related Documents** | GP-005, GP-006, GPA-001, GPA-002, [GRFC-001](GRFC-001_Governance_Request_for_Change.md), [CDS-001](../design-system/CDS-001_ClearStrata_Design_System.md), [RC-010](../projects/RC-010_Governance_UX_Architecture.md) |
 | **Repository Location** | `docs/Architecture/GDS-001_Governance_Data_Standard.md` |
 
 ---
@@ -347,6 +347,12 @@ Architecture Constitution — cross-reference:
 ## Closing Principle
 
 **Store facts. Compute views. One hierarchy. UUID identity. Append-only history.**
+
+---
+
+## UX projection spaces (RC-010 GUXA)
+
+Hub and Cockpit project the same canonical entities (`governance_matters`, comments, resolutions, CDA reports). Execution modules consume approved artifacts without rewriting Matter or Resolution truth. See [RC-010](../projects/RC-010_Governance_UX_Architecture.md).
 
 ---
 

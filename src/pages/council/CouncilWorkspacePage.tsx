@@ -452,7 +452,7 @@ export function CouncilWorkspacePage() {
         <LoadingState
           langEn={en}
           variant="cockpit"
-          label={en ? 'Loading workspace…' : '正在加载工作台…'}
+          label={en ? 'Loading governance cockpit…' : '正在加载治理驾驶舱…'}
         />
       </div>
     );
@@ -590,8 +590,8 @@ export function CouncilWorkspacePage() {
           </h1>
           <p className="mt-0.5 text-sm text-gray-600">
             {en
-              ? 'Council Workspace — what must be done next.'
-              : '业委会工作台 — 下一步必须完成什么。'}
+              ? 'Council decision and workflow space — what must be done next.'
+              : '业委会决策与工作流程空间 — 下一步必须完成什么。'}
           </p>
         </div>
         <ButtonLink

@@ -11,7 +11,15 @@ globs:
 
 # Project One RC — Design Freeze
 
-Authority: RC-001, RC-002, RC-003, RC-004, RC-005, RC-006, RC-007, RC-008, RC-009, CDS-001.
+Authority: RC-001 … RC-010, CDS-001, RC-010 GUXA.
+
+## GUXA space rules (RC-010)
+
+- **Governance Hub** (`/community-deliberation`): community-facing; no action queue or internal council metrics
+- **Governance Cockpit** (`/council/workspace`): Council workflow; intelligence and queue live here only
+- **Governance Execution**: operational modules; linked from approved artifacts — not implemented as new workspace in RC-010
+- Hub → Cockpit handoff: **Open Governance Cockpit** / 打开治理驾驶舱; preserve `propertyId` + optional `matterId`
+- Do not use deprecated labels: Open Workspace, 业委会工作台 on Hub surfaces
 
 ## Scope
 
@@ -48,7 +56,7 @@ RC work must improve **consistency and stability** without redefining approved g
 - Do not scatter arbitrary `duration-150` / `duration-300` on pilot surfaces — use `duration-motion-*`
 - Reduced motion: `motion-reduce:transition-none` / `motion-reduce:animate-none` on animated pilot classes
 - No route-wide transitions, animation libraries, spring/bounce, or decorative entrance on empty/error states
-- RC-009 release gate: meeting save must link `community_resolution_id` / `meeting_id` to matter; voting handoff must set `voting_id` — see RC-009 P1 issues before RC-010
+- RC-009 release gate: meeting/voting link-back P1 issues remain — see RC-009 before Project One v1.0 release
 
 ## Lifecycle colors
 

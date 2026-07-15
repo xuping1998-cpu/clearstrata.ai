@@ -17,7 +17,7 @@
 | **Owner** | ClearStrata Project One |
 | **Supersedes** | None |
 | **Superseded By** | None |
-| **Related Documents** | GP-005, GP-006, UIP-011, UIP-012, UIP-013, [GPA-002](GPA-002_Single_Source_of_Governance_Truth.md), [GDS-001](GDS-001_Governance_Data_Standard.md), [GRFC-001](GRFC-001_Governance_Request_for_Change.md), [CDS-001](../design-system/CDS-001_ClearStrata_Design_System.md) |
+| **Related Documents** | GP-005, GP-006, UIP-011, UIP-012, UIP-013, [GPA-002](GPA-002_Single_Source_of_Governance_Truth.md), [GDS-001](GDS-001_Governance_Data_Standard.md), [GRFC-001](GRFC-001_Governance_Request_for_Change.md), [CDS-001](../design-system/CDS-001_ClearStrata_Design_System.md), [RC-010](../projects/RC-010_Governance_UX_Architecture.md) |
 | **Repository Location** | `docs/Architecture/GPA-001_Governance_Pyramid_Architecture.md` |
 
 ---
@@ -259,6 +259,7 @@ Architecture Constitution — cross-reference:
 | **GDS-001** | [Governance Data Standard](GDS-001_Governance_Data_Standard.md) | Canonical entities and schema |
 | **GRFC-001** | [Governance Request for Change](GRFC-001_Governance_Request_for_Change.md) | Mandatory design review before major changes |
 | **CDS-001** | [ClearStrata Design System](../design-system/CDS-001_ClearStrata_Design_System.md) | Experience and UI standards |
+| **RC-010** | [Governance UX Architecture (GUXA)](../projects/RC-010_Governance_UX_Architecture.md) | Hub / Cockpit / Execution space boundaries |
 
 *Foundational Milestone:* [Repository Hall of Milestones](../History/Milestones.md#layer-1--foundational-milestones) (RM-006)
 

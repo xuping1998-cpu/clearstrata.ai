@@ -12,7 +12,7 @@ This index maps **current** repository paths to the **official target structure*
 |-------|------------|
 | 🏛 Foundational | [Architecture/README.md](Architecture/README.md) · [design-system/README.md](design-system/README.md) |
 | 🚀 Projects | [Releases Registry](Registry/Releases_Registry.md) · [Milestones](History/Milestones.md) |
-| 📘 Records | [Document Registry](Registry/Document_Registry.md) · [projects/](projects/) |
+| 📘 Records | [Document Registry](Registry/Document_Registry.md) · [projects/](projects/) (incl. RC-001 … RC-010 GUXA) |
 | 🛠 Engineering | [BF records](Registry/Document_Registry.md#bug-fix-records-bf) |
 | 🎨 Experience | [UIP records](Registry/Document_Registry.md#ui-polish-records-uip) |
 
