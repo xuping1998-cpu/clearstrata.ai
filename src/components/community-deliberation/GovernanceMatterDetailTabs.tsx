@@ -13,6 +13,10 @@ import {
   type CommunityResolutionRow,
 } from '@/lib/community/communityResolutionModel';
 import {
+  canShowScheduleGovernanceMeeting,
+  resolveGovernanceLinkedMeetingId,
+} from '@/lib/meetings/governanceMeetingNavigation';
+import {
   GOVERNANCE_MATTER_STATUSES,
   governanceMatterCategoryLabel,
   governanceMatterStatusLabel,
@@ -54,6 +58,7 @@ export type GovernanceMatterDetailTabsProps = {
   onRequestCdaAnalysis: () => void;
   onCreateResolution: () => void;
   resolutionSubmitting: boolean;
+  onScheduleMeeting?: () => void;
   /** Parent may request a tab switch (e.g. cockpit action queue). */
   requestedTab?: MatterDetailTab | null;
   onRequestedTabHandled?: () => void;
@@ -132,6 +137,7 @@ export function GovernanceMatterDetailTabs(props: GovernanceMatterDetailTabsProp
     onRequestCdaAnalysis,
     onCreateResolution,
     resolutionSubmitting,
+    onScheduleMeeting,
     requestedTab,
     onRequestedTabHandled,
     includeDetailsTab = false,
@@ -284,6 +290,7 @@ export function GovernanceMatterDetailTabs(props: GovernanceMatterDetailTabsProp
             constitutionalBasis={constitutionalBasis}
             onCreateResolution={onCreateResolution}
             resolutionSubmitting={resolutionSubmitting}
+            onScheduleMeeting={onScheduleMeeting}
           />
         ) : null}
 
@@ -713,6 +720,7 @@ function ResolutionTab({
   constitutionalBasis,
   onCreateResolution,
   resolutionSubmitting,
+  onScheduleMeeting,
 }: {
   en: boolean;
   matter: GovernanceMatterRow;
@@ -723,7 +731,21 @@ function ResolutionTab({
   constitutionalBasis: ReturnType<typeof constitutionalBasisForCategory>;
   onCreateResolution: () => void;
   resolutionSubmitting: boolean;
+  onScheduleMeeting?: () => void;
 }) {
+  const linkedMeetingId = linkedResolution
+    ? resolveGovernanceLinkedMeetingId({ matter, resolution: linkedResolution })
+    : null;
+  const showScheduleMeeting =
+    linkedResolution &&
+    onScheduleMeeting &&
+    canShowScheduleGovernanceMeeting({
+      canCouncil,
+      matter,
+      resolution: linkedResolution,
+      activePropertyId: propertyId,
+    });
+
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
@@ -759,13 +781,31 @@ function ResolutionTab({
             >
               {en ? 'View resolution →' : '查看决议 →'}
             </Link>
-            {linkedResolution.meeting_id ? (
+            {linkedMeetingId ? (
               <Link
-                to={`/meetings/${encodeURIComponent(linkedResolution.meeting_id)}`}
+                to={`/meetings/${encodeURIComponent(linkedMeetingId)}`}
                 className="block text-sm font-semibold text-clearstrata-brand-900 hover:underline"
               >
                 {en ? 'Linked meeting →' : '关联会议 →'}
               </Link>
+            ) : null}
+            {showScheduleMeeting ? (
+              <div className="mt-4 border-t border-emerald-200/80 pt-4">
+                <p className="text-sm text-gray-700">
+                  {en
+                    ? 'The Community Resolution is ready. Schedule a meeting to create the formal agenda.'
+                    : '社区决议已准备完成，可安排会议并生成正式议程。'}
+                </p>
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="md"
+                  className="mt-3"
+                  onClick={onScheduleMeeting}
+                >
+                  {en ? 'Schedule Meeting' : '安排会议'}
+                </Button>
+              </div>
             ) : null}
           </div>
         ) : canCouncil ? (

@@ -1,33 +1,47 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Button } from '@/components/ui/Button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useProperty } from '@/contexts/PropertyContext';
 import { CommunityResolutionContextCard } from '@/components/community-resolution/CommunityResolutionContextCard';
 import { formatConstitutionalPrinciple } from '@/lib/community/constitutionalBasis';
 import {
   communityResolutionCouncilStatusLabel,
-  communityResolutionDetailUrl,
 } from '@/lib/community/communityResolutionModel';
-import { governanceMatterDetailUrl } from '@/lib/community/governanceMatterModel';
 import {
-  fetchCommunityResolutionById,
+  governanceMatterDetailUrl,
+  isCouncilGovernanceRole,
+  type GovernanceMatterRow,
+} from '@/lib/community/governanceMatterModel';
+import {
   fetchCommunityResolutionRevisions,
+  fetchCommunityResolutionContext,
 } from '@/features/community-resolutions/communityResolutionsApi';
+import { loadCommunityResolutionGovernanceBundle } from '@/features/community-resolutions/communityResolutionGovernanceBundle';
 import type {
   CommunityResolutionRevisionRow,
   CommunityResolutionRow,
 } from '@/lib/community/communityResolutionModel';
-import { fetchCommunityResolutionContext } from '@/features/community-resolutions/communityResolutionsApi';
+import {
+  buildGovernanceMeetingEditorNavigation,
+  canShowScheduleGovernanceMeeting,
+  GOVERNANCE_MEETING_NAVIGATION_DEFAULTS,
+  resolveGovernanceLinkedMeetingId,
+} from '@/lib/meetings/governanceMeetingNavigation';
 
 export function CommunityResolutionDetailPage() {
   const { resolutionId } = useParams<{ resolutionId: string }>();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const { language } = useLanguage();
   const en = language === 'en';
-  const { currentPropertyId, ready: propertyReady } = useProperty();
+  const { currentPropertyId, roleInProperty, ready: propertyReady } = useProperty();
 
   const propertyId = searchParams.get('propertyId')?.trim() || currentPropertyId || '';
+  const canCouncil = isCouncilGovernanceRole(roleInProperty);
   const [resolution, setResolution] = useState<CommunityResolutionRow | null>(null);
+  const [matter, setMatter] = useState<GovernanceMatterRow | null>(null);
+  const [matterLoadError, setMatterLoadError] = useState<string | null>(null);
   const [revisions, setRevisions] = useState<CommunityResolutionRevisionRow[]>([]);
   const [contextBundle, setContextBundle] = useState<Awaited<
     ReturnType<typeof fetchCommunityResolutionContext>
@@ -47,16 +61,25 @@ export function CommunityResolutionDetailPage() {
     setLoading(true);
     void (async () => {
       try {
-        const [res, rev, ctx] = await Promise.all([
-          fetchCommunityResolutionById(pid, rid),
+        const [bundle, rev, ctx] = await Promise.all([
+          loadCommunityResolutionGovernanceBundle({ propertyId: pid, resolutionId: rid }),
           fetchCommunityResolutionRevisions(pid, rid),
           fetchCommunityResolutionContext(pid, rid, en),
         ]);
         if (cancelled) return;
-        setResolution(res);
+        if (!bundle) {
+          setResolution(null);
+          setMatter(null);
+          setMatterLoadError(null);
+          setError(en ? 'Resolution not found' : '未找到决议');
+          return;
+        }
+        setResolution(bundle.resolution);
+        setMatter(bundle.matter);
+        setMatterLoadError(bundle.matterLoadError);
         setRevisions(rev);
         setContextBundle(ctx);
-        if (!res) setError(en ? 'Resolution not found' : '未找到决议');
+        setError(null);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load');
       } finally {
@@ -68,6 +91,41 @@ export function CommunityResolutionDetailPage() {
       cancelled = true;
     };
   }, [resolutionId, propertyId, propertyReady, en]);
+
+  const linkedMeetingId = matter
+    ? resolveGovernanceLinkedMeetingId({ matter, resolution })
+    : resolution.meeting_id?.trim() || null;
+
+  const showScheduleMeeting =
+    resolution &&
+    matter &&
+    canShowScheduleGovernanceMeeting({
+      canCouncil,
+      matter,
+      resolution,
+      activePropertyId: propertyId.trim(),
+    });
+
+  function handleScheduleMeeting() {
+    if (!resolution || !matter || !propertyId.trim()) return;
+    if (
+      !canShowScheduleGovernanceMeeting({
+        canCouncil,
+        matter,
+        resolution,
+        activePropertyId: propertyId.trim(),
+      })
+    ) {
+      return;
+    }
+    const navigation = buildGovernanceMeetingEditorNavigation({
+      matter,
+      resolution,
+      meetingType: GOVERNANCE_MEETING_NAVIGATION_DEFAULTS.meetingType,
+      initiationType: GOVERNANCE_MEETING_NAVIGATION_DEFAULTS.initiationType,
+    });
+    navigate(navigation.pathname, { state: navigation.state });
+  }
 
   if (loading) {
     return (
@@ -129,15 +187,42 @@ export function CommunityResolutionDetailPage() {
         </p>
       ) : null}
 
-      {resolution.meeting_id ? (
+      {matterLoadError ? (
+        <p className="mt-3 text-sm text-amber-800">
+          {en
+            ? 'The source Governance Matter could not be loaded, so the meeting cannot be scheduled yet.'
+            : '无法载入来源治理事项，因此暂时无法安排会议。'}
+        </p>
+      ) : null}
+
+      {linkedMeetingId ? (
         <p className="mt-2 text-sm">
           <Link
-            to={`/meetings/${encodeURIComponent(resolution.meeting_id)}`}
+            to={`/meetings/${encodeURIComponent(linkedMeetingId)}`}
             className="font-semibold text-clearstrata-brand-900 hover:underline"
           >
             {en ? 'Linked meeting →' : '关联会议 →'}
           </Link>
         </p>
+      ) : null}
+
+      {showScheduleMeeting ? (
+        <section className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50/40 p-5 shadow-sm">
+          <p className="text-sm text-gray-700">
+            {en
+              ? 'The Community Resolution is ready. Schedule a meeting to create the formal agenda.'
+              : '社区决议已准备完成，可安排会议并生成正式议程。'}
+          </p>
+          <Button
+            type="button"
+            variant="primary"
+            size="md"
+            className="mt-3"
+            onClick={handleScheduleMeeting}
+          >
+            {en ? 'Schedule Meeting' : '安排会议'}
+          </Button>
+        </section>
       ) : null}
 
       <section className="mt-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">

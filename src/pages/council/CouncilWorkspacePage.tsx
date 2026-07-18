@@ -62,7 +62,11 @@ import {
   createCommunityResolutionFromMatter,
   fetchCommunityResolutionByMatterId,
 } from '@/features/community-resolutions/communityResolutionsApi';
-import type { MeetingEditorDraftPrefill } from '@/lib/meetings/meetingEditorPrefill';
+import {
+  buildGovernanceMeetingEditorNavigation,
+  canShowScheduleGovernanceMeeting,
+  GOVERNANCE_MEETING_NAVIGATION_DEFAULTS,
+} from '@/lib/meetings/governanceMeetingNavigation';
 import type { WorkspaceLifecycleStage } from '@/lib/community/governanceLifecycleModel';
 import { matterStatusToWorkspaceStage } from '@/lib/community/governanceLifecycleModel';
 
@@ -332,6 +336,7 @@ export function CouncilWorkspacePage() {
       });
       setLinkedResolution(row);
       await loadMatters();
+      await loadMatterDetail();
       feedback.notifySuccess('resolutionCreated');
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Resolution failed';
@@ -344,29 +349,24 @@ export function CouncilWorkspacePage() {
   }
 
   function handleScheduleMeeting() {
-    if (!matter || !linkedResolution) return;
-    const prefill: MeetingEditorDraftPrefill = {
-      source: 'governance_resolution',
-      meeting_type: 'sgm',
-      initiation_type: 'council',
-      title_en: linkedResolution.title,
-      title_zh: linkedResolution.title,
-      description_en: linkedResolution.executive_summary ?? matter.description ?? '',
-      description_zh: linkedResolution.executive_summary ?? matter.description ?? '',
-      governance_matter_id: matter.id,
-      community_resolution_id: linkedResolution.id,
-      agenda_items: [
-        {
-          title_en: linkedResolution.title,
-          title_zh: linkedResolution.title,
-          kind: 'resolution',
-          vote_rule: 'simple_majority',
-          description_en: linkedResolution.executive_summary ?? '',
-          description_zh: linkedResolution.executive_summary ?? '',
-        },
-      ],
-    };
-    navigate('/meetings/new', { state: { meetingDraftPrefill: prefill } });
+    if (!matter || !linkedResolution || !propertyId.trim()) return;
+    if (
+      !canShowScheduleGovernanceMeeting({
+        canCouncil: true,
+        matter,
+        resolution: linkedResolution,
+        activePropertyId: propertyId.trim(),
+      })
+    ) {
+      return;
+    }
+    const navigation = buildGovernanceMeetingEditorNavigation({
+      matter,
+      resolution: linkedResolution,
+      meetingType: GOVERNANCE_MEETING_NAVIGATION_DEFAULTS.meetingType,
+      initiationType: GOVERNANCE_MEETING_NAVIGATION_DEFAULTS.initiationType,
+    });
+    navigate(navigation.pathname, { state: navigation.state });
   }
 
   function handleViewVoting() {
@@ -679,6 +679,7 @@ export function CouncilWorkspacePage() {
                 onRequestCdaAnalysis={() => void handleCdaRefresh()}
                 onCreateResolution={() => void handleCreateResolution()}
                 resolutionSubmitting={resolutionSubmitting}
+                onScheduleMeeting={handleScheduleMeeting}
                 includeDetailsTab
                 defaultTab="details"
                 requestedTab={requestedTab}

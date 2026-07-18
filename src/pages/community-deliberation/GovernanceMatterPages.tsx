@@ -66,8 +66,13 @@ import {
   createCommunityResolutionFromMatter,
   fetchCommunityResolutionByMatterId,
 } from '@/features/community-resolutions/communityResolutionsApi';
-import { communityResolutionDetailUrl } from '@/lib/community/communityResolutionModel';
 import type { GovernanceMatterCdaReportRow } from '@/lib/community/cdaReportModel';
+import { communityResolutionDetailUrl } from '@/lib/community/communityResolutionModel';
+import {
+  buildGovernanceMeetingEditorNavigation,
+  canShowScheduleGovernanceMeeting,
+  GOVERNANCE_MEETING_NAVIGATION_DEFAULTS,
+} from '@/lib/meetings/governanceMeetingNavigation';
 
 export function GovernanceMatterDetailPage() {
   const { matterId } = useParams<{ matterId: string }>();
@@ -289,6 +294,32 @@ export function GovernanceMatterDetailPage() {
     }
   }
 
+  function handleScheduleMeeting() {
+    if (!matter || !linkedResolution || !propertyId.trim()) return;
+    if (
+      !canShowScheduleGovernanceMeeting({
+        canCouncil,
+        matter,
+        resolution: linkedResolution,
+        activePropertyId: propertyId.trim(),
+      })
+    ) {
+      setError(
+        en
+          ? 'This governance matter and resolution cannot schedule a meeting yet.'
+          : '当前治理事项与决议暂时无法安排会议。',
+      );
+      return;
+    }
+    const navigation = buildGovernanceMeetingEditorNavigation({
+      matter,
+      resolution: linkedResolution,
+      meetingType: GOVERNANCE_MEETING_NAVIGATION_DEFAULTS.meetingType,
+      initiationType: GOVERNANCE_MEETING_NAVIGATION_DEFAULTS.initiationType,
+    });
+    navigate(navigation.pathname, { state: navigation.state });
+  }
+
   if (loading) {
     return <LoadingState langEn={en} variant="page" label={en ? 'Loading matter…' : '正在加载事项…'} />;
   }
@@ -393,6 +424,7 @@ export function GovernanceMatterDetailPage() {
         onRequestCdaAnalysis={() => void handleRequestCdaAnalysis()}
         onCreateResolution={() => void handleCreateResolution()}
         resolutionSubmitting={resolutionSubmitting}
+        onScheduleMeeting={handleScheduleMeeting}
       />
     </main>
   );

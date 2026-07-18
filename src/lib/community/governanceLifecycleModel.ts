@@ -78,14 +78,17 @@ export function nextConstitutionalStep(input: NextStepInput): string {
   if (stage === 'draft') {
     return langEn ? 'Publish for community deliberation' : '发布以开始社区议事';
   }
-  if (stage === 'discussion' || stage === 'consultation') {
+  if ((stage === 'discussion' || stage === 'consultation') && !hasResolution) {
     return langEn ? 'Generate CDA report; prepare resolution when ready' : '生成议事助手报告；就绪后准备决议';
   }
-  if (stage === 'resolution' || (!hasResolution && stage !== 'meeting')) {
+  if (hasResolution && !hasMeeting) {
+    return langEn ? 'Schedule meeting linked to resolution' : '安排与决议关联的会议';
+  }
+  if (!hasResolution && stage !== 'meeting') {
     return langEn ? 'Create Community Resolution from discussion' : '基于讨论创建社区决议';
   }
   if (!hasMeeting) {
-    return langEn ? 'Schedule meeting linked to resolution' : '排定与决议关联的会议';
+    return langEn ? 'Schedule meeting linked to resolution' : '安排与决议关联的会议';
   }
   if (!hasVoting) {
     return langEn ? 'Open voting when meeting is ready' : '会议就绪后开放投票';
