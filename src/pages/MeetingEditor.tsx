@@ -75,7 +75,23 @@ import {
   mapPrefillAgendaRows,
   type MeetingEditorLocationState,
 } from '@/lib/meetings/meetingEditorPrefill';
+import {
+  linkAgendaItemToResolution,
+  updateCommunityResolution,
+} from '@/features/community-resolutions/communityResolutionsApi';
 import { supabase } from '../lib/supabase';
+
+type GovernanceMeetingHandoffContext = {
+  source: 'governance_resolution';
+  governanceMatterId: string;
+  communityResolutionId: string;
+  governanceAgendaClientId: string;
+};
+
+type PersistedAgendaMapping = {
+  clientId: string;
+  serverId: string;
+};
 
 function datetimeLocalFromDate(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -467,8 +483,9 @@ async function persistMeetingAgendaDrafts(options: {
   languageEn: boolean;
   scheduledIso: string | null;
   useV3ElectionCanon: boolean;
-}): Promise<{ error: string | null }> {
+}): Promise<{ error: string | null; persisted: PersistedAgendaMapping[] }> {
   const { propertyId, meetingId, rows, deleteServerIds, languageEn, scheduledIso, useV3ElectionCanon } = options;
+  const persisted: PersistedAgendaMapping[] = [];
   const uniqDeletes = [...new Set(deleteServerIds)];
   for (const id of uniqDeletes) {
     const { error } = await supabase
@@ -477,7 +494,7 @@ async function persistMeetingAgendaDrafts(options: {
       .eq('property_id', propertyId)
       .eq('meeting_id', meetingId)
       .eq('id', id);
-    if (error) return { error: error.message };
+    if (error) return { error: error.message, persisted };
   }
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
@@ -498,7 +515,8 @@ async function persistMeetingAgendaDrafts(options: {
         requiresVote,
         voteRule: requiresVote ? voteRule : null,
       });
-      if (error) return { error: error.message };
+      if (error) return { error: error.message, persisted };
+      persisted.push({ clientId: r.clientId, serverId: r.serverId });
     } else {
       let createDescZh = descZh;
       if (r.kind === 'removal_resolution') {
@@ -513,6 +531,7 @@ async function persistMeetingAgendaDrafts(options: {
               error: languageEn
                 ? 'Set the meeting start (public notice opens) before saving an election agenda.'
                 : '请先设置会议开始时间（公示开始）后再保存选举议程。',
+              persisted,
             };
           }
           createDescZh = embedElectionAgendaMeta(
@@ -524,7 +543,7 @@ async function persistMeetingAgendaDrafts(options: {
           );
         }
       }
-      const { error } = await createAgendaItem({
+      const { id: createdAgendaId, error } = await createAgendaItem({
         propertyId,
         meetingId,
         sortOrder,
@@ -535,10 +554,17 @@ async function persistMeetingAgendaDrafts(options: {
         requiresVote,
         voteRule: requiresVote ? voteRule : null,
       });
-      if (error) return { error: error.message };
+      if (error) return { error: error.message, persisted };
+      if (!createdAgendaId) {
+        return {
+          error: languageEn ? 'Agenda item was not created.' : '议程项未创建。',
+          persisted,
+        };
+      }
+      persisted.push({ clientId: r.clientId, serverId: createdAgendaId });
     }
   }
-  return { error: null };
+  return { error: null, persisted };
 }
 
 /** Council `meetings` row as saved — used to idempotently ensure `owner_vote_meetings` after election agendas persist. */
@@ -631,6 +657,7 @@ export function MeetingEditor() {
   const [ballotsByVoteId, setBallotsByVoteId] = useState<Record<string, MeetingBallotRow[]>>({});
   const [editingClientId, setEditingClientId] = useState<string | null>(null);
   const editSnapshotsRef = useRef<Map<string, MeetingEditorAgendaRow>>(new Map());
+  const governanceHandoffRef = useRef<GovernanceMeetingHandoffContext | null>(null);
   const [detailMeeting, setDetailMeeting] = useState<MeetingRow | null>(null);
   const [loading, setLoading] = useState(isEdit);
   const [saving, setSaving] = useState(false);
@@ -692,12 +719,28 @@ export function MeetingEditor() {
     if (isEdit) return;
     const locState = location.state as MeetingEditorLocationState | null;
     const prefill = locState?.meetingDraftPrefill;
+    governanceHandoffRef.current = null;
     if (prefill && isMeetingEditorDraftPrefill(prefill)) {
       setForm(formFromMeetingDraftPrefill(prefill));
       setShowOpeningStatementPrefillHint(false);
       const seeded = mapPrefillAgendaRows(prefill.agenda_items);
       setAgendaItems(seeded);
       editSnapshotsRef.current = new Map(seeded.map((r) => [r.clientId, cloneAgendaRow(r)]));
+      const matterId = prefill.governance_matter_id?.trim();
+      const resolutionId = prefill.community_resolution_id?.trim();
+      if (
+        prefill.source === 'governance_resolution' &&
+        matterId &&
+        resolutionId &&
+        seeded.length > 0
+      ) {
+        governanceHandoffRef.current = {
+          source: 'governance_resolution',
+          governanceMatterId: matterId,
+          communityResolutionId: resolutionId,
+          governanceAgendaClientId: seeded[0]!.clientId,
+        };
+      }
     } else {
       setForm(defaultForm);
       setShowOpeningStatementPrefillHint(false);
@@ -954,6 +997,7 @@ export function MeetingEditor() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (saving) return;
     if (isEdit && detailMeeting && isWrittenRemoteV3Meeting(detailMeeting)) {
       const s = detailMeeting.scheduled_at?.trim();
       if (s) {
@@ -1088,6 +1132,21 @@ export function MeetingEditor() {
       .map((r) => r.serverId as string);
     const deleteServerIds = [...new Set([...pendingDeletesSnapshot, ...blankServerIds])];
 
+    const governanceHandoff = !isEdit ? governanceHandoffRef.current : null;
+    if (governanceHandoff) {
+      const governanceAgendaRow = rowsSnapshot.find(
+        (r) => r.clientId === governanceHandoff.governanceAgendaClientId,
+      );
+      if (!governanceAgendaRow || !agendaHasMeaningfulContent(governanceAgendaRow)) {
+        setErr(
+          en
+            ? 'The governance resolution agenda item is missing. Restore it before saving.'
+            : '治理决议议程项缺失，请先恢复后再保存。',
+        );
+        return;
+      }
+    }
+
     setErr(null);
     setSaving(true);
 
@@ -1198,6 +1257,42 @@ export function MeetingEditor() {
         );
         navigate(`/meetings/${id}`);
         return;
+      }
+      if (governanceHandoff) {
+        const agendaMapping = persistResult.persisted.find(
+          (row) => row.clientId === governanceHandoff.governanceAgendaClientId,
+        );
+        if (!agendaMapping) {
+          setSaving(false);
+          setErr(
+            en
+              ? 'Meeting saved, but the governance resolution agenda could not be linked.'
+              : '会议已保存，但无法关联治理决议议程。',
+          );
+          return;
+        }
+        try {
+          await updateCommunityResolution({
+            propertyId: currentPropertyId,
+            resolutionId: governanceHandoff.communityResolutionId,
+            meetingId: id,
+          });
+          await linkAgendaItemToResolution(
+            currentPropertyId,
+            agendaMapping.serverId,
+            governanceHandoff.communityResolutionId,
+          );
+        } catch (linkErr) {
+          setSaving(false);
+          setErr(
+            linkErr instanceof Error
+              ? linkErr.message
+              : en
+                ? 'Could not link the governance resolution to this meeting.'
+                : '无法将治理决议关联到此会议。',
+          );
+          return;
+        }
       }
       const ovWarnCreate = await runOwnerVoteEnsureAfterAgendaSave(id);
       const councilRowCreate = buildCouncilMeetingRowAfterEditorSave({

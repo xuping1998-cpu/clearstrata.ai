@@ -9,7 +9,7 @@
 | **Document Number** | RC-009 |
 | **Document Title** | Governance Journey QA |
 | **Document Type** | Release Candidate Record (RC) |
-| **Status** | ACTIVE — **RELEASE GATE: FAIL** |
+| **Status** | ACTIVE — **RELEASE GATE: FAIL** (final live validation 2026-07-17) |
 | **Version** | 1.0 |
 | **Authority** | CDS-001, RC-001 … RC-008, GP-005, GP-006, GPA-001, GPA-002, GDS-001 |
 | **Effective Date** | 2026-07-14 |
@@ -171,29 +171,31 @@ Legend: **V** visible · **E** enabled (client) · **B** backend permitted (RLS/
 
 ### P1 — Major
 
-| ID | Issue | Route / area | Evidence |
-|----|-------|--------------|----------|
-| **RC009-P1-001** | Meeting save does not call `updateCommunityResolution({ meetingId })` or link agenda item — matter stays `resolution_draft`, cockpit/Timeline disagree | J9, Cockpit, Timeline | `updateCommunityResolution` only defined in `communityResolutionsApi.ts`; no callers; `MeetingEditor.tsx` consumes prefill only |
-| **RC009-P1-002** | `linkOwnerVoteResolutionToCommunityResolution` never called — governance matter `voting_id` and `status: voting` not set from Project One handoff | J10, Cockpit | Grep: zero callers outside API file |
-| **RC009-P1-003** | **Live end-to-end journey not executed** — cannot certify J1–J20 on staging with QA Matter | All routes | No test credentials / QA matter in session |
+| ID | Status | Issue | Route / area | Evidence |
+|----|--------|-------|--------------|----------|
+| **RC009-P1-SUB-A** | **CLOSED** | `governance_matter_subscriptions` missing on remote (schema cache error) | Owner Follow, Hub `view=subscribed` | Out-of-band apply `20261707120000` on `wqohkxtqozscmwfrryfl` (2026-07-16 UTC); table + RLS + policies verified; migration history row still absent (approved) |
+| **RC009-P1-SUB-B** | **OPEN** | Owner Follow → refresh → subscribed view → Unfollow live journey not executed | Matter Detail, Hub | No Owner session credentials in validation run (2026-07-17); `subscription_rows = 0`; browser redirected to marketing landing |
+| **RC009-P1-001** | **OPEN** | Meeting save does not call `updateCommunityResolution({ meetingId })` or link agenda item — matter stays `resolution_draft`, cockpit/Timeline disagree | J9, Cockpit, Timeline | Re-grep 2026-07-17: `updateCommunityResolution(` only in `communityResolutionsApi.ts` |
+| **RC009-P1-002** | **OPEN** | `linkOwnerVoteResolutionToCommunityResolution` never called — governance matter `voting_id` and `status: voting` not set from Project One handoff | J10, Cockpit | Re-grep 2026-07-17: zero callers outside API file |
+| **RC009-P1-003** | **OPEN** | **Live Council end-to-end journey not executed** — cannot certify J1–J20 on test property | All governance routes | No Council session credentials; `/council/workspace` unauthenticated → marketing landing |
 
 ### P2 — Moderate
 
-| ID | Issue | Notes |
-|----|-------|-------|
-| RC009-P2-001 | CDA generation not idempotent — each invoke appends report row | Append-only by design; council should confirm before re-run |
-| RC009-P2-002 | No duplicate Resolution DB constraint — stale UI could double-create | UI hides button when `linkedResolution` loaded |
-| RC009-P2-003 | Timeline missing vote outcome events | Requires voting engine projection |
-| RC009-P2-004 | Comment moderation RPC has no UI | Manager/council capability unused |
-| RC009-P2-005 | `OwnerParticipationPanel` TypeScript errors | `tsconfig.app.json` strict; build still passes via project references |
+| ID | Owner | Target milestone | Issue | Notes |
+|----|-------|------------------|-------|-------|
+| RC009-P2-001 | Project One | RC-010 / v1.1 | CDA generation not idempotent — each invoke appends report row | Append-only by design; council should confirm before re-run |
+| RC009-P2-002 | Project One | RC-010 | No duplicate Resolution DB constraint — stale UI could double-create | UI hides button when `linkedResolution` loaded |
+| RC009-P2-003 | Project One | RC-010 | Timeline missing vote outcome events | Requires voting engine projection |
+| RC009-P2-004 | Project One | post-v1.0 | Comment moderation RPC has no UI | Manager/council capability unused |
+| RC009-P2-005 | Project One | RC-010 | `OwnerParticipationPanel` TypeScript errors | `tsconfig.app.json` strict; build still passes via project references |
 
 ### P3 — Minor
 
-| ID | Issue |
-|----|-------|
-| RC009-P3-001 | `GovernanceHubPanel` unused `Button` import |
-| RC009-P3-002 | `CouncilWorkspacePage` prefill `initiation_type: 'council'` TS mismatch with `MeetingInitiationType` |
-| RC009-P3-003 | UIP-006/UIP-007 still PLANNED — integration polish deferred |
+| ID | Owner | Target milestone | Issue |
+|----|-------|------------------|-------|
+| RC009-P3-001 | Project One | RC-010 | `GovernanceHubPanel` unused `Button` import |
+| RC009-P3-002 | Project One | RC-010 | `CouncilWorkspacePage` prefill `initiation_type: 'council'` TS mismatch with `MeetingInitiationType` |
+| RC009-P3-003 | Project One | UIP-006/007 | UIP-006/UIP-007 still PLANNED — integration polish deferred |
 
 ---
 
@@ -248,23 +250,83 @@ No new test framework added. No focused regression tests added (no existing test
 
 ---
 
+## Final live validation (2026-07-17 UTC)
+
+**Session:** `clearstrataaiserena.vercel.app` · git `06515b90d6587589819131c54e43017ba1ab6ffb` · Supabase `wqohkxtqozscmwfrryfl` · tester: Cursor agent (no Owner/Council credentials supplied)
+
+### Part 1 — Owner journey
+
+| Step | Result |
+|------|--------|
+| Matter Detail → Follow → refresh → subscribed view → Unfollow | **NOT RUN** — unauthenticated; routes redirect to marketing landing |
+| Schema cache / raw DB error on subscriptions | **Infrastructure OK** — table exists, RLS on; live UI not exercised |
+| Duplicate subscription row | **N/A** — `subscription_rows = 0` |
+
+### Part 2 — Council journey
+
+| Step | Result |
+|------|--------|
+| Create → Publish → Comment → CDA → Resolution → Meeting → Timeline → Archive | **NOT RUN** — no Council session |
+| Cockpit / workspace render | **NOT RUN** authenticated; unauthenticated `/council/workspace` → marketing landing (no white screen on landing) |
+
+### Part 3 — Regression
+
+| ID | Result |
+|----|--------|
+| **BF-001** | **Partial** — `sgm_pause_email_deliveries`: 20 rows / 20 unique `(meeting_id, user_id)` pairs; no duplicate delivery ledger rows. Historical pre-fix duplicate `user_notifications` row pair remains for `justine2026test@2925.com` at `2026-07-10 23:07:49 UTC`. Live re-trigger not run. |
+| **BF-002** | **Code audit only** — independent loaders confirmed in `GovernanceMatterPages.tsx`; live partial-failure simulation not run |
+
+### Part 4 — Console & network (unauthenticated)
+
+| Route | Result |
+|-------|--------|
+| `/`, `/community-deliberation`, `/community-deliberation/:id`, `/council/workspace` | Redirect or marketing shell; no authenticated governance API traffic; no schema-cache error observable without session |
+
+### Part 5 — Accessibility & mobile smoke
+
+**NOT RUN** — requires authenticated Council/Owner sessions on governance pilot routes.
+
+### RC009-P1-SUB-A closure evidence
+
+| # | Evidence |
+|---|----------|
+| Root cause | Migration `20261707120000` never applied remotely; PostgREST schema cache missing table |
+| Fix | Approved out-of-band SQL apply (2026-07-16 UTC) |
+| Deployment | `npx supabase db query --linked -f supabase/migrations/20261707120000_governance_matter_subscriptions.sql` exit 0 |
+| SQL | Table, UNIQUE `(property_id, matter_id, user_id)`, RLS, policies `gms_select_own` / `gms_insert_own_member` / `gms_delete_own` |
+| Migration history | `20261707120000` absent from `schema_migrations` (approved temporary) |
+| Live retest | **Pending** — RC009-P1-SUB-B |
+
+---
+
+## Release ledger counts (2026-07-17)
+
+```
+P0 OPEN: 0
+P1 OPEN: 4   (RC009-P1-SUB-B, P1-001, P1-002, P1-003)
+P2 OPEN: 5
+P3 OPEN: 3
+```
+
+---
+
 ## Final release-gate decision
 
 **FAIL**
 
 | Gate criterion | Status |
 |----------------|--------|
-| Full Council journey | ✗ Meeting/voting integration incomplete |
-| Full Owner journey | ✗ Not live-tested |
+| Full Council journey | ✗ Not live-tested; P1-001/P1-002 code gaps remain |
+| Full Owner journey | ✗ RC009-P1-SUB-B not live-tested |
 | Matter reaches final historical state | ✗ Not live-tested |
 | No P0 | ✓ |
-| No P1 | ✗ Three P1 items |
+| No P1 | ✗ Four P1 items open |
 | Timeline ↔ records agree | ✗ Projection gaps at meeting/voting |
 | Role matrix confirmed | ✓ Code audit |
 | zh/en, desktop/mobile, keyboard, reduced motion | ✗ Live matrix not run |
-| TypeScript + build | ✓ |
+| TypeScript + build | ✓ (`npx tsc --noEmit`, `npm run build` 2026-07-17) |
 
-**RC-010 cannot begin** until P1-001, P1-002 resolved and P1-003 live journey passes.
+**RC-010 / v1.0 release prep cannot begin** until all P1 items close with live evidence.
 
 ---
 
