@@ -92,9 +92,10 @@ export function CommunityResolutionDetailPage() {
     };
   }, [resolutionId, propertyId, propertyReady, en]);
 
-  const linkedMeetingId = matter
-    ? resolveGovernanceLinkedMeetingId({ matter, resolution })
-    : resolution.meeting_id?.trim() || null;
+  const linkedMeetingId =
+    resolution && matter
+      ? resolveGovernanceLinkedMeetingId({ matter, resolution })
+      : resolution?.meeting_id?.trim() || null;
 
   const showScheduleMeeting =
     resolution &&
