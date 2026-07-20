@@ -719,11 +719,25 @@ export function MeetingEditor() {
     if (isEdit) return;
     const locState = location.state as MeetingEditorLocationState | null;
     const prefill = locState?.meetingDraftPrefill;
+    console.info('[RC009-HANDOFF]', {
+      phase: 'prefill_received',
+      hasLocationState: !!locState,
+      hasPrefill: !!prefill,
+      source: prefill?.source ?? null,
+      governanceMatterId: prefill?.governance_matter_id ?? null,
+      communityResolutionId: prefill?.community_resolution_id ?? null,
+      agendaItemCount: Array.isArray(prefill?.agenda_items) ? prefill.agenda_items.length : null,
+    });
     governanceHandoffRef.current = null;
     if (prefill && isMeetingEditorDraftPrefill(prefill)) {
       setForm(formFromMeetingDraftPrefill(prefill));
       setShowOpeningStatementPrefillHint(false);
       const seeded = mapPrefillAgendaRows(prefill.agenda_items);
+      console.info('[RC009-HANDOFF]', {
+        phase: 'prefill_seeded',
+        seededCount: seeded.length,
+        seededClientIds: seeded.map((row) => row.clientId),
+      });
       setAgendaItems(seeded);
       editSnapshotsRef.current = new Map(seeded.map((r) => [r.clientId, cloneAgendaRow(r)]));
       const matterId = prefill.governance_matter_id?.trim();
@@ -741,6 +755,10 @@ export function MeetingEditor() {
           governanceAgendaClientId: seeded[0]!.clientId,
         };
       }
+      console.info('[RC009-HANDOFF]', {
+        phase: 'handoff_initialized',
+        handoff: governanceHandoffRef.current,
+      });
     } else {
       setForm(defaultForm);
       setShowOpeningStatementPrefillHint(false);
@@ -1133,6 +1151,12 @@ export function MeetingEditor() {
     const deleteServerIds = [...new Set([...pendingDeletesSnapshot, ...blankServerIds])];
 
     const governanceHandoff = !isEdit ? governanceHandoffRef.current : null;
+    console.info('[RC009-HANDOFF]', {
+      phase: 'save_start',
+      isEdit,
+      governanceHandoff,
+      agendaClientIds: rowsSnapshot.map((row) => row.clientId),
+    });
     if (governanceHandoff) {
       const governanceAgendaRow = rowsSnapshot.find(
         (r) => r.clientId === governanceHandoff.governanceAgendaClientId,
@@ -1248,7 +1272,25 @@ export function MeetingEditor() {
         scheduledIso,
         useV3ElectionCanon: isWrittenRemoteUi(form.meeting_format_ui),
       });
+      console.info('[RC009-HANDOFF]', {
+        phase: 'agenda_persist_result',
+        error: persistResult.error ?? null,
+        persistedCount: persistResult.persisted.length,
+        persistedMappings: persistResult.persisted.map((row) => ({
+          clientId: row.clientId,
+          serverId: row.serverId,
+        })),
+      });
       if (persistResult.error) {
+        console.error('[RC009-HANDOFF]', {
+          phase: 'agenda_persist_result',
+          error: persistResult.error,
+          persistedCount: persistResult.persisted.length,
+          persistedMappings: persistResult.persisted.map((row) => ({
+            clientId: row.clientId,
+            serverId: row.serverId,
+          })),
+        });
         setSaving(false);
         setErr(
           en
@@ -1258,10 +1300,20 @@ export function MeetingEditor() {
         navigate(`/meetings/${id}`);
         return;
       }
+      console.info('[RC009-HANDOFF]', {
+        phase: 'bridge_gate',
+        willEnterBridge: !!governanceHandoff,
+      });
       if (governanceHandoff) {
         const agendaMapping = persistResult.persisted.find(
           (row) => row.clientId === governanceHandoff.governanceAgendaClientId,
         );
+        console.info('[RC009-HANDOFF]', {
+          phase: 'agenda_mapping',
+          requestedClientId: governanceHandoff.governanceAgendaClientId,
+          mappingFound: !!agendaMapping,
+          agendaMapping: agendaMapping ?? null,
+        });
         if (!agendaMapping) {
           setSaving(false);
           setErr(
@@ -1272,9 +1324,19 @@ export function MeetingEditor() {
           return;
         }
         try {
+          console.info('[RC009-HANDOFF]', {
+            phase: 'before_resolution_link',
+            propertyId: currentPropertyId,
+            resolutionId: governanceHandoff.communityResolutionId,
+            meetingId: id,
+          });
           await updateCommunityResolution({
             propertyId: currentPropertyId,
             resolutionId: governanceHandoff.communityResolutionId,
+            meetingId: id,
+          });
+          console.info('[RC009-HANDOFF]', {
+            phase: 'after_resolution_link',
             meetingId: id,
           });
           await linkAgendaItemToResolution(
@@ -1282,6 +1344,12 @@ export function MeetingEditor() {
             agendaMapping.serverId,
             governanceHandoff.communityResolutionId,
           );
+          console.info('[RC009-HANDOFF]', {
+            phase: 'after_agenda_link',
+            meetingId: id,
+            agendaItemId: agendaMapping.serverId,
+            resolutionId: governanceHandoff.communityResolutionId,
+          });
         } catch (linkErr) {
           setSaving(false);
           setErr(
