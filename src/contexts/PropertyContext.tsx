@@ -478,11 +478,12 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
         next.set('propertyId', currentPropertyId);
         return next;
       },
-      { replace: true },
+      { replace: true, state: location.state },
     );
   }, [
     location.pathname,
     location.hash,
+    location.state,
     ready,
     currentPropertyId,
     memberships,
@@ -512,10 +513,10 @@ export function PropertyProvider({ children }: { children: ReactNode }) {
           next.set('propertyId', id);
           return next;
         },
-        { replace: true },
+        { replace: true, state: location.state },
       );
     },
-    [setSearchParams, isDemoMode, memberships],
+    [setSearchParams, isDemoMode, memberships, location.state],
   );
 
   const roleInProperty = useMemo(() => {
