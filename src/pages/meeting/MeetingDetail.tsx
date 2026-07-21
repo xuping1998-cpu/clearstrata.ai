@@ -51,6 +51,7 @@ import { shouldDeferAutoPropertyRedirects } from '../../lib/authRecovery';
 import { CommunityResolutionContextCard } from '@/components/community-resolution/CommunityResolutionContextCard';
 import {
   fetchMeetingResolutionContexts,
+  linkOwnerVoteResolutionToCommunityResolution,
 } from '@/features/community-resolutions/communityResolutionsApi';
 import type { CommunityResolutionContextBundle } from '@/lib/community/communityResolutionModel';
 import { samePropertyId } from '../../lib/propertyIdMatch';
@@ -311,6 +312,69 @@ const initialBundle = (): MeetingDetailBundle => ({
   inviteRecipients: [],
   resolutions: [],
 });
+
+/** Links governance agenda rows to owner_vote_resolutions once both sides exist. Idempotent. */
+async function syncGovernanceOwnerVoteLinksFromMeetingState(params: {
+  propertyId: string;
+  agendaItems: MeetingAgendaRow[];
+  ownerVoteMeetingId: string | null | undefined;
+  ovResolutions: Array<{ id: string; title: string; display_order?: number | null }>;
+  resolutionContexts: CommunityResolutionContextBundle[];
+}): Promise<boolean> {
+  if (!params.ownerVoteMeetingId?.trim()) return false;
+  if (params.ovResolutions.length === 0) return false;
+  if (!params.agendaItems.some((a) => a.community_resolution_id?.trim())) return false;
+
+  let linkedAny = false;
+  const contextById = new Map(
+    params.resolutionContexts.map((ctx) => [ctx.resolution.id, ctx]),
+  );
+
+  for (const agenda of params.agendaItems) {
+    const communityResolutionId = agenda.community_resolution_id?.trim();
+    if (!communityResolutionId) continue;
+
+    const ownerVoteResolutionId = findOwnerVoteResolutionForAgenda(
+      {
+        sort_order: agenda.sort_order,
+        title_zh: agenda.title_zh,
+        title_en: agenda.title_en,
+      },
+      params.ovResolutions.map((r) => ({
+        id: r.id,
+        title: r.title,
+        display_order: r.display_order ?? null,
+      })),
+    )?.id;
+    if (!ownerVoteResolutionId) continue;
+
+    const ctx = contextById.get(communityResolutionId);
+    if (ctx?.resolution.owner_vote_resolution_id === ownerVoteResolutionId) continue;
+
+    const governanceMatterId =
+      ctx?.matterId ?? ctx?.resolution.governance_matter_id ?? null;
+
+    try {
+      await linkOwnerVoteResolutionToCommunityResolution(
+        params.propertyId,
+        communityResolutionId,
+        ownerVoteResolutionId,
+        governanceMatterId,
+      );
+      linkedAny = true;
+      if (ctx) {
+        contextById.set(communityResolutionId, {
+          ...ctx,
+          resolution: { ...ctx.resolution, owner_vote_resolution_id: ownerVoteResolutionId },
+        });
+      }
+    } catch (e) {
+      console.warn('[MeetingDetail] syncGovernanceOwnerVoteLinks', e);
+    }
+  }
+
+  return linkedAny;
+}
 
 export function MeetingDetail() {
   const { meetingId: meetingIdParam, id: legacyVotingId } = useParams<{ meetingId?: string; id?: string }>();
@@ -740,10 +804,6 @@ export function MeetingDetail() {
     };
   }, [user?.id, currentPropertyId]);
   const refreshOwnerVoteMeta = useCallback(async () => {
-    console.log('[OVRefresh] called', {
-      meetingId: meeting?.id,
-      propertyId: currentPropertyId,
-    });
     if (!meeting || !currentPropertyId || !isOwnerVotingMeeting(meeting)) {
       setOvMeta({
         loading: false,
@@ -802,7 +862,25 @@ export function MeetingDetail() {
     }
 
     if (r.error) console.error('[MeetingDetail] owner vote meta', r.error);
-  }, [meeting, currentPropertyId, bundle.agendaItems.length]);
+
+    if (r.meeting?.id && r.resolutions.length > 0 && meeting?.id?.trim()) {
+      const linked = await syncGovernanceOwnerVoteLinksFromMeetingState({
+        propertyId: currentPropertyId,
+        agendaItems: bundle.agendaItems,
+        ownerVoteMeetingId: r.meeting.id,
+        ovResolutions: r.resolutions,
+        resolutionContexts,
+      });
+      if (linked) {
+        try {
+          const rows = await fetchMeetingResolutionContexts(currentPropertyId, meeting.id, en);
+          setResolutionContexts(rows);
+        } catch (e) {
+          console.warn('[MeetingDetail] reload resolution contexts after governance link', e);
+        }
+      }
+    }
+  }, [meeting, currentPropertyId, bundle.agendaItems, resolutionContexts, en]);
 
   useEffect(() => {
     if (shouldDeferAutoPropertyRedirects()) return;
@@ -1297,6 +1375,7 @@ export function MeetingDetail() {
 
     setBusy(false);
     await load();
+    await refreshOwnerVoteMeta();
   }
 
   async function handlePersistAgendaEdit() {

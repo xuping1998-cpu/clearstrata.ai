@@ -7,7 +7,7 @@ import type { MeetingEditorDraftPrefill } from '@/lib/meetings/meetingEditorPref
 /** Preserved from CouncilWorkspacePage pre-GW-002 behavior; callers pass explicitly. */
 export const GOVERNANCE_MEETING_NAVIGATION_DEFAULTS = {
   meetingType: 'sgm' as MeetingType,
-  initiationType: 'council' as MeetingInitiationType,
+  initiationType: 'council_initiated' as MeetingInitiationType,
 };
 
 export interface GovernanceMeetingNavigationInput {
