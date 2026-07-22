@@ -7,6 +7,8 @@ alwaysApply: true
 
 **Read first:** [`docs/00_ClearStrata_Constitution.md`](docs/00_ClearStrata_Constitution.md)
 
+**RC feature work:** also read [`docs/rc/RC000-clearstrata-constitution.md`](docs/rc/RC000-clearstrata-constitution.md) and follow [`.cursor/rules/rc000-governance-layers.mdc`](rc000-governance-layers.mdc) and [`.cursor/rules/rc000-implementation-gate.mdc`](rc000-implementation-gate.mdc) before implementing any RC.
+
 This rule applies to all AI assistants working in this repository (Cursor, Claude, GPT, Gemini, etc.).
 
 ## Constitutional Supremacy (Rule 1)

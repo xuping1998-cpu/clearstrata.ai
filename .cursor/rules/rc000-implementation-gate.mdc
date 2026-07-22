@@ -1,0 +1,42 @@
+---
+description: RC000 constitutional gate — read CDGL layer and verify compliance before any RC implementation
+alwaysApply: true
+---
+
+# RC000 Implementation Gate
+
+**Authority:** [`docs/rc/RC000-clearstrata-constitution.md`](docs/rc/RC000-clearstrata-constitution.md) (RC000)
+
+RC000 is a constitutional document. **Never modify RC000** unless the user explicitly instructs a constitutional amendment.
+
+RC000 has **higher priority** than any future RC (RC009, RC010, RC011, …), feature specs, and convenience refactors.
+
+Coexists with [`docs/00_ClearStrata_Constitution.md`](docs/00_ClearStrata_Constitution.md) (FD-001). On conflict between implementation choices, **RC000 CDGL layer rules win for RC feature work**.
+
+## Mandatory preflight (before any RC implementation code)
+
+1. **Read RC000** — [`docs/rc/RC000-clearstrata-constitution.md`](docs/rc/RC000-clearstrata-constitution.md)
+2. **Identify the CDGL layer** — Issue · Governance · Meeting · Voting · Execution · Accountability · Continuous Improvement
+3. **Explain loop impact** — state whether the change **strengthens** the Democratic Governance Loop (traceability, participation, accountability, memory)
+4. **Stop on conflict** — if the design violates RC000 (especially Principles 1–4), **do not write code**; explain the conflict and propose a compliant design first
+
+## Non‑negotiable layer boundaries
+
+| Layer | Must | Must not |
+|---|---|---|
+| **Governance** | Matter, discussion, evidence, AI analysis | Author formal resolutions |
+| **Meeting** | Author/edit/delete/reorder resolutions until snapshot freeze | Replace voting or execution |
+| **Voting** | Approve/reject frozen resolutions | Edit resolution text or threshold |
+| **Execution / Accountability** | Tasks, owners, review | Bypass meeting + vote |
+
+## RC000 red flags (stop and explain)
+
+- Copying Matter title/body into a formal resolution in Governance
+- Editing resolution content after snapshot freeze
+- Voting UI or RPCs that mutate resolution wording
+- New parallel resolution objects that bypass Meeting
+- Modules that skip Governance → Meeting → Voting for binding decisions
+
+## When this gate applies
+
+Any task labeled RC*, governance/meeting/voting/execution work, or architecture that touches CDGL layers — including investigations that recommend implementation.

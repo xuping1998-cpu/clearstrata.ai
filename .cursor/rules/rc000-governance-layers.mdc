@@ -1,0 +1,41 @@
+---
+description: RC000 CDGL layer boundaries — Governance vs Meeting vs Voting vs Execution
+alwaysApply: true
+---
+
+# RC000 Governance Layers
+
+**Authority:** [`docs/rc/RC000-clearstrata-constitution.md`](docs/rc/RC000-clearstrata-constitution.md)
+
+## Supremacy
+
+**RC000 has higher priority than all later RC specifications** (RC009, RC010, RC011, …).
+
+Never modify RC000 unless the user explicitly instructs a constitutional amendment.
+
+## Layer boundaries
+
+| Layer | Owns | Must not |
+|---|---|---|
+| **Governance** | Issues and **Matters** — facts, evidence, discussion, AI analysis, council responses | Author formal resolutions |
+| **Meeting** | Formal **Resolutions** — add, edit, delete, reorder **only before Snapshot Freeze** | Replace voting or skip to execution |
+| **Voting** | Democratic approval of frozen motions | Edit resolution text or threshold |
+| **Execution** | Tasks, owners, timeline, budget, procurement after approval | Bypass Meeting + Voting |
+| **Accountability** | Review, archive, or spawn new Matters | Weaken transparency or audit trail |
+
+## RC010 (official)
+
+- **Name:** RC010 — Meeting Resolution Authoring Before Snapshot
+- **Canonical motions:** `meeting_agenda_items` (new flows)
+- **Legacy:** `community_resolutions` — read-only / historical; not an authoring source for new governance flows
+- **Retired:** Governance 「决议 / Resolution」 authoring tab — do not implement
+
+## Conflict protocol
+
+If a requested implementation conflicts with these boundaries:
+
+1. **Stop before coding**
+2. **Explain the conflict** with reference to RC000
+3. **Propose a compliant design** (usually: move authoring to MeetingDetail, keep Governance read-only)
+
+Works with [`rc000-implementation-gate.mdc`](rc000-implementation-gate.mdc) and [`clearstrata-constitution.mdc`](clearstrata-constitution.mdc).
