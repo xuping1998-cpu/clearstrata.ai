@@ -273,6 +273,10 @@ export interface MeetingAgendaRow {
   requires_vote: boolean;
   vote_rule: VoteRule | null;
   community_resolution_id?: string | null;
+  formal_resolution_version?: number;
+  formal_resolution_state?: 'draft' | 'under_review' | 'final' | string | null;
+  formal_resolution_modified_by?: string | null;
+  formal_resolution_modified_at?: string | null;
   created_at: string | null;
 }
 
@@ -446,7 +450,7 @@ export async function fetchLatestOwnerVoteMeetingCardRowsByCouncilTitles(propert
 }
 
 const AGENDA_DETAIL_COLUMNS =
-  'id, meeting_id, sort_order, title_en, title_zh, description_en, description_zh, requires_vote, vote_rule, community_resolution_id, created_at';
+  'id, meeting_id, sort_order, title_en, title_zh, description_en, description_zh, requires_vote, vote_rule, community_resolution_id, formal_resolution_version, formal_resolution_state, formal_resolution_modified_by, formal_resolution_modified_at, created_at';
 
 const VOTE_DETAIL_COLUMNS =
   'id, meeting_id, agenda_item_id, title_en, title_zh, description_en, description_zh, vote_rule, status, opens_at, closes_at, created_at';

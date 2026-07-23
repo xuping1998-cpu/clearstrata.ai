@@ -91,6 +91,7 @@ import {
 } from '@/components/meetings/CouncilElectionResultsBlock';
 import { MeetingElectionCandidatesPanel } from '@/components/meetings/MeetingElectionCandidatesPanel';
 import { MeetingResolutionVotePanel } from '@/components/meetings/MeetingResolutionVotePanel';
+import { MeetingFormalResolutionAuthoringPanel } from '@/components/meetings/MeetingFormalResolutionAuthoringPanel';
 import {
   councilMeetingVotingWindowFallback,
   extractGovernanceMeta,
@@ -650,6 +651,82 @@ export function MeetingDetail() {
     return n;
   }, [bundle.agendaItems]);
 
+  const handleEnsureOwnerVoteForFormalResolution = useCallback(
+    async (args: {
+      agendaId: string;
+      titleZh: string;
+      titleEn: string;
+      voteRule: VoteRule;
+      sortOrder: number;
+      isNew: boolean;
+      previousTitleZh?: string | null;
+      previousTitleEn?: string | null;
+      previousSortOrder?: number;
+    }) => {
+      if (!meeting || !propertyIdForAgenda || !user?.id) return;
+      if (!isOwnerVotingMeeting(meeting) || !canManageCouncilMeetings) return;
+
+      const ensured = await ensureOwnerVoteMeetingForCouncilMeeting({
+        propertyId: propertyIdForAgenda,
+        meeting,
+        userId: user.id,
+      });
+      if (ensured.error || !ensured.id) {
+        console.error('[MeetingDetail] ensure OV for formal resolution', ensured.error);
+        return;
+      }
+
+      const resTitle = args.titleZh || args.titleEn || (en ? 'Untitled resolution' : '未命名决议');
+      const th = mapVoteRuleToOwnerVoteThreshold(args.voteRule);
+      const resolutionsForMatch = ovMeta.resolutions.map((r) => ({
+        id: r.id,
+        title: r.title,
+        display_order: r.display_order ?? null,
+      }));
+
+      if (!args.isNew && args.previousSortOrder != null) {
+        const matchedBefore = findOwnerVoteResolutionForAgenda(
+          {
+            sort_order: args.previousSortOrder,
+            title_zh: args.previousTitleZh ?? null,
+            title_en: args.previousTitleEn ?? null,
+          },
+          resolutionsForMatch,
+        );
+        if (matchedBefore) {
+          const { error: rErr } = await supabase
+            .from('owner_vote_resolutions')
+            .update({
+              title: resTitle,
+              threshold: th,
+              display_order: args.sortOrder,
+            } as Record<string, unknown>)
+            .eq('id', matchedBefore.id)
+            .eq('meeting_id', ensured.id);
+          if (rErr) console.error('[MeetingDetail] owner_vote_resolutions update (formal)', rErr);
+          return;
+        }
+      }
+
+      const { error: resErr } = await ensureOwnerVoteResolutionForMeeting({
+        meetingId: ensured.id,
+        title: resTitle,
+        threshold: th,
+        description: null,
+        display_order: args.sortOrder,
+      });
+      if (resErr) console.error('[MeetingDetail] owner_vote_resolutions ensure (formal)', resErr);
+    },
+    [
+      meeting,
+      propertyIdForAgenda,
+      user?.id,
+      canManageCouncilMeetings,
+      ovMeta.resolutions,
+      en,
+    ],
+  );
+
   const handleNavigateOwnerVotingForOwner = useCallback(() => {
     /**
      * Bug 2: V3 remote-written SGM has no staff "open voting" button — the
@@ -1048,6 +1125,37 @@ export function MeetingDetail() {
     }
     return m;
   }, [bundle.votes]);
+
+  const handleFormalResolutionDeleteBlockReason = useCallback(
+    async (row: MeetingAgendaRow) =>
+      meeting
+        ? meetingDetailAgendaDeleteBlockReason({
+            meeting,
+            row,
+            voteByAgendaId,
+            ballotsByVoteId: bundle.ballotsByVoteId,
+            electionBallotsByAgenda,
+            resolutionsForMatch: ovMeta.resolutions.map((r) => ({
+              id: r.id,
+              title: r.title,
+              display_order: r.display_order ?? null,
+            })),
+            propertyId: propertyIdForAgenda ?? meeting.property_id,
+            en,
+          })
+        : en
+          ? 'Meeting is not loaded.'
+          : '会议信息未加载。',
+    [
+      meeting,
+      voteByAgendaId,
+      bundle.ballotsByVoteId,
+      electionBallotsByAgenda,
+      ovMeta.resolutions,
+      propertyIdForAgenda,
+      en,
+    ],
+  );
 
   const handleCancelAgendaEdit = useCallback(async () => {
     if (!agendaEdit) return;
@@ -2376,9 +2484,37 @@ export function MeetingDetail() {
                 currentUserId={user?.id ?? null}
                 en={en}
               />
+              {showCouncilOwnerVoteUi && propertyIdForAgenda && user?.id ? (
+                <MeetingFormalResolutionAuthoringPanel
+                  meeting={meeting}
+                  propertyId={propertyIdForAgenda}
+                  userId={user.id}
+                  agendaItems={bundle.agendaItems}
+                  editLocked={agendaStructureEditLocked}
+                  canManage={canManageCouncilMeetings}
+                  languageEn={en}
+                  ownerVoteMeeting={ovMeta.meeting}
+                  eligibleUnitNo={viewerOvUnitNo}
+                  viewerUserId={user.id}
+                  ovResolutions={ovMeta.resolutions.map((r) => ({
+                    id: r.id,
+                    title: r.title,
+                    display_order: r.display_order ?? null,
+                  }))}
+                  onResolveDeleteBlockReason={handleFormalResolutionDeleteBlockReason}
+                  onEnsureOwnerVoteForResolution={handleEnsureOwnerVoteForFormalResolution}
+                  onChanged={async () => {
+                    await load();
+                    await refreshOwnerVoteMeta();
+                  }}
+                />
+              ) : null}
               <div className="space-y-6">
                 {sortedAgendaItems.map((agenda, idx) => {
                   const agendaKindUi = agendaKindFromRow(agenda);
+                  if (showCouncilOwnerVoteUi && agendaKindUi === 'resolution') {
+                    return null;
+                  }
                   const isRemoveCouncilAgenda = isRemoveCouncilGovernanceAgenda(agenda);
                   const vote = voteByAgendaId.get(agenda.id);
                   const legacyCouncilVoteUi =
@@ -2909,7 +3045,9 @@ export function MeetingDetail() {
                         className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                       >
                         <option value="normal">{t('meeting_agenda_type_normal')}</option>
-                        <option value="resolution">{t('meeting_agenda_type_resolution')}</option>
+                        {!showCouncilOwnerVoteUi ? (
+                          <option value="resolution">{t('meeting_agenda_type_resolution')}</option>
+                        ) : null}
                         <option value="election">{t('meeting_agenda_type_election')}</option>
                       </select>
                     </label>
