@@ -14,6 +14,19 @@
 
 ---
 
+## Foundational Authority
+
+**RC000 derives its governing principles from the Founding Constitution (FD).**
+
+| Document | Answers | Reference |
+|----------|---------|-----------|
+| **Founding Constitution (FD)** | **WHY** ClearStrata exists | [`docs/founding/FD-Founding-Constitution.md`](../founding/FD-Founding-Constitution.md) |
+| **RC000 (this document)** | **HOW** the platform evolves | This file |
+
+The Founding Constitution is the **highest constitutional authority**. RC000 governs every layer below RC000 in the CGDP pyramid.
+
+---
+
 ## Purpose
 
 This document is the highest design principle of the ClearStrata platform.
@@ -329,3 +342,140 @@ They **must not** be used as the authoring source for new governance flows.
 Any earlier RC010 plan proposing a Governance **「决议 / Resolution」** authoring tab is **retired** and **must not be implemented**.
 
 The product issue (Matter title presented as formal resolution) is resolved by **not authoring resolutions in Governance**, not by adding a richer Governance draft editor.
+
+---
+
+## Appendix A — Milestone Governance Standard (MGS)
+
+### Introduction
+
+The **Milestone Governance Standard (MGS)** is a **normative appendix of RC000**.
+
+It defines how the architectural evolution of the ClearStrata Platform must be **permanently recorded**.
+
+Every future milestone (M1, M2, M3…) **must comply with this appendix**.
+
+Milestones are **constitutional engineering records**.
+
+They preserve **architectural history**.
+
+They are **never** temporary project notes.
+
+**Implementation guidance:** [`docs/architecture/Milestone-Governance-Standard.md`](../architecture/Milestone-Governance-Standard.md) — non-authoritative; this appendix is authoritative.
+
+---
+
+### Principle A1 — Why Before What
+
+Every milestone must explain **WHY** before **WHAT**.
+
+Every milestone shall document **Objective**, **Constitutional Basis**, and **Governance Impact** before implementation details.
+
+---
+
+### Principle A2 — RC000 Reference
+
+Every milestone must **explicitly reference RC000**.
+
+All architectural evolution derives from the Constitution.
+
+---
+
+### Principle A3 — CDGL Layer Identification
+
+Every milestone must identify the affected **CDGL layer(s)**.
+
+Examples: Governance · Meeting · Voting · Execution · Accountability · Continuous Improvement
+
+---
+
+### Principle A4 — Architectural Scope
+
+Every milestone must define architectural scope:
+
+- **Included**
+- **Excluded**
+- **Boundary**
+
+to prevent scope creep.
+
+---
+
+### Principle A5 — Measurable Acceptance Criteria
+
+Every milestone must contain **measurable acceptance criteria**.
+
+Completion must be **objectively verifiable**.
+
+---
+
+### Principle A6 — Architectural Artifacts
+
+Every milestone must record all **architectural artifacts**.
+
+Examples: Documents · Cursor Rules · Architecture Notes · Implementation Specifications
+
+---
+
+### Principle A7 — Constitutional Compliance Review (CCR)
+
+Every milestone must conclude with a **Constitutional Compliance Review (CCR)**.
+
+The milestone must explicitly state whether it **complies with RC000**.
+
+---
+
+### Principle A8 — Next Milestone
+
+Every milestone must identify the **next milestone**.
+
+Architectural evolution shall be **continuous**.
+
+---
+
+### Principle A9 — Baseline Locked
+
+When a milestone reaches **Baseline Locked**, its architecture becomes an **official historical baseline**.
+
+Future milestones **may extend** it.
+
+They **must never rewrite** it.
+
+Architectural evolution occurs by **superseding** earlier milestones, **never** by deleting architectural history.
+
+---
+
+### Principle A10 — Permanent Historical Record
+
+Milestones are **permanent constitutional records**.
+
+Corrections are recorded by **newer milestones**.
+
+Historical milestones must remain **auditable**.
+
+---
+
+## Appendix B — ClearStrata Governance Documentation Pyramid (CGDP)
+
+The **CGDP** defines the **permanent constitutional knowledge hierarchy** of the platform.
+
+All future governance records, architecture, requirements, milestones, and implementation **shall comply with this hierarchy**.
+
+The **authoritative specification** is maintained in:
+
+[`docs/architecture/CGDP-ClearStrata-Governance-Documentation-Pyramid.md`](../architecture/CGDP-ClearStrata-Governance-Documentation-Pyramid.md)
+
+Do not duplicate the full pyramid in this constitution. Refer to that document for LEVEL 0–6 definitions, dependency rules, and CGDP Rules 1–5.
+
+---
+
+## Constitution Completion
+
+The **constitutional foundation** of the platform is officially **completed** by **Milestone M1.5 — Constitution Complete**.
+
+**Record:** [`docs/milestones/M1.5-Constitution-Complete.md`](../milestones/M1.5-Constitution-Complete.md)
+
+Future evolution shall occur through **constitutional implementation** rather than **constitutional expansion**.
+
+The **Constitutional Implementation Era** begins with **Milestone M2 (RC010)**.
+

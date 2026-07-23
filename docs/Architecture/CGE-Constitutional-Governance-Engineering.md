@@ -216,3 +216,26 @@ Architecture follows the Constitution.
 Implementation follows the Architecture.
 
 Every feature exists to strengthen the Democratic Governance Loop.
+
+---
+
+## Knowledge Dependency
+
+Every engineering activity must follow the **CGDP hierarchy**.
+
+**Reference:** RC000 Appendix B — [`CGDP-ClearStrata-Governance-Documentation-Pyramid.md`](CGDP-ClearStrata-Governance-Documentation-Pyramid.md)
+
+Implementation begins **only after** the following are available:
+
+```
+RC000
+  ↓
+ADR
+  ↓
+RC
+  ↓
+Milestone
+```
+
+No implementation may skip a layer or redefine a higher layer (see CGDP Constitutional Dependency Rule).
+

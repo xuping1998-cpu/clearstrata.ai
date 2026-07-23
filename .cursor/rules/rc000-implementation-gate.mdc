@@ -20,6 +20,25 @@ Coexists with [`docs/00_ClearStrata_Constitution.md`](docs/00_ClearStrata_Consti
 3. **Explain loop impact** — state whether the change **strengthens** the Democratic Governance Loop (traceability, participation, accountability, memory)
 4. **Stop on conflict** — if the design violates RC000 (especially Principles 1–4), **do not write code**; explain the conflict and propose a compliant design first
 
+## Milestone gate (RC000 Appendix A — MGS)
+
+Before implementing **any milestone** (M1, M2, M3…):
+
+1. Verify the milestone document in `docs/milestones/` complies with [**RC000 Appendix A (MGS)**](docs/rc/RC000-clearstrata-constitution.md#appendix-a--milestone-governance-standard-mgs) (Principles A1–A10).
+2. If **no milestone document exists**, **request architectural documentation** before implementation — do not proceed with code.
+
+Guidance (non-authoritative): [`docs/architecture/Milestone-Governance-Standard.md`](docs/architecture/Milestone-Governance-Standard.md)
+
+## CGDP gate (RC000 Appendix B)
+
+Before implementation, **verify CGDP compliance** — [`docs/architecture/CGDP-ClearStrata-Governance-Documentation-Pyramid.md`](docs/architecture/CGDP-ClearStrata-Governance-Documentation-Pyramid.md)
+
+Reason top-down: **FD → RC000 → GDR → ADR → RC → Milestone → Implementation**
+
+If a proposal attempts to **redefine a higher documentation layer**, **stop implementation** and explain the constitutional conflict.
+
+Examples: RC redefining ADR · ADR redefining GDR · Implementation skipping Milestone or RC
+
 ## Non‑negotiable layer boundaries
 
 | Layer | Must | Must not |
