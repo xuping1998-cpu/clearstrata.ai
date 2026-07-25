@@ -8,7 +8,7 @@
 | **Version** | 1.0 |
 | **Status** | **In Progress** |
 | **Era** | Constitutional Implementation Era |
-| **RC** | RC010 |
+| **RC** | RC010 · RC010-A · RC010-B · RC010-C · CDR-001 |
 | **Release target** | FR2 — Governance Release |
 | **Engineering model** | Constitutional Governance Engineering (CGE) |
 | **Effective date** | 2026 |
@@ -126,10 +126,71 @@ First governance-loop **implementation** milestone. Does not expand RC000 text.
 | **Authoring UI** | `MeetingDetail` only |
 | **Governance handoff** | Matter link; no auto motion from Matter title |
 | **Legacy** | `community_resolutions` read-only |
-| **Freeze boundary** | `owner_vote_meetings.snapshot_frozen_at` |
+| **Freeze boundary** | `owner_vote_meetings.snapshot_frozen_at` — see [`RC010-A`](../rc/RC010-A-Snapshot-Constitutional-Boundary.md) |
 | **Retired** | Governance draft resolution editor |
 
 **Requirement:** [`RC010-Meeting-Owns-Formal-Resolutions.md`](../rc/RC010-Meeting-Owns-Formal-Resolutions.md)
+
+**Architecture prerequisite (Slice 3):** [`RC010-A-Snapshot-Constitutional-Boundary.md`](../rc/RC010-A-Snapshot-Constitutional-Boundary.md)
+
+**Production contract recovery (Slice 3):** [`RC010-B-Production-Freeze-Contract-Recovery.md`](../rc/RC010-B-Production-Freeze-Contract-Recovery.md)
+
+**Constitutional decision (Slice 3 design):** [`CDR-001-Voting-Eligibility-Decision.md`](../cdr/CDR-001-Voting-Eligibility-Decision.md) — **Approved**
+
+**Investigation:** [`RC010-C-Voting-Eligibility-Contract.md`](../investigations/RC010-C-Voting-Eligibility-Contract.md) — **Completed**
+
+**Document governance:** [`DOCUMENT-GOVERNANCE.md`](../DOCUMENT-GOVERNANCE.md)
+
+**Meeting workflows:** Freeze behavior is **workflow-specific** — Owner Requisitioned SGM automatic freeze is a known constitutional fact; other meeting types are documented separately in RC010-B.
+
+---
+
+## 6b. M2 Slice 3 — current status (2026-06-24)
+
+| Artifact | Status |
+|----------|--------|
+| **RC010-A** | **Approved** |
+| **RC010-B** | **Completed** — Production Freeze Contract Recovered |
+| **RC010-C Investigation** | **Completed** — Production Voting Eligibility Contract Recovered |
+| **CDR-001** | **Approved** |
+| **M2 Slice 3 Design** | **Authorized** |
+| **M2 Slice 3 Implementation** | **Not Authorized** |
+| **Production** | **Unchanged** — currently **not fully compliant** with CDR-001 |
+
+Slice 3 design work is filed under [`docs/implementation/`](../implementation/) when recorded. Implementation requires a **separate Implementation Authorization** record.
+
+---
+
+## 6c. Known Constitutional Implementation Gaps
+
+**Label:** Known Constitutional Implementation Gap — **not** described as regression unless historical intent is independently proven.
+
+Production facts (from RC010-B / RC010-C) vs **Approved CDR-001** target:
+
+| Gap | Production today (fact) | Approved constitutional target (CDR-001) |
+|-----|-------------------------|------------------------------------------|
+| **Resolution vote eligibility** | `submit_owner_vote` uses **live** `property_members` | **`owner_vote_voter_snapshot`** after Freeze |
+| **Freeze gate on submit** | Production does **not** require `snapshot_frozen_at` for resolution vote submission | Formal voting after completed Freeze |
+| **Owner req. SGM window (V3 submit)** | Production V3 uses **14-day unified** submit window on council `scheduled_at` | **7d authoring → freeze → 7d formal voting** |
+| **Resolution instrument** | Votes bind to **mutable** `owner_vote_resolutions` IDs | **Immutable frozen resolution instrument** |
+| **Automatic freeze trigger** | Production automatic freeze is **client-triggered** (`MeetingDetail` useEffect) | **Server/database primary**; client fallback only |
+| **Re-freeze behavior** | `freeze_owner_vote_snapshot` can **rebuild** existing snapshot | **Immutable at freeze** (idempotent / authorized reissue only) |
+
+**Rule:** Do not describe production as constitutionally compliant. Close gaps only through **authorized implementation** and migration plan (Slice 3 design → Implementation Authorization).
+
+**Clarified by:** CDR-001 · **Implementation gap identified by:** RC010-C
+
+---
+
+## 6a. Implementation slices
+
+| Slice | Focus | Status | Authorization |
+|-------|-------|--------|---------------|
+| **Slice 1** | Governance authoring retirement · handoff | (planned / partial) | Per RC010 |
+| **Slice 2** | Meeting formal resolution authoring (CRUD · order · version · state · audit) | In progress | M2 authorized |
+| **Slice 3** | Snapshot Freeze — dual snapshot · immutability · eligibility alignment | **Design authorized** (CDR-001 Approved) | **Implementation not authorized** |
+
+Slice 3 **design** is authorized under Approved **CDR-001**. Slice 3 **implementation** requires a separate **Implementation Authorization** record and approved migration plan. See §6b–6c.
 
 ---
 
@@ -138,6 +199,11 @@ First governance-loop **implementation** milestone. Does not expand RC000 text.
 | Artifact | Path |
 |----------|------|
 | RC010 | [`docs/rc/RC010-Meeting-Owns-Formal-Resolutions.md`](../rc/RC010-Meeting-Owns-Formal-Resolutions.md) |
+| **RC010-A** | [`docs/rc/RC010-A-Snapshot-Constitutional-Boundary.md`](../rc/RC010-A-Snapshot-Constitutional-Boundary.md) |
+| **RC010-B** | [`docs/rc/RC010-B-Production-Freeze-Contract-Recovery.md`](../rc/RC010-B-Production-Freeze-Contract-Recovery.md) |
+| **RC010-C** | [`docs/investigations/RC010-C-Voting-Eligibility-Contract.md`](../investigations/RC010-C-Voting-Eligibility-Contract.md) |
+| **CDR-001** | [`docs/cdr/CDR-001-Voting-Eligibility-Decision.md`](../cdr/CDR-001-Voting-Eligibility-Decision.md) |
+| **Document governance** | [`docs/DOCUMENT-GOVERNANCE.md`](../DOCUMENT-GOVERNANCE.md) |
 | M2 (this) | `docs/milestones/M2-Meeting-Resolution-Authoring.md` |
 | FR2 (target) | [`docs/releases/FR2-Governance-Release.md`](../releases/FR2-Governance-Release.md) |
 | Era | [`docs/eras/Constitutional-Implementation-Era.md`](../eras/Constitutional-Implementation-Era.md) |

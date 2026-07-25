@@ -12,6 +12,8 @@ These are not project milestones. They define the constitutional architecture in
 
 **Design System (CDS):** [CDS-001](../design-system/CDS-001_ClearStrata_Design_System.md) — visual, interaction, accessibility standards
 
+**Document governance:** [DOCUMENT-GOVERNANCE.md](../DOCUMENT-GOVERNANCE.md) — permanent hierarchy, authority order, status vocabulary
+
 ---
 
 ### Architecture Constitution
@@ -68,4 +70,13 @@ Future governance changes: [GRFC/](GRFC/) — numbered **GRFC-002+** per [GRFC-0
 
 ## Other architecture records
 
-Existing ADRs: `docs/ADR/` (**AR** prefix). See [STRUCTURE.md](../STRUCTURE.md#architecture-docsarchitecture--target).
+| Series | Path | Role |
+|--------|------|------|
+| **Governance standard** | [`DOCUMENT-GOVERNANCE.md`](../DOCUMENT-GOVERNANCE.md) | Hierarchy, authority, status vocabulary |
+| **RC** — Requirement Changes | [`docs/rc/`](../rc/) | Requirements & recovery records |
+| **Investigations** | [`docs/investigations/`](../investigations/) | Evidence / production facts |
+| **CDR** — Constitutional Decision Records | [`docs/cdr/`](../cdr/) | Target constitutional contract (decisions) |
+| **Implementation** | [`docs/implementation/`](../implementation/) | Slice design + implementation authorization |
+| **ADR** — Architecture Decision Records | [`docs/ADR/`](../ADR/) | Engineering ADRs (**AR** prefix) |
+
+See [STRUCTURE.md](../STRUCTURE.md#architecture-docsarchitecture--target).

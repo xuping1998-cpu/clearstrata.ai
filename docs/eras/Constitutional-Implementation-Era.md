@@ -78,7 +78,7 @@ Every implementation shall:
 
 所有技術實現，都應：遵循憲章 · 尊重架構邊界 · 維護治理完整性 · 保持可追溯 · 保持可問責 · 提升透明 · 建立信任 · 強化社區。
 
-**Methodology:** [`docs/architecture/CGE-Constitutional-Governance-Engineering.md`](../architecture/CGE-Constitutional-Governance-Engineering.md)
+**Methodology:** [`docs/Architecture/CGE-Constitutional-Governance-Engineering.md`](../Architecture/CGE-Constitutional-Governance-Engineering.md)
 
 ---
 
@@ -119,9 +119,61 @@ This establishes the **first complete implementation** of the Constitutional Gov
 
 **Status:** **In Progress** (authorized 2026 — first implementation milestone of this era)
 
+**M2 Slice 3:** **CDR-001 Approved** — Slice 3 **Design authorized**; Slice 3 **Implementation not authorized**. Production **unchanged** and **not fully compliant** with CDR-001.
+
+**Chain:** [`RC010-A`](../rc/RC010-A-Snapshot-Constitutional-Boundary.md) → [`RC010-B`](../rc/RC010-B-Production-Freeze-Contract-Recovery.md) → [`RC010-C`](../investigations/RC010-C-Voting-Eligibility-Contract.md) → [`CDR-001`](../cdr/CDR-001-Voting-Eligibility-Decision.md)
+
+**Known Constitutional Implementation Gaps:** See [`M2-Meeting-Resolution-Authoring.md` §6c](../milestones/M2-Meeting-Resolution-Authoring.md#6c-known-constitutional-implementation-gaps)
+
 ---
 
-## RC010 — Constitutional objective
+## CDR-001 — Voting Eligibility Decision (Approved)
+
+**CDR-001** is constitutionally binding for M2 Slice 3 design. It does **not** change production by itself.
+
+| Field | Value |
+|-------|-------|
+| **Status** | **Approved** (2026-06-24) |
+| **Slice 3 Design** | **Authorized** |
+| **Slice 3 Implementation** | **Not authorized** |
+| **Production effect** | **None** until separately authorized implementation |
+
+**Record:** [`docs/cdr/CDR-001-Voting-Eligibility-Decision.md`](../cdr/CDR-001-Voting-Eligibility-Decision.md)
+
+**Governance standard:** [`DOCUMENT-GOVERNANCE.md`](../DOCUMENT-GOVERNANCE.md)
+
+---
+
+## RC010-B / RC010-C — Production contract recovery (Completed)
+
+M2 recovery phase is **complete**. Facts are preserved; constitutional **target** is set by CDR-001.
+
+| Phase | Record | Status |
+|-------|--------|--------|
+| Architecture boundary | [`RC010-A`](../rc/RC010-A-Snapshot-Constitutional-Boundary.md) | **Approved** |
+| Production freeze recovery | [`RC010-B`](../rc/RC010-B-Production-Freeze-Contract-Recovery.md) | **Completed** |
+| Production eligibility recovery | [`RC010-C`](../investigations/RC010-C-Voting-Eligibility-Contract.md) | **Completed** |
+| Constitutional decision | [`CDR-001`](../cdr/CDR-001-Voting-Eligibility-Decision.md) | **Approved** |
+
+Freeze behavior is **workflow-specific**. Owner Requisitioned SGM automatic freeze remains a preserved constitutional fact; other meeting types are recovered separately in RC010-B.
+
+---
+
+## RC010-A — Snapshot Constitutional Boundary
+
+**RC010-A** clarifies the constitutional handoff between Meeting and Voting at **Snapshot Freeze**.
+
+| Concept | Role |
+|---------|------|
+| **Voter Snapshot** | Who may vote (`owner_vote_voter_snapshot`) |
+| **Resolution Snapshot** | What is being voted on (design deferred) |
+| **`snapshot_frozen_at`** | Completion of the handoff |
+
+Slice 3 implementation requires RC010-A approval, live RPC recovery, and explicit design gate — not authorized by RC010-A alone.
+
+**Record:** [`docs/rc/RC010-A-Snapshot-Constitutional-Boundary.md`](../rc/RC010-A-Snapshot-Constitutional-Boundary.md)
+
+---
 
 **RC010** implements the constitutional separation between **Governance · Meeting · Voting · Execution**.
 

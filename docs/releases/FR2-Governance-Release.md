@@ -70,7 +70,13 @@ Transform RC000 layer boundaries into **working product behavior**:
 |------|--------|-----------|
 | **M2** | **In Progress** | [`M2-Meeting-Resolution-Authoring.md`](../milestones/M2-Meeting-Resolution-Authoring.md) |
 | **RC010** | **In Progress** | [`RC010-Meeting-Owns-Formal-Resolutions.md`](../rc/RC010-Meeting-Owns-Formal-Resolutions.md) |
-| **Implementation** | **Authorized** | Under CGE + MGS gates per M2 |
+| **RC010-A** | **Approved** | [`RC010-A-Snapshot-Constitutional-Boundary.md`](../rc/RC010-A-Snapshot-Constitutional-Boundary.md) |
+| **RC010-B** | **Completed** | [`RC010-B-Production-Freeze-Contract-Recovery.md`](../rc/RC010-B-Production-Freeze-Contract-Recovery.md) |
+| **RC010-C** | **Completed** | [`RC010-C-Voting-Eligibility-Contract.md`](../investigations/RC010-C-Voting-Eligibility-Contract.md) |
+| **CDR-001** | **Approved** | [`CDR-001-Voting-Eligibility-Decision.md`](../cdr/CDR-001-Voting-Eligibility-Decision.md) |
+| **M2 Slice 3 Design** | **Authorized** | CDR-001 approval |
+| **M2 Slice 3 Implementation** | **Not authorized** | Requires separate Implementation Authorization |
+| **Implementation** | **Authorized** (Slice 2) · Slice 3 not authorized | Under CGE + MGS gates per M2 |
 
 ---
 
@@ -84,6 +90,28 @@ Actions               →  Execution   (RC011 — out of FR2 scope)
 ```
 
 This release closes the **authoring gap** that caused Matter titles to appear as formal resolutions.
+
+---
+
+## Architecture decisions (current)
+
+| Record | Role |
+|--------|------|
+| **RC010** | Meeting owns formal resolution authoring before Freeze |
+| **RC010-A** | Snapshot Freeze constitutional boundary — dual snapshot model (voter + resolution); Slice 3 prerequisite |
+| **RC010-B** | Production freeze contract recovery — live RPC + per-meeting-type workflow matrix |
+| **RC010-C** | Production voting eligibility contract recovery — resolution vs election paths |
+| **CDR-001** | Constitutional voting eligibility and freeze semantics — **Approved** |
+
+**RC010-A status:** Approved — architecture boundary record.
+
+**RC010-B status:** Completed — production freeze contract recovered; **does not authorize Slice 3 implementation**.
+
+**RC010-C status:** Completed — production eligibility contract recovered; informed CDR-001.
+
+**CDR-001 status:** Approved — M2 Slice 3 **Design authorized**; Slice 3 **Implementation not authorized**. Production **unchanged** and **not fully compliant** with CDR-001 until authorized implementation.
+
+**References:** [`RC010-A-Snapshot-Constitutional-Boundary.md`](../rc/RC010-A-Snapshot-Constitutional-Boundary.md) · [`RC010-B-Production-Freeze-Contract-Recovery.md`](../rc/RC010-B-Production-Freeze-Contract-Recovery.md) · [`RC010-C-Voting-Eligibility-Contract.md`](../investigations/RC010-C-Voting-Eligibility-Contract.md) · [`CDR-001-Voting-Eligibility-Decision.md`](../cdr/CDR-001-Voting-Eligibility-Decision.md) · [`DOCUMENT-GOVERNANCE.md`](../DOCUMENT-GOVERNANCE.md)
 
 ---
 

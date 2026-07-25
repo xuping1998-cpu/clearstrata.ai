@@ -10,7 +10,7 @@ This index maps **current** repository paths to the **official target structure*
 
 | Layer | Start here |
 |-------|------------|
-| 🏛 Foundational | [Architecture/README.md](Architecture/README.md) · [design-system/README.md](design-system/README.md) |
+| 🏛 Foundational | [Architecture/README.md](Architecture/README.md) · [Document Governance](DOCUMENT-GOVERNANCE.md) · [CDR records](cdr/README.md) · [RC records](rc/README.md) · [Investigations](investigations/README.md) · [design-system/README.md](design-system/README.md) |
 | 🚀 Projects | [Releases Registry](Registry/Releases_Registry.md) · [Milestones](History/Milestones.md) |
 | 📘 Records | [Document Registry](Registry/Document_Registry.md) · [projects/](projects/) (incl. RC-001 … RC-010 GUXA) |
 | 🛠 Engineering | [BF records](Registry/Document_Registry.md#bug-fix-records-bf) |
@@ -83,6 +83,31 @@ This index maps **current** repository paths to the **official target structure*
 |--------------|----------|
 | `docs/Governance_Dashboard.md` | PR-001 |
 | `docs/projects/PR-002_*.md` | PR-002 |
+
+---
+
+---
+
+## Constitutional documentation (`docs/` — canonical categories)
+
+| Path | Type | Purpose |
+|------|------|---------|
+| [`constitution/`](constitution/) | CONSTITUTION | Index to Founding + RC000 (baseline locked) |
+| [`rc/`](rc/) | RC | Requirement constitution records |
+| [`investigations/`](investigations/) | INVESTIGATION | Evidence and unknowns |
+| [`cdr/`](cdr/) | CDR | Approved constitutional architecture decisions |
+| [`implementation/`](implementation/) | SLICE DESIGN / AUTHORIZATION / CES | Design gates, CES-001, CITM, slice template |
+| [`implementation/CES-001-Engineering-Standard.md`](implementation/CES-001-Engineering-Standard.md) | ENGINEERING STANDARD | Permanent traceability and slice discipline |
+| [`implementation/templates/Slice-Design-Template.md`](implementation/templates/Slice-Design-Template.md) | TEMPLATE | Required structure for all slice designs |
+| [`milestones/`](milestones/) | MILESTONE | Bounded work and acceptance |
+| [`releases/`](releases/) | RELEASE | Governance releases (FR) |
+| [`eras/`](eras/) | ERA | Constitutional development phases |
+| [`DOCUMENT-GOVERNANCE.md`](DOCUMENT-GOVERNANCE.md) | Standard | Permanent hierarchy and authority model |
+| [`README.md`](README.md) | Index | Top-level documentation index |
+
+**Authority order:** Founding Constitution → Approved RC → Approved CDR → Milestone/Release → Authorized Slice Design → Implementation Authorization → Production (evidence only).
+
+Historical paths (`Founding/`, `projects/`, `Registry/`, `History/`) remain valid — see [`README.md`](README.md).
 
 ---
 
