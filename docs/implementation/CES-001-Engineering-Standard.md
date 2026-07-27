@@ -16,7 +16,7 @@
 
 **Applies to:** M2 · M3 · M4 · M5 · and **all future engineering work**
 
-**Related:** [`Slice-Design-Template.md`](templates/Slice-Design-Template.md) · [`DOCUMENT-GOVERNANCE.md`](../DOCUMENT-GOVERNANCE.md)
+**Related:** [`Slice-Design-Template.md`](templates/Slice-Design-Template.md) · [`CES-002-Database-Engineering-Standard.md`](CES-002-Database-Engineering-Standard.md) · [`CES-003-Frontend-Engineering-Standard.md`](CES-003-Frontend-Engineering-Standard.md) · [`DOCUMENT-GOVERNANCE.md`](../DOCUMENT-GOVERNANCE.md)
 
 > **Scope lock:** This standard governs engineering documentation, traceability, and implementation discipline. It does **not** authorize application code, database schema, migrations, production data, or production behavior changes.
 

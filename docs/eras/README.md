@@ -11,7 +11,8 @@ Permanent records of platform evolution by constitutional era.
 | Era | Release | Status | Record |
 |-----|---------|--------|--------|
 | **Foundation Era** | FR1 — Foundation Release | **Completed** · Baseline Locked | [`docs/releases/FR1-Foundation-Release.md`](../releases/FR1-Foundation-Release.md) |
-| **Constitutional Implementation Era** | FR2 — Governance Release (M2) | **Active** · M2 In Progress | [`Constitutional-Implementation-Era.md`](Constitutional-Implementation-Era.md) |
+| **Constitutional Implementation Era** | FR2 — Governance Release (M2) | **Active** · governance phase complete at v1.0 | [`Constitutional-Implementation-Era.md`](Constitutional-Implementation-Era.md) |
+| **Engineering Implementation Era** | FR2+ · M2 Slice 3+ | **Active** · implementation primary | [`Engineering-Implementation-Era-v1.0.md`](Engineering-Implementation-Era-v1.0.md) |
 
 ---
 

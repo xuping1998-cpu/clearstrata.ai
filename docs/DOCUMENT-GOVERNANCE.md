@@ -33,7 +33,7 @@ docs/
 ├── rc/                    ← Requirement constitution records (RC)
 ├── investigations/        ← Evidence / unknowns (INVESTIGATION)
 ├── cdr/                   ← Constitutional decision records (CDR)
-├── implementation/        ← Slice design + implementation authorization + CES-001
+├── implementation/        ← Slice design + implementation authorization + CES-001 + CES-002 + CES-003
 ├── milestones/            ← Milestone contracts (M)
 ├── releases/              ← Release records (FR)
 ├── eras/                  ← Era records
@@ -163,7 +163,7 @@ Milestones reference RC, CDR, investigations, and implementation records; they d
 
 **Naming example:** `M2-S3-Snapshot-Freeze-Design.md`
 
-**Engineering standard:** All slice designs must comply with [`CES-001`](implementation/CES-001-Engineering-Standard.md) — including **CITM** (Constitutional Implementation Traceability Matrix) and the five required sections (Objective, Design, Migration, Verification, Constitutional Compliance).
+**Engineering standard:** All slice designs must comply with [`CES-001`](implementation/CES-001-Engineering-Standard.md), [`CES-002`](implementation/CES-002-Database-Engineering-Standard.md) where database work applies, and [`CES-003`](implementation/CES-003-Frontend-Engineering-Standard.md) where frontend work applies — including **CITM** and the five required sections (Objective, Design, Migration, Verification, Constitutional Compliance).
 
 **Template:** [`implementation/templates/Slice-Design-Template.md`](implementation/templates/Slice-Design-Template.md)
 
@@ -342,7 +342,7 @@ When adding or approving a constitutional record, update:
 4. Active era record if phase changes
 5. [`STRUCTURE.md`](STRUCTURE.md) if hierarchy changes
 
-When adding or approving a **slice design**, also verify **CES-001** compliance (CITM + five sections).
+When adding or approving a **slice design**, also verify **CES-001** compliance (CITM + five sections), **CES-002** for database objects, and **CES-003** for frontend objects.
 
 Indexes **link** to records; they do not duplicate full content.
 
@@ -361,6 +361,8 @@ Before merging documentation that affects constitutional contracts:
 - [ ] No baseline-locked document rewritten
 - [ ] No implementation implied without **Implementation Authorized**
 - [ ] Slice design includes **CITM** per **CES-001**
+- [ ] Database objects comply with **CES-002** (schema, migration, RPC, trigger, audit, snapshot)
+- [ ] Frontend objects comply with **CES-003** (routes, pages, components, hooks, permissions, state, localization)
 - [ ] Slice design uses five sections: Objective · Design · Migration · Verification · Constitutional Compliance
 
 ---
@@ -381,6 +383,42 @@ Before merging documentation that affects constitutional contracts:
 | **Status** | **Approved** |
 | **Authority** | ClearStrata Constitutional Governance Committee |
 | **Production effect** | **None** |
+
+### CES-002 — Database Engineering Standard
+
+| Field | Value |
+|-------|-------|
+| **Record** | [`CES-002-Database-Engineering-Standard.md`](implementation/CES-002-Database-Engineering-Standard.md) |
+| **Status** | **Approved** |
+| **Authority** | ClearStrata Constitutional Governance Committee |
+| **Production effect** | **None** |
+| **Parent** | CES-001 |
+
+Governs every future **database** artifact: tables, views, indexes, constraints, migrations, RPCs, triggers, functions, audit tables, snapshot tables, schedulers, and storage schema.
+
+**Database philosophy:** The database implements the approved constitutional model; it does not redefine constitutional decisions; production convenience never overrides constitutional correctness.
+
+**Database CITM:** Every table, RPC, trigger, and migration must appear in the CITM — no row, not authorized.
+
+**Covers:** Schema standards · Migration standard · RPC standard · Trigger standard · Audit standard · Snapshot standard
+
+### CES-003 — Frontend Engineering Standard
+
+| Field | Value |
+|-------|-------|
+| **Record** | [`CES-003-Frontend-Engineering-Standard.md`](implementation/CES-003-Frontend-Engineering-Standard.md) |
+| **Status** | **Approved** |
+| **Authority** | ClearStrata Constitutional Governance Committee |
+| **Production effect** | **None** |
+| **Parent** | CES-001 |
+
+Governs every future **frontend** artifact: React pages, components, hooks, routes, permissions, UI state, workflows, and localization.
+
+**Frontend philosophy:** Frontend reflects constitutional truth; it does not become the source of truth; business rules belong to approved constitutional contracts.
+
+**UI CITM:** Every page, route, component, permission, and workflow must appear in the CITM — no row, not authorized.
+
+**Covers:** Routing · Pages · Components · Hooks · Permissions · State machines · Localization (Chinese + English)
 
 ### CITM — Constitutional Implementation Traceability Matrix
 
@@ -426,7 +464,118 @@ Every slice ends with a **Constitutional Compliance** section:
 
 ### Reference implementation
 
-**M2 Slice 3** is the first slice required to fully comply with CES-001 and serves as the reference for all future slices.
+**M2 Slice 3** is the first slice required to fully comply with CES-001, CES-002 (database), and CES-003 (frontend), and serves as the reference for all future slices.
+
+---
+
+## 22. Governance Framework Freeze
+
+**Governance Framework Version 1.0** is **Approved** and **frozen** as of 2026-06-24.
+
+**Record:** [`GOVERNANCE-FREEZE-v1.0.md`](GOVERNANCE-FREEZE-v1.0.md)
+
+The governance architecture defined by:
+
+- Founding Constitution
+- RC (Requirement Constitution)
+- CDR (Constitutional Decision Records)
+- CES (Engineering Constitution)
+- Document Governance (this standard)
+- Document Authority Order
+- Engineering Slice Standard
+- CITM (Constitutional Implementation Traceability Matrix)
+
+is considered **Governance Framework Version 1.0**.
+
+**Framework evolution shall be exceptional rather than continuous.**
+
+Future evolution follows:
+
+```
+Investigation
+    ↓
+New CDR
+    ↓
+Approval
+    ↓
+Framework Update
+```
+
+Future work should **prioritize implementation** under the approved framework rather than redesigning governance documentation.
+
+**Existing approved constitutional documents shall not be rewritten** to reflect later architectural decisions.
+
+---
+
+## 23. Governance Stability Principle
+
+The governance framework is intentionally designed to evolve **more slowly** than engineering implementation.
+
+| Layer | Expected evolution rate |
+|-------|-------------------------|
+| **Governance** (Founding · RC · CDR · DOCUMENT-GOVERNANCE) | Slow · exceptional |
+| **Engineering Constitution** (CES) | Slow · new standards via approval |
+| **Slice Design** | Per milestone slice |
+| **Implementation** | Continuous under authorization |
+
+**Engineering implementation is expected to evolve continuously.** Approved constitutional records should **remain stable**. Framework evolution shall be **exceptional rather than routine**.
+
+### Principles
+
+1. **Governance stability** — The framework exists so engineering can move fast *within* clear boundaries.
+2. **Implementation velocity** — Slice design and code iterate; governance does not redesign per sprint.
+3. **Record permanence** — Approved RC, CDR, and CES are not rewritten to match later implementation.
+4. **Production is not authority** — Production behavior is evidence for gaps; it does not override Approved CDR.
+5. **Exceptional framework change** — Governance updates require the full constitutional path, not ad hoc edits.
+
+### Required path for future governance changes
+
+```
+Investigation
+    ↓
+New CDR
+    ↓
+Governance Approval
+    ↓
+Framework Update
+```
+
+**Production behavior SHALL NOT become constitutional authority.**
+
+**Approved constitutional records SHALL NOT be rewritten** to reflect later implementation.
+
+**Record:** [`GOVERNANCE-FREEZE-v1.0.md`](GOVERNANCE-FREEZE-v1.0.md) · **Era:** [`eras/Engineering-Implementation-Era-v1.0.md`](eras/Engineering-Implementation-Era-v1.0.md) · **Working convention:** [`WORKING-WITH-CURSOR.md`](WORKING-WITH-CURSOR.md)
+
+---
+
+## 24. Framework Boundary Rule
+
+The Governance Framework exists to **support engineering**, not to become an engineering product itself.
+
+If a new engineering task can be completed **within the existing Governance Framework**, the framework **SHALL NOT** be expanded.
+
+New **RC**, **CDR**, **CES**, or governance documents shall only be introduced when an **actual architectural gap** cannot be resolved using the existing framework.
+
+**Engineering shall adapt to the framework.**
+
+The framework shall evolve **only when constitutionally necessary**.
+
+---
+
+## 25. Versioning Policy
+
+The Governance Framework follows **independent lifecycle policies** by layer.
+
+| Layer | Version | Expected change rate | Revision type |
+|-------|---------|----------------------|---------------|
+| **Governance Framework** | v1.x | **Very low** | Major constitutional evolution only |
+| **Engineering Constitution (CES)** | v1.x | **Low** | Incremental engineering standards |
+| **Slice Design** | Feature-specific | **Medium** | Per feature |
+| **Implementation** | — | **Continuous** | Ongoing authorized engineering |
+| **Verification** | — | **Continuous** | Ongoing validation and QA |
+| **Production** | — | **Continuous** | Ongoing deployed behavior (evidence only) |
+
+The **stability of the Governance Framework** allows implementation to evolve rapidly without repeatedly redesigning governance.
 
 ---
 

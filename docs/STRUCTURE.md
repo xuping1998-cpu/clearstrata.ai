@@ -1,5 +1,9 @@
 # ClearStrata Documentation Structure
 
+**Governance Framework Version 1.0 baseline:** This documentation hierarchy represents the **Governance Framework Version 1.0** baseline — [`GOVERNANCE-FREEZE-v1.0.md`](GOVERNANCE-FREEZE-v1.0.md). Framework evolution is exceptional; implementation under the approved framework is the current priority.
+
+**Engineering era:** [`eras/Engineering-Implementation-Era-v1.0.md`](eras/Engineering-Implementation-Era-v1.0.md) · **AI working convention:** [`WORKING-WITH-CURSOR.md`](WORKING-WITH-CURSOR.md)
+
 **Repository Home:** [RM-008 — Repository Constitutional Structure](Repository_Constitutional_Structure.md) (FOUNDATION — five layers)
 
 **Authority:** [RM-005 — Repository Governance Resolution](Repository_Governance_Resolution.md) (APPROVED)
@@ -96,12 +100,29 @@ This index maps **current** repository paths to the **official target structure*
 | [`rc/`](rc/) | RC | Requirement constitution records |
 | [`investigations/`](investigations/) | INVESTIGATION | Evidence and unknowns |
 | [`cdr/`](cdr/) | CDR | Approved constitutional architecture decisions |
-| [`implementation/`](implementation/) | SLICE DESIGN / AUTHORIZATION / CES | Design gates, CES-001, CITM, slice template |
-| [`implementation/CES-001-Engineering-Standard.md`](implementation/CES-001-Engineering-Standard.md) | ENGINEERING STANDARD | Permanent traceability and slice discipline |
+| [`implementation/`](implementation/) | SLICE DESIGN / AUTHORIZATION / CES | Design gates, Engineering Constitution (CES-001 … CES-010), CITM, slice template |
+| **Engineering Constitution** | CES SERIES | [`implementation/README.md#engineering-constitution`](implementation/README.md#engineering-constitution) |
+| **Core Standards** | CES-001 … CES-003 | Engineering · Database · Frontend — **Approved** |
+| [`implementation/CES-001-Engineering-Standard.md`](implementation/CES-001-Engineering-Standard.md) | ENGINEERING STANDARD | **Approved** — traceability and slice discipline |
+| [`implementation/CES-002-Database-Engineering-Standard.md`](implementation/CES-002-Database-Engineering-Standard.md) | ENGINEERING STANDARD | **Approved** — database schema, migration, RPC, trigger, audit, snapshot |
+| [`implementation/CES-003-Frontend-Engineering-Standard.md`](implementation/CES-003-Frontend-Engineering-Standard.md) | ENGINEERING STANDARD | **Approved** — React routes, pages, components, hooks, permissions, localization |
+| **Platform Standards** | CES-004 … CES-006 | API / RPC · Security · AI — **Reserved** |
+| [`implementation/CES-004-API-RPC-Engineering-Standard.md`](implementation/CES-004-API-RPC-Engineering-Standard.md) | ENGINEERING STANDARD | **Reserved** |
+| [`implementation/CES-005-Security-Engineering-Standard.md`](implementation/CES-005-Security-Engineering-Standard.md) | ENGINEERING STANDARD | **Reserved** |
+| [`implementation/CES-006-AI-Engineering-Standard.md`](implementation/CES-006-AI-Engineering-Standard.md) | ENGINEERING STANDARD | **Reserved** |
+| **Quality Standards** | CES-007 … CES-009 | Audit & Compliance · Testing & Verification · Deployment & Release — **Reserved** |
+| [`implementation/CES-007-Audit-and-Compliance-Engineering-Standard.md`](implementation/CES-007-Audit-and-Compliance-Engineering-Standard.md) | ENGINEERING STANDARD | **Reserved** |
+| [`implementation/CES-008-Testing-and-Verification-Engineering-Standard.md`](implementation/CES-008-Testing-and-Verification-Engineering-Standard.md) | ENGINEERING STANDARD | **Reserved** |
+| [`implementation/CES-009-Deployment-and-Release-Engineering-Standard.md`](implementation/CES-009-Deployment-and-Release-Engineering-Standard.md) | ENGINEERING STANDARD | **Reserved** |
+| **Governance Standards** | CES-010 | Documentation & Knowledge — **Reserved** |
+| [`implementation/CES-010-Documentation-and-Knowledge-Engineering-Standard.md`](implementation/CES-010-Documentation-and-Knowledge-Engineering-Standard.md) | ENGINEERING STANDARD | **Reserved** |
 | [`implementation/templates/Slice-Design-Template.md`](implementation/templates/Slice-Design-Template.md) | TEMPLATE | Required structure for all slice designs |
 | [`milestones/`](milestones/) | MILESTONE | Bounded work and acceptance |
 | [`releases/`](releases/) | RELEASE | Governance releases (FR) |
-| [`eras/`](eras/) | ERA | Constitutional development phases |
+| [`eras/`](eras/) | ERA | Constitutional and engineering development phases |
+| [`eras/Engineering-Implementation-Era-v1.0.md`](eras/Engineering-Implementation-Era-v1.0.md) | ENGINEERING ERA | **Approved** — implementation primary activity |
+| [`GOVERNANCE-FREEZE-v1.0.md`](GOVERNANCE-FREEZE-v1.0.md) | GOVERNANCE BASELINE | Framework Version 1.0 — frozen |
+| [`WORKING-WITH-CURSOR.md`](WORKING-WITH-CURSOR.md) | WORKING CONVENTION | AI collaboration / Cursor — project-level engineering documentation |
 | [`DOCUMENT-GOVERNANCE.md`](DOCUMENT-GOVERNANCE.md) | Standard | Permanent hierarchy and authority model |
 | [`README.md`](README.md) | Index | Top-level documentation index |
 
