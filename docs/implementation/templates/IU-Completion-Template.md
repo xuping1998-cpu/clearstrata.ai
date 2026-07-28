@@ -11,6 +11,16 @@
 
 ---
 
+## Authoritative Source
+
+| Field | Value |
+|-------|-------|
+| **Implementation Plan** | [`E-01-Implementation-Plan.md`](../E-01-Implementation-Plan.md) |
+| **Revision** | v1.0 |
+| **Verified** | **YES** |
+
+---
+
 ## 1. Implementation Unit
 
 | Field | Value |

@@ -6,8 +6,9 @@
 | **Title** | Documentation & Knowledge Engineering Standard |
 | **Type** | Engineering Standard |
 | **Status** | **Approved** |
+| **Standard version** | **v1.1.1** |
 | **Authority** | ClearStrata Constitutional Governance Committee |
-| **Approved** | 2026-07-27 |
+| **Approved** | 2026-07-27 (v1.0) · **v1.1** 2026-07-27 · **v1.1.1** 2026-07-28 |
 | **Parent** | [`CES-001-Engineering-Standard.md`](CES-001-Engineering-Standard.md) · [`DOCUMENT-GOVERNANCE.md`](../DOCUMENT-GOVERNANCE.md) |
 | **Milestone** | All (M2, M3, M4, M5, …) |
 | **Release** | FR2+ |
@@ -16,7 +17,7 @@
 
 **Applies to:** Every authorized **Implementation Unit (IU)** under an Engineering Task (e.g. E-01, E-02) and every **Phase** within such tasks.
 
-**Related:** [`templates/IU-Completion-Template.md`](templates/IU-Completion-Template.md) · [`CES-001`](CES-001-Engineering-Standard.md) · [`CES-008`](CES-008-Testing-and-Verification-Engineering-Standard.md) · [`CES-009`](CES-009-Deployment-and-Release-Engineering-Standard.md)
+**Related:** [`ENGINEERING-GOVERNANCE-v1.1.md`](ENGINEERING-GOVERNANCE-v1.1.md) · [`templates/IU-Completion-Template.md`](templates/IU-Completion-Template.md) · [`templates/Phase-Completion-Template.md`](templates/Phase-Completion-Template.md) · [`templates/Phase-Certification-Template.md`](templates/Phase-Certification-Template.md) · [`templates/Boundary-Check-Template.md`](templates/Boundary-Check-Template.md) · [`templates/Verification-Review-Template.md`](templates/Verification-Review-Template.md) · [`CES-001`](CES-001-Engineering-Standard.md) · [`CES-008`](CES-008-Testing-and-Verification-Engineering-Standard.md) · [`CES-009`](CES-009-Deployment-and-Release-Engineering-Standard.md)
 
 > **Scope lock:** This standard governs engineering completion documentation only. It does **not** authorize implementation or modify Blueprint, IA, CDR, or governance records.
 
@@ -30,7 +31,59 @@ Completion records provide audit evidence for Verification and Release gates, pr
 
 ---
 
-## 2. Naming convention
+## 2. Authoritative Source (v1.1 — mandatory)
+
+The following document types **shall** include an **Authoritative Source** section immediately after document metadata (title table) or in the document header:
+
+| Document type | Example |
+|---------------|---------|
+| Implementation Plan | `E-01-Implementation-Plan.md` |
+| IU Completion | `E-01-IU-2.1-Completion.md` |
+| Phase Completion | `E-01-Phase-1-Completion.md` |
+| Boundary Check | Phase / IU boundary status record |
+| Verification Review | Read-only verification review record |
+
+**Required fields:**
+
+| Field | Requirement |
+|-------|-------------|
+| **Implementation Plan** | Link or path to the governing task Implementation Plan |
+| **Revision** | Approved Implementation Plan revision (e.g. `v1.0`) |
+| **Verified** | `YES` when checked against that revision; `NO` only with documented reason |
+
+When a new Implementation Plan revision is approved, dependent documents **shall** update **Revision** on next edit or at phase close.
+
+**Standard block (markdown):**
+
+```markdown
+## Authoritative Source
+
+| Field | Value |
+|-------|-------|
+| **Implementation Plan** | [`E-01-Implementation-Plan.md`](E-01-Implementation-Plan.md) |
+| **Revision** | v1.0 |
+| **Verified** | **YES** |
+```
+
+---
+
+## 3. Document priority when guidance conflicts (v1.1)
+
+When conversation guidance conflicts with approved engineering documents, priority **shall** be:
+
+| Priority | Source |
+|----------|--------|
+| **1** | Approved Engineering Blueprint |
+| **2** | Approved Implementation Plan |
+| **3** | Approved Engineering Review |
+| **4** | Approved IU Scope (authorized IU boundary) |
+| **5** | Conversation guidance |
+
+Conversation guidance **must not** override items 1–4.
+
+---
+
+## 4. Naming convention
 
 ### 2.1 Implementation Unit completion
 
@@ -63,13 +116,28 @@ docs/implementation/{Task}-Phase-{n}-Completion.md
 
 Phase completion **summarizes** IU completions; it does **not** replace them.
 
-### 2.3 Supporting documents
+**Single source rule:** Exactly **one** Phase Completion record is authoritative per phase. All technical summaries (deliverables, verification, architecture, deferred work, boundary findings) **shall** live in that record only.
+
+### 2.3 Phase certification (approval metadata)
+
+Phase certification **may** be recorded in one of two forms:
+
+| Form | Rule |
+|------|------|
+| **A — Embedded** | Final section of the Phase Completion document (`## Engineering Certification`) |
+| **B — Dedicated** | Separate file: `docs/implementation/{Task}-Phase-{n}-Certification.md` |
+
+Dedicated certification files **shall** contain **approval metadata only** (certification date, gate results, deployment certification status, approved next step). They **must not** duplicate technical summaries already in the Phase Completion document.
+
+**Example (dedicated):** `E-01-Phase-2-Certification.md`
+
+### 2.4 Supporting documents
 
 Deployment readiness, verification reviews, and investigation records may exist as separate documents but **do not** substitute for an IU Completion record when the IU modified repository artifacts or achieved an authorized engineering deliverable.
 
 ---
 
-## 3. Required content — IU Completion
+## 5. Required content — IU Completion
 
 Every IU Completion document **shall** contain the following sections (see template for structure):
 
@@ -86,13 +154,17 @@ Every IU Completion document **shall** contain the following sections (see templ
 | 9 | **Known Limitations** | Intentionally deferred items only |
 | 10 | **Deferred Work** | Next IU(s) |
 | 11 | **Authority** | Blueprint, IA, Phase Plan, Engineering Review |
+| 12 | **Authoritative Source** | Implementation Plan, Revision, Verified ([§2](#2-authoritative-source-v11--mandatory)) |
+
+Phase completion and verification documents **shall** include **Authoritative Source** per [§2](#2-authoritative-source-v11--mandatory); IU Completion **shall** include it in metadata or as §12.
 
 ---
 
-## 4. Required content — Phase completion
+## 6. Required content — Phase completion
 
 Phase completion documents **shall** summarize:
 
+- **Authoritative Source** ([§2](#2-authoritative-source-v11--mandatory))
 - All completed IUs (with links to IU Completion records)
 - Consolidated deliverables
 - Verification summary
@@ -102,7 +174,7 @@ Phase completion documents **shall** summarize:
 
 ---
 
-## 5. Status definitions
+## 7. Status definitions
 
 | Status | Use when |
 |--------|----------|
@@ -113,7 +185,7 @@ Phase completion documents **shall** summarize:
 
 ---
 
-## 6. Workflow placement
+## 8. Workflow placement
 
 ```
 Implementation Authorization (IA)
@@ -129,17 +201,21 @@ Implementation Authorization (IA)
 
 ---
 
-## 7. Template
+## 9. Templates
 
 | Template | Path |
 |----------|------|
-| **IU Completion Template** | [`templates/IU-Completion-Template.md`](templates/IU-Completion-Template.md) |
+| **IU Completion** | [`templates/IU-Completion-Template.md`](templates/IU-Completion-Template.md) |
+| **Phase Completion** | [`templates/Phase-Completion-Template.md`](templates/Phase-Completion-Template.md) |
+| **Phase Certification** | [`templates/Phase-Certification-Template.md`](templates/Phase-Certification-Template.md) |
+| **Boundary Check** | [`templates/Boundary-Check-Template.md`](templates/Boundary-Check-Template.md) |
+| **Verification Review** | [`templates/Verification-Review-Template.md`](templates/Verification-Review-Template.md) |
 
 Engineering **shall** copy the template for each new IU Completion record.
 
 ---
 
-## 8. Permanent documentation rules (DOC-1 … DOC-5)
+## 10. Permanent documentation rules (DOC-1 … DOC-7)
 
 | # | Rule |
 |---|------|
@@ -148,10 +224,14 @@ Engineering **shall** copy the template for each new IU Completion record.
 | **DOC-3** | Completion records **shall not** modify Blueprint, IA, CDR, or RC — they report what was done |
 | **DOC-4** | Files Modified **shall** list all repository paths changed in the IU |
 | **DOC-5** | Deferred Work **shall** identify the next authorized IU; out-of-scope items **shall** reference the owning Engineering Task (E-xx) |
+| **DOC-6** | When guidance conflicts, priority is: Blueprint → Implementation Plan → Engineering Review → IU Scope → conversation ([§3](#3-document-priority-when-guidance-conflicts-v11)) |
+| **DOC-7** | Documents listed in [§2](#2-authoritative-source-v11--mandatory) **shall** include **Authoritative Source** with Implementation Plan revision and Verified flag |
+| **DOC-8** | Exactly **one** authoritative Phase Completion record **shall** exist per phase ([§4.2](#22-phase-completion)) |
+| **DOC-9** | Phase certification **shall** be embedded in Phase Completion (form A) or a dedicated approval record with metadata only (form B). Certification **must not** duplicate technical content from Phase Completion ([§4.3](#23-phase-certification-approval-metadata)) |
 
 ---
 
-## 9. Related standards
+## 11. Related standards
 
 | Standard | Relationship |
 |----------|--------------|

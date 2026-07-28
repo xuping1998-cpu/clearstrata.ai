@@ -11,6 +11,16 @@
 
 ---
 
+## Authoritative Source
+
+| Field | Value |
+|-------|-------|
+| **Implementation Plan** | [`E-01-Implementation-Plan.md`](E-01-Implementation-Plan.md) |
+| **Revision** | v1.0 |
+| **Verified** | **YES** |
+
+---
+
 ## 1. Phase
 
 | Field | Value |
@@ -136,5 +146,6 @@ This completion record is governed by:
 | **Modifies Blueprint / IA-001 / Governance** | **No** |
 | **Production changed by this document** | **No** |
 | **Standard** | [`CES-010-Documentation-and-Knowledge-Engineering-Standard.md`](CES-010-Documentation-and-Knowledge-Engineering-Standard.md) |
+| **Certification** | [`E-01-Phase-1-Certification.md`](E-01-Phase-1-Certification.md) (approval metadata only; CES-010 DOC-8, DOC-9) |
 
 **Related:** [`E-01-Implementation-Plan.md`](E-01-Implementation-Plan.md) · [`E-01-IU-1.1C-Deployment-Readiness.md`](E-01-IU-1.1C-Deployment-Readiness.md) · [`E-01-IU-1.1-Completion.md`](E-01-IU-1.1-Completion.md) · [`E-01-IU-1.1C-Completion.md`](E-01-IU-1.1C-Completion.md)

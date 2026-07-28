@@ -1,12 +1,12 @@
-# E-01 Phase 1 — Engineering Certification
+# E-01 Phase 2 — Engineering Certification
 
 | Field | Value |
 |-------|-------|
 | **Task** | E-01 Snapshot Foundation |
-| **Phase** | Phase 1 — Snapshot Domain Foundation |
+| **Phase** | Phase 2 — Freeze Event Identity |
 | **Status** | **COMPLETED** |
-| **Certified** | 2026-07-27 |
-| **Technical record** | [`E-01-Phase-1-Completion.md`](E-01-Phase-1-Completion.md) |
+| **Certified** | 2026-07-28 |
+| **Technical record** | [`E-01-Phase-2-Completion.md`](E-01-Phase-2-Completion.md) |
 
 > **Single source:** All technical summaries live in the Phase Completion document. This file is approval metadata only (CES-010 DOC-8, DOC-9).
 
@@ -47,13 +47,13 @@
 
 | Field | Value |
 |-------|-------|
-| **Phase** | **Phase 2** |
-| **Implementation Unit** | **IU-2.1 — Freeze Event Identity** |
+| **Phase** | **Phase 3** |
+| **Implementation Unit** | **IU-3.1 — Resolution Snapshot Foundation** |
 
 ---
 
 ## Scope boundary
 
-This certification covers **E-01 Phase 1 only**.
+This certification covers **E-01 Phase 2 only**.
 
 **Standard:** [`CES-010-Documentation-and-Knowledge-Engineering-Standard.md`](CES-010-Documentation-and-Knowledge-Engineering-Standard.md)

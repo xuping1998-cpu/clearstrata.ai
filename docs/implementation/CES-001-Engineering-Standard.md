@@ -261,6 +261,7 @@ Production behavior is **evidence** of current reality. It is **not** constituti
 | **Rule 5** | Production behavior is **evidence**, not constitutional authority. |
 | **Rule 6** | Constitutional changes require: Investigation → CDR → Approval → Updated Slice Design. |
 | **Rule 7** | Historical constitutional records shall **never** be rewritten. |
+| **Rule 8** | When guidance conflicts, document priority is: Blueprint → Implementation Plan → Engineering Review → IU Scope → conversation ([`CES-010` DOC-6](CES-010-Documentation-and-Knowledge-Engineering-Standard.md#3-document-priority-when-guidance-conflicts-v11)). Conversation guidance must not override approved documents. |
 
 ---
 

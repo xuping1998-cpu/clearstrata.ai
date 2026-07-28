@@ -38,8 +38,10 @@ Engineering Constitution
 │   ├── CES-008 Testing & Verification        — Reserved
 │   └── CES-009 Deployment & Release          — Reserved
 └── Governance Standards
-    └── CES-010 Documentation & Knowledge     — Approved
+    └── CES-010 Documentation & Knowledge     — Approved (v1.1)
 ```
+
+**Engineering Governance v1.1:** [`ENGINEERING-GOVERNANCE-v1.1.md`](ENGINEERING-GOVERNANCE-v1.1.md) — mandatory **Authoritative Source** on IU/Phase/Boundary/Verification documents; [`CES-010` DOC-6](CES-010-Documentation-and-Knowledge-Engineering-Standard.md#3-document-priority-when-guidance-conflicts-v11) document priority order.
 
 ### Core Standards
 
@@ -69,7 +71,7 @@ Engineering Constitution
 
 | CES | Title | Status | Record |
 |-----|-------|--------|--------|
-| **CES-010** | Documentation & Knowledge Engineering Standard | **Approved** | [`CES-010-Documentation-and-Knowledge-Engineering-Standard.md`](CES-010-Documentation-and-Knowledge-Engineering-Standard.md) |
+| **CES-010** | Documentation & Knowledge Engineering Standard | **Approved (v1.1)** | [`CES-010-Documentation-and-Knowledge-Engineering-Standard.md`](CES-010-Documentation-and-Knowledge-Engineering-Standard.md) · [`ENGINEERING-GOVERNANCE-v1.1.md`](ENGINEERING-GOVERNANCE-v1.1.md) |
 
 ---
 
@@ -115,6 +117,9 @@ Every engineering item — database **and** frontend — **must** appear in the 
 |----------|---------|
 | [`templates/Slice-Design-Template.md`](templates/Slice-Design-Template.md) | Required structure for **all** future slice designs |
 | [`templates/IU-Completion-Template.md`](templates/IU-Completion-Template.md) | Required structure for **every** completed Implementation Unit ([`CES-010`](CES-010-Documentation-and-Knowledge-Engineering-Standard.md)) |
+| [`templates/Phase-Completion-Template.md`](templates/Phase-Completion-Template.md) | Phase completion records |
+| [`templates/Boundary-Check-Template.md`](templates/Boundary-Check-Template.md) | Phase / IU boundary checks |
+| [`templates/Verification-Review-Template.md`](templates/Verification-Review-Template.md) | Read-only verification reviews |
 
 Every slice **shall** contain: **Objective · Design · Migration · Verification · Constitutional Compliance**
 
@@ -169,6 +174,7 @@ Every completed **IU** **shall** produce `{Task}-IU-{phase.unit}-Completion.md`.
 |--------|--------------|--------|
 | [`E-01-IU-1.1-Completion.md`](E-01-IU-1.1-Completion.md) | E-01 IU-1.1 | Completed with Follow-up |
 | [`E-01-IU-1.1C-Completion.md`](E-01-IU-1.1C-Completion.md) | E-01 IU-1.1C | Completed |
+| [`E-01-IU-2.1-Completion.md`](E-01-IU-2.1-Completion.md) | E-01 IU-2.1 | Completed |
 | [`E-01-Phase-1-Completion.md`](E-01-Phase-1-Completion.md) | E-01 Phase 1 | **Completed** |
 
 ---

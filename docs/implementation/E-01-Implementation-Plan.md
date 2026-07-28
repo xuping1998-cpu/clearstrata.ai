@@ -11,9 +11,20 @@
 | **Blueprint** | [`M2-S3-Snapshot-Freeze-Design.md`](M2-S3-Snapshot-Freeze-Design.md) §9 |
 | **Work Breakdown** | [`M2-S3-Engineering-Work-Breakdown.md`](M2-S3-Engineering-Work-Breakdown.md) — Task E-01 |
 | **Investigation** | E-01 Read-only Investigation (2026-07-26) |
+| **Plan revision** | **v1.0** |
 | **Production effect** | **None** from this document — production changes only when phased implementation is deployed and verified |
 
 > **Document class:** Engineering execution order only. Does **not** redesign architecture, modify governance, modify the Blueprint, ER-001, IA-001, or the Work Breakdown, or contain implementation code.
+
+---
+
+## Authoritative Source
+
+| Field | Value |
+|-------|-------|
+| **Implementation Plan** | [`E-01-Implementation-Plan.md`](E-01-Implementation-Plan.md) |
+| **Revision** | **v1.0** |
+| **Verified** | **YES** |
 
 ---
 
