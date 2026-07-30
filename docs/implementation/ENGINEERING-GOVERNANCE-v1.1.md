@@ -121,4 +121,4 @@ Existing E-01 engineering records updated with **Authoritative Source** (Impleme
 
 ---
 
-**Standard:** [`CES-010-Documentation-and-Knowledge-Engineering-Standard.md`](CES-010-Documentation-and-Knowledge-Engineering-Standard.md) (v1.1.1)
+**Standard:** [`CES-010-Documentation-and-Knowledge-Engineering-Standard.md`](CES-010-Documentation-and-Knowledge-Engineering-Standard.md) (v1.2)

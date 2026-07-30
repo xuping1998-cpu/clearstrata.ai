@@ -6,9 +6,9 @@
 | **Title** | Documentation & Knowledge Engineering Standard |
 | **Type** | Engineering Standard |
 | **Status** | **Approved** |
-| **Standard version** | **v1.1.1** |
+| **Standard version** | **v1.2** |
 | **Authority** | ClearStrata Constitutional Governance Committee |
-| **Approved** | 2026-07-27 (v1.0) · **v1.1** 2026-07-27 · **v1.1.1** 2026-07-28 |
+| **Approved** | 2026-07-27 (v1.0) · **v1.1** 2026-07-27 · **v1.1.1** 2026-07-28 · **v1.1.2** 2026-07-29 · **v1.2** 2026-07-29 |
 | **Parent** | [`CES-001-Engineering-Standard.md`](CES-001-Engineering-Standard.md) · [`DOCUMENT-GOVERNANCE.md`](../DOCUMENT-GOVERNANCE.md) |
 | **Milestone** | All (M2, M3, M4, M5, …) |
 | **Release** | FR2+ |
@@ -17,7 +17,7 @@
 
 **Applies to:** Every authorized **Implementation Unit (IU)** under an Engineering Task (e.g. E-01, E-02) and every **Phase** within such tasks.
 
-**Related:** [`ENGINEERING-GOVERNANCE-v1.1.md`](ENGINEERING-GOVERNANCE-v1.1.md) · [`templates/IU-Completion-Template.md`](templates/IU-Completion-Template.md) · [`templates/Phase-Completion-Template.md`](templates/Phase-Completion-Template.md) · [`templates/Phase-Certification-Template.md`](templates/Phase-Certification-Template.md) · [`templates/Boundary-Check-Template.md`](templates/Boundary-Check-Template.md) · [`templates/Verification-Review-Template.md`](templates/Verification-Review-Template.md) · [`CES-001`](CES-001-Engineering-Standard.md) · [`CES-008`](CES-008-Testing-and-Verification-Engineering-Standard.md) · [`CES-009`](CES-009-Deployment-and-Release-Engineering-Standard.md)
+**Related:** [`ENGINEERING-GOVERNANCE-v1.2.md`](ENGINEERING-GOVERNANCE-v1.2.md) · [`ENGINEERING-GOVERNANCE-v1.1.md`](ENGINEERING-GOVERNANCE-v1.1.md) · [`templates/IU-Completion-Template.md`](templates/IU-Completion-Template.md) · [`templates/Phase-Completion-Template.md`](templates/Phase-Completion-Template.md) · [`templates/Phase-Certification-Template.md`](templates/Phase-Certification-Template.md) · [`templates/Boundary-Check-Template.md`](templates/Boundary-Check-Template.md) · [`templates/Verification-Review-Template.md`](templates/Verification-Review-Template.md) · [`CES-001`](CES-001-Engineering-Standard.md) · [`CES-008`](CES-008-Testing-and-Verification-Engineering-Standard.md) · [`CES-009`](CES-009-Deployment-and-Release-Engineering-Standard.md)
 
 > **Scope lock:** This standard governs engineering completion documentation only. It does **not** authorize implementation or modify Blueprint, IA, CDR, or governance records.
 
@@ -150,6 +150,7 @@ Every IU Completion document **shall** contain the following sections (see templ
 | 5 | **Database Changes** | Migrations, schema, tables, indexes, constraints, RLS — or explicit **No database changes** |
 | 6 | **Application Changes** | RPC, React, Edge, API — or explicit **No application behavior changed** |
 | 7 | **Verification** | Build, typecheck, migration, regression, deployment readiness |
+| 7.1 | **Verification Status** | Gate summary — Passed only when actually performed ([DOC-10](#10-permanent-documentation-rules-doc-1--doc-7)) |
 | 8 | **Backward Compatibility** | Whether production behavior was preserved |
 | 9 | **Known Limitations** | Intentionally deferred items only |
 | 10 | **Deferred Work** | Next IU(s) |
@@ -215,7 +216,7 @@ Engineering **shall** copy the template for each new IU Completion record.
 
 ---
 
-## 10. Permanent documentation rules (DOC-1 … DOC-7)
+## 10. Permanent documentation rules (DOC-1 … DOC-10)
 
 | # | Rule |
 |---|------|
@@ -228,10 +229,39 @@ Engineering **shall** copy the template for each new IU Completion record.
 | **DOC-7** | Documents listed in [§2](#2-authoritative-source-v11--mandatory) **shall** include **Authoritative Source** with Implementation Plan revision and Verified flag |
 | **DOC-8** | Exactly **one** authoritative Phase Completion record **shall** exist per phase ([§4.2](#22-phase-completion)) |
 | **DOC-9** | Phase certification **shall** be embedded in Phase Completion (form A) or a dedicated approval record with metadata only (form B). Certification **must not** duplicate technical content from Phase Completion ([§4.3](#23-phase-certification-approval-metadata)) |
+| **DOC-10** | IU Completion records **shall** include **Verification Status** ([§11](#11-verification-status-v12)). Each gate **shall** use exactly one of: **Passed**, **Pending**, or **N/A**. Mark **Passed** only when verification was actually performed; **N/A** only when the gate does not apply to IU scope — **N/A must not bypass required verification** |
 
 ---
 
-## 11. Related standards
+## 11. Verification Status (v1.2)
+
+Every IU Completion record **shall** include a **Verification Status** section (template §7.1) recording the **current** state of each gate.
+
+### 11.1 Allowed states
+
+| State | Display | Meaning |
+|-------|---------|---------|
+| **Passed** | ✓ Passed | Verification performed; objective evidence exists |
+| **Pending** | □ Pending | Verification required but not yet performed |
+| **Not Applicable** | **N/A** | Verification does not apply to this IU scope |
+
+**Rule:** Use **N/A** only when a gate is genuinely out of scope. **N/A must not** substitute for **Pending** on required verification.
+
+### 11.2 Independent evaluation
+
+Each gate **shall** be evaluated **independently** against IU scope.
+
+| IU type | Typical gates |
+|---------|----------------|
+| Database-only migration | Build **N/A**; Database **Passed** or **Pending** |
+| Documentation-only | Build, Database, Runtime **N/A** |
+| React UI implementation | Database **N/A**; Build **Passed** or **Pending**; Runtime **Pending** until staging |
+
+**Governance:** [`ENGINEERING-GOVERNANCE-v1.2.md`](ENGINEERING-GOVERNANCE-v1.2.md)
+
+---
+
+## 12. Related standards
 
 | Standard | Relationship |
 |----------|--------------|

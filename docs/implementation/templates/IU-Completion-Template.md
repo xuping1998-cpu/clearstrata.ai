@@ -95,6 +95,23 @@
 
 ---
 
+## 7.1 Verification Status
+
+*Records current verification state only (CES-010 DOC-10, [§11](../CES-010-Documentation-and-Knowledge-Engineering-Standard.md#11-verification-status-v12)). Each gate **shall** use exactly one of: **✓ Passed**, **□ Pending**, or **N/A**.*
+
+| Gate | Status |
+|------|--------|
+| **Design Review** | {✓ Passed \| □ Pending \| N/A} |
+| **Implementation Review** | {✓ Passed \| □ Pending \| N/A} |
+| **Build Verification** | {✓ Passed \| □ Pending \| N/A} |
+| **Database Verification** | {✓ Passed \| □ Pending \| N/A} |
+| **Runtime Verification** | {✓ Passed \| □ Pending \| N/A} |
+| **Regression Verification** | {✓ Passed \| □ Pending \| N/A} |
+
+**N/A** must not be used to bypass required verification. Evaluate each gate independently against IU scope.
+
+---
+
 ## 8. Backward Compatibility
 
 {State whether existing production behavior was preserved. One short paragraph.}
