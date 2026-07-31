@@ -178,6 +178,66 @@ Compared against post-IU-3 verification ([`RC-011-IU-3-Repair-Report.md`](RC-011
 
 ---
 
+## Repository Lock
+
+Pre-execution repository lock recorded before IU-4 history backfill execution.
+
+| Field | Value |
+|-------|-------|
+| **IU-3 repair commit SHA** | `36e3f7756afec048b006556315b8780099cfca29` |
+| **Commit message (actual)** | `UI-3` |
+| **Suggested message (reference)** | `RC-011 IU-3: guard policy collisions and lock repair evidence` |
+| **Commit timestamp** | 2026-07-30 20:42:07 -0700 |
+| **Branch** | `main` (up to date with `origin/main` at lock verification) |
+| **Repository migration head** | `20261728120000_e01_iu32_resolution_snapshot_immutability.sql` |
+
+### Files committed (IU-3 repair + evidence chain)
+
+**Migration repair files (5):**
+
+| File | Change scope |
+|------|--------------|
+| `supabase/migrations/20261422120000_sgm_pause_email_deliveries.sql` | RC-011 IU-3 guarded policy (`sgm_pause_email_deliveries_select_staff`) |
+| `supabase/migrations/20261704120000_governance_matters.sql` | RC-011 IU-3 guarded policies (×7) |
+| `supabase/migrations/20261704130000_governance_matter_cda.sql` | RC-011 IU-3 guarded policy (`gm_cda_select_tenant`) |
+| `supabase/migrations/20261706120000_community_resolutions.sql` | RC-011 IU-3 guarded policies (×4) |
+| `supabase/migrations/20261707120000_governance_matter_subscriptions.sql` | RC-011 IU-3 guarded policies (×3) |
+
+**IU-3 evidence documents (7):**
+
+- `docs/implementation/RC-011-IU-3-Repair-Report.md`
+- `docs/implementation/RC-011-IU-3-Completion.md`
+- `docs/implementation/rc-011/evidence-locks/RC-011-IU-3-20261422120000-Evidence-Lock.md`
+- `docs/implementation/rc-011/evidence-locks/RC-011-IU-3-20261704120000-Evidence-Lock.md`
+- `docs/implementation/rc-011/evidence-locks/RC-011-IU-3-20261704130000-Evidence-Lock.md`
+- `docs/implementation/rc-011/evidence-locks/RC-011-IU-3-20261706120000-Evidence-Lock.md`
+- `docs/implementation/rc-011/evidence-locks/RC-011-IU-3-20261707120000-Evidence-Lock.md`
+
+**IU-4 admission document:**
+
+- `docs/implementation/RC-011-IU-4-Admission-Check.md`
+
+**Also in same commit (RC-011 program context, pre-existing admission scope):**
+
+- `docs/implementation/RC-011-IU-1-Inventory.md`, `RC-011-IU-1-Completion.md`
+- `docs/implementation/RC-011-IU-2-Classification-and-Plan.md`, `RC-011-IU-2-Completion.md`
+- `docs/implementation/RC-011-Implementation-Plan.md`
+- `docs/implementation/RC-011-Migration-History-Reconciliation-Architecture.md`
+
+### Diff scope confirmation
+
+Migration diffs in `36e3f77` replace bare `CREATE POLICY` with `DO $$ IF NOT EXISTS (pg_policies) … CREATE POLICY … END $$` blocks only. No new tables, columns, indexes, triggers, functions, grants, or application code in migration diffs. Stat: 5 files, +273 / −163 lines (guard wrapping).
+
+### Post-commit working tree status (at lock verification)
+
+| Check | Status |
+|-------|--------|
+| Working tree | **Clean** — no uncommitted RC-011 IU-3/IU-4 artifacts |
+| RC-011 repair migrations | Committed in `36e3f77` |
+| Admission decision | **Unchanged** — **AUTHORIZED_FOR_IU4** |
+
+---
+
 ## Document control
 
 | Field | Value |
