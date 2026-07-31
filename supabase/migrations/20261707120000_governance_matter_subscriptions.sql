@@ -26,31 +26,56 @@ COMMENT ON TABLE public.governance_matter_subscriptions IS
 
 ALTER TABLE public.governance_matter_subscriptions ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "gms_select_own"
-  ON public.governance_matter_subscriptions FOR SELECT TO authenticated
-  USING (user_id = (SELECT auth.uid()));
+-- RC-011 IU-3: guarded policies for idempotent re-apply (OOB catalog)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'governance_matter_subscriptions'
+      AND policyname = 'gms_select_own'
+  ) THEN
+    CREATE POLICY "gms_select_own"
+      ON public.governance_matter_subscriptions FOR SELECT TO authenticated
+      USING (user_id = (SELECT auth.uid()));
+  END IF;
 
-CREATE POLICY "gms_insert_own_member"
-  ON public.governance_matter_subscriptions FOR INSERT TO authenticated
-  WITH CHECK (
-    user_id = (SELECT auth.uid())
-    AND property_id IN (SELECT public.user_property_ids())
-    AND EXISTS (
-      SELECT 1 FROM public.property_members pm
-      WHERE pm.user_id = (SELECT auth.uid())
-        AND pm.property_id = governance_matter_subscriptions.property_id
-        AND pm.status = 'active'
-    )
-    AND EXISTS (
-      SELECT 1 FROM public.governance_matters gm
-      WHERE gm.id = governance_matter_subscriptions.matter_id
-        AND gm.property_id = governance_matter_subscriptions.property_id
-    )
-  );
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'governance_matter_subscriptions'
+      AND policyname = 'gms_insert_own_member'
+  ) THEN
+    CREATE POLICY "gms_insert_own_member"
+      ON public.governance_matter_subscriptions FOR INSERT TO authenticated
+      WITH CHECK (
+        user_id = (SELECT auth.uid())
+        AND property_id IN (SELECT public.user_property_ids())
+        AND EXISTS (
+          SELECT 1 FROM public.property_members pm
+          WHERE pm.user_id = (SELECT auth.uid())
+            AND pm.property_id = governance_matter_subscriptions.property_id
+            AND pm.status = 'active'
+        )
+        AND EXISTS (
+          SELECT 1 FROM public.governance_matters gm
+          WHERE gm.id = governance_matter_subscriptions.matter_id
+            AND gm.property_id = governance_matter_subscriptions.property_id
+        )
+      );
+  END IF;
 
-CREATE POLICY "gms_delete_own"
-  ON public.governance_matter_subscriptions FOR DELETE TO authenticated
-  USING (user_id = (SELECT auth.uid()));
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'governance_matter_subscriptions'
+      AND policyname = 'gms_delete_own'
+  ) THEN
+    CREATE POLICY "gms_delete_own"
+      ON public.governance_matter_subscriptions FOR DELETE TO authenticated
+      USING (user_id = (SELECT auth.uid()));
+  END IF;
+END $$;
 
 GRANT SELECT, INSERT, DELETE ON public.governance_matter_subscriptions TO authenticated;
 GRANT ALL ON public.governance_matter_subscriptions TO service_role;

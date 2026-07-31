@@ -29,18 +29,29 @@ CREATE INDEX IF NOT EXISTS idx_sgm_pause_email_deliveries_property
 
 ALTER TABLE public.sgm_pause_email_deliveries ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "sgm_pause_email_deliveries_select_staff"
-  ON public.sgm_pause_email_deliveries FOR SELECT TO authenticated
-  USING (
-    property_id IN (SELECT public.user_property_ids())
-    AND EXISTS (
-      SELECT 1 FROM public.property_members pm
-      WHERE pm.user_id = (SELECT auth.uid())
-        AND pm.property_id = sgm_pause_email_deliveries.property_id
-        AND pm.status = 'active'
-        AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
-    )
-  );
+-- RC-011 IU-3: guarded policy for idempotent re-apply (OOB catalog)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'sgm_pause_email_deliveries'
+      AND policyname = 'sgm_pause_email_deliveries_select_staff'
+  ) THEN
+    CREATE POLICY "sgm_pause_email_deliveries_select_staff"
+      ON public.sgm_pause_email_deliveries FOR SELECT TO authenticated
+      USING (
+        property_id IN (SELECT public.user_property_ids())
+        AND EXISTS (
+          SELECT 1 FROM public.property_members pm
+          WHERE pm.user_id = (SELECT auth.uid())
+            AND pm.property_id = sgm_pause_email_deliveries.property_id
+            AND pm.status = 'active'
+            AND pm.role IN ('council', 'admin', 'manager', 'property_admin')
+        )
+      );
+  END IF;
+END $$;
 
 -- Service role only for writes; no client INSERT/UPDATE policies
 

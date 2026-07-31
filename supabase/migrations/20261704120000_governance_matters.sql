@@ -329,93 +329,132 @@ ALTER TABLE public.governance_matter_revisions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.governance_matter_comments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.governance_matter_comment_moderation ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "gm_select_tenant"
-  ON public.governance_matters FOR SELECT TO authenticated
-  USING (property_id IN (SELECT public.user_property_ids()));
+-- RC-011 IU-3: guarded policies for idempotent re-apply (OOB catalog)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'governance_matters' AND policyname = 'gm_select_tenant'
+  ) THEN
+    CREATE POLICY "gm_select_tenant"
+      ON public.governance_matters FOR SELECT TO authenticated
+      USING (property_id IN (SELECT public.user_property_ids()));
+  END IF;
 
-CREATE POLICY "gm_insert_council"
-  ON public.governance_matters FOR INSERT TO authenticated
-  WITH CHECK (
-    property_id IN (SELECT public.user_property_ids())
-    AND EXISTS (
-      SELECT 1 FROM public.property_members pm
-      WHERE pm.user_id = (SELECT auth.uid())
-        AND pm.property_id = governance_matters.property_id
-        AND pm.status = 'active'
-        AND pm.role IN ('council', 'admin', 'property_admin')
-    )
-  );
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'governance_matters' AND policyname = 'gm_insert_council'
+  ) THEN
+    CREATE POLICY "gm_insert_council"
+      ON public.governance_matters FOR INSERT TO authenticated
+      WITH CHECK (
+        property_id IN (SELECT public.user_property_ids())
+        AND EXISTS (
+          SELECT 1 FROM public.property_members pm
+          WHERE pm.user_id = (SELECT auth.uid())
+            AND pm.property_id = governance_matters.property_id
+            AND pm.status = 'active'
+            AND pm.role IN ('council', 'admin', 'property_admin')
+        )
+      );
+  END IF;
 
-CREATE POLICY "gm_update_council"
-  ON public.governance_matters FOR UPDATE TO authenticated
-  USING (
-    property_id IN (SELECT public.user_property_ids())
-    AND EXISTS (
-      SELECT 1 FROM public.property_members pm
-      WHERE pm.user_id = (SELECT auth.uid())
-        AND pm.property_id = governance_matters.property_id
-        AND pm.status = 'active'
-        AND pm.role IN ('council', 'admin', 'property_admin')
-    )
-  )
-  WITH CHECK (
-    property_id IN (SELECT public.user_property_ids())
-    AND EXISTS (
-      SELECT 1 FROM public.property_members pm
-      WHERE pm.user_id = (SELECT auth.uid())
-        AND pm.property_id = governance_matters.property_id
-        AND pm.status = 'active'
-        AND pm.role IN ('council', 'admin', 'property_admin')
-    )
-  );
-
-CREATE POLICY "gm_rev_select_tenant"
-  ON public.governance_matter_revisions FOR SELECT TO authenticated
-  USING (property_id IN (SELECT public.user_property_ids()));
-
-CREATE POLICY "gm_comment_select_tenant"
-  ON public.governance_matter_comments FOR SELECT TO authenticated
-  USING (
-    property_id IN (SELECT public.user_property_ids())
-    AND (
-      visibility = 'visible'
-      OR author_id = (SELECT auth.uid())
-      OR EXISTS (
-        SELECT 1 FROM public.property_members pm
-        WHERE pm.user_id = (SELECT auth.uid())
-          AND pm.property_id = governance_matter_comments.property_id
-          AND pm.status = 'active'
-          AND pm.role IN ('council', 'admin', 'property_admin', 'manager')
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'governance_matters' AND policyname = 'gm_update_council'
+  ) THEN
+    CREATE POLICY "gm_update_council"
+      ON public.governance_matters FOR UPDATE TO authenticated
+      USING (
+        property_id IN (SELECT public.user_property_ids())
+        AND EXISTS (
+          SELECT 1 FROM public.property_members pm
+          WHERE pm.user_id = (SELECT auth.uid())
+            AND pm.property_id = governance_matters.property_id
+            AND pm.status = 'active'
+            AND pm.role IN ('council', 'admin', 'property_admin')
+        )
       )
-    )
-  );
+      WITH CHECK (
+        property_id IN (SELECT public.user_property_ids())
+        AND EXISTS (
+          SELECT 1 FROM public.property_members pm
+          WHERE pm.user_id = (SELECT auth.uid())
+            AND pm.property_id = governance_matters.property_id
+            AND pm.status = 'active'
+            AND pm.role IN ('council', 'admin', 'property_admin')
+        )
+      );
+  END IF;
 
-CREATE POLICY "gm_comment_insert_member"
-  ON public.governance_matter_comments FOR INSERT TO authenticated
-  WITH CHECK (
-    property_id IN (SELECT public.user_property_ids())
-    AND author_id = (SELECT auth.uid())
-    AND EXISTS (
-      SELECT 1 FROM public.property_members pm
-      WHERE pm.user_id = (SELECT auth.uid())
-        AND pm.property_id = governance_matter_comments.property_id
-        AND pm.status = 'active'
-        AND pm.role IN ('owner', 'council', 'admin', 'property_admin', 'manager')
-    )
-  );
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'governance_matter_revisions' AND policyname = 'gm_rev_select_tenant'
+  ) THEN
+    CREATE POLICY "gm_rev_select_tenant"
+      ON public.governance_matter_revisions FOR SELECT TO authenticated
+      USING (property_id IN (SELECT public.user_property_ids()));
+  END IF;
 
-CREATE POLICY "gm_mod_select_staff"
-  ON public.governance_matter_comment_moderation FOR SELECT TO authenticated
-  USING (
-    property_id IN (SELECT public.user_property_ids())
-    AND EXISTS (
-      SELECT 1 FROM public.property_members pm
-      WHERE pm.user_id = (SELECT auth.uid())
-        AND pm.property_id = governance_matter_comment_moderation.property_id
-        AND pm.status = 'active'
-        AND pm.role IN ('council', 'admin', 'property_admin', 'manager')
-    )
-  );
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'governance_matter_comments' AND policyname = 'gm_comment_select_tenant'
+  ) THEN
+    CREATE POLICY "gm_comment_select_tenant"
+      ON public.governance_matter_comments FOR SELECT TO authenticated
+      USING (
+        property_id IN (SELECT public.user_property_ids())
+        AND (
+          visibility = 'visible'
+          OR author_id = (SELECT auth.uid())
+          OR EXISTS (
+            SELECT 1 FROM public.property_members pm
+            WHERE pm.user_id = (SELECT auth.uid())
+              AND pm.property_id = governance_matter_comments.property_id
+              AND pm.status = 'active'
+              AND pm.role IN ('council', 'admin', 'property_admin', 'manager')
+          )
+        )
+      );
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'governance_matter_comments' AND policyname = 'gm_comment_insert_member'
+  ) THEN
+    CREATE POLICY "gm_comment_insert_member"
+      ON public.governance_matter_comments FOR INSERT TO authenticated
+      WITH CHECK (
+        property_id IN (SELECT public.user_property_ids())
+        AND author_id = (SELECT auth.uid())
+        AND EXISTS (
+          SELECT 1 FROM public.property_members pm
+          WHERE pm.user_id = (SELECT auth.uid())
+            AND pm.property_id = governance_matter_comments.property_id
+            AND pm.status = 'active'
+            AND pm.role IN ('owner', 'council', 'admin', 'property_admin', 'manager')
+        )
+      );
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'governance_matter_comment_moderation' AND policyname = 'gm_mod_select_staff'
+  ) THEN
+    CREATE POLICY "gm_mod_select_staff"
+      ON public.governance_matter_comment_moderation FOR SELECT TO authenticated
+      USING (
+        property_id IN (SELECT public.user_property_ids())
+        AND EXISTS (
+          SELECT 1 FROM public.property_members pm
+          WHERE pm.user_id = (SELECT auth.uid())
+            AND pm.property_id = governance_matter_comment_moderation.property_id
+            AND pm.status = 'active'
+            AND pm.role IN ('council', 'admin', 'property_admin', 'manager')
+        )
+      );
+  END IF;
+END $$;
 
 GRANT SELECT, INSERT, UPDATE ON public.governance_matters TO authenticated;
 GRANT SELECT ON public.governance_matter_revisions TO authenticated;

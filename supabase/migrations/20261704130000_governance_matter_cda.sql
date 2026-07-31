@@ -53,9 +53,20 @@ CREATE TRIGGER trg_governance_matter_cda_report_immutable
 
 ALTER TABLE public.governance_matter_cda_reports ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "gm_cda_select_tenant"
-  ON public.governance_matter_cda_reports FOR SELECT TO authenticated
-  USING (property_id IN (SELECT public.user_property_ids()));
+-- RC-011 IU-3: guarded policy for idempotent re-apply (OOB catalog)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'governance_matter_cda_reports'
+      AND policyname = 'gm_cda_select_tenant'
+  ) THEN
+    CREATE POLICY "gm_cda_select_tenant"
+      ON public.governance_matter_cda_reports FOR SELECT TO authenticated
+      USING (property_id IN (SELECT public.user_property_ids()));
+  END IF;
+END $$;
 
 GRANT SELECT ON public.governance_matter_cda_reports TO authenticated;
 GRANT ALL ON public.governance_matter_cda_reports TO service_role;

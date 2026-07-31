@@ -183,49 +183,73 @@ CREATE TRIGGER trg_community_resolution_revision_update
 ALTER TABLE public.community_resolutions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.community_resolution_revisions ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "cr_select_tenant"
-  ON public.community_resolutions FOR SELECT TO authenticated
-  USING (property_id IN (SELECT public.user_property_ids()));
+-- RC-011 IU-3: guarded policies for idempotent re-apply (OOB catalog)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'community_resolutions' AND policyname = 'cr_select_tenant'
+  ) THEN
+    CREATE POLICY "cr_select_tenant"
+      ON public.community_resolutions FOR SELECT TO authenticated
+      USING (property_id IN (SELECT public.user_property_ids()));
+  END IF;
 
-CREATE POLICY "cr_insert_council"
-  ON public.community_resolutions FOR INSERT TO authenticated
-  WITH CHECK (
-    property_id IN (SELECT public.user_property_ids())
-    AND EXISTS (
-      SELECT 1 FROM public.property_members pm
-      WHERE pm.user_id = (SELECT auth.uid())
-        AND pm.property_id = community_resolutions.property_id
-        AND pm.status = 'active'
-        AND pm.role IN ('council', 'admin', 'property_admin')
-    )
-  );
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'community_resolutions' AND policyname = 'cr_insert_council'
+  ) THEN
+    CREATE POLICY "cr_insert_council"
+      ON public.community_resolutions FOR INSERT TO authenticated
+      WITH CHECK (
+        property_id IN (SELECT public.user_property_ids())
+        AND EXISTS (
+          SELECT 1 FROM public.property_members pm
+          WHERE pm.user_id = (SELECT auth.uid())
+            AND pm.property_id = community_resolutions.property_id
+            AND pm.status = 'active'
+            AND pm.role IN ('council', 'admin', 'property_admin')
+        )
+      );
+  END IF;
 
-CREATE POLICY "cr_update_council"
-  ON public.community_resolutions FOR UPDATE TO authenticated
-  USING (
-    property_id IN (SELECT public.user_property_ids())
-    AND EXISTS (
-      SELECT 1 FROM public.property_members pm
-      WHERE pm.user_id = (SELECT auth.uid())
-        AND pm.property_id = community_resolutions.property_id
-        AND pm.status = 'active'
-        AND pm.role IN ('council', 'admin', 'property_admin')
-    )
-  )
-  WITH CHECK (
-    property_id IN (SELECT public.user_property_ids())
-    AND EXISTS (
-      SELECT 1 FROM public.property_members pm
-      WHERE pm.user_id = (SELECT auth.uid())
-        AND pm.property_id = community_resolutions.property_id
-        AND pm.status = 'active'
-        AND pm.role IN ('council', 'admin', 'property_admin')
-    )
-  );
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'community_resolutions' AND policyname = 'cr_update_council'
+  ) THEN
+    CREATE POLICY "cr_update_council"
+      ON public.community_resolutions FOR UPDATE TO authenticated
+      USING (
+        property_id IN (SELECT public.user_property_ids())
+        AND EXISTS (
+          SELECT 1 FROM public.property_members pm
+          WHERE pm.user_id = (SELECT auth.uid())
+            AND pm.property_id = community_resolutions.property_id
+            AND pm.status = 'active'
+            AND pm.role IN ('council', 'admin', 'property_admin')
+        )
+      )
+      WITH CHECK (
+        property_id IN (SELECT public.user_property_ids())
+        AND EXISTS (
+          SELECT 1 FROM public.property_members pm
+          WHERE pm.user_id = (SELECT auth.uid())
+            AND pm.property_id = community_resolutions.property_id
+            AND pm.status = 'active'
+            AND pm.role IN ('council', 'admin', 'property_admin')
+        )
+      );
+  END IF;
 
-CREATE POLICY "cr_rev_select_tenant"
-  ON public.community_resolution_revisions FOR SELECT TO authenticated
-  USING (property_id IN (SELECT public.user_property_ids()));
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'community_resolution_revisions' AND policyname = 'cr_rev_select_tenant'
+  ) THEN
+    CREATE POLICY "cr_rev_select_tenant"
+      ON public.community_resolution_revisions FOR SELECT TO authenticated
+      USING (property_id IN (SELECT public.user_property_ids()));
+  END IF;
+END $$;
 
 GRANT SELECT, INSERT, UPDATE ON public.community_resolutions TO authenticated;
 GRANT SELECT ON public.community_resolution_revisions TO authenticated;
