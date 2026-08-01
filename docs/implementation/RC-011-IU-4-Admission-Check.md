@@ -238,9 +238,24 @@ Migration diffs in `36e3f77` replace bare `CREATE POLICY` with `DO $$ IF NOT EXI
 
 ---
 
+## IU-4 execution completion
+
+| Field | Value |
+|-------|-------|
+| **Execution date** | 2026-07-31 |
+| **Status** | **Completed** — 9/9 BACKFILL_PASSED |
+| **Method** | `npx supabase migration repair --status applied <version> --linked --yes` |
+| **Pre-backfill head** | `20261326120000` (190 rows) |
+| **Post-backfill head** | `20261707120000` (199 rows) |
+| **Evidence** | [`RC-011-IU-4-Backfill-Report.md`](RC-011-IU-4-Backfill-Report.md), [`RC-011-IU-4-Completion.md`](RC-011-IU-4-Completion.md) |
+
+Admission decision **AUTHORIZED_FOR_IU4** was satisfied. IU-4 history backfill executed without catalog or data mutation.
+
+---
+
 ## Document control
 
 | Field | Value |
 |-------|-------|
-| **Unblocks** | RC-011 IU-4 — Migration History Backfill (execution) |
-| **Next action** | IU-4 per [`RC-011-IU-2-Classification-and-Plan.md`](RC-011-IU-2-Classification-and-Plan.md) §5 Phase C |
+| **Unblocks** | RC-011 IU-5 — Forward Apply |
+| **Next action** | IU-5 per [`RC-011-IU-2-Classification-and-Plan.md`](RC-011-IU-2-Classification-and-Plan.md) §5 Phase D |
