@@ -6,8 +6,9 @@
 | **Title** | Frontend Engineering Standard |
 | **Type** | Engineering Standard |
 | **Status** | **Approved** |
+| **Standard version** | **v1.1** |
 | **Authority** | ClearStrata Constitutional Governance Committee |
-| **Approved** | 2026-06-24 |
+| **Approved** | 2026-06-24 (v1.0) · **v1.1** 2026-07-31 |
 | **Parent** | [`CES-001-Engineering-Standard.md`](CES-001-Engineering-Standard.md) · [`DOCUMENT-GOVERNANCE.md`](../DOCUMENT-GOVERNANCE.md) |
 | **Milestone** | All (M2, M3, M4, M5, …) |
 | **Release** | FR2+ |
@@ -281,6 +282,7 @@ Every authorized frontend change **shall** include verification in Slice Design 
 | **FE-6** | Permissions trace RC/CDR → database → RPC → UI gate |
 | **FE-7** | All UI supports Chinese and English via translation keys — no hard-coded business text |
 | **FE-8** | No frontend deploy without **Implementation Authorization** |
+| **FE-9** | New domain data access **shall** use an approved typed repository or domain service — not direct Supabase table access from React (see §15) |
 
 ---
 
@@ -290,7 +292,8 @@ Every authorized frontend change **shall** include verification in Slice Design 
 |----------|-------|
 | **CES-001** | Slice structure, CITM, compliance, engineering discipline |
 | **CES-002** | Database schema, RPC, migration, audit, snapshot |
-| **CES-003** | React pages, components, hooks, routes, permissions, state, localization |
+| **CES-003** | React pages, components, hooks, routes, permissions, state, localization, typed repositories |
+| **CES-002 (read alignment)** | Repositories reflect deployed schema and RPC contracts; they do not replace RLS or RPC authority |
 
 All Slice Design **Design** sections for frontend work **shall** comply with **CES-001** and **CES-003**. Where UI triggers database actions, **CES-002** RPC contracts **shall** align.
 
@@ -305,6 +308,176 @@ All Slice Design **Design** sections for frontend work **shall** comply with **C
 | Frontend Engineering Standard | `CES-{nnn}-{title}.md` | CES-003 |
 | Slice Design UI section | Documented in `M{n}-S{k}-*.md` | M2-S3-Snapshot-Freeze-Design |
 | Translation keys | Project i18n catalog | `ownerVote.*` |
+| Typed domain repository | `src/lib/{domain}/` | `src/lib/ownerVote/snapshotDomain/` |
+
+---
+
+## 15. Repository First Rule
+
+Frontend application layers **shall** access domain data through an approved typed repository, service, or domain API.
+
+### 15.1 Preferred dependency direction
+
+```
+React Page / Component
+        ↓
+Hook or View Model
+        ↓
+Typed Repository / Domain Service
+        ↓
+Supabase Client / RPC / Backend API
+```
+
+The following dependency direction is **prohibited** for **new** domain implementation:
+
+```
+React Page / Component
+        ↓
+Direct Supabase table access
+```
+
+### 15.2 Purpose
+
+The Repository First Rule exists to provide:
+
+- Strong typing
+- Stable domain contracts
+- Centralized data mapping
+- Testability
+- Consistent error handling
+- Schema-change isolation
+- Legacy compatibility
+- Clear separation between UI and persistence
+
+### 15.3 Repository responsibilities
+
+A frontend repository **may**:
+
+- Read domain records
+- Map database rows into typed domain models
+- Normalize nullable and legacy fields
+- Validate returned data shape
+- Provide stable query interfaces
+- Return explicit typed errors
+
+A repository **shall not** silently become the source of business authority.
+
+### 15.4 Business authority
+
+Business authority **shall** remain in the appropriate approved layer:
+
+- Database constraints
+- RLS
+- RPC validation
+- Backend or domain contract
+- Approved state machine
+
+Frontend repositories **shall not**:
+
+- Redefine permissions
+- Bypass RPC validation
+- Invent eligibility
+- Change constitutional workflow rules
+- Infer authorization from UI state alone
+
+### 15.5 Read and write separation
+
+Read repositories and mutation services **should** be separated where practical.
+
+| Layer | Permitted operations |
+|-------|----------------------|
+| **Read repository** | SELECT · Map · Validate · Return |
+| **Mutation service** | Authorized writes only through approved RPCs or backend contracts |
+
+React components **shall not** directly perform domain table INSERT, UPDATE, or DELETE operations for **new** implementation work.
+
+### 15.6 Typing standard
+
+Repositories **shall** expose explicit domain types.
+
+Do **not** expose:
+
+- `any`
+- Untyped database responses
+- Raw Supabase row shapes directly to UI components, unless the row type is itself the approved domain contract
+
+**Preferred example:** `FrozenMeetingBundle` containing Meeting, Freeze Event, Voter Snapshot[], Resolution Snapshot, and Frozen Motion[] — see [`E-01-IU-4.1-Completion.md`](E-01-IU-4.1-Completion.md).
+
+### 15.7 Error handling
+
+Repositories **shall** provide predictable error contracts.
+
+They **shall** distinguish, where applicable:
+
+- Not found
+- Unauthorized
+- Incomplete legacy data
+- Database query failure
+- Invalid domain shape
+- Partial snapshot state
+
+UI components **shall** render repository results and errors; they **shall not** reinterpret database errors as domain authority.
+
+### 15.8 Legacy compatibility
+
+This rule applies **immediately** to:
+
+- New domain modules
+- New repositories
+- New pages
+- New snapshot integrations
+- Material rewrites of existing data-access paths
+
+Existing direct Supabase access is considered **legacy technical debt**.
+
+This standard update does **not** authorize or require a platform-wide refactor. Legacy access **shall** be migrated incrementally through separately authorized implementation work.
+
+### 15.9 Exceptions
+
+Direct Supabase access from a React component is permitted **only** when **all** conditions are met:
+
+1. The access is trivial and non-domain-bearing.
+2. No reusable domain contract is involved.
+3. No authorization or workflow decision is made.
+4. The exception is documented in code review.
+5. The access does not create a second source of truth.
+
+An exception **shall not** be used for:
+
+- Voting
+- Governance
+- Finance
+- Procurement
+- Membership authority
+- Snapshot state
+- Legal or audit records
+
+### 15.10 CITM traceability
+
+Every new repository, service, or direct-access exception **shall** map to the applicable CITM row or authorized engineering scope.
+
+A repository with no approved engineering traceability **shall not** be introduced.
+
+### 15.11 E-01 reference implementation
+
+**E-01 Phase 4 / IU-4.1** ([`E-01-IU-4.1-Completion.md`](E-01-IU-4.1-Completion.md)) is the **first reference implementation** of the Repository First Rule.
+
+IU-4.1:
+
+- Creates typed dual-snapshot read models (`FrozenMeetingBundle` and related types)
+- Centralizes snapshot reads in `src/lib/ownerVote/snapshotDomain/`
+- Remains read-only
+- Preserves legacy behavior (`legacy_meeting` read mode)
+- Avoids UI and business-rule changes
+
+---
+
+## 16. Revision history
+
+| Version | Date | Note |
+|---------|------|------|
+| **v1.0** | 2026-06-24 | Initial approved standard |
+| **v1.1** | 2026-07-31 | Repository First Rule added for typed domain data access and E-01 Phase 4 reference implementation |
 
 ---
 

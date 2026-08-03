@@ -49,7 +49,7 @@ Engineering Constitution
 |-----|-------|--------|--------|
 | **CES-001** | Engineering Standard | **Approved** | [`CES-001-Engineering-Standard.md`](CES-001-Engineering-Standard.md) |
 | **CES-002** | Database Engineering Standard | **Approved** | [`CES-002-Database-Engineering-Standard.md`](CES-002-Database-Engineering-Standard.md) |
-| **CES-003** | Frontend Engineering Standard | **Approved** | [`CES-003-Frontend-Engineering-Standard.md`](CES-003-Frontend-Engineering-Standard.md) |
+| **CES-003** | Frontend Engineering Standard | **Approved (v1.1)** | [`CES-003-Frontend-Engineering-Standard.md`](CES-003-Frontend-Engineering-Standard.md) |
 
 ### Platform Standards
 
@@ -87,8 +87,11 @@ Governs every future frontend artifact:
 - Permissions and UI gates
 - UI state and workflows
 - Localization (Chinese + English)
+- Typed domain repositories and read services (**Repository First Rule**, CES-003 v1.1)
 
 **Philosophy:** Frontend reflects constitutional truth; it does not become the source of truth.
+
+**Reference implementation:** E-01 Phase 4 / IU-4.1 — [`E-01-IU-4.1-Completion.md`](E-01-IU-4.1-Completion.md) · [`CES-003` §15](CES-003-Frontend-Engineering-Standard.md#15-repository-first-rule)
 
 ### CES-002 scope
 
@@ -117,7 +120,8 @@ Every engineering item — database **and** frontend — **must** appear in the 
 |----------|---------|
 | [`templates/Slice-Design-Template.md`](templates/Slice-Design-Template.md) | Required structure for **all** future slice designs |
 | [`templates/IU-Completion-Template.md`](templates/IU-Completion-Template.md) | Required structure for **every** completed Implementation Unit ([`CES-010`](CES-010-Documentation-and-Knowledge-Engineering-Standard.md)) |
-| [`templates/Phase-Completion-Template.md`](templates/Phase-Completion-Template.md) | Phase completion records |
+| [`templates/Phase-Completion-Template.md`](templates/Phase-Completion-Template.md) | Phase completion records ([`EPS-001`](EPS-001-Engineering-Phase-Documentation-Standard.md) · [`CES-010`](CES-010-Documentation-and-Knowledge-Engineering-Standard.md)) |
+| [`templates/Phase-Certification-Template.md`](templates/Phase-Certification-Template.md) | Phase certification records ([`EPS-001`](EPS-001-Engineering-Phase-Documentation-Standard.md)) |
 | [`templates/Boundary-Check-Template.md`](templates/Boundary-Check-Template.md) | Phase / IU boundary checks |
 | [`templates/Verification-Review-Template.md`](templates/Verification-Review-Template.md) | Read-only verification reviews |
 
@@ -135,6 +139,9 @@ Engineering quality-control standards. **Not** part of the constitutional govern
 | Process | Status | Record |
 |---------|--------|--------|
 | **Engineering Review Checklist** | **Approved** | [`Engineering-Review-Checklist.md`](Engineering-Review-Checklist.md) |
+| **EPS-001 Engineering Phase Documentation** | **Approved (v1.0)** | [`EPS-001-Engineering-Phase-Documentation-Standard.md`](EPS-001-Engineering-Phase-Documentation-Standard.md) |
+
+**EPS-001** standardizes the engineering phase document lifecycle (Implementation Plan → IU Completion → Phase Completion → Phase Certification → Acceptance → Project Certification). **Reference implementation:** E-01 Phase 4 — [`E-01-Phase-4-Completion.md`](E-01-Phase-4-Completion.md) · [`E-01-Phase-4-Certification.md`](E-01-Phase-4-Certification.md)
 
 **Rule:** Every **Engineering Blueprint** must pass Engineering Review before **Implementation Authorization**.
 
@@ -165,10 +172,11 @@ Authorized implementation records. Engineering work **may begin** only when list
 | Execution plan | Milestone / Slice | Status | Record |
 |----------------|-----------------|--------|--------|
 | **M2-S3 Work Breakdown** | M2-S3 | **Approved** | [`M2-S3-Engineering-Work-Breakdown.md`](M2-S3-Engineering-Work-Breakdown.md) |
+| **E-01 Phase 5 Plan** | E-01 Phase 5 | **Approved** | [`E-01-Phase-5-Implementation-Plan.md`](E-01-Phase-5-Implementation-Plan.md) |
 
-### Implementation Unit completion ([`CES-010`](CES-010-Documentation-and-Knowledge-Engineering-Standard.md))
+### Implementation Unit completion ([`CES-010`](CES-010-Documentation-and-Knowledge-Engineering-Standard.md) · [`EPS-001`](EPS-001-Engineering-Phase-Documentation-Standard.md))
 
-Every completed **IU** **shall** produce `{Task}-IU-{phase.unit}-Completion.md`. When all IUs in a phase finish, produce `{Task}-Phase-{n}-Completion.md`.
+Every completed **IU** **shall** produce `{Task}-IU-{phase.unit}-Completion.md`. When all IUs in a phase finish, produce `{Task}-Phase-{n}-Completion.md` and `{Task}-Phase-{n}-Certification.md`.
 
 | Record | Task / Phase | Status |
 |--------|--------------|--------|
@@ -176,6 +184,19 @@ Every completed **IU** **shall** produce `{Task}-IU-{phase.unit}-Completion.md`.
 | [`E-01-IU-1.1C-Completion.md`](E-01-IU-1.1C-Completion.md) | E-01 IU-1.1C | Completed |
 | [`E-01-IU-2.1-Completion.md`](E-01-IU-2.1-Completion.md) | E-01 IU-2.1 | Completed |
 | [`E-01-Phase-1-Completion.md`](E-01-Phase-1-Completion.md) | E-01 Phase 1 | **Completed** |
+| [`E-01-IU-3.1-Completion.md`](E-01-IU-3.1-Completion.md) | E-01 IU-3.1 | Completed |
+| [`E-01-IU-3.2-Completion.md`](E-01-IU-3.2-Completion.md) | E-01 IU-3.2 | Completed |
+| [`E-01-Phase-3-Completion.md`](E-01-Phase-3-Completion.md) | E-01 Phase 3 | **Completed** |
+| [`E-01-Phase-3-Certification.md`](E-01-Phase-3-Certification.md) | E-01 Phase 3 Certification | **Certified Complete** |
+| [`E-01-IU-4.1-Completion.md`](E-01-IU-4.1-Completion.md) | E-01 IU-4.1 | Completed |
+| [`E-01-IU-4.2-Completion.md`](E-01-IU-4.2-Completion.md) | E-01 IU-4.2 | Completed |
+| [`E-01-Phase-4-Completion.md`](E-01-Phase-4-Completion.md) | E-01 Phase 4 | **Completed** |
+| [`E-01-Phase-4-Certification.md`](E-01-Phase-4-Certification.md) | E-01 Phase 4 Certification | **Certified Complete** |
+| [`E-01-Phase-5-Implementation-Plan.md`](E-01-Phase-5-Implementation-Plan.md) | E-01 Phase 5 Plan | **Approved** |
+| [`E-01-IU-5.1-Engineering-Evidence-Verification.md`](E-01-IU-5.1-Engineering-Evidence-Verification.md) | E-01 IU-5.1 | Completed |
+| [`E-01-IU-5.1-Completion.md`](E-01-IU-5.1-Completion.md) | E-01 IU-5.1 Completion | **Completed** |
+| [`E-01-IU-5.2-Acceptance-Validation.md`](E-01-IU-5.2-Acceptance-Validation.md) | E-01 IU-5.2 | Completed |
+| [`E-01-IU-5.2-Completion.md`](E-01-IU-5.2-Completion.md) | E-01 IU-5.2 Completion | **Completed** |
 
 ---
 
@@ -222,7 +243,7 @@ docs/implementation/M2-S3-Engineering-Work-Breakdown.md     — E-01 … E-06 ta
 
 **Database rules (CES-002):** DB-1 through DB-7 — [`CES-002` §11](CES-002-Database-Engineering-Standard.md#11-permanent-database-rules)
 
-**Frontend rules (CES-003):** FE-1 through FE-8 — [`CES-003` §12](CES-003-Frontend-Engineering-Standard.md#12-permanent-frontend-rules)
+**Frontend rules (CES-003):** FE-1 through FE-9 — [`CES-003` §12](CES-003-Frontend-Engineering-Standard.md#12-permanent-frontend-rules) · **Repository First Rule:** [`CES-003` §15](CES-003-Frontend-Engineering-Standard.md#15-repository-first-rule) (v1.1)
 
 Full rules: [`CES-001` §7](CES-001-Engineering-Standard.md#7-permanent-engineering-rules)
 
