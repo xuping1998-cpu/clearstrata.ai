@@ -41,6 +41,8 @@ Engineering Constitution
     └── CES-010 Documentation & Knowledge     — Approved (v1.1)
 ```
 
+**Engineering Governance v1.3:** [`ENGINEERING-GOVERNANCE-v1.3.md`](ENGINEERING-GOVERNANCE-v1.3.md) — **GR-7** · **GR-8** · **[Rule Index](Engineering-Governance-Rule-Index.md)** · **[GMM-001](GMM-001-Governance-Maturity-Model.md)** Maturity Model
+
 **Engineering Governance v1.1:** [`ENGINEERING-GOVERNANCE-v1.1.md`](ENGINEERING-GOVERNANCE-v1.1.md) — mandatory **Authoritative Source** on IU/Phase/Boundary/Verification documents; [`CES-010` DOC-6](CES-010-Documentation-and-Knowledge-Engineering-Standard.md#3-document-priority-when-guidance-conflicts-v11) document priority order.
 
 ### Core Standards
@@ -71,7 +73,7 @@ Engineering Constitution
 
 | CES | Title | Status | Record |
 |-----|-------|--------|--------|
-| **CES-010** | Documentation & Knowledge Engineering Standard | **Approved (v1.1)** | [`CES-010-Documentation-and-Knowledge-Engineering-Standard.md`](CES-010-Documentation-and-Knowledge-Engineering-Standard.md) · [`ENGINEERING-GOVERNANCE-v1.1.md`](ENGINEERING-GOVERNANCE-v1.1.md) |
+| **CES-010** | Documentation & Knowledge Engineering Standard | **Approved (v1.2)** | [`CES-010-Documentation-and-Knowledge-Engineering-Standard.md`](CES-010-Documentation-and-Knowledge-Engineering-Standard.md) · [`ENGINEERING-GOVERNANCE-v1.3.md`](ENGINEERING-GOVERNANCE-v1.3.md) |
 
 ---
 
@@ -140,6 +142,8 @@ Engineering quality-control standards. **Not** part of the constitutional govern
 |---------|--------|--------|
 | **Engineering Review Checklist** | **Approved** | [`Engineering-Review-Checklist.md`](Engineering-Review-Checklist.md) |
 | **EPS-001 Engineering Phase Documentation** | **Approved (v1.0)** | [`EPS-001-Engineering-Phase-Documentation-Standard.md`](EPS-001-Engineering-Phase-Documentation-Standard.md) |
+| **GMM-001 Governance Maturity Model** | **Approved (v1.0)** | [`GMM-001-Governance-Maturity-Model.md`](GMM-001-Governance-Maturity-Model.md) |
+| **Engineering Governance v1.3** | **Approved** | [`ENGINEERING-GOVERNANCE-v1.3.md`](ENGINEERING-GOVERNANCE-v1.3.md) · [`Engineering-Governance-Rule-Index.md`](Engineering-Governance-Rule-Index.md) · [`GMM-001-Governance-Maturity-Model.md`](GMM-001-Governance-Maturity-Model.md) |
 
 **EPS-001** standardizes the engineering phase document lifecycle (Implementation Plan → IU Completion → Phase Completion → Phase Certification → Acceptance → Project Certification). **Reference implementation:** E-01 Phase 4 — [`E-01-Phase-4-Completion.md`](E-01-Phase-4-Completion.md) · [`E-01-Phase-4-Certification.md`](E-01-Phase-4-Certification.md)
 
@@ -197,6 +201,17 @@ Every completed **IU** **shall** produce `{Task}-IU-{phase.unit}-Completion.md`.
 | [`E-01-IU-5.1-Completion.md`](E-01-IU-5.1-Completion.md) | E-01 IU-5.1 Completion | **Completed** |
 | [`E-01-IU-5.2-Acceptance-Validation.md`](E-01-IU-5.2-Acceptance-Validation.md) | E-01 IU-5.2 | Completed |
 | [`E-01-IU-5.2-Completion.md`](E-01-IU-5.2-Completion.md) | E-01 IU-5.2 Completion | **Completed** |
+| [`E-01-IU-5.3-CITM-Evidence-Closure.md`](E-01-IU-5.3-CITM-Evidence-Closure.md) | E-01 IU-5.3 CITM Ledger | Completed |
+| [`E-01-IU-5.3-Completion.md`](E-01-IU-5.3-Completion.md) | E-01 IU-5.3 Completion | **Completed** |
+| [`E-01-IU-5.4-Engineering-Acceptance-Decision.md`](E-01-IU-5.4-Engineering-Acceptance-Decision.md) | E-01 IU-5.4 Decision | **Accepted** |
+| [`E-01-IU-5.4-Completion.md`](E-01-IU-5.4-Completion.md) | E-01 IU-5.4 Completion | **Completed** |
+| [`E-01-Acceptance-Report.md`](E-01-Acceptance-Report.md) | E-01 Acceptance Report | **Approved** |
+| [`E-01-Phase-5-Completion.md`](E-01-Phase-5-Completion.md) | E-01 Phase 5 | **Completed** |
+| [`E-01-Phase-5-Certification.md`](E-01-Phase-5-Certification.md) | E-01 Phase 5 Certification | **Certified Complete** |
+| [`E-01-Project-Certification.md`](E-01-Project-Certification.md) | E-01 Project Certification | **Certified Complete** |
+| [`E-01-Engineering-Baseline.md`](E-01-Engineering-Baseline.md) | E-01 Engineering Baseline | **Certified Complete** |
+
+**E-01 status:** All phases (1–5) completed and certified. Project Certification and Engineering Baseline issued 2026-08-05. **E-02 authorized to begin.**
 
 ---
 

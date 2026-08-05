@@ -97,6 +97,8 @@ E-02 Freeze Engine
 |-------|-------|
 | **Task ID** | E-01 |
 | **Title** | Snapshot Foundation |
+| **Status** | **Certified Complete** |
+| **Engineering Baseline** | [`E-01-Engineering-Baseline.md`](E-01-Engineering-Baseline.md) — 2026-08-05 |
 
 **Purpose:** Establish the snapshot domain — voter snapshot, resolution snapshot, freeze event identity, and immutability contracts — as the persistent foundation for freeze and voting.
 
@@ -130,10 +132,10 @@ E-02 Freeze Engine
 
 **Completion criteria:**
 
-- [ ] Voter snapshot and resolution snapshot models implemented and reviewable
-- [ ] Freeze event identity assignable and unique per meeting freeze
-- [ ] Immutability rules enforced at foundation layer
-- [ ] CITM rows 1, 2, 5, 11 (identity) marked implemented with evidence
+- [x] Voter snapshot and resolution snapshot models implemented and reviewable
+- [x] Freeze event identity assignable and unique per meeting freeze
+- [x] Immutability rules enforced at foundation layer
+- [x] CITM rows 1, 2, 5, 11 (identity) marked implemented with evidence — **Partially Accepted** per [`E-01-Engineering-Baseline.md`](E-01-Engineering-Baseline.md)
 
 **Out of scope:**
 
@@ -479,7 +481,9 @@ This Engineering Work Breakdown decomposes **15 CITM rows** into **6 Engineering
 | Production changed | **No** |
 | Engineering may proceed task-by-task | **Yes** — under IA-001 |
 
-**Recommended first task:** **E-01 Snapshot Foundation**
+**Recommended first task:** **E-01 Snapshot Foundation** — **Certified Complete** (Engineering Baseline 2026-08-05)
+
+**Next recommended task:** **E-02 Freeze Engine**
 
 ---
 

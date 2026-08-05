@@ -109,7 +109,7 @@ Implementation Units **shall** execute in order **5.1 → 5.2 → 5.3 → 5.4**.
 |-------|-------|
 | **Purpose** | Close every E-01 CITM row with implementation evidence |
 | **Production Effect** | **None** |
-| **Deliverable** | [`E-01-IU-5.3-CITM-Evidence.md`](E-01-IU-5.3-CITM-Evidence.md) |
+| **Deliverable** | [`E-01-IU-5.3-CITM-Evidence-Closure.md`](E-01-IU-5.3-CITM-Evidence-Closure.md) |
 | **IU Completion** | `E-01-IU-5.3-Completion.md` |
 
 **CITM rows in E-01 scope** (from Work Breakdown §4):
@@ -131,7 +131,7 @@ Each row **shall** record: implementation status (partial/foundation), evidence 
 |-------|-------|
 | **Purpose** | Determine whether E-01 Snapshot Foundation is ready for Certification |
 | **Production Effect** | **None** |
-| **Deliverable** | [`E-01-IU-5.4-Final-Acceptance.md`](E-01-IU-5.4-Final-Acceptance.md) |
+| **Deliverable** | [`E-01-IU-5.4-Engineering-Acceptance-Decision.md`](E-01-IU-5.4-Engineering-Acceptance-Decision.md) |
 | **IU Completion** | `E-01-IU-5.4-Completion.md` |
 
 **Acceptance determination:**
@@ -151,8 +151,8 @@ Each row **shall** record: implementation status (partial/foundation), evidence 
 |----|---------------------|----------------------|
 | **IU-5.1** | [`E-01-IU-5.1-Engineering-Evidence-Verification.md`](E-01-IU-5.1-Engineering-Evidence-Verification.md) | `E-01-IU-5.1-Completion.md` |
 | **IU-5.2** | [`E-01-IU-5.2-Acceptance-Validation.md`](E-01-IU-5.2-Acceptance-Validation.md) | `E-01-IU-5.2-Completion.md` |
-| **IU-5.3** | [`E-01-IU-5.3-CITM-Evidence.md`](E-01-IU-5.3-CITM-Evidence.md) | `E-01-IU-5.3-Completion.md` |
-| **IU-5.4** | [`E-01-IU-5.4-Final-Acceptance.md`](E-01-IU-5.4-Final-Acceptance.md) | `E-01-IU-5.4-Completion.md` |
+| **IU-5.3** | [`E-01-IU-5.3-CITM-Evidence-Closure.md`](E-01-IU-5.3-CITM-Evidence-Closure.md) | `E-01-IU-5.3-Completion.md` |
+| **IU-5.4** | [`E-01-IU-5.4-Engineering-Acceptance-Decision.md`](E-01-IU-5.4-Engineering-Acceptance-Decision.md) | `E-01-IU-5.4-Completion.md` |
 
 ### End-of-phase deliverables
 
