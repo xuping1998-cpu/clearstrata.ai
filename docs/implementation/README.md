@@ -177,6 +177,9 @@ Authorized implementation records. Engineering work **may begin** only when list
 |----------------|-----------------|--------|--------|
 | **M2-S3 Work Breakdown** | M2-S3 | **Approved** | [`M2-S3-Engineering-Work-Breakdown.md`](M2-S3-Engineering-Work-Breakdown.md) |
 | **E-01 Phase 5 Plan** | E-01 Phase 5 | **Approved** | [`E-01-Phase-5-Implementation-Plan.md`](E-01-Phase-5-Implementation-Plan.md) |
+| **E-02 Architecture** | E-02 Freeze Engine | **Approved — Architecture Authority** | [`E-02-Architecture.md`](E-02-Architecture.md) |
+| **E-02 Implementation Plan** | E-02 Freeze Engine | **Approved** | [`E-02-Implementation-Plan.md`](E-02-Implementation-Plan.md) |
+| **E-02 Phase 1 Plan** | E-02 Phase 1 | **Approved** | [`E-02-Phase-1-Implementation-Plan.md`](E-02-Phase-1-Implementation-Plan.md) |
 
 ### Implementation Unit completion ([`CES-010`](CES-010-Documentation-and-Knowledge-Engineering-Standard.md) · [`EPS-001`](EPS-001-Engineering-Phase-Documentation-Standard.md))
 
@@ -211,7 +214,53 @@ Every completed **IU** **shall** produce `{Task}-IU-{phase.unit}-Completion.md`.
 | [`E-01-Project-Certification.md`](E-01-Project-Certification.md) | E-01 Project Certification | **Certified Complete** |
 | [`E-01-Engineering-Baseline.md`](E-01-Engineering-Baseline.md) | E-01 Engineering Baseline | **Certified Complete** |
 
-**E-01 status:** All phases (1–5) completed and certified. Project Certification and Engineering Baseline issued 2026-08-05. **E-02 authorized to begin.**
+| **E-01 status:** All phases (1–5) completed and certified. Project Certification and Engineering Baseline issued 2026-08-05. **E-02 authorized to begin.**
+
+### E-02 — Architecture Authority & Implementation Plan
+
+[`E-02-Architecture.md`](E-02-Architecture.md) is the **single Architecture Authority** for E-02 Freeze Engine (v1.1). [`E-02-Implementation-Plan.md`](E-02-Implementation-Plan.md) implements that authority — IUs and phases **shall not** redefine architecture decisions. Architecture changes require formal revision to the Architecture Authority document.
+
+| Record | Task | Status |
+|--------|------|--------|
+| [`E-02-Architecture.md`](E-02-Architecture.md) | E-02 Freeze Engine Architecture Authority | **Approved — Architecture Authority** |
+| [`E-02-Implementation-Plan.md`](E-02-Implementation-Plan.md) | E-02 Freeze Engine Implementation Plan | **Approved** |
+| [`E-02-Phase-1-Implementation-Plan.md`](E-02-Phase-1-Implementation-Plan.md) | E-02 Phase 1 — Freeze Transaction Foundation | **Certified Complete** |
+| [`E-02-Phase-2-Implementation-Plan.md`](E-02-Phase-2-Implementation-Plan.md) | E-02 Phase 2 — Snapshot Materialization | **Approved** |
+
+**Normative contract:** Freeze Authority (§3) · Correlation Model (§4) · Recovery Model (§5) · Freeze Contract (§6)
+
+**Execution order:** Phase 1 Freeze Transaction Foundation → Phase 2 Materialization → Phase 3 Commit & Audit → Phase 4 Repository Integration → Phase 5 Verification & Acceptance
+
+**E-02 next:** [`E-02-Phase-2-Completion.md`](E-02-Phase-2-Completion.md)
+
+| Record | IU / Phase | Status |
+|--------|------------|--------|
+| [`E-02-IU-1.1-Implementation.md`](E-02-IU-1.1-Implementation.md) | IU-1.1 Freeze Event Creation | **Design Approved** |
+| [`E-02-IU-1.1-Design-Review.md`](E-02-IU-1.1-Design-Review.md) | IU-1.1 Design Review | **Approved** |
+| [`E-02-IU-1.1-Implementation-Review.md`](E-02-IU-1.1-Implementation-Review.md) | IU-1.1 Implementation Review | **Approved — PASS WITH NOTES** |
+| [`E-02-IU-1.1-Completion.md`](E-02-IU-1.1-Completion.md) | IU-1.1 Completion | **Completed** |
+| [`E-02-IU-1.2-Implementation.md`](E-02-IU-1.2-Implementation.md) | IU-1.2 Freeze Validation | **Design Approved** |
+| [`E-02-IU-1.2-Design-Review.md`](E-02-IU-1.2-Design-Review.md) | IU-1.2 Design Review | **Approved — APPROVED WITH NOTES** |
+| [`E-02-IU-1.2-Implementation-Review.md`](E-02-IU-1.2-Implementation-Review.md) | IU-1.2 Implementation Review | **Approved — PASS** |
+| [`E-02-IU-1.2-Completion.md`](E-02-IU-1.2-Completion.md) | IU-1.2 Completion | **Completed** |
+| [`E-02-IU-1.3-Implementation.md`](E-02-IU-1.3-Implementation.md) | IU-1.3 Freeze Transaction Boundary | **Design Approved** |
+| [`E-02-IU-1.3-Design-Review.md`](E-02-IU-1.3-Design-Review.md) | IU-1.3 Design Review | **Approved — APPROVED WITH NOTES** |
+| [`E-02-IU-1.3-Implementation-Review.md`](E-02-IU-1.3-Implementation-Review.md) | IU-1.3 Implementation Review | **Approved — PASS** |
+| [`E-02-IU-1.3-Completion.md`](E-02-IU-1.3-Completion.md) | IU-1.3 Completion | **Completed** |
+| [`E-02-Phase-1-Completion.md`](E-02-Phase-1-Completion.md) | E-02 Phase 1 Completion | **Completed** |
+| [`E-02-Phase-1-Certification.md`](E-02-Phase-1-Certification.md) | E-02 Phase 1 Certification | **Certified Complete** |
+| [`E-02-IU-2.1-Implementation.md`](E-02-IU-2.1-Implementation.md) | IU-2.1 Voter Snapshot Materialization | **Design Approved** |
+| [`E-02-IU-2.1-Design-Review.md`](E-02-IU-2.1-Design-Review.md) | IU-2.1 Design Review | **Approved — APPROVED WITH NOTES** |
+| [`E-02-IU-2.1-Implementation-Review.md`](E-02-IU-2.1-Implementation-Review.md) | IU-2.1 Implementation Review | **Approved — PASS** |
+| [`E-02-IU-2.1-Completion.md`](E-02-IU-2.1-Completion.md) | IU-2.1 Completion | **Completed** |
+| [`E-02-IU-2.2-Implementation.md`](E-02-IU-2.2-Implementation.md) | IU-2.2 Resolution Snapshot Materialization | **Design Approved** |
+| [`E-02-IU-2.2-Design-Review.md`](E-02-IU-2.2-Design-Review.md) | IU-2.2 Design Review | **Approved — APPROVED WITH NOTES** |
+| [`E-02-IU-2.2-Implementation-Review.md`](E-02-IU-2.2-Implementation-Review.md) | IU-2.2 Implementation Review | **Approved — PASS** |
+| [`E-02-IU-2.2-Completion.md`](E-02-IU-2.2-Completion.md) | IU-2.2 Completion | **Completed** |
+| [`E-02-IU-2.3-Implementation.md`](E-02-IU-2.3-Implementation.md) | IU-2.3 Frozen Motion Materialization | **Design Approved** |
+| [`E-02-IU-2.3-Design-Review.md`](E-02-IU-2.3-Design-Review.md) | IU-2.3 Design Review | **Approved — APPROVED WITH NOTES** |
+| [`E-02-IU-2.3-Implementation-Review.md`](E-02-IU-2.3-Implementation-Review.md) | IU-2.3 Implementation Review | **Approved — PASS WITH NOTES** |
+| [`E-02-IU-2.3-Completion.md`](E-02-IU-2.3-Completion.md) | IU-2.3 Completion | **Completed** |
 
 ---
 
