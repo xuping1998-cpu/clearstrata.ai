@@ -226,12 +226,61 @@ Every completed **IU** **shall** produce `{Task}-IU-{phase.unit}-Completion.md`.
 | [`E-02-Implementation-Plan.md`](E-02-Implementation-Plan.md) | E-02 Freeze Engine Implementation Plan | **Approved** |
 | [`E-02-Phase-1-Implementation-Plan.md`](E-02-Phase-1-Implementation-Plan.md) | E-02 Phase 1 — Freeze Transaction Foundation | **Certified Complete** |
 | [`E-02-Phase-2-Implementation-Plan.md`](E-02-Phase-2-Implementation-Plan.md) | E-02 Phase 2 — Snapshot Materialization | **Approved** |
+| [`E-02-Phase-2-Completion.md`](E-02-Phase-2-Completion.md) | E-02 Phase 2 Completion | **Completed** |
+| [`E-02-Phase-2-Certification.md`](E-02-Phase-2-Certification.md) | E-02 Phase 2 Certification | **Certified Complete** |
+| [`E-02-Phase-3-Implementation-Plan.md`](E-02-Phase-3-Implementation-Plan.md) | E-02 Phase 3 — Atomic Commit & Audit | **Approved** |
+| [`E-02-Phase-3-Completion.md`](E-02-Phase-3-Completion.md) | E-02 Phase 3 Completion | **Completed** |
+| [`E-02-Phase-3-Certification.md`](E-02-Phase-3-Certification.md) | E-02 Phase 3 Certification | **Certified Complete** |
+| [`E-02-Phase-4-Implementation-Plan.md`](E-02-Phase-4-Implementation-Plan.md) | E-02 Phase 4 — Repository Integration | **Approved** |
+| [`E-02-Phase-4-Completion.md`](E-02-Phase-4-Completion.md) | E-02 Phase 4 Completion | **Completed** |
+| [`E-02-Phase-4-Certification.md`](E-02-Phase-4-Certification.md) | E-02 Phase 4 Certification | **Certified Complete** |
+| [`E-02-Phase-5-Implementation-Plan.md`](E-02-Phase-5-Implementation-Plan.md) | E-02 Phase 5 — Verification & Acceptance | **Approved** |
+
+**E-02 Phase 2 status:** **CERTIFIED COMPLETE**
+
+**E-02 Phase 3 status:** **CERTIFIED COMPLETE**
+
+**E-02 Phase 4 status:** **CERTIFIED COMPLETE** · IU **2/2** · Baseline **CERTIFIED**
 
 **Normative contract:** Freeze Authority (§3) · Correlation Model (§4) · Recovery Model (§5) · Freeze Contract (§6)
 
 **Execution order:** Phase 1 Freeze Transaction Foundation → Phase 2 Materialization → Phase 3 Commit & Audit → Phase 4 Repository Integration → Phase 5 Verification & Acceptance
 
-**E-02 next:** [`E-02-Phase-2-Completion.md`](E-02-Phase-2-Completion.md)
+**E-02 Phase 5 status:** **IN PROGRESS** · Plan **Approved** · IU **4/4 COMPLETED**
+
+**E-02 overall:** **IN PROGRESS**
+
+**E-02 next:** **AUTHORITY DECISION REQUIRED** *(PCQ-002 · PCQ-003 · VAQ-007 · VAQ-010 · VAQ-001 · VAQ-003 — no document creation authorized)*
+
+**Phase 5 Completion:** **NOT ISSUED** · **AUTHORITY-GATED**
+
+**Phase 5 Certification:** **NOT ISSUED** · **AUTHORITY-GATED**
+
+**Project Certification Evaluation:** **COMPLETED** — **PROJECT_CERTIFICATION_BLOCKED** / **AUTHORITY_GATED**
+
+**Actual Acceptance Report:** **ISSUED** — [`E-02-Acceptance-Report.md`](E-02-Acceptance-Report.md)
+
+**Acceptance Decision:** **ACCEPTANCE_BLOCKED**
+
+**Primary Acceptance:** **ACCEPTANCE_BLOCKED**
+
+**Acceptance readiness (executable/full E-02):** **ACCEPTANCE_BLOCKED**
+
+**Project Certification:** **NOT ISSUED** · **AUTHORITY DECISION REQUIRED**
+
+**E-02 Project Certification:** **NOT ISSUED**
+
+**Executable Final COMMIT Path:** **BLOCKED**
+
+**Executable implementation:** **PENDING**
+
+**Executable integration verification:** **PENDING**
+
+**Runtime COMMITTED:** **NOT CERTIFIED**
+
+**E-03:** Blocked pending E-02 Project Certification
+
+**E-04:** **NOT STARTED**
 
 | Record | IU / Phase | Status |
 |--------|------------|--------|
@@ -261,6 +310,47 @@ Every completed **IU** **shall** produce `{Task}-IU-{phase.unit}-Completion.md`.
 | [`E-02-IU-2.3-Design-Review.md`](E-02-IU-2.3-Design-Review.md) | IU-2.3 Design Review | **Approved — APPROVED WITH NOTES** |
 | [`E-02-IU-2.3-Implementation-Review.md`](E-02-IU-2.3-Implementation-Review.md) | IU-2.3 Implementation Review | **Approved — PASS WITH NOTES** |
 | [`E-02-IU-2.3-Completion.md`](E-02-IU-2.3-Completion.md) | IU-2.3 Completion | **Completed** |
+| [`E-02-IU-3.1-Implementation.md`](E-02-IU-3.1-Implementation.md) | IU-3.1 Atomic Commit | **Design Approved** |
+| [`E-02-IU-3.1-Design-Review.md`](E-02-IU-3.1-Design-Review.md) | IU-3.1 Design Review | **Approved — APPROVED WITH NOTES** |
+| [`E-02-IU-3.1-Implementation-Review.md`](E-02-IU-3.1-Implementation-Review.md) | IU-3.1 Implementation Review | **Approved — PASS WITH NOTES** |
+| [`E-02-IU-3.1-Completion.md`](E-02-IU-3.1-Completion.md) | IU-3.1 Completion | **Completed** |
+| [`E-02-IU-3.2-Implementation.md`](E-02-IU-3.2-Implementation.md) | IU-3.2 Primary Audit | **Design Approved** |
+| [`E-02-IU-3.2-Design-Review.md`](E-02-IU-3.2-Design-Review.md) | IU-3.2 Design Review | **Approved — APPROVED WITH NOTES** |
+| [`E-02-IU-3.2-Implementation-Review.md`](E-02-IU-3.2-Implementation-Review.md) | IU-3.2 Implementation Review | **Approved — PASS WITH NOTES** |
+| [`E-02-IU-3.2-Completion.md`](E-02-IU-3.2-Completion.md) | IU-3.2 Completion | **Completed** |
+| [`E-02-IU-3.3-Implementation.md`](E-02-IU-3.3-Implementation.md) | IU-3.3 Idempotent Retry | **Design Approved** |
+| [`E-02-IU-3.3-Design-Review.md`](E-02-IU-3.3-Design-Review.md) | IU-3.3 Design Review | **Approved — APPROVED WITH NOTES** |
+| [`E-02-IU-3.3-Implementation-Review.md`](E-02-IU-3.3-Implementation-Review.md) | IU-3.3 Implementation Review | **Approved — PASS WITH NOTES** |
+| [`E-02-IU-3.3-Completion.md`](E-02-IU-3.3-Completion.md) | IU-3.3 Completion | **Completed** |
+| [`E-02-IU-4.1-Implementation.md`](E-02-IU-4.1-Implementation.md) | IU-4.1 Repository Adoption | **Design Approved** |
+| [`E-02-IU-4.1-Design-Review.md`](E-02-IU-4.1-Design-Review.md) | IU-4.1 Design Review | **Approved — APPROVED WITH NOTES** |
+| [`E-02-IU-4.1-Implementation-Review.md`](E-02-IU-4.1-Implementation-Review.md) | IU-4.1 Implementation Review | **Approved — PASS WITH NOTES** |
+| [`E-02-IU-4.1-Completion.md`](E-02-IU-4.1-Completion.md) | IU-4.1 Completion | **Completed** |
+| [`E-02-IU-4.2-Implementation.md`](E-02-IU-4.2-Implementation.md) | IU-4.2 Integration Verification | **Design Approved** |
+| [`E-02-IU-4.2-Design-Review.md`](E-02-IU-4.2-Design-Review.md) | IU-4.2 Design Review | **Approved — APPROVED WITH NOTES** |
+| [`E-02-IU-4.2-Implementation-Review.md`](E-02-IU-4.2-Implementation-Review.md) | IU-4.2 Implementation Review | **Approved — PASS WITH NOTES** |
+| [`E-02-IU-4.2-Completion.md`](E-02-IU-4.2-Completion.md) | IU-4.2 Completion | **Completed** |
+| [`E-02-IU-5.1-Implementation.md`](E-02-IU-5.1-Implementation.md) | IU-5.1 Engineering Verification | **Design Approved** |
+| [`E-02-IU-5.1-Design-Review.md`](E-02-IU-5.1-Design-Review.md) | IU-5.1 Design Review | **Approved With Notes** |
+| [`E-02-IU-5.1-Implementation-Review.md`](E-02-IU-5.1-Implementation-Review.md) | IU-5.1 Implementation Review | **Approved — PASS WITH NOTES** |
+| [`E-02-IU-5.1-Completion.md`](E-02-IU-5.1-Completion.md) | IU-5.1 Completion | **COMPLETED** |
+| [`E-02-IU-5.2-Implementation.md`](E-02-IU-5.2-Implementation.md) | IU-5.2 Acceptance Validation | **Design Approved** |
+| [`E-02-IU-5.2-Design-Review.md`](E-02-IU-5.2-Design-Review.md) | IU-5.2 Design Review | **Approved With Notes** |
+| [`E-02-IU-5.2-Implementation-Review.md`](E-02-IU-5.2-Implementation-Review.md) | IU-5.2 Implementation Review | **Approved — PASS WITH NOTES** |
+| [`E-02-IU-5.2-Completion.md`](E-02-IU-5.2-Completion.md) | IU-5.2 Completion | **COMPLETED** |
+| [`E-02-IU-5.3-Implementation.md`](E-02-IU-5.3-Implementation.md) | IU-5.3 Acceptance Report | **Design Approved** |
+| [`E-02-IU-5.3-Design-Review.md`](E-02-IU-5.3-Design-Review.md) | IU-5.3 Design Review | **Approved With Notes** |
+| [`E-02-IU-5.3-Implementation-Review.md`](E-02-IU-5.3-Implementation-Review.md) | IU-5.3 Implementation Review | **Approved — PASS WITH NOTES** |
+| [`E-02-IU-5.3-Completion.md`](E-02-IU-5.3-Completion.md) | IU-5.3 Completion | **COMPLETED** |
+| [`E-02-Acceptance-Report.md`](E-02-Acceptance-Report.md) | E-02 Acceptance Report | **ISSUED** |
+| [`E-02-IU-5.4-Implementation.md`](E-02-IU-5.4-Implementation.md) | IU-5.4 Project Certification | **Design Approved** |
+| [`E-02-IU-5.4-Design-Review.md`](E-02-IU-5.4-Design-Review.md) | IU-5.4 Design Review | **Approved With Notes** |
+| [`E-02-IU-5.4-Implementation-Review.md`](E-02-IU-5.4-Implementation-Review.md) | IU-5.4 Implementation Review | **Approved — PASS WITH NOTES** |
+| [`E-02-IU-5.4-Completion.md`](E-02-IU-5.4-Completion.md) | IU-5.4 Completion | **COMPLETED** |
+
+**Phase 5 IU summary:** IU-5.1 **COMPLETED** · IU-5.2 **COMPLETED** · IU-5.3 **COMPLETED** · IU-5.4 **COMPLETED** · Acceptance Report **ISSUED** · **4/4 IUs COMPLETED**
+
+**Phase 4 IU summary:** IU-4.1 **COMPLETED** (certified baseline component) · IU-4.2 **COMPLETED** (certified baseline component) · **2/2**
 
 ---
 
