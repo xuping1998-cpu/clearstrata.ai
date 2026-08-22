@@ -170,6 +170,9 @@ Authorized implementation records. Engineering work **may begin** only when list
 | Authorization | Milestone / Slice | Status | Record |
 |---------------|-----------------|--------|--------|
 | **IA-001** | M2-S3 Snapshot Freeze | **Authorized** | [`M2-S3-Implementation-Authorization.md`](M2-S3-Implementation-Authorization.md) |
+| **E-02-RU-1.1-IA** | E-02 RU-1.1 Primary Audit Physical Foundation | **Authorized — Consumed** | [`E-02-RU-1.1-Implementation-Authorization.md`](E-02-RU-1.1-Implementation-Authorization.md) |
+| **E-02-RU-1.2-IA** | E-02 RU-1.2 Atomic Commit Envelope | **Authorized — Consumed** | [`E-02-RU-1.2-Implementation-Authorization.md`](E-02-RU-1.2-Implementation-Authorization.md) |
+| **E-02-RU-1.3-IA** | E-02 RU-1.3 COMMITTED Authority | **Authorized** | [`E-02-RU-1.3-Implementation-Authorization.md`](E-02-RU-1.3-Implementation-Authorization.md) |
 
 **Chain:** Blueprint → ER-001 → **IA-001** → **Work Breakdown** → Engineering → Verification → Release
 
@@ -223,7 +226,7 @@ Every completed **IU** **shall** produce `{Task}-IU-{phase.unit}-Completion.md`.
 | Record | Task | Status |
 |--------|------|--------|
 | [`E-02-Architecture.md`](E-02-Architecture.md) | E-02 Freeze Engine Architecture Authority | **Approved — Architecture Authority** |
-| [`E-02-Implementation-Plan.md`](E-02-Implementation-Plan.md) | E-02 Freeze Engine Implementation Plan | **Approved** |
+| [`E-02-Implementation-Plan.md`](E-02-Implementation-Plan.md) | E-02 Freeze Engine Implementation Plan | **Approved — v1.1** |
 | [`E-02-Phase-1-Implementation-Plan.md`](E-02-Phase-1-Implementation-Plan.md) | E-02 Phase 1 — Freeze Transaction Foundation | **Certified Complete** |
 | [`E-02-Phase-2-Implementation-Plan.md`](E-02-Phase-2-Implementation-Plan.md) | E-02 Phase 2 — Snapshot Materialization | **Approved** |
 | [`E-02-Phase-2-Completion.md`](E-02-Phase-2-Completion.md) | E-02 Phase 2 Completion | **Completed** |
@@ -234,7 +237,7 @@ Every completed **IU** **shall** produce `{Task}-IU-{phase.unit}-Completion.md`.
 | [`E-02-Phase-4-Implementation-Plan.md`](E-02-Phase-4-Implementation-Plan.md) | E-02 Phase 4 — Repository Integration | **Approved** |
 | [`E-02-Phase-4-Completion.md`](E-02-Phase-4-Completion.md) | E-02 Phase 4 Completion | **Completed** |
 | [`E-02-Phase-4-Certification.md`](E-02-Phase-4-Certification.md) | E-02 Phase 4 Certification | **Certified Complete** |
-| [`E-02-Phase-5-Implementation-Plan.md`](E-02-Phase-5-Implementation-Plan.md) | E-02 Phase 5 — Verification & Acceptance | **Approved** |
+| [`E-02-Phase-5-Implementation-Plan.md`](E-02-Phase-5-Implementation-Plan.md) | E-02 Phase 5 — Verification & Acceptance | **Approved — v1.1** |
 
 **E-02 Phase 2 status:** **CERTIFIED COMPLETE**
 
@@ -246,15 +249,115 @@ Every completed **IU** **shall** produce `{Task}-IU-{phase.unit}-Completion.md`.
 
 **Execution order:** Phase 1 Freeze Transaction Foundation → Phase 2 Materialization → Phase 3 Commit & Audit → Phase 4 Repository Integration → Phase 5 Verification & Acceptance
 
-**E-02 Phase 5 status:** **IN PROGRESS** · Plan **Approved** · IU **4/4 COMPLETED**
+**E-02 Phase 5 status:** **CERTIFIED COMPLETE — SCOPED** · Plan **Approved — v1.1** · IU **4/4 COMPLETED**
 
 **E-02 overall:** **IN PROGRESS**
 
-**E-02 next:** **AUTHORITY DECISION REQUIRED** *(PCQ-002 · PCQ-003 · VAQ-007 · VAQ-010 · VAQ-001 · VAQ-003 — no document creation authorized)*
+**E-02 Program Authority Decision:** **APPROVED** — [`E-02-Program-Authority-Decision.md`](E-02-Program-Authority-Decision.md) *(2026-08-20)*
 
-**Phase 5 Completion:** **NOT ISSUED** · **AUTHORITY-GATED**
+**Authority resolved:** VAQ-010 = **YES** · VAQ-007 = **NO** · VAQ-001 = **E-02 Executable Remediation Stage established** · VAQ-003 = **remediation locus established; detailed sequencing deferred** · PCQ-002 = **YES WITH FOLLOW-UP** · PCQ-003 = **YES SCOPED**
 
-**Phase 5 Certification:** **NOT ISSUED** · **AUTHORITY-GATED**
+**Authority still open:** PCQ-010 · PCQ-011 · PCQ-012 · production deployment certification threshold · remediation engineering design
+
+**E-02 Implementation Plan:** **v1.1** — Program Authority Amendment incorporated *(2026-08-20)*
+
+**E-02 Phase 5 Implementation Plan:** **v1.1** — Program Authority Amendment incorporated *(2026-08-21)*
+
+**E-02 Executable Remediation Stage:** **IN PROGRESS — RU-1.4 DESIGN**
+
+**E-02 Executable Remediation Plan:** **Design Approved** — [`E-02-Executable-Remediation-Plan.md`](E-02-Executable-Remediation-Plan.md) *(2026-08-21)*
+
+**RU-1.1:** **COMPLETED WITH NOTES** — [`E-02-RU-1.1-Completion.md`](E-02-RU-1.1-Completion.md) · **Repository IMPLEMENTED** · **DB NOT APPLIED**
+
+**RU-1.1 DB Application:** **NOT AUTHORIZED / NOT APPLIED**
+
+**RU-1.2:** **COMPLETED WITH NOTES** — [`E-02-RU-1.2-Completion.md`](E-02-RU-1.2-Completion.md) · **Repository IMPLEMENTED** · **DB NOT APPLIED** · **Runtime NOT VERIFIED**
+
+**RU-1.2 DB Application:** **NOT AUTHORIZED / NOT APPLIED**
+
+**RU-1.2 Runtime:** **NOT VERIFIED**
+
+**RU-1.3:** **COMPLETED WITH NOTES** — [`E-02-RU-1.3-Completion.md`](E-02-RU-1.3-Completion.md) · **Repository IMPLEMENTED** · **Runtime NOT VERIFIED**
+
+**RU-1.3 Design Review:** **APPROVED WITH NOTES** — [`E-02-RU-1.3-Design-Review.md`](E-02-RU-1.3-Design-Review.md) *(2026-08-21)*
+
+**RU-1.3 Implementation Review:** **PASS WITH NOTES** — [`E-02-RU-1.3-Implementation-Review.md`](E-02-RU-1.3-Implementation-Review.md) *(2026-08-21)*
+
+**RU-1.3 Implementation Authorization:** **APPROVED / CONSUMED** — [`E-02-RU-1.3-Implementation-Authorization.md`](E-02-RU-1.3-Implementation-Authorization.md) *(E-02-RU-1.3-IA, 2026-08-21)*
+
+**RU-1.3 Repository Implementation:** **IMPLEMENTED** — `src/lib/ownerVote/committedAuthority/`
+
+**Committed Authority Layer:** **IMPLEMENTED IN REPOSITORY**
+
+**Runtime COMMITTED Logic:** **IMPLEMENTED IN REPOSITORY / NOT VERIFIED**
+
+**RU-1.3 Database Work:** **NONE**
+
+**RU-1.3 Runtime:** **NOT VERIFIED**
+
+**RU-1.4:** **IMPLEMENTATION DESIGN APPROVED** — [`E-02-RU-1.4-Implementation.md`](E-02-RU-1.4-Implementation.md) *(2026-08-21)*
+
+**RU-1.4 Design Review:** **APPROVED WITH NOTES** — [`E-02-RU-1.4-Design-Review.md`](E-02-RU-1.4-Design-Review.md) *(2026-08-21)*
+
+**RU-1.4 Implementation Review:** **PASS WITH NOTES** — [`E-02-RU-1.4-Implementation-Review.md`](E-02-RU-1.4-Implementation-Review.md) *(2026-08-21)*
+
+**RU-1.4 Implementation Authorization:** **APPROVED / CONSUMED** — [`E-02-RU-1.4-Implementation-Authorization.md`](E-02-RU-1.4-Implementation-Authorization.md) *(E-02-RU-1.4-IA, 2026-08-21)*
+
+**RU-1.4 Evidence Harness Repository Implementation:** **IMPLEMENTED**
+
+**RU-1.4 Evidence Collection:** **NOT STARTED / NOT AUTHORIZED**
+
+**RU-1.4 Repository Harness:** **IMPLEMENTED**
+
+**RU-1.4 Runtime Execution:** **NOT AUTHORIZED**
+
+**RU-1.4 Evidence:** **NOT COLLECTED**
+
+**Database Application Authority Mechanism:** **ESTABLISHED** — [`E-02-Database-Application-Authority-Decision.md`](E-02-Database-Application-Authority-Decision.md) *(PAD-011 – PAD-025, 2026-08-21)*
+
+**Database Application Authorization:** **E-02-DBA-LOCAL-001 — APPROVED / NOT CONSUMED** — [`E-02-Database-Application-Authorization.md`](E-02-Database-Application-Authorization.md) *(2026-08-21)*
+
+**Database Application:** **APPLICATION_FAILED — LOCAL DISPOSABLE** — [`E-02-Database-Application-Evidence-E-02-DBA-LOCAL-001.md`](E-02-Database-Application-Evidence-E-02-DBA-LOCAL-001.md) *(2026-08-21)*
+
+**Database Application Evidence:** **ISSUED — APPLICATION_FAILED**
+
+**Database Applied:** **NO**
+
+**Database Baseline Verified:** **NO**
+
+**RU-1.1/1.2 DB Application:** **NOT APPLIED — EXECUTION BLOCKED (Docker unavailable)**
+
+**RU-1.2 Repository Implementation:** **IMPLEMENTED** — `20261821120000_create_execute_owner_vote_atomic_freeze_commit.sql`
+
+**RU-1.2 Runtime:** **NOT VERIFIED**
+
+**Atomic Envelope:** **IMPLEMENTED IN REPOSITORY**
+
+**Ownership:** **IMPLEMENTED IN REPOSITORY — TRANSIENT XACT LOCK**
+
+**Reconciliation:** **IMPLEMENTED IN REPOSITORY**
+
+**Primary Audit Target:** **IMPLEMENTED IN REPOSITORY**
+
+**Primary Audit Runtime:** **NOT VERIFIED**
+
+**Executable Remediation:** **IN PROGRESS — RU-1.4 HARNESS IMPLEMENTED**
+
+**Runtime COMMITTED Certification:** **NOT CERTIFIED**
+
+**Final COMMIT Path:** **BLOCKED**
+
+**Acceptance:** **ACCEPTANCE_BLOCKED**
+
+**Project Certification:** **NOT ISSUED**
+
+**E-02 next authorized action:** **RE-EXECUTE E-02-DBA-LOCAL-001** — install/start Docker Desktop · local disposable Supabase · `supabase db reset` · `verify:e02:baseline` · update evidence record *(no runtime evidence)*
+
+**REA gate:** **NOT ADVANCED** — [`E-02-RU-1.4-Runtime-Execution-Authorization.md`](E-02-RU-1.4-Runtime-Execution-Authorization.md) blocked until `APPLIED_AND_BASELINE_VERIFIED`
+
+**Phase 5 Completion:** **ISSUED** — [`E-02-Phase-5-Completion.md`](E-02-Phase-5-Completion.md) · **COMPLETED WITH FOLLOW-UP**
+
+**Phase 5 Certification:** **ISSUED — SCOPED** — [`E-02-Phase-5-Certification.md`](E-02-Phase-5-Certification.md)
 
 **Project Certification Evaluation:** **COMPLETED** — **PROJECT_CERTIFICATION_BLOCKED** / **AUTHORITY_GATED**
 
@@ -266,19 +369,15 @@ Every completed **IU** **shall** produce `{Task}-IU-{phase.unit}-Completion.md`.
 
 **Acceptance readiness (executable/full E-02):** **ACCEPTANCE_BLOCKED**
 
-**Project Certification:** **NOT ISSUED** · **AUTHORITY DECISION REQUIRED**
+**Project Certification:** **NOT ISSUED**
 
 **E-02 Project Certification:** **NOT ISSUED**
 
-**Executable Final COMMIT Path:** **BLOCKED**
-
-**Executable implementation:** **PENDING**
-
-**Executable integration verification:** **PENDING**
+**Executable Final COMMIT Path:** **BLOCKED** · **COMMIT Path:** **BLOCKED**
 
 **Runtime COMMITTED:** **NOT CERTIFIED**
 
-**E-03:** Blocked pending E-02 Project Certification
+**E-03:** **BLOCKED**
 
 **E-04:** **NOT STARTED**
 
@@ -347,6 +446,32 @@ Every completed **IU** **shall** produce `{Task}-IU-{phase.unit}-Completion.md`.
 | [`E-02-IU-5.4-Design-Review.md`](E-02-IU-5.4-Design-Review.md) | IU-5.4 Design Review | **Approved With Notes** |
 | [`E-02-IU-5.4-Implementation-Review.md`](E-02-IU-5.4-Implementation-Review.md) | IU-5.4 Implementation Review | **Approved — PASS WITH NOTES** |
 | [`E-02-IU-5.4-Completion.md`](E-02-IU-5.4-Completion.md) | IU-5.4 Completion | **COMPLETED** |
+| [`E-02-Program-Authority-Decision.md`](E-02-Program-Authority-Decision.md) | E-02 Program Authority Decision | **APPROVED** |
+| [`E-02-Database-Application-Authority-Decision.md`](E-02-Database-Application-Authority-Decision.md) | PAD Supplement — Database Application Authority Mechanism (PAD-011 – PAD-025) | **Approved With Conditions** |
+| [`E-02-Database-Application-Authorization.md`](E-02-Database-Application-Authorization.md) | Database Application Authorization — Local Disposable (E-02-DBA-LOCAL-001) | **Approved With Conditions — Not Consumed** |
+| [`E-02-Database-Application-Evidence-E-02-DBA-LOCAL-001.md`](E-02-Database-Application-Evidence-E-02-DBA-LOCAL-001.md) | Database Application Evidence — E-02-DBA-LOCAL-001 | **Issued — APPLICATION_FAILED** |
+| [`E-02-Phase-5-Completion.md`](E-02-Phase-5-Completion.md) | E-02 Phase 5 Completion | **COMPLETED WITH FOLLOW-UP** |
+| [`E-02-Phase-5-Certification.md`](E-02-Phase-5-Certification.md) | E-02 Phase 5 Certification | **ISSUED — SCOPED** |
+| [`E-02-Executable-Remediation-Plan.md`](E-02-Executable-Remediation-Plan.md) | E-02 Executable Remediation Plan | **Design Approved** |
+| [`E-02-RU-1.1-Implementation.md`](E-02-RU-1.1-Implementation.md) | RU-1.1 Primary Audit Physical Foundation | **Design Approved** |
+| [`E-02-RU-1.1-Design-Review.md`](E-02-RU-1.1-Design-Review.md) | RU-1.1 Design Review | **Approved With Notes** |
+| [`E-02-RU-1.1-Implementation-Review.md`](E-02-RU-1.1-Implementation-Review.md) | RU-1.1 Implementation Review | **Approved — PASS WITH NOTES** |
+| [`E-02-RU-1.1-Implementation-Authorization.md`](E-02-RU-1.1-Implementation-Authorization.md) | RU-1.1 Implementation Authorization | **Authorized — Consumed** |
+| [`E-02-RU-1.1-Completion.md`](E-02-RU-1.1-Completion.md) | RU-1.1 Completion | **Completed with Follow-up** |
+| [`E-02-RU-1.2-Implementation.md`](E-02-RU-1.2-Implementation.md) | RU-1.2 Atomic Commit Envelope | **Design Approved** |
+| [`E-02-RU-1.2-Design-Review.md`](E-02-RU-1.2-Design-Review.md) | RU-1.2 Design Review | **Approved With Notes** |
+| [`E-02-RU-1.2-Implementation-Review.md`](E-02-RU-1.2-Implementation-Review.md) | RU-1.2 Implementation Review | **Approved — PASS WITH NOTES** |
+| [`E-02-RU-1.2-Implementation-Authorization.md`](E-02-RU-1.2-Implementation-Authorization.md) | RU-1.2 Implementation Authorization | **Authorized — Consumed** |
+| [`E-02-RU-1.2-Completion.md`](E-02-RU-1.2-Completion.md) | RU-1.2 Completion | **Completed with Follow-up** |
+| [`E-02-RU-1.3-Implementation.md`](E-02-RU-1.3-Implementation.md) | RU-1.3 Final Commit Orchestration | **Design Approved** |
+| [`E-02-RU-1.3-Design-Review.md`](E-02-RU-1.3-Design-Review.md) | RU-1.3 Design Review | **Approved With Notes** |
+| [`E-02-RU-1.3-Implementation-Review.md`](E-02-RU-1.3-Implementation-Review.md) | RU-1.3 Implementation Review | **Approved — PASS WITH NOTES** |
+| [`E-02-RU-1.3-Implementation-Authorization.md`](E-02-RU-1.3-Implementation-Authorization.md) | RU-1.3 Implementation Authorization | **Authorized — Consumed** |
+| [`E-02-RU-1.3-Completion.md`](E-02-RU-1.3-Completion.md) | RU-1.3 Completion | **Completed with Follow-up** |
+| [`E-02-RU-1.4-Implementation.md`](E-02-RU-1.4-Implementation.md) | RU-1.4 Executable Evidence Package | **Design Approved** |
+| [`E-02-RU-1.4-Design-Review.md`](E-02-RU-1.4-Design-Review.md) | RU-1.4 Design Review | **Approved With Notes** |
+| [`E-02-RU-1.4-Implementation-Review.md`](E-02-RU-1.4-Implementation-Review.md) | RU-1.4 Implementation Review | **Pass With Notes** |
+| [`E-02-RU-1.4-Implementation-Authorization.md`](E-02-RU-1.4-Implementation-Authorization.md) | RU-1.4 Implementation Authorization | **Authorized — Consumed** |
 
 **Phase 5 IU summary:** IU-5.1 **COMPLETED** · IU-5.2 **COMPLETED** · IU-5.3 **COMPLETED** · IU-5.4 **COMPLETED** · Acceptance Report **ISSUED** · **4/4 IUs COMPLETED**
 

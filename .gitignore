@@ -43,6 +43,9 @@ coverage
 .temp
 tmp
 
+# E-02 RU-1.4 runtime evidence (never commit raw output)
+tests/e02/evidence/
+
 # Optional local Supabase
 supabase/.branches
 supabase/.temp

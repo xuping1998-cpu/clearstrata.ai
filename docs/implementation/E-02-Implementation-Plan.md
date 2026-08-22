@@ -5,10 +5,11 @@
 | **Document Type** | Implementation Plan |
 | **Program** | E-02 — Freeze Engine |
 | **Status** | **Approved** |
-| **Revision** | v1.0 |
+| **Revision** | **v1.1** |
+| **Program Authority Amendment** | **2026-08-20** — incorporates [`E-02-Program-Authority-Decision.md`](E-02-Program-Authority-Decision.md) |
 | **Authoritative Source** | [`E-02-Architecture.md`](E-02-Architecture.md) (Architecture Authority v1.1) |
 | **Verified** | **YES** |
-| **Supersedes** | None |
+| **Supersedes** | v1.0 (preserved — see Amendment Note §0) |
 | **Next Document** | [`E-02-Phase-1-Implementation-Plan.md`](E-02-Phase-1-Implementation-Plan.md) |
 | **Task** | E-02 Freeze Engine |
 | **Milestone** | M2-S3 — Snapshot Freeze |
@@ -20,13 +21,41 @@
 
 ---
 
+## 0. Amendment Note (v1.0 → v1.1)
+
+| Field | Value |
+|-------|-------|
+| **Amendment type** | Program Authority Amendment |
+| **Effective date** | 2026-08-20 |
+| **Controlling authority** | [`E-02-Program-Authority-Decision.md`](E-02-Program-Authority-Decision.md) — **APPROVED** |
+
+**v1.1** incorporates the approved Program Authority Decision governing the **blocked-acceptance remediation path**.
+
+**v1.1 does NOT:**
+
+- Invalidate Phase 1–4 Certifications
+- Modify IU-5.1–IU-5.4 Completion records
+- Rewrite [`E-02-Acceptance-Report.md`](E-02-Acceptance-Report.md) v1.0
+- Authorize executable remediation implementation
+- Issue Project Certification or unblock E-03
+
+Where v1.0 wording conflicted with the approved Program Authority Decision, **v1.1 uses the Program Authority Decision as controlling E-02 authority**. Historical v1.0 intent is preserved in §0 and unchanged phase descriptions where not superseded.
+
+```
+PROGRAM PLAN v1.1 AMENDED
+≠ EXECUTABLE REMEDIATION AUTHORIZED
+```
+
+---
+
 ## Authoritative Source
 
 | Field | Value |
 |-------|-------|
 | **Implementation Plan** | [`E-02-Implementation-Plan.md`](E-02-Implementation-Plan.md) |
 | **Architecture Authority** | [`E-02-Architecture.md`](E-02-Architecture.md) v1.1 |
-| **Revision** | v1.0 |
+| **Program Authority Decision** | [`E-02-Program-Authority-Decision.md`](E-02-Program-Authority-Decision.md) v1.0 — **APPROVED** |
+| **Revision** | **v1.1** |
 | **Verified** | **YES** |
 
 ---
@@ -55,6 +84,7 @@ E-02 materializes snapshot state on the certified **E-01 Snapshot Foundation** �
 | [`CES-003-Frontend-Engineering-Standard.md`](CES-003-Frontend-Engineering-Standard.md) | Repository First Rule (FE-9 · §15) |
 | [`GMM-001-Governance-Maturity-Model.md`](GMM-001-Governance-Maturity-Model.md) | Governance maturity alignment |
 | [`IA-001`](M2-S3-Implementation-Authorization.md) | Implementation authorization boundary |
+| [`E-02-Program-Authority-Decision.md`](E-02-Program-Authority-Decision.md) | Remediation / certification authority resolution — **PAD-001 – PAD-010** |
 
 ---
 
@@ -141,7 +171,13 @@ Phase 3  Atomic Commit & Audit
 Phase 4  Repository Integration
     ↓
 Phase 5  Verification & Acceptance
+    ↓
+E-02 Executable Remediation Stage   ← when ACCEPTANCE_BLOCKED (authority v1.1)
+    ↓
+Re-Verification / Re-Validation / Certification Re-Evaluation
 ```
+
+Phases **1 → 5** executed as originally authorized. The **E-02 Executable Remediation Stage** is a **bounded program-level remediation locus** — not a numbered Phase 6 — entered only on the blocked-acceptance path (§19).
 
 ---
 
@@ -268,34 +304,38 @@ Phase 5  Verification & Acceptance
 
 ### Phase 5 — Verification & Acceptance
 
-**Purpose:** Engineering verification, acceptance validation, Acceptance Report, and E-02 Project Certification. **No new engineering functionality.**
+**Purpose:** Engineering verification, acceptance validation, Acceptance Report issuance, and Project Certification **evaluation**. **No new engineering functionality** in original IU-5.1–IU-5.4 scope.
 
 | Field | Value |
 |-------|-------|
 | **Architecture basis** | Full Architecture Authority compliance check |
 | **Blocked by** | Phase 4 certified |
-| **Unblocks** | E-03 · E-04 (subject to their plans) |
+| **Unblocks** | E-03 · E-04 **only after E-02 Project Certification issued** (§13 · §20) |
 
 **Deliverables:**
 
 - Engineering evidence verification (IU-5.1)
 - Acceptance validation against Work Breakdown E-02 criteria (IU-5.2)
 - E-02 Acceptance Report (IU-5.3)
-- E-02 Project Certification (IU-5.4)
+- Project Certification evaluation (IU-5.4) — **evaluation only; issuance conditional** (§21)
 
 **Verification:**
 
-- Blueprint §10 sequence satisfied
+- Blueprint §10 sequence satisfied at evidence level
 - CITM rows 4, 12 updated; rows 1, 2, 5 freeze-path evidence recorded
 - Architecture Authority normative sections traced to evidence
-- EPS-001 document chain complete
+- EPS-001 document chain complete for Phase 5 scope
 
-**Completion criteria:**
+**Phase 5 documentation completion criteria** *(PCQ-002 — YES WITH FOLLOW-UP):*
 
-- [ ] IU-5.1–5.4 Complete
-- [ ] Acceptance Report approved
-- [ ] E-02 Project Certification issued
-- [ ] Phase 5 Completion + Certification issued
+- [x] IU-5.1–5.4 Complete *(as of 2026-08-20)*
+- [x] Acceptance Report **issued** *(v1.0 — ACCEPTANCE_BLOCKED)*
+- [ ] Phase 5 Completion issued — Status **`Completed with Follow-up`**
+- [ ] Phase 5 Certification issued — **scoped** (§18 · PCQ-003)
+
+**Phase 5 Completion ≠ E-02 program exit.** Phase 5 Completion records that verification / acceptance / certification-**evaluation** work completed. It **does not** mean E-02 accepted, executable implementation complete, Project Certification issued, or E-03 authorized.
+
+**E-02 program exit criteria** remain in §13 and require Work Breakdown executable criteria, acceptable acceptance decision, and **E-02 Project Certification issued**.
 
 ---
 
@@ -341,7 +381,14 @@ IUs **shall** execute in phase order. Within a phase, IUs **shall** complete in 
 | **IU-5.1** | Engineering Verification | Cross-check Architecture Authority, phases, schema, and evidence |
 | **IU-5.2** | Acceptance Validation | Work Breakdown E-02 completion criteria checklist |
 | **IU-5.3** | Acceptance Report | Task-level verification and acceptance evidence (EPS-001) |
-| **IU-5.4** | Project Certification | E-02 task closed within approved scope |
+| **IU-5.4** | Project Certification | Project Certification **evaluation** — issuance only if authority criteria met (§21) |
+
+**IU-5.4 distinction (v1.1):**
+
+| Outcome | Meaning |
+|---------|---------|
+| **IU-5.4 COMPLETED** | Project Certification **evaluation** process complete |
+| **E-02 Project Certification ISSUED** | Separate deliverable — `E-02-Project-Certification.md` — only when mandatory gates pass |
 
 **IU Completion records:** Each IU **shall** produce `{Task}-IU-{phase.unit}-Completion.md` per CES-010 and EPS-001.
 
@@ -378,10 +425,18 @@ Reuse **Governance v1.3**, **EPS-001**, and **CES-003** verification conventions
 
 ### E-02 task-level acceptance (from Work Breakdown)
 
+**Authority (VAQ-010 = YES — PAD-001):** Work Breakdown Task E-02 **executable completion and verification criteria are mandatory prerequisites** for E-02 Project Certification. Phase 1–4 design/readiness certification **does not substitute**.
+
+```
+NO EXECUTABLE EVIDENCE → NO EXECUTABLE PASS → NO FULL ACCEPTANCE → NO PROJECT CERTIFICATION
+```
+
 - [ ] Freeze transaction commits atomically per Blueprint §10 sequence
 - [ ] Audit record generated exactly once per successful freeze
 - [ ] Re-freeze cannot silently rebuild immutable snapshot
 - [ ] CITM rows 4, 12 marked implemented; rows 1, 2, 5 updated with freeze-path evidence
+
+**VAQ-007 = NO (PAD-002):** E-02 Project Certification **MUST NOT** issue while mandatory executable requirements remain NOT IMPLEMENTED / BLOCKED / unresolved mandatory PENDING EVIDENCE, or while Executable Final COMMIT Path = **BLOCKED**. No waiver from phase completion, IU completion, static evidence, 22 PASS, zero FAIL, Acceptance Report issuance, or Project Certification Evaluation completion.
 
 ---
 
@@ -395,9 +450,12 @@ Each phase is **independently reversible** without production impact until deplo
 | **2** | Do not commit in production paths | Revert materialization logic; Phase 1 boundary remains or reverts as unit |
 | **3** | Do not wire to production RPC until verified | Revert commit/audit/idempotency layer; no durable event-linked rows in production |
 | **4** | Repository integration additive | Revert read wiring; committed snapshots remain |
-| **5** | Documentation-only | Update CITM status if E-02 reopened |
+| **5** | Documentation-only | Historical records preserved; remediation per §19 |
+| **Executable Remediation Stage** | Per approved Remediation Plan | Revert per remediation IU boundary — **not** retroactive rewrite of Phase 1–4 certifications |
 
 Per Recovery Model (Architecture Authority §5): failure before commit → rollback; failure after commit → E-06 correction only — **no** E-02 silent rebuild.
+
+**Blocked-acceptance path:** When verification identifies mandatory executable gaps, enter **E-02 Executable Remediation Stage** (§19) — **not** silent reopening of Phase 1–4 certification history.
 
 ---
 
@@ -421,18 +479,40 @@ Program entry **shall not** proceed until:
 
 ## 13. Exit criteria
 
-Program exit requires:
+### 13.1 E-02 program exit (full certification path)
 
-| Criterion | Required |
-|-----------|----------|
-| Phase 1–4 Completion + Certification | ✓ |
-| Phase 5 IU-5.1–5.4 Complete | ✓ |
-| **Acceptance Report approved** | ✓ |
-| **E-02 Project Certification issued** | ✓ |
-| Phase 5 Completion + Certification | ✓ |
-| Work Breakdown E-02 completion criteria met | ✓ |
+Program exit requires **all** of:
 
-**Downstream gate:** **E-03 must not start** until E-02 Project Certification is approved.
+| Criterion | Required | Notes |
+|-----------|----------|-------|
+| Phase 1–4 Completion + Certification | ✓ | Design/readiness scope — **immutable** |
+| Phase 5 IU-5.1–5.4 Complete | ✓ | Verification / evaluation scope |
+| **Acceptable acceptance decision** | ✓ | **NOT** ACCEPTANCE_BLOCKED — may require superseding Acceptance Report (§22) |
+| **Work Breakdown E-02 executable completion criteria met** | ✓ | **VAQ-010 = YES** — mandatory |
+| **Work Breakdown E-02 verification criteria satisfied with executable evidence** | ✓ | Runtime / executable proof where required |
+| **E-02 Project Certification issued** | ✓ | `E-02-Project-Certification.md` — gate currently **CLOSED** |
+| Phase 5 Completion + Certification | ✓ | Phase 5 Completion may precede Project Certification — **PCQ-002** |
+| Engineering Baseline | ✓ | Post Project Certification per §16 |
+
+### 13.2 Phase 5 documentation exit (distinct from program exit)
+
+| Criterion | Required | Status (2026-08-20) |
+|-----------|----------|---------------------|
+| IU-5.1–5.4 Complete | ✓ | **MET** |
+| Acceptance Report issued | ✓ | **MET** — v1.0 ACCEPTANCE_BLOCKED |
+| Phase 5 Completion | ✓ | **AUTHORITY-PERMITTED** — `Completed with Follow-up` — **NOT YET ISSUED** |
+| Phase 5 Certification | ✓ | **AUTHORITY-PERMITTED** after Phase 5 Completion — **NOT YET ISSUED** |
+
+```
+PHASE 5 COMPLETION ≠ E-02 PROGRAM EXIT
+PHASE 5 CERTIFICATION ≠ E-02 PROJECT CERTIFICATION
+```
+
+### 13.3 E-03 gate (PAD-010)
+
+**E-03 must not start** until **E-02 Project Certification is formally issued**.
+
+E-03 **MUST NOT** open from: Phase 5 Completion · Phase 5 Certification · remediation start · remediation implementation · re-verification alone · Acceptance PASS alone · Project Certification Evaluation alone.
 
 ---
 
@@ -445,7 +525,17 @@ Program exit requires:
 | Idempotent retry at freeze boundary | Voting contract (E-03) |
 | Repository read integration for materialized state | Scheduler / lifecycle triggers (E-04) |
 | Verification and acceptance | Correction / reissue workflow (E-06) |
+| **E-02 Executable Remediation Stage** (when authorized) | Consumer UI wiring (E-04) |
 | CITM rows 4, 12, 5 freeze-path; rows 1, 2 materialization | Legacy compatibility matrix execution (E-05) |
+| Re-verification / re-validation after remediation | E-04 consumer / legacy migration (EIR-077 · EIR-078) |
+
+**E-04 boundary (PAD-009):**
+
+```
+E-02 EXECUTABLE REMEDIATION ≠ E-04 CONSUMER / LEGACY MIGRATION
+```
+
+EIR-077 · EIR-078 remain **DEFERRED TO E-04** unless PCQ-012 is resolved by future authority.
 
 Implementation **only**. Normative architecture remains in [`E-02-Architecture.md`](E-02-Architecture.md).
 
@@ -493,10 +583,13 @@ E-02 Materialized Freeze Engine
 | **Phase Completion** | `E-02-Phase-{n}-Completion.md` |
 | **Phase Certification** | `E-02-Phase-{n}-Certification.md` |
 | **Acceptance Report** | `E-02-Acceptance-Report.md` |
+| **Program Authority Decision** | `E-02-Program-Authority-Decision.md` |
+| **Executable Remediation Plan** | Next remediation planning artifact — exact filename to be established under amended Phase 5 / Program governance chain |
+| **Superseding Acceptance Report** | Explicitly versioned — supersedes prior report for **forward certification authority only** (§22) |
 | **Project Certification** | `E-02-Project-Certification.md` |
 | **Engineering Baseline** | `E-02-Engineering-Baseline.md` *(post Project Certification)* |
 
-Document chain per EPS-001:
+Document chain per EPS-001 (Phase 5 path):
 
 ```
 IU Completion → Phase Completion → Phase Certification
@@ -504,25 +597,325 @@ IU Completion → Phase Completion → Phase Certification
 Acceptance Report → Project Certification → Engineering Baseline
 ```
 
+**Blocked-acceptance chain (v1.1 — §19):** adds Executable Remediation Stage, Re-Verification, Re-Validation, Superseding Acceptance Report, and Project Certification Re-Evaluation before issuance.
+
 ---
 
 ## 17. Phase output chain
 
-Successful program completion produces:
+### 17.1 Normal successful path
 
 ```
-E-02 Phases 1–4 implemented and certified
+E-02 Phases 1–4 design/readiness certified
         ↓
 E-02 Phase 5 Verification & Acceptance
         ↓
-E-02 Acceptance Report
+Acceptance PASS
+        ↓
+Project Certification Evaluation
         ↓
 E-02 Project Certification
         ↓
-E-02 Snapshot Freeze Engine — Certified Complete
+E-02 Engineering Baseline
         ↓
-E-03 authorized to begin (subject to E-03 Implementation Plan)
+E-03 authorized (subject to E-03 Implementation Plan)
 ```
+
+### 17.2 Blocked path (current — v1.1 authority)
+
+```
+E-02 Phases 1–4 design/readiness certified          ← immutable
+        ↓
+E-02 Phase 5 — IU-5.1–5.4 COMPLETED                 ← immutable
+        ↓
+Acceptance Report v1.0 = ACCEPTANCE_BLOCKED         ← immutable
+        ↓
+Project Certification Evaluation = BLOCKED          ← immutable
+        ↓
+Program Authority Decision = APPROVED
+        ↓
+Program Plan v1.1 = THIS AMENDMENT
+        ↓
+Phase 5 Plan authority amendment                    ← NEXT
+        ↓
+Phase 5 Completion / Certification (scoped)         ← permitted, not yet issued
+        ↓
+E-02 Executable Remediation Plan                    ← after Phase 5 Plan amendment
+        ↓
+Approved Executable Remediation IUs
+        ↓
+executable / runtime evidence
+        ↓
+Engineering Re-Verification → Acceptance Re-Validation
+        ↓
+Superseding Acceptance Report
+        ↓
+Project Certification Re-Evaluation
+        ↓
+E-02 Project Certification (only if mandatory gates pass)
+        ↓
+E-02 Engineering Baseline → E-03
+```
+
+If gates still fail: **return to Executable Remediation** OR **remain PROJECT_CERTIFICATION_BLOCKED**.
+
+**Rules:** NO AUTOMATIC PASS · NO COMPLETION-BASED STATUS PROPAGATION · NO SCORE-BASED CERTIFICATION.
+
+---
+
+## 18. Program status model (v1.1)
+
+The following states **shall** be distinguished:
+
+| # | State | ≠ |
+|---|-------|---|
+| 1 | Phase/IU design-readiness completion | executable implementation |
+| 2 | Engineering Verification | Acceptance PASS |
+| 3 | Acceptance Validation | Project Certification |
+| 4 | Acceptance Report issuance | Acceptance PASS |
+| 5 | Project Certification Evaluation completed | Project Certification issued |
+| 6 | Executable Remediation **established in authority** | Executable Remediation **authorized / implemented** |
+| 7 | Engineering Re-Verification | retroactive IU-5.1 edit |
+| 8 | Acceptance Re-Validation | retroactive IU-5.2 edit |
+| 9 | Superseding Acceptance Report | deletion of v1.0 history |
+| 10 | Project Certification Re-Evaluation | automatic change to IU-5.4 blocked determination |
+| 11 | E-02 Project Certification issued | E-02 program exit alone |
+| 12 | E-03 hand-off | Phase 5 Certification alone |
+
+**Locked equivalences prohibited:**
+
+```
+PHASE COMPLETION ≠ PROJECT CERTIFICATION
+PHASE CERTIFICATION ≠ PROJECT CERTIFICATION
+ACCEPTANCE REPORT ISSUED ≠ ACCEPTANCE PASS
+PROJECT CERTIFICATION EVALUATION COMPLETED ≠ PROJECT CERTIFICATION ISSUED
+REMEDIATION IMPLEMENTED ≠ REMEDIATION VERIFIED
+EXECUTABLE PASS requires executable evidence
+```
+
+---
+
+## 19. E-02 Executable Remediation Stage
+
+### 19.1 Authority name (exact)
+
+```
+E-02 Executable Remediation Stage
+```
+
+**Prohibited names at Program Plan level:** Phase 6 · Phase ER · E-03 · new E-number.
+
+### 19.2 Definition
+
+A **bounded E-02 program-level remediation locus** entered when Phase 5 verification / acceptance identifies **mandatory executable obligations** that prevent E-02 Project Certification under VAQ-010 and VAQ-007.
+
+**Purpose:** Implement and verify executable mechanisms required to close mandatory E-02 certification blockers **without rewriting** historical design/readiness certifications.
+
+### 19.3 Authorization boundary
+
+| Status | Meaning |
+|--------|---------|
+| **Stage established in Program Authority** | **YES** — PAD-003 · this §19 |
+| **Executable work authorized** | **NO** — requires subsequent chain |
+
+Executable work remains **prohibited** until:
+
+1. [`E-02-Phase-5-Implementation-Plan.md`](E-02-Phase-5-Implementation-Plan.md) authority amendment completed;
+2. E-02 Executable Remediation Plan created and approved;
+3. Applicable remediation IU design / review authority completed.
+
+```
+PROGRAM PLAN v1.1
+≠ EXECUTABLE REMEDIATION AUTHORIZATION
+```
+
+### 19.4 Program-level scope (categories only)
+
+The Stage **may** contain work necessary to close mandatory certification blockers including:
+
+- Primary Audit physical persistence / runtime evidence
+- atomic server-side transaction authority
+- durable ownership / orchestration
+- durable reconciliation
+- full property_id correlation enforcement
+- runtime freeze orchestration
+- Runtime COMMITTED authority / evidence
+- required executable CITM evidence
+- mandatory pending external evidence **where later authority requires it**
+
+**NOT defined at Program Plan level:** table schema · migration SQL · RPC signatures · transaction implementation · ownership schema · reconciliation schema · retry algorithms · exact IU count · exact IU ordering · file changes — **remediation planning / design only**.
+
+### 19.5 VAQ-003 boundary (PAD-004)
+
+**VAQ-003 = RESOLVED AT AUTHORITY LEVEL.** Detailed engineering sequencing **SHALL** be established by approved remediation design under Architecture Authority.
+
+**Preserved architectural principles (binding — not a hard-coded IU sequence):**
+
+```
+NO PRIMARY AUDIT → NO COMMITTED FREEZE
+COMMIT_OUTCOME_UNCERTAIN → DURABLE RECONCILIATION FIRST
+UNIQUE INDEX ≠ OWNERSHIP ORCHESTRATION
+```
+
+---
+
+## 20. Resolved authority questions (v1.1)
+
+| ID | Disposition | Source |
+|----|-------------|--------|
+| **VAQ-010** | **YES** — Work Breakdown executable criteria mandatory for Project Certification | PAD-001 · §10 |
+| **VAQ-007** | **NO** — Project Certification not permitted while mandatory executable gates blocked | PAD-002 · §10 |
+| **VAQ-001** | **E-02 Executable Remediation Stage established** | PAD-003 · §19 |
+| **VAQ-003** | **Authority locus resolved** — detailed sequencing deferred to remediation design | PAD-004 · §19.5 |
+| **PCQ-002** | **YES WITH FOLLOW-UP** — Phase 5 Completion permitted; Status `Completed with Follow-up` | PAD-005 · Phase 5 § |
+| **PCQ-003** | **YES SCOPED** — Phase 5 Certification ≠ E-02 Project Certification | PAD-006 · §18 |
+
+---
+
+## 21. Project Certification gate
+
+### 21.1 Evaluation vs issuance
+
+| Term | Current state (2026-08-20) |
+|------|----------------------------|
+| **Project Certification Evaluation** | **COMPLETED** — PROJECT_CERTIFICATION_BLOCKED |
+| **E-02 Project Certification issuance** | **NOT ISSUED** — gate **CLOSED** |
+
+### 21.2 Future issuance prerequisites
+
+E-02 Project Certification **may** issue only when **all** mandatory requirements are met:
+
+1. Mandatory executable requirements **implemented**
+2. Required **executable evidence** obtained
+3. Authorized **Engineering Re-Verification**
+4. Authorized **Acceptance Re-Validation**
+5. Acceptable **Superseding Acceptance Report**
+6. **Project Certification Re-Evaluation**
+7. All mandatory **certification gates** satisfied
+8. All mandatory **authority decisions** resolved (including open PCQ where applicable)
+
+---
+
+## 22. Re-verification, re-validation, and superseding acceptance
+
+### 22.1 Engineering Re-Verification
+
+**Not** retroactive editing of IU-5.1. A **new forward verification cycle** after executable remediation.
+
+| Rule | Requirement |
+|------|-------------|
+| Preserve original EIR history | **YES** — IU-5.1 record immutable |
+| Consume new executable evidence | **YES** |
+| Reclassify NI/BLOCKED/PENDING only with evidence | **YES** |
+| Produce new traceable verification result set | **YES** |
+
+```
+OLD EIR STATUS + NEW CODE ≠ AUTOMATIC NEW PASS
+NEW EXECUTABLE EVIDENCE + AUTHORIZED RE-VERIFICATION = possible forward reclassification
+```
+
+### 22.2 Acceptance Re-Validation
+
+**Not** retroactive editing of IU-5.2. Consumes: original acceptance baseline · remediation evidence · Re-Verification results · still-open blockers · authority decisions.
+
+If mandatory blockers remain: **ACCEPTANCE_BLOCKED** remains valid. If all mandatory gates satisfied: new acceptance decision **may** be issued — **no inference**.
+
+### 22.3 Superseding Acceptance Report
+
+| Requirement | Rule |
+|-------------|------|
+| Explicitly versioned | **YES** |
+| States which report superseded for **forward certification** | **YES** |
+| Preserves v1.0 as historical record | **YES** |
+| Includes new verification evidence and remaining blockers | **YES** |
+
+```
+SUPERSEDE FOR FORWARD AUTHORITY ≠ DELETE OR REWRITE HISTORY
+```
+
+### 22.4 Project Certification Re-Evaluation
+
+**New evaluation** after remediation and re-validation. **Does not** automatically change IU-5.4 historical blocked determination. Consumes: remediation completion · Re-Verification · Re-Validation · Superseding Report · remaining PCG/PCB/PCL/authority questions.
+
+---
+
+## 23. Historical record preservation
+
+The following are **immutable historical records**:
+
+| Record | Rule |
+|--------|------|
+| Phase 1–4 Certifications | Immutable |
+| IU-5.1 · IU-5.2 · IU-5.3 · IU-5.4 Completions | Immutable |
+| [`E-02-Acceptance-Report.md`](E-02-Acceptance-Report.md) v1.0 | Immutable — ACCEPTANCE_BLOCKED preserved |
+| Original IU-5.1 EIR classifications | Immutable |
+| Original IU-5.4 Project Certification Evaluation | Immutable — BLOCKED preserved |
+
+Future changed status **must** be represented by: new evidence · new verification · new acceptance validation · superseding report · new certification evaluation.
+
+```
+NOT IMPLEMENTED → PASS   requires NEW EXECUTABLE EVIDENCE + AUTHORIZED RE-VERIFICATION
+BLOCKED → PASS           requires NEW EXECUTABLE EVIDENCE + AUTHORIZED RE-VERIFICATION
+```
+
+---
+
+## 24. Authority questions remaining open
+
+| # | ID / Topic | Status |
+|---|------------|--------|
+| 1 | **PCQ-010** — EIR-048 / EIR-054 pre-certification evidence threshold | **OPEN** |
+| 2 | **PCQ-011** — executable acceptance threshold for CITM partial rows 1 / 2 / 5 | **OPEN** |
+| 3 | **PCQ-012** — E-04 deferred obligations vs E-02 certification prerequisite | **OPEN** |
+| 4 | Production deployment certification threshold | **OPEN** |
+| 5 | Exact remediation IU decomposition | **OPEN** |
+| 6 | Detailed remediation engineering sequencing | **OPEN** |
+| 7 | Schema / RPC / orchestration design | **OPEN** |
+
+---
+
+## 25. Current program status (as of 2026-08-20)
+
+| Item | Status |
+|------|--------|
+| E-02 Phase 1–4 | **CERTIFIED COMPLETE** (design/readiness) |
+| Phase 5 IU | **4 / 4 COMPLETED** |
+| Acceptance Report v1.0 | **ISSUED** |
+| E-02 Acceptance | **ACCEPTANCE_BLOCKED** |
+| Project Certification Evaluation | **PROJECT_CERTIFICATION_BLOCKED** / **AUTHORITY_GATED** |
+| Program Authority Decision | **APPROVED** |
+| E-02 Executable Remediation Stage | **ESTABLISHED IN AUTHORITY** |
+| Executable Remediation | **NOT YET AUTHORIZED** |
+| Phase 5 Completion | **AUTHORITY-PERMITTED** / **NOT YET ISSUED** |
+| Phase 5 Certification | **AUTHORITY-PERMITTED AFTER COMPLETION** / **NOT YET ISSUED** |
+| E-02 Project Certification | **NOT ISSUED** |
+| Runtime COMMITTED | **NOT CERTIFIED** |
+| Executable Final COMMIT Path | **BLOCKED** |
+| E-03 | **BLOCKED** |
+| E-04 | **NOT STARTED** |
+
+---
+
+## 26. Next governance sequence
+
+```
+E-02 Program Authority Decision = APPROVED
+        ↓
+E-02 Implementation Plan v1.1 = THIS AMENDMENT
+        ↓
+NEXT: E-02 Phase 5 Implementation Plan authority amendment
+        ↓
+THEN: Phase 5 Completion / Certification documentation (per PAD authority)
+      AND/OR remediation planning per §17.2
+        ↓
+E-02 Executable Remediation Plan (exact filename per amended governance chain)
+        ↓
+Remediation Design / Review chain
+        ↓
+Executable work only after explicit IU authorization
+```
+
+**Do not treat Phase 5 Completion, remediation planning, or this amendment as Project Certification or E-03 unlock.**
 
 ---
 
@@ -533,11 +926,12 @@ E-03 authorized to begin (subject to E-03 Implementation Plan)
 | **Document Type** | Implementation Plan |
 | **Program** | E-02 — Freeze Engine |
 | **Status** | Approved |
-| **Revision** | v1.0 |
+| **Revision** | **v1.1** |
+| **Program Authority Amendment** | 2026-08-20 — [`E-02-Program-Authority-Decision.md`](E-02-Program-Authority-Decision.md) |
 | **Authoritative Source** | [`E-02-Architecture.md`](E-02-Architecture.md) v1.1 |
 | **Verified** | YES |
-| **Supersedes** | None |
-| **Next Document** | [`E-02-Phase-1-Implementation-Plan.md`](E-02-Phase-1-Implementation-Plan.md) |
+| **Supersedes** | v1.0 (content preserved — see §0) |
+| **Next Governance Action** | [`E-02-Phase-5-Implementation-Plan.md`](E-02-Phase-5-Implementation-Plan.md) authority amendment |
 | **Production Effect** | None |
 
-**Related:** [`E-01-Project-Certification.md`](E-01-Project-Certification.md) · [`M2-S3-Engineering-Work-Breakdown.md`](M2-S3-Engineering-Work-Breakdown.md) · [`ER-001`](ER-001-M2-S3-Blueprint-Review.md) · [`EPS-001`](EPS-001-Engineering-Phase-Documentation-Standard.md)
+**Related:** [`E-02-Program-Authority-Decision.md`](E-02-Program-Authority-Decision.md) · [`E-01-Project-Certification.md`](E-01-Project-Certification.md) · [`M2-S3-Engineering-Work-Breakdown.md`](M2-S3-Engineering-Work-Breakdown.md) · [`ER-001`](ER-001-M2-S3-Blueprint-Review.md) · [`EPS-001`](EPS-001-Engineering-Phase-Documentation-Standard.md)
