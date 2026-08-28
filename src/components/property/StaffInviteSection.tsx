@@ -796,7 +796,7 @@ function StaffInviteList({
                             disabled={rowBusy}
                             className="inline-flex items-center rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                           >
-                            {en ? 'Edit & resend' : '修改并重发'}
+                            {en ? 'Edit' : '修改'}
                           </button>
                           <button
                             type="button"
