@@ -1,18 +1,21 @@
 /**
- * Council / admin / property_admin: send STAFF (lawyer / auditor / finance / accountant)
- * collaboration invite email via Resend. Independent of manager_invites + accept-manager-invite.
+ * Council / admin / property_admin: staff invite lifecycle via Resend.
+ * Independent of manager_invites + accept-manager-invite.
  *
  * verify_jwt = false — Authorization Bearer JWT from app is verified inside this handler
  * (anon client). DB writes use service_role.
  *
- * Phase 2B scope:
- *   - Write `public.staff_invites` row (token, expires_at, status='pending').
- *   - Notify recipient via Resend that an invite has been created.
- *   - DO NOT include a real /staff-invite?token=... link (acceptance page lands in Phase 2C).
- *   - DO NOT write `public.property_members` (acceptance flow will do that later).
+ * Actions (body.action; default "send"):
+ *   send         — first invite (legacy body compatible)
+ *   resend       — cancel-or-keep history + new pending + new token + email
+ *   edit_resend  — same, using new name/email/staff_type (never UPDATE old email/token)
+ *   cancel       — pending → cancelled (no DELETE)
  *
- * APP_BASE_URL: optional secret; normalized to origin only. Empty / invalid / clearstrata.ai / www.clearstrata.ai →
- * falls back to https://app.clearstrata.ai (matches send-manager-invite).
+ * Never mutates accepted rows (status / email / full_name / staff_type / token /
+ * accepted_by / accepted_at). Never writes property_members.
+ *
+ * APP_BASE_URL: optional secret; normalized to origin only. Empty / invalid /
+ * clearstrata.ai / www.clearstrata.ai → https://app.clearstrata.ai.
  */
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -96,7 +99,7 @@ function normalizeEmail(e: string): string {
 
 /**
  * Inviter gate: who is allowed to draft a staff invite for this property.
- * Intentionally excludes `manager` — managers cannot invite staff in Phase 2.
+ * Intentionally excludes `manager` — managers cannot invite staff.
  */
 const INVITER_ROLES = new Set(["council", "admin", "property_admin"]);
 
@@ -129,15 +132,78 @@ const STAFF_TYPE_TITLES: Record<StaffType, string> = {
   accountant: "会计协作邀请 / Accountant Invitation",
 };
 
+type InviteAction = "send" | "resend" | "edit_resend" | "cancel";
+const INVITE_ACTIONS = new Set<InviteAction>([
+  "send",
+  "resend",
+  "edit_resend",
+  "cancel",
+]);
+
 interface Body {
+  action?: string;
   propertyId?: string;
   property_id?: string;
+  inviteId?: string;
+  invite_id?: string;
   staffEmail?: string;
   staff_email?: string;
   staffName?: string;
   staff_name?: string;
   staffType?: string;
   staff_type?: string;
+}
+
+interface InviteRow {
+  id: string;
+  property_id: string;
+  email: string;
+  full_name: string | null;
+  staff_type: string;
+  status: string;
+  expires_at: string | null;
+}
+
+const INVITE_SELECT =
+  "id,property_id,email,full_name,staff_type,status,expires_at";
+
+function alreadyAcceptedResponse(): Response {
+  return json(
+    {
+      ok: false,
+      code: "STAFF_INVITE_ALREADY_ACCEPTED",
+      message:
+        "该职员邀请已经接受，不能重新发送。 / This staff invitation has already been accepted.",
+    },
+    409,
+  );
+}
+
+function pendingExistsResponse(): Response {
+  return json(
+    {
+      ok: false,
+      code: "STAFF_INVITE_PENDING_EXISTS",
+      message:
+        "该邮箱已有已发送、等待接受的职员邀请。 This email already has a sent staff invitation waiting for acceptance.",
+    },
+    409,
+  );
+}
+
+function clockExpired(expiresAt: string | null | undefined): boolean {
+  if (!expiresAt) return true;
+  const t = new Date(expiresAt).getTime();
+  if (Number.isNaN(t)) return true;
+  return t <= Date.now();
+}
+
+function isUniqueViolation(err: { code?: string; message?: string } | null): boolean {
+  if (!err) return false;
+  if (err.code === "23505") return true;
+  const msg = String(err.message ?? "").toLowerCase();
+  return msg.includes("uq_staff_invites_pending_property_email") ||
+    msg.includes("duplicate key");
 }
 
 function buildStaffInviteHtml(params: {
@@ -263,7 +329,23 @@ Deno.serve(async (req: Request) => {
     return json({ ok: false, error: msg, message: msg }, 500);
   }
 
+  const actionRaw = String(raw.action ?? "send").trim().toLowerCase();
+  const action: InviteAction = INVITE_ACTIONS.has(actionRaw as InviteAction)
+    ? (actionRaw as InviteAction)
+    : ("" as InviteAction);
+  if (!action) {
+    return json(
+      {
+        ok: false,
+        code: "INVALID_ACTION",
+        message: "action must be one of: send, resend, edit_resend, cancel",
+      },
+      400,
+    );
+  }
+
   const propertyId = String(raw.propertyId ?? raw.property_id ?? "").trim();
+  const inviteId = String(raw.inviteId ?? raw.invite_id ?? "").trim();
   const staffName =
     String(raw.staffName ?? raw.staff_name ?? "").trim() || null;
   const staffEmail = normalizeEmail(
@@ -274,30 +356,38 @@ Deno.serve(async (req: Request) => {
     .toLowerCase();
 
   console.log("✅ send-staff-invite received payload", {
+    action,
     propertyId,
+    inviteId: inviteId || null,
     staffName,
-    staffEmail,
-    staffType: staffTypeRaw,
+    staffEmail: staffEmail || null,
+    staffType: staffTypeRaw || null,
   });
 
   if (!propertyId) {
     return json({ ok: false, message: "propertyId is required" }, 400);
   }
-  if (!staffEmail || !staffEmail.includes("@")) {
-    return json({ ok: false, message: "staffEmail is invalid" }, 400);
+  if (action === "resend" || action === "edit_resend" || action === "cancel") {
+    if (!inviteId) {
+      return json({ ok: false, message: "inviteId is required" }, 400);
+    }
   }
-  if (!STAFF_TYPES.has(staffTypeRaw as StaffType)) {
-    return json(
-      {
-        ok: false,
-        code: "INVALID_STAFF_TYPE",
-        message:
-          "staffType must be one of: lawyer, auditor, finance, accountant",
-      },
-      400,
-    );
+  if (action === "send" || action === "edit_resend") {
+    if (!staffEmail || !staffEmail.includes("@")) {
+      return json({ ok: false, message: "staffEmail is invalid" }, 400);
+    }
+    if (!STAFF_TYPES.has(staffTypeRaw as StaffType)) {
+      return json(
+        {
+          ok: false,
+          code: "INVALID_STAFF_TYPE",
+          message:
+            "staffType must be one of: lawyer, auditor, finance, accountant",
+        },
+        400,
+      );
+    }
   }
-  const staffType = staffTypeRaw as StaffType;
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -329,7 +419,6 @@ Deno.serve(async (req: Request) => {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
-    // ── Inviter gate ──────────────────────────────────────────────────────
     const { data: membership, error: mer } = await svc
       .from("property_members")
       .select("role")
@@ -365,7 +454,6 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // ── Property metadata ─────────────────────────────────────────────────
     const { data: property, error: perr } = await svc
       .from("properties")
       .select("id,name")
@@ -383,64 +471,97 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // ── Pending staff_invite dedup ───────────────────────────────────────
-    const { data: pendingRow, error: pendingErr } = await svc
-      .from("staff_invites")
-      .select("id,staff_type")
-      .eq("property_id", propertyId)
-      .eq("email", staffEmail)
-      .eq("status", "pending")
-      .maybeSingle();
-
-    if (pendingErr) {
-      console.error("❌ send-staff-invite staff_invites pending select", pendingErr);
-      return json(
-        {
-          ok: false,
-          message: pendingErr.message ?? "invite lookup failed",
-          error: pendingErr.message ?? "unknown",
-        },
-        500,
-      );
-    }
-    if (pendingRow?.id) {
-      console.warn("⚠️ send-staff-invite pending exists", pendingRow);
-      return json(
-        {
-          ok: false,
-          code: "STAFF_INVITE_PENDING_EXISTS",
-          message:
-            "该邮箱已有已发送、等待接受的职员邀请。 This email already has a sent staff invitation waiting for acceptance.",
-        },
-        409,
-      );
+    async function loadInvite(
+      id: string,
+    ): Promise<{ row: InviteRow | null; error: string | null }> {
+      const { data, error } = await svc
+        .from("staff_invites")
+        .select(INVITE_SELECT)
+        .eq("id", id)
+        .eq("property_id", propertyId)
+        .maybeSingle();
+      if (error) return { row: null, error: error.message ?? "lookup_failed" };
+      return { row: (data as InviteRow | null) ?? null, error: null };
     }
 
-    // ── Existing membership conflict (best-effort) ───────────────────────
-    // Resolve auth user id via service-role RPC; if not found, treat as new
-    // recipient (do not block legitimate first-time invites).
-    let existingUserId: string | null = null;
-    try {
-      const { data: rpcUid, error: rpcErr } = await svc.rpc(
-        "get_auth_user_id_by_email",
-        { p_email: staffEmail },
-      );
-      if (rpcErr) {
-        console.warn(
-          "[send-staff-invite] get_auth_user_id_by_email error (non-fatal)",
-          rpcErr,
-        );
-      } else if (typeof rpcUid === "string" && rpcUid) {
-        existingUserId = rpcUid;
+    async function findPendingByEmail(
+      email: string,
+    ): Promise<{ row: InviteRow | null; error: string | null }> {
+      const { data, error } = await svc
+        .from("staff_invites")
+        .select(INVITE_SELECT)
+        .eq("property_id", propertyId)
+        .eq("status", "pending");
+      if (error) return { row: null, error: error.message ?? "lookup_failed" };
+      const match = (data ?? []).find(
+        (r) => normalizeEmail(String((r as InviteRow).email ?? "")) === email,
+      ) as InviteRow | undefined;
+      return { row: match ?? null, error: null };
+    }
+
+    async function updateStatusIf(
+      id: string,
+      fromStatus: string,
+      toStatus: string,
+    ): Promise<{ hit: boolean; error: string | null }> {
+      const { data, error } = await svc
+        .from("staff_invites")
+        .update({ status: toStatus })
+        .eq("id", id)
+        .eq("property_id", propertyId)
+        .eq("status", fromStatus)
+        .select("id");
+      if (error) return { hit: false, error: error.message ?? "update_failed" };
+      return { hit: Array.isArray(data) && data.length > 0, error: null };
+    }
+
+    async function restoreIf(
+      id: string,
+      fromStatus: string,
+      toStatus: string,
+    ): Promise<void> {
+      const { error } = await svc
+        .from("staff_invites")
+        .update({ status: toStatus })
+        .eq("id", id)
+        .eq("property_id", propertyId)
+        .eq("status", fromStatus);
+      if (error) {
+        console.error("❌ send-staff-invite restore failed", {
+          id,
+          fromStatus,
+          toStatus,
+          error,
+        });
       }
-    } catch (rpcCatch) {
-      console.warn(
-        "[send-staff-invite] get_auth_user_id_by_email threw (non-fatal)",
-        rpcCatch,
-      );
     }
 
-    if (existingUserId) {
+    async function membershipConflict(
+      email: string,
+      staffType: StaffType,
+    ): Promise<Response | null> {
+      let existingUserId: string | null = null;
+      try {
+        const { data: rpcUid, error: rpcErr } = await svc.rpc(
+          "get_auth_user_id_by_email",
+          { p_email: email },
+        );
+        if (rpcErr) {
+          console.warn(
+            "[send-staff-invite] get_auth_user_id_by_email error (non-fatal)",
+            rpcErr,
+          );
+        } else if (typeof rpcUid === "string" && rpcUid) {
+          existingUserId = rpcUid;
+        }
+      } catch (rpcCatch) {
+        console.warn(
+          "[send-staff-invite] get_auth_user_id_by_email threw (non-fatal)",
+          rpcCatch,
+        );
+      }
+      if (!existingUserId) return null;
+
       const { data: existingMember, error: emErr } = await svc
         .from("property_members")
         .select("role,staff_type,status")
@@ -454,152 +575,449 @@ Deno.serve(async (req: Request) => {
           "[send-staff-invite] property_members conflict select (non-fatal)",
           emErr,
         );
-      } else if (existingMember) {
-        const existingRole = String(existingMember.role ?? "").toLowerCase();
-        const existingStaffType = existingMember.staff_type
-          ? String(existingMember.staff_type).toLowerCase()
-          : null;
+        return null;
+      }
+      if (!existingMember) return null;
 
-        if (existingRole !== "viewer") {
-          return json(
-            {
-              ok: false,
-              code: "EXISTING_OTHER_ROLE",
-              message:
-                "该账号在本物业已是其他角色，无法发起职员邀请。 This account already has another role in the property.",
-            },
-            409,
-          );
-        }
-        if (existingStaffType === staffType) {
-          return json(
-            {
-              ok: false,
-              code: "ALREADY_STAFF",
-              message:
-                "该账号已是本物业的该类职员。 This account is already an active staff of this type.",
-            },
-            409,
-          );
-        }
+      const existingRole = String(existingMember.role ?? "").toLowerCase();
+      const existingStaffType = existingMember.staff_type
+        ? String(existingMember.staff_type).toLowerCase()
+        : null;
+
+      if (existingRole !== "viewer") {
         return json(
           {
             ok: false,
-            code: "EXISTING_OTHER_STAFF_TYPE",
+            code: "EXISTING_OTHER_ROLE",
             message:
-              "该账号在本物业已是其他类型的职员，请先调整再发起邀请。 This account is already a different staff type in this property.",
+              "该账号在本物业已是其他角色，无法发起职员邀请。 This account already has another role in the property.",
           },
           409,
         );
       }
-    }
-
-    // ── Inviter display label for email ──────────────────────────────────
-    const { data: inviterProfile } = await svc
-      .from("profiles")
-      .select("full_name_zh,full_name_en,email")
-      .eq("id", userId)
-      .maybeSingle();
-
-    const inviterLabel =
-      (inviterProfile?.full_name_zh as string)?.trim() ||
-      (inviterProfile?.full_name_en as string)?.trim() ||
-      (inviterProfile?.email as string)?.trim() ||
-      "Property";
-
-    const token = crypto.randomUUID();
-    const expiresAt = new Date(
-      Date.now() + 7 * 24 * 60 * 60 * 1000,
-    ).toISOString();
-
-    // ── Insert staff_invites row ─────────────────────────────────────────
-    const { data: inserted, error: insErr } = await svc
-      .from("staff_invites")
-      .insert({
-        property_id: propertyId,
-        email: staffEmail,
-        full_name: staffName,
-        staff_type: staffType,
-        member_role: "viewer",
-        token,
-        status: "pending",
-        invited_by: userId,
-        expires_at: expiresAt,
-      })
-      .select("id")
-      .maybeSingle();
-
-    if (insErr || !inserted?.id) {
-      console.error("❌ send-staff-invite staff_invites insert", insErr);
+      if (existingStaffType === staffType) {
+        return json(
+          {
+            ok: false,
+            code: "ALREADY_STAFF",
+            message:
+              "该账号已是本物业的该类职员。 This account is already an active staff of this type.",
+          },
+          409,
+        );
+      }
       return json(
         {
           ok: false,
-          message: insErr?.message ?? "insert_failed",
-          error: insErr?.message ?? "insert_failed",
+          code: "EXISTING_OTHER_STAFF_TYPE",
+          message:
+            "该账号在本物业已是其他类型的职员，请先调整再发起邀请。 This account is already a different staff type in this property.",
+        },
+        409,
+      );
+    }
+
+    async function insertPendingAndEmail(params: {
+      email: string;
+      name: string | null;
+      staffType: StaffType;
+      compensation?: { id: string; fromStatus: string; toStatus: string };
+    }): Promise<Response> {
+      const token = crypto.randomUUID();
+      const expiresAt = new Date(
+        Date.now() + 7 * 24 * 60 * 60 * 1000,
+      ).toISOString();
+
+      const { data: inserted, error: insErr } = await svc
+        .from("staff_invites")
+        .insert({
+          property_id: propertyId,
+          email: params.email,
+          full_name: params.name,
+          staff_type: params.staffType,
+          member_role: "viewer",
+          token,
+          status: "pending",
+          invited_by: userId,
+          expires_at: expiresAt,
+        })
+        .select("id")
+        .maybeSingle();
+
+      if (insErr || !inserted?.id) {
+        console.error("❌ send-staff-invite staff_invites insert", insErr);
+        if (params.compensation) {
+          await restoreIf(
+            params.compensation.id,
+            params.compensation.fromStatus,
+            params.compensation.toStatus,
+          );
+        }
+        if (isUniqueViolation(insErr)) {
+          return pendingExistsResponse();
+        }
+        return json(
+          {
+            ok: false,
+            message: insErr?.message ?? "insert_failed",
+            error: insErr?.message ?? "insert_failed",
+          },
+          500,
+        );
+      }
+
+      const { data: inviterProfile } = await svc
+        .from("profiles")
+        .select("full_name_zh,full_name_en,email")
+        .eq("id", userId)
+        .maybeSingle();
+
+      const inviterLabel =
+        (inviterProfile?.full_name_zh as string)?.trim() ||
+        (inviterProfile?.full_name_en as string)?.trim() ||
+        (inviterProfile?.email as string)?.trim() ||
+        "Property";
+
+      const normalizedBaseUrl = normalizeAppBaseUrl(Deno.env.get("APP_BASE_URL"));
+      const logoUrl = `${normalizedBaseUrl}/logo-email.png`;
+      const acceptLink = `${normalizedBaseUrl}/staff-invite?token=${encodeURIComponent(token)}`;
+      const displayName =
+        params.name || params.email.split("@")[0] || "Staff";
+
+      const html = buildStaffInviteHtml({
+        recipientName: displayName,
+        propertyName: String(property.name ?? "Property"),
+        inviterLabel,
+        staffType: params.staffType,
+        logoUrl,
+        acceptLink,
+      });
+
+      const resend = new Resend(Deno.env.get("RESEND_API_KEY")!.trim());
+      const res = await resend.emails.send({
+        from: "ClearStrata <noreply@clearstrata.ai>",
+        to: params.email,
+        subject: STAFF_TYPE_SUBJECTS[params.staffType],
+        html,
+      });
+
+      if (res.error) {
+        console.error("❌ send-staff-invite Resend rejected", res.error);
+        const errMsg =
+          typeof (res.error as { message?: string }).message === "string"
+            ? (res.error as { message?: string }).message
+            : "Resend failed";
+        // Row already persisted; do not DELETE; do not restore old pending
+        // (unique index would collide with the new pending row).
+        return json(
+          {
+            ok: false,
+            code: "EMAIL_FAILED",
+            message:
+              "邀请已创建但邮件发送失败，请稍后重试。 Invitation created but email delivery failed.",
+            error: errMsg,
+            invite_id: inserted.id,
+          },
+          502,
+        );
+      }
+
+      console.log("✅ send-staff-invite final success", {
+        action,
+        invite_id: inserted.id,
+        email_id: res.data?.id,
+        to: params.email,
+        staff_type: params.staffType,
+        compensated_from: params.compensation?.id ?? null,
+      });
+
+      return json(
+        {
+          ok: true,
+          message: "Staff invitation sent",
+          invite_id: inserted.id,
+          email_id: res.data?.id,
+        },
+        200,
+      );
+    }
+
+    async function rejectIfAccepted(row: InviteRow): Promise<Response | null> {
+      if (row.status === "accepted") return alreadyAcceptedResponse();
+      return null;
+    }
+
+    async function cancelPendingOrReject(
+      row: InviteRow,
+    ): Promise<{ ok: true; compensation: { id: string; fromStatus: string; toStatus: string } | null } | { ok: false; response: Response }> {
+      if (row.status === "accepted") {
+        return { ok: false, response: alreadyAcceptedResponse() };
+      }
+      if (row.status !== "pending") {
+        return { ok: true, compensation: null };
+      }
+      const upd = await updateStatusIf(row.id, "pending", "cancelled");
+      if (upd.error) {
+        return {
+          ok: false,
+          response: json(
+            {
+              ok: false,
+              message: upd.error,
+              error: upd.error,
+            },
+            500,
+          ),
+        };
+      }
+      if (upd.hit) {
+        return {
+          ok: true,
+          compensation: {
+            id: row.id,
+            fromStatus: "cancelled",
+            toStatus: "pending",
+          },
+        };
+      }
+      const again = await loadInvite(row.id);
+      if (again.error) {
+        return {
+          ok: false,
+          response: json(
+            { ok: false, message: again.error, error: again.error },
+            500,
+          ),
+        };
+      }
+      if (!again.row || again.row.status === "accepted") {
+        return { ok: false, response: alreadyAcceptedResponse() };
+      }
+      return { ok: true, compensation: null };
+    }
+
+    // ── cancel ────────────────────────────────────────────────────────────
+    if (action === "cancel") {
+      const loaded = await loadInvite(inviteId);
+      if (loaded.error) {
+        return json(
+          { ok: false, message: loaded.error, error: loaded.error },
+          500,
+        );
+      }
+      if (!loaded.row) {
+        return json(
+          {
+            ok: false,
+            code: "STAFF_INVITE_NOT_FOUND",
+            message: "邀请不存在。 / Invitation not found.",
+          },
+          404,
+        );
+      }
+      const accepted = await rejectIfAccepted(loaded.row);
+      if (accepted) return accepted;
+      if (loaded.row.status !== "pending") {
+        return json(
+          {
+            ok: false,
+            code: "STAFF_INVITE_NOT_PENDING",
+            message:
+              "只能撤销等待接受的职员邀请。 / Only a pending staff invitation can be cancelled.",
+          },
+          409,
+        );
+      }
+      const upd = await updateStatusIf(inviteId, "pending", "cancelled");
+      if (upd.error) {
+        return json(
+          { ok: false, message: upd.error, error: upd.error },
+          500,
+        );
+      }
+      if (!upd.hit) {
+        const again = await loadInvite(inviteId);
+        if (again.row?.status === "accepted") return alreadyAcceptedResponse();
+        return json(
+          {
+            ok: false,
+            code: "STAFF_INVITE_NOT_PENDING",
+            message:
+              "只能撤销等待接受的职员邀请。 / Only a pending staff invitation can be cancelled.",
+          },
+          409,
+        );
+      }
+      return json(
+        { ok: true, message: "Staff invitation cancelled", invite_id: inviteId },
+        200,
+      );
+    }
+
+    // ── send ──────────────────────────────────────────────────────────────
+    if (action === "send") {
+      const staffType = staffTypeRaw as StaffType;
+      const pending = await findPendingByEmail(staffEmail);
+      if (pending.error) {
+        return json(
+          {
+            ok: false,
+            message: pending.error,
+            error: pending.error,
+          },
+          500,
+        );
+      }
+      if (pending.row && !clockExpired(pending.row.expires_at)) {
+        return pendingExistsResponse();
+      }
+
+      const conflict = await membershipConflict(staffEmail, staffType);
+      if (conflict) return conflict;
+
+      let sendCompensation:
+        | { id: string; fromStatus: string; toStatus: string }
+        | undefined;
+      if (pending.row && clockExpired(pending.row.expires_at)) {
+        const expired = await updateStatusIf(pending.row.id, "pending", "expired");
+        if (expired.error) {
+          return json(
+            { ok: false, message: expired.error, error: expired.error },
+            500,
+          );
+        }
+        if (!expired.hit) {
+          const again = await loadInvite(pending.row.id);
+          if (again.row?.status === "accepted") return alreadyAcceptedResponse();
+          const still = await findPendingByEmail(staffEmail);
+          if (still.row && !clockExpired(still.row.expires_at)) {
+            return pendingExistsResponse();
+          }
+        } else {
+          sendCompensation = {
+            id: pending.row.id,
+            fromStatus: "expired",
+            toStatus: "pending",
+          };
+        }
+      }
+
+      return await insertPendingAndEmail({
+        email: staffEmail,
+        name: staffName,
+        staffType,
+        compensation: sendCompensation,
+      });
+    }
+
+    // ── resend / edit_resend ──────────────────────────────────────────────
+    const loaded = await loadInvite(inviteId);
+    if (loaded.error) {
+      return json(
+        { ok: false, message: loaded.error, error: loaded.error },
+        500,
+      );
+    }
+    if (!loaded.row) {
+      return json(
+        {
+          ok: false,
+          code: "STAFF_INVITE_NOT_FOUND",
+          message: "邀请不存在。 / Invitation not found.",
+        },
+        404,
+      );
+    }
+    const accepted = await rejectIfAccepted(loaded.row);
+    if (accepted) return accepted;
+
+    let nextEmail: string;
+    let nextName: string | null;
+    let nextType: StaffType;
+
+    if (action === "resend") {
+      nextEmail = normalizeEmail(String(loaded.row.email ?? ""));
+      nextName = loaded.row.full_name;
+      const st = String(loaded.row.staff_type ?? "").toLowerCase();
+      if (!STAFF_TYPES.has(st as StaffType) || !nextEmail.includes("@")) {
+        return json(
+          {
+            ok: false,
+            code: "STAFF_INVITE_NOT_FOUND",
+            message: "邀请无效或不存在。 / Invitation not found.",
+          },
+          400,
+        );
+      }
+      nextType = st as StaffType;
+    } else {
+      nextEmail = staffEmail;
+      nextName = staffName;
+      nextType = staffTypeRaw as StaffType;
+    }
+
+    const otherPending = await findPendingByEmail(nextEmail);
+    if (otherPending.error) {
+      return json(
+        {
+          ok: false,
+          message: otherPending.error,
+          error: otherPending.error,
         },
         500,
       );
     }
-
-    // ── Email (Resend) ───────────────────────────────────────────────────
-    const normalizedBaseUrl = normalizeAppBaseUrl(Deno.env.get("APP_BASE_URL"));
-    const logoUrl = `${normalizedBaseUrl}/logo-email.png`;
-    const acceptLink = `${normalizedBaseUrl}/staff-invite?token=${encodeURIComponent(token)}`;
-
-    const displayName = staffName || staffEmail.split("@")[0] || "Staff";
-
-    const html = buildStaffInviteHtml({
-      recipientName: displayName,
-      propertyName: String(property.name ?? "Property"),
-      inviterLabel,
-      staffType,
-      logoUrl,
-      acceptLink,
-    });
-
-    const resend = new Resend(Deno.env.get("RESEND_API_KEY")!.trim());
-    const res = await resend.emails.send({
-      from: "ClearStrata <noreply@clearstrata.ai>",
-      to: staffEmail,
-      subject: STAFF_TYPE_SUBJECTS[staffType],
-      html,
-    });
-
-    if (res.error) {
-      console.error("❌ send-staff-invite Resend rejected", res.error);
-      const errMsg =
-        typeof (res.error as { message?: string }).message === "string"
-          ? (res.error as { message?: string }).message
-          : "Resend failed";
-      // Invite row already persisted; surface email failure separately.
-      return json(
-        {
-          ok: false,
-          code: "EMAIL_FAILED",
-          message: "邀请已创建但邮件发送失败，请稍后重试。 Invitation created but email delivery failed.",
-          error: errMsg,
-          invite_id: inserted.id,
-        },
-        502,
+    if (
+      otherPending.row &&
+      otherPending.row.id !== loaded.row.id &&
+      !clockExpired(otherPending.row.expires_at)
+    ) {
+      return pendingExistsResponse();
+    }
+    if (
+      otherPending.row &&
+      otherPending.row.id !== loaded.row.id &&
+      clockExpired(otherPending.row.expires_at)
+    ) {
+      const expOther = await updateStatusIf(
+        otherPending.row.id,
+        "pending",
+        "expired",
       );
+      if (expOther.error) {
+        return json(
+          { ok: false, message: expOther.error, error: expOther.error },
+          500,
+        );
+      }
+      if (!expOther.hit) {
+        const again = await loadInvite(otherPending.row.id);
+        if (again.row?.status === "accepted") return alreadyAcceptedResponse();
+        const still = await findPendingByEmail(nextEmail);
+        if (
+          still.row &&
+          still.row.id !== loaded.row.id &&
+          !clockExpired(still.row.expires_at)
+        ) {
+          return pendingExistsResponse();
+        }
+      }
     }
 
-    console.log("✅ send-staff-invite final success", {
-      invite_id: inserted.id,
-      email_id: res.data?.id,
-      to: staffEmail,
-      staff_type: staffType,
-    });
+    const conflict = await membershipConflict(nextEmail, nextType);
+    if (conflict) return conflict;
 
-    return json(
-      {
-        ok: true,
-        message: "Staff invitation sent",
-        invite_id: inserted.id,
-        email_id: res.data?.id,
-      },
-      200,
-    );
+    // Clock-expired pending on THIS row: resend still cancels it (spec).
+    // Expired/cancelled history rows are left unchanged.
+    const vacated = await cancelPendingOrReject(loaded.row);
+    if (!vacated.ok) return vacated.response;
+
+    return await insertPendingAndEmail({
+      email: nextEmail,
+      name: nextName,
+      staffType: nextType,
+      compensation: vacated.compensation ?? undefined,
+    });
   } catch (error) {
     logFullCatchError(error);
     const msg = error instanceof Error ? error.message : "unknown_error";
