@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ClipboardList, Loader2, Send, Star } from 'lucide-react';
+import { ClipboardList, FileText, Loader2, Send, Star, X } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useProperty } from '../contexts/PropertyContext';
@@ -65,6 +65,153 @@ type OwnerRequest = {
   created_at: string;
   updated_at: string;
 };
+
+const OWNER_REQUEST_MAX_ATTACHMENTS = 10;
+const OWNER_REQUEST_ACCEPT =
+  'image/jpeg,image/png,image/webp,application/pdf,.jpg,.jpeg,.png,.webp,.pdf';
+const OWNER_REQUEST_ALLOWED_EXT = new Set(['jpg', 'jpeg', 'png', 'webp', 'pdf']);
+const OWNER_REQUEST_ALLOWED_MIME = new Set([
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/webp',
+  'application/pdf',
+]);
+
+type OrPendingFile = {
+  key: string;
+  file: File;
+  previewUrl: string | null;
+};
+
+function isAllowedOwnerRequestFile(file: File): boolean {
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  if (!OWNER_REQUEST_ALLOWED_EXT.has(ext)) return false;
+  const mime = (file.type || '').toLowerCase();
+  return !mime || OWNER_REQUEST_ALLOWED_MIME.has(mime);
+}
+
+function isOwnerRequestImageFile(file: File): boolean {
+  const mime = (file.type || '').toLowerCase();
+  if (mime.startsWith('image/')) return true;
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  return ['jpg', 'jpeg', 'png', 'webp'].includes(ext);
+}
+
+function filenameFromAttachmentUrl(url: string): string {
+  try {
+    const u = new URL(url, 'https://dummy.local');
+    const last = decodeURIComponent(u.pathname.split('/').filter(Boolean).pop() || '');
+    if (last) return last;
+  } catch {
+    /* ignore */
+  }
+  return 'attachment';
+}
+
+function isImageAttachmentUrl(url: string): boolean {
+  const path = url.split('?')[0].toLowerCase();
+  return /\.(jpe?g|png|webp|gif)$/i.test(path);
+}
+
+function isPdfAttachmentUrl(url: string): boolean {
+  return /\.pdf($|\?)/i.test(url.split('?')[0]);
+}
+
+function sanitizeOwnerRequestFileName(name: string): string {
+  const trimmed = name.trim() || 'file';
+  return trimmed.replace(/[^\w.\-()]/g, '_').slice(0, 120);
+}
+
+async function uploadOwnerRequestAttachments(
+  propertyId: string,
+  files: File[],
+): Promise<{ ok: true; urls: string[] } | { ok: false }> {
+  const batchId =
+    typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const urls: string[] = [];
+  const usedNames = new Set<string>();
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    let safe = sanitizeOwnerRequestFileName(file.name);
+    if (usedNames.has(safe.toLowerCase())) {
+      safe = `${i + 1}_${safe}`;
+    }
+    usedNames.add(safe.toLowerCase());
+    const path = `${propertyId}/owner-requests/${batchId}/${safe}`;
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    const { error } = await supabase.storage.from('documents').upload(path, file, {
+      cacheControl: '3600',
+      upsert: false,
+      contentType: file.type || (ext === 'pdf' ? 'application/pdf' : undefined),
+    });
+    if (error) {
+      console.error('[ManagerTasks] owner-request attachment upload', error);
+      return { ok: false };
+    }
+    const { data } = supabase.storage.from('documents').getPublicUrl(path);
+    if (!data.publicUrl) return { ok: false };
+    urls.push(data.publicUrl);
+  }
+  return { ok: true, urls };
+}
+
+function OwnerRequestAttachmentGallery({
+  urls,
+  en,
+}: {
+  urls: string[];
+  en: boolean;
+}) {
+  if (urls.length === 0) return null;
+  return (
+    <div className="space-y-2">
+      <div className="text-xs font-medium text-gray-500">
+        {en ? 'Attachments' : '附件'}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {urls.map((url, i) => {
+          const name = filenameFromAttachmentUrl(url);
+          if (isImageAttachmentUrl(url)) {
+            return (
+              <a
+                key={`${url}-${i}`}
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block h-16 w-16 overflow-hidden rounded-lg border border-gray-200 bg-gray-50"
+                title={name}
+              >
+                <img src={url} alt={name} className="h-full w-full object-cover" />
+              </a>
+            );
+          }
+          return (
+            <a
+              key={`${url}-${i}`}
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex max-w-[14rem] items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-800 hover:bg-gray-100"
+              title={name}
+            >
+              <FileText className="h-4 w-4 shrink-0 text-slate-600" />
+              <span className="truncate">{name}</span>
+              {isPdfAttachmentUrl(url) ? (
+                <span className="shrink-0 text-[10px] uppercase tracking-wide text-gray-500">
+                  PDF
+                </span>
+              ) : null}
+            </a>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 type OwnerRequestReview = {
   id: string;
@@ -481,7 +628,9 @@ function OwnerRequestCard({
 
   const avgRating = ownerRequestReviewsAvg(reviews);
 
-  const attachments = Array.isArray(req.attachment_urls) ? req.attachment_urls : [];
+  const attachments = Array.isArray(req.attachment_urls)
+    ? req.attachment_urls.filter((u): u is string => typeof u === 'string' && u.trim().length > 0)
+    : [];
 
   const isSubmittingUser = Boolean(
     currentUserId && req.created_by && req.created_by === currentUserId,
@@ -644,15 +793,7 @@ function OwnerRequestCard({
         <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{req.content}</p>
 
         {attachments.length > 0 && (
-          <div className="text-xs">
-            <span className="text-gray-500 mr-1">附件：</span>
-            {attachments.map((url, i) => (
-              <a key={i} href={url} target="_blank" rel="noopener noreferrer"
-                className="mr-2 text-[#1D9E75] hover:underline break-all">
-                {url.length > 50 ? url.slice(0, 50) + '…' : url}
-              </a>
-            ))}
-          </div>
+          <OwnerRequestAttachmentGallery urls={attachments} en={en} />
         )}
 
         {req.manager_result && (
@@ -2279,36 +2420,110 @@ export function ManagerTasks() {
   };
 
   const [orForm, setOrForm] = useState({
-    title: '', content: '', unit_no: '', contact: '', attachment_urls: '',
+    title: '', content: '', unit_no: '', contact: '',
   });
+  const [orPendingFiles, setOrPendingFiles] = useState<OrPendingFile[]>([]);
   const [submittingOR, setSubmittingOR] = useState(false);
+  const orFileInputRef = useRef<HTMLInputElement>(null);
+
+  const clearOrPendingFiles = useCallback(() => {
+    setOrPendingFiles((prev) => {
+      for (const item of prev) {
+        if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+      }
+      return [];
+    });
+  }, []);
+
+  const addOrPendingFiles = useCallback(
+    (incoming: File[]) => {
+      if (incoming.length === 0) return;
+      const allowed = incoming.filter(isAllowedOwnerRequestFile);
+      if (allowed.length === 0) {
+        showToast(
+          en
+            ? 'Please choose JPG, PNG, WEBP, or PDF files.'
+            : '请选择 JPG、PNG、WEBP 或 PDF 文件。',
+          false,
+        );
+        return;
+      }
+      if (orPendingFiles.length >= OWNER_REQUEST_MAX_ATTACHMENTS) {
+        showToast(
+          en
+            ? `You can attach up to ${OWNER_REQUEST_MAX_ATTACHMENTS} files.`
+            : `最多上传 ${OWNER_REQUEST_MAX_ATTACHMENTS} 个附件。`,
+          false,
+        );
+        return;
+      }
+      setOrPendingFiles((prev) => {
+        const room = OWNER_REQUEST_MAX_ATTACHMENTS - prev.length;
+        if (room <= 0) return prev;
+        const nextSlice = allowed.slice(0, room);
+        const added: OrPendingFile[] = nextSlice.map((file) => ({
+          key:
+            typeof crypto !== 'undefined' && crypto.randomUUID
+              ? crypto.randomUUID()
+              : `${file.name}-${file.size}-${Date.now()}-${Math.random()}`,
+          file,
+          previewUrl: isOwnerRequestImageFile(file) ? URL.createObjectURL(file) : null,
+        }));
+        return [...prev, ...added];
+      });
+    },
+    [en, orPendingFiles.length, showToast],
+  );
+
+  const removeOrPendingFile = useCallback((key: string) => {
+    setOrPendingFiles((prev) => {
+      const target = prev.find((p) => p.key === key);
+      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((p) => p.key !== key);
+    });
+  }, []);
 
   const submitOwnerRequest = async () => {
     if (!session?.user?.id || !currentPropertyId || !orForm.title.trim() || !orForm.content.trim()) return;
     setSubmittingOR(true);
-    const urls = orForm.attachment_urls
-      .split('\n')
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const { error } = await supabase.from('property_manager_requests').insert({
-      property_id: currentPropertyId,
-      created_by: session.user.id,
-      unit_no: orForm.unit_no.trim() || null,
-      title: orForm.title.trim(),
-      content: orForm.content.trim(),
-      contact: orForm.contact.trim() || null,
-      attachment_urls: urls,
-      category: 'owner_request',
-      status: 'pending',
-      manager_email: 'gani.xhepa@dwellproperty.ca',
-    });
-    setSubmittingOR(false);
-    if (error) {
-      showToast(`提交失败：${error.message}`, false);
-    } else {
-      showToast('诉求已提交');
-      setOrForm({ title: '', content: '', unit_no: '', contact: '', attachment_urls: '' });
+    try {
+      let urls: string[] = [];
+      if (orPendingFiles.length > 0) {
+        const uploaded = await uploadOwnerRequestAttachments(
+          currentPropertyId,
+          orPendingFiles.map((p) => p.file),
+        );
+        if (!uploaded.ok) {
+          showToast(
+            en ? 'Attachment upload failed. Please try again.' : '附件上传失败，请重试。',
+            false,
+          );
+          return;
+        }
+        urls = uploaded.urls;
+      }
+      const { error } = await supabase.from('property_manager_requests').insert({
+        property_id: currentPropertyId,
+        created_by: session.user.id,
+        unit_no: orForm.unit_no.trim() || null,
+        title: orForm.title.trim(),
+        content: orForm.content.trim(),
+        contact: orForm.contact.trim() || null,
+        attachment_urls: urls,
+        category: 'owner_request',
+        status: 'pending',
+        manager_email: 'gani.xhepa@dwellproperty.ca',
+      });
+      if (error) {
+        showToast(`提交失败：${error.message}`, false);
+        return;
+      }
+      showToast(en ? 'Request submitted' : '诉求已提交');
+      setOrForm({ title: '', content: '', unit_no: '', contact: '' });
+      clearOrPendingFiles();
       void loadOwnerRequests();
+    } finally {
+      setSubmittingOR(false);
     }
   };
 
@@ -2698,14 +2913,75 @@ export function ManagerTasks() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">附件链接</label>
-                  <textarea
-                    value={orForm.attachment_urls}
-                    onChange={(e) => setOrForm({ ...orForm, attachment_urls: e.target.value })}
-                    rows={2}
-                    placeholder="每行一个链接（图片/PDF 等）"
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono text-xs"
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {en ? 'Attachments' : '附件 / Attachments'}
+                  </label>
+                  <input
+                    ref={orFileInputRef}
+                    type="file"
+                    className="hidden"
+                    accept={OWNER_REQUEST_ACCEPT}
+                    multiple
+                    onChange={(e) => {
+                      addOrPendingFiles(Array.from(e.target.files ?? []));
+                      e.target.value = '';
+                    }}
                   />
+                  {orPendingFiles.length < OWNER_REQUEST_MAX_ATTACHMENTS ? (
+                    <button
+                      type="button"
+                      disabled={submittingOR}
+                      onClick={() => orFileInputRef.current?.click()}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+                    >
+                      {en ? '+ Upload image or PDF' : '+ 上传图片或 PDF'}
+                    </button>
+                  ) : null}
+                  {orPendingFiles.length > 0 ? (
+                    <ul className="mt-3 space-y-2">
+                      {orPendingFiles.map((item) => {
+                        const isPdf =
+                          item.file.type === 'application/pdf' ||
+                          /\.pdf$/i.test(item.file.name);
+                        return (
+                          <li
+                            key={item.key}
+                            className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-2 py-1.5"
+                          >
+                            {item.previewUrl ? (
+                              <img
+                                src={item.previewUrl}
+                                alt={item.file.name}
+                                className="h-10 w-10 shrink-0 rounded object-cover border border-gray-100"
+                              />
+                            ) : (
+                              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded border border-gray-100 bg-gray-50">
+                                <FileText className="h-5 w-5 text-slate-600" />
+                              </span>
+                            )}
+                            <span className="min-w-0 flex-1 truncate text-sm text-gray-800" title={item.file.name}>
+                              {isPdf ? '📄 ' : '📷 '}
+                              {item.file.name}
+                            </span>
+                            <button
+                              type="button"
+                              disabled={submittingOR}
+                              onClick={() => removeOrPendingFile(item.key)}
+                              className="inline-flex items-center gap-0.5 rounded-md px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                              {en ? 'Remove' : '删除'}
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : null}
+                  <p className="mt-1.5 text-xs text-gray-500">
+                    {en
+                      ? `${orPendingFiles.length} attachment${orPendingFiles.length === 1 ? '' : 's'} · JPG, PNG, WEBP, PDF · up to ${OWNER_REQUEST_MAX_ATTACHMENTS}`
+                      : `${orPendingFiles.length} 个附件 · 支持 JPG / PNG / WEBP / PDF · 最多 ${OWNER_REQUEST_MAX_ATTACHMENTS} 个`}
+                  </p>
                 </div>
                 <button
                   type="button"
