@@ -11,9 +11,13 @@
  *
  * STRICT BOUNDARIES (Phase 2C):
  *   - Does NOT touch manager_invites / accept-manager-invite / send-manager-invite.
- *   - Does NOT alter user_role enum, owner / tenant / council / admin / property_admin / manager rows.
+ *   - Does NOT alter the user_role enum.
  *   - Does NOT change profiles.app_role.
- *   - Never overwrites an existing non-viewer membership in this property.
+ *   - Never overwrites an **active** non-viewer membership (owner / council / manager /
+ *     admin / property_admin, etc.). Staff Invite must not cover a live governance role.
+ *   - A **removed** historical membership for the same (property_id, user_id) MAY be reused
+ *     in place as viewer staff (UPDATE; UNIQUE forbids INSERT). This is not owner restoration
+ *     and does not rebind residents.
  */
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -529,8 +533,10 @@ Deno.serve(async (req: Request) => {
     // else: keep existing profile untouched (no role / app_role / email writes).
   }
 
-  // ── property_members: insert viewer+staff_type if absent; otherwise
-  //    idempotent (only viewer+same staff_type can reach this point).
+  // ── property_members ─────────────────────────────────────────────────────
+  // No row            → INSERT viewer staff.
+  // status=removed    → UPDATE in place to viewer staff (UNIQUE (property_id, user_id)).
+  // otherwise         → existing viewer / active-non-viewer protection (unchanged).
   const { data: existingMember, error: emErr } = await svc
     .from("property_members")
     .select("id,role,staff_type,status")
@@ -570,6 +576,88 @@ Deno.serve(async (req: Request) => {
           message: insMemberErr.message,
         },
         500,
+      );
+    }
+  } else if (String(existingMember.status ?? "").toLowerCase() === "removed") {
+    // Historical removed membership: reuse the same row as external viewer staff.
+    // Concurrent restore to active owner/council/manager must not be overwritten:
+    // UPDATE is gated on status='removed'.
+    const memberId = existingMember.id as string;
+    const acceptedAtIso = new Date().toISOString();
+    const { data: reusedRows, error: reuseErr } = await svc
+      .from("property_members")
+      .update({
+        role: "viewer",
+        staff_type: staffType,
+        status: "active",
+        unit_no: null,
+        unit_id: null,
+        join_invite_code: null,
+        join_entry_source: null,
+        approved_at: acceptedAtIso,
+      })
+      .eq("id", memberId)
+      .eq("property_id", invite.property_id)
+      .eq("user_id", userId)
+      .eq("status", "removed")
+      .select("id");
+    if (reuseErr) {
+      console.error(
+        "[accept-staff-invite] property_members reuse-removed",
+        reuseErr,
+      );
+      return apiJson(
+        {
+          ok: false,
+          code: "MEMBER_UPDATE_FAILED",
+          message: reuseErr.message,
+        },
+        500,
+      );
+    }
+    if (!reusedRows?.length) {
+      const { data: raced, error: racedErr } = await svc
+        .from("property_members")
+        .select("id,role,status")
+        .eq("id", memberId)
+        .eq("property_id", invite.property_id)
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (racedErr) {
+        console.error(
+          "[accept-staff-invite] property_members reuse-removed re-read",
+          racedErr,
+        );
+        return apiJson(
+          {
+            ok: false,
+            code: "MEMBER_LOOKUP_FAILED",
+            message: racedErr.message ?? "membership lookup failed",
+          },
+          500,
+        );
+      }
+      const racedRole = String(raced?.role ?? "").toLowerCase();
+      const racedStatus = String(raced?.status ?? "").toLowerCase();
+      if (racedStatus === "active" && racedRole !== "viewer") {
+        return apiJson(
+          {
+            ok: false,
+            code: "EXISTING_OTHER_ROLE",
+            message:
+              "此邮箱已是本物业成员，不能作为外部职员接受邀请 / Email already has a non-staff role in this property",
+          },
+          200,
+        );
+      }
+      return apiJson(
+        {
+          ok: false,
+          code: "MEMBER_UPDATE_CONFLICT",
+          message:
+            "成员状态已变化，无法完成职员邀请 / Membership changed during accept; staff invite was not applied",
+        },
+        200,
       );
     }
   } else {
