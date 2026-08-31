@@ -47,12 +47,12 @@ import crypto from 'node:crypto';
 
 // Static artifact metadata — which Implementation Authorization implemented this artifact.
 // This is NOT DBA execution authority.
-export const ARTIFACT_AUTHORIZATION_ID = 'E-02-BCR-IA-011' as const;
+export const ARTIFACT_AUTHORIZATION_ID = 'E-02-BCR-IA-017' as const;
 
 // Runtime DBA execution authority (IA-003 §10/§11/§24/§25). Apply / preserve / cleanup require
 // process.env.E02_DBA_AUTHORIZATION_ID to equal EXACTLY this value — no prefix match, no regex,
 // no arbitrary DBA id, no per-run source edit.
-export const EXPECTED_DBA_AUTHORIZATION_ID = 'E-02-DBA-LOCAL-011' as const;
+export const EXPECTED_DBA_AUTHORIZATION_ID = 'E-02-DBA-LOCAL-017' as const;
 export const DBA_AUTHORIZATION_ENV = 'E02_DBA_AUTHORIZATION_ID' as const;
 
 export const BASELINE_MODE = 'E02_DECLARED_BASELINE_REPLAY' as const;

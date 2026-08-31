@@ -279,8 +279,10 @@ BEGIN
 
   UPDATE public.meeting_votes mv
   SET property_id = m.property_id
-  FROM public.meetings m
-  WHERE mv.meeting_id = m.id AND mv.property_id IS NULL;
+  FROM public.meeting_agenda_items mai, public.meetings m
+  WHERE mv.agenda_item_id = mai.id
+    AND mai.meeting_id = m.id
+    AND mv.property_id IS NULL;
   UPDATE public.meeting_votes SET property_id = default_id WHERE property_id IS NULL;
 
   UPDATE public.meeting_documents md

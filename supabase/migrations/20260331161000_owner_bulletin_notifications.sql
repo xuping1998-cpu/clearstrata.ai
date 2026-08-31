@@ -1,13 +1,13 @@
 /*
   # Owner bulletin board (业主通知公告)
 
-  The legacy `notifications` table was per-user inbox (user_id, title_en, ?.
+  The legacy `notifications` table was per-user inbox (user_id, title_en, …).
   It is renamed to `user_inbox_notifications` to free the name.
 
   New `notifications` table: building-wide announcements with RLS:
   - SELECT: all authenticated users
   - INSERT/UPDATE/DELETE: council or manager only
-  - author_name / author_role set by trigger from profiles (防伪?
+  - author_name / author_role set by trigger from profiles (防伪造)
 */
 
 -- ---------------------------------------------------------------------------
@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS public.notifications (
   author_name text NOT NULL,
   author_role text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT notifications_author_role_display_check CHECK (author_role IN ('业委?, '物业经理'))
+  CONSTRAINT notifications_author_role_display_check CHECK (author_role IN ('业委会', '物业经理'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON public.notifications (created_at DESC);
@@ -85,7 +85,7 @@ BEGIN
   END;
 
   NEW.author_role := CASE r
-    WHEN 'council' THEN '业委?
+    WHEN 'council' THEN '业委会'
     WHEN 'manager' THEN '物业经理'
     ELSE r
   END;
