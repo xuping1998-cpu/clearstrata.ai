@@ -291,10 +291,6 @@ BEGIN
   WHERE md.meeting_id = m.id AND md.property_id IS NULL;
   UPDATE public.meeting_documents SET property_id = default_id WHERE property_id IS NULL;
 
-  UPDATE public.meeting_quota_tracker mqt
-  SET property_id = m.property_id
-  FROM public.meetings m
-  WHERE mqt.meeting_id = m.id AND mqt.property_id IS NULL;
   UPDATE public.meeting_quota_tracker SET property_id = default_id WHERE property_id IS NULL;
 
   IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'meeting_records' AND column_name = 'property_id') THEN
